@@ -5,6 +5,12 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 
 vi.mock('../../lib/deployment', () => ({ PLATFORM_UI: false }));
+// Sharing off and already known, so the page doesn't hold its skeleton
+// waiting for it (ENG-4585); these tests aren't about sections.
+vi.mock('../hooks/useOrgSharing', async (importOriginal) => ({
+  ...(await importOriginal()),
+  useSharingCapabilities: () => ({ status: 'ready', capabilities: null, retry: () => {} }),
+}));
 vi.mock('../api', () => ({
   revealArtifact: vi.fn(),
   publishArtifact: vi.fn(),

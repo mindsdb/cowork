@@ -53,6 +53,8 @@
       "openNamedInDrive": "「{name}」をGoogle ドライブで開く",
       "untitled": "無題",
       "openInDrive": "Google ドライブで開く",
+      "openNamedInNotion": "「{name}」をNotionで開く",
+      "openInNotion": "Notionで開く",
       "removeFromProjectFiles": "プロジェクトファイルから削除",
       "removeFromProjectFilesAriaLabel": "{name}をプロジェクトファイルから削除",
       "loadAttachmentsFailed": "添付ファイルを読み込めませんでした",
@@ -133,6 +135,27 @@
       "haveCopyTitle": "コピーがすでにあります。もう一度複製するには、コピーを削除してください。",
       "duplicateAriaLabel": "{name}を複製",
       "duplicatedToast": "このプロジェクトに複製しました。"
+    },
+    "workingFolders": {
+      "title": "作業フォルダ",
+      "add": "このチャットにフォルダを追加",
+      "adding": "追加中…",
+      "emptyHint": "エージェントが作業するフォルダを追加してください。",
+      "loadingFiles": "ファイルを読み込み中…",
+      "emptyFolder": "このフォルダにファイルはありません。",
+      "showFiles": "{name}のファイルを表示",
+      "hideFiles": "{name}のファイルを非表示",
+      "unavailable": "フォルダを利用できません",
+      "removeTooltip": "このチャットから削除",
+      "removeAriaLabel": "{name}をこのチャットから削除",
+      "removeTitle": "「{name}」をこのチャットから削除しますか？",
+      "fallbackName": "フォルダ",
+      "removeMessage": "エージェントはこのフォルダで作業しなくなります。フォルダとそのファイルはコンピュータに残ります。",
+      "loadFailed": "作業フォルダを読み込めませんでした。",
+      "listFailed": "このフォルダの内容を一覧表示できませんでした。",
+      "pickerFailed": "フォルダ選択画面を開けませんでした。",
+      "addFailed": "このフォルダを追加できませんでした。",
+      "removeFailed": "このフォルダを削除できませんでした。"
     }
   },
   "confirm": {
@@ -171,10 +194,13 @@
     "unavailableTitle": "この機能は利用できません",
     "cloudBodyNamed": "{feature}はまだCloudではご利用いただけません。それまではデスクトップアプリでご利用ください。",
     "cloudBody": "この機能はまだCloudではご利用いただけません。それまではデスクトップアプリでご利用ください。",
+    "cloudBodyCustom": "{feature}はまだCloudではご利用いただけません。今すぐカスタムコネクタとして接続できます。",
     "unavailableBodyNamed": "{feature}はこの環境ではご利用いただけません。",
     "unavailableBody": "この機能はこの環境ではご利用いただけません。",
     "notNow": "後で",
-    "download": "アプリをダウンロード"
+    "download": "アプリをダウンロード",
+    "connectCustom": "カスタム{feature}コネクタを接続",
+    "buildCustom": "カスタムコネクタを作成"
   },
   "loadStatus": {
     "retry": "再試行",
@@ -182,6 +208,8 @@
     "loading": "{what}を読み込み中…"
   },
   "upToDate": "最新の状態です",
+  "upToDateSaving": "保存中…",
+  "upToDateSaved": "保存済み",
   "usageBar": {
     "hideAllowance": "無料枠を非表示",
     "hide": "非表示"
@@ -278,6 +306,8 @@
     "settings": "設定",
     "billing": "請求と使用量",
     "members": "メンバー",
+    "apiKeys": "API キー",
+    "apiDocs": "API ドキュメント",
     "help": "ヘルプとフィードバック",
     "manageOrg": "組織を管理",
     "logout": "サインアウト",
@@ -360,7 +390,12 @@
     "total": "合計{count}件",
     "noTasks": "タスクはまだありません。",
     "untitledTask": "無題のタスク",
-    "seeAllTasks": "すべてのタスクを表示"
+    "seeAllTasks": "すべてのタスクを表示",
+    "recents": "最近",
+    "showFewer": "表示を減らす",
+    "seeAllCount": "すべて表示（{count}）",
+    "signedIn": "サインイン済み",
+    "logOut": "ログアウト"
   },
   "dispatch": {
     "qrAriaLabel": "装飾用のペアリングコード",
@@ -395,9 +430,15 @@
       "operatorTitle": "プロバイダの設定が必要です",
       "body": "MindsHubならMindsHub Airの無料枠から始めて、その後は従量課金でご利用いただけます。または、設定で独自のAPIキー（Anthropic、OpenAI、またはOpenAI互換のエンドポイント）を追加することもできます。",
       "operatorBody": "タスクを開始する前に、モデルプロバイダの設定を運用担当者に依頼してください。",
-      "startFree": "無料で始める"
+      "startFree": "無料で始める",
+      "bodyMobile": "設定で自分のプロバイダーを接続してください。"
     },
-    "handoffHint": "このプロンプトを編集して、準備ができたら送信してください。"
+    "handoffHint": "このプロンプトを編集して、準備ができたら送信してください。",
+    "signupWelcome": {
+      "fromDesktop": "アカウントの準備ができました。ここからすぐに始めるか、{product} アプリに戻ってサインインしてください。",
+      "dismiss": "閉じる"
+    },
+    "ownWorkHeading": "{product}に何をしてもらいますか？"
   },
   "logout": {
     "title": "{product}からサインアウトしますか？",
@@ -409,5 +450,8 @@
     "confirm": "サインアウト",
     "failed": "サインアウトを完了できませんでした。もう一度お試しください。",
     "waitNote": "サインアウト処理中です。この画面は閉じても構いません。処理は自動的に完了します。"
+  },
+  "shortcuts": {
+    "showBrowser": "ブラウザを表示"
   }
 }

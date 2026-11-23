@@ -23,7 +23,7 @@ vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
 vi.mock('./lib/organizationTransition', () => transitionMock);
 
-import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchMemoryCapabilities, resetMemory, fetchSession, validateAndSaveConnector, deleteArtifact, publishArtifact, updateArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, mountProjectFilePreview, listSharedProjectFiles, SHORT_REQUEST_TIMEOUT_MS, CONNECTIONS_VAULT_KEEP, SHAREPOINT_UNAVAILABLE_MESSAGE, createSharePointConnection, editSharePointConnection, listSharePointLibraries, listSharePointChildren, importSharePointFiles } from './api';
+import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, getDeletionRequest, requestAccountDeletion, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchMemoryCapabilities, resetMemory, fetchSession, validateAndSaveConnector, deleteArtifact, publishArtifact, updateArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, mountProjectFilePreview, listSharedProjectFiles, SHORT_REQUEST_TIMEOUT_MS, CONNECTIONS_VAULT_KEEP, SHAREPOINT_UNAVAILABLE_MESSAGE, createSharePointConnection, editSharePointConnection, listSharePointLibraries, listSharePointChildren, importSharePointFiles, listConversationFolders, addConversationFolder, removeConversationFolder, listConversationFolderFiles, voiceOperate, readBrowserApproveSteps } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { setOrgMode } from '../lib/orgMode';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
@@ -88,6 +88,43 @@ describe('authFetch organization boundary', () => {
 
     await expect(authFetch('/api/v1/projects'))
       .rejects.toThrow('The active organization changed; reload required');
+  });
+});
+
+describe('conversation working folders', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('calls the four folder routes with the ids encoded', async () => {
+    const fetchMock = vi.fn(async () => jsonRes({ folders: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await listConversationFolders('chat 1');
+    await addConversationFolder('chat 1', '/Users/x/docs');
+    await removeConversationFolder('chat 1', 'f/1');
+    await listConversationFolderFiles('chat 1', 'f/1');
+
+    const calls = fetchMock.mock.calls.map(([url, init]) => [
+      String(url).replace('http://127.0.0.1:26866/api/v1', ''),
+      init?.method || 'GET',
+      init?.body,
+    ]);
+    expect(calls).toEqual([
+      ['/conversations/chat%201/folders', 'GET', undefined],
+      ['/conversations/chat%201/folders', 'POST', JSON.stringify({ path: '/Users/x/docs' })],
+      ['/conversations/chat%201/folders/f%2F1', 'DELETE', undefined],
+      ['/conversations/chat%201/folders/f%2F1/files', 'GET', undefined],
+    ]);
+  });
+
+  it('throws the server refusal text so the card can show it', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonRes(
+      { detail: "Choose a folder that does not hold Cowork's own data" }, false, 400,
+    )));
+
+    await expect(addConversationFolder('chat-1', '/Users/x/.cowork')).rejects.toMatchObject({
+      message: "Choose a folder that does not hold Cowork's own data",
+      status: 400,
+    });
   });
 });
 
@@ -436,6 +473,66 @@ describe('settings reads and writes settle in the order they started', () => {
   });
 });
 
+/* The app reads Approve browser steps fresh before it approves a held step,
+   with the server's stamp of when approvals last went off. A card's Skip
+   approvals then writes the switch whatever this tab last read, so the
+   server stamps that time past the card. */
+describe('readBrowserApproveSteps, and the switch it reads', () => {
+  let stored;
+  let puts;
+  beforeEach(() => {
+    stored = { browser_approve_steps: 'false', browser_approve_steps_off_at: '1700000000123' };
+    puts = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+      const method = options.method || 'GET';
+      const u = String(url);
+      if (method === 'PUT' && u.endsWith('/settings/')) {
+        const { values } = JSON.parse(options.body);
+        puts.push(values);
+        Object.assign(stored, values);
+        return jsonRes({ updated: Object.keys(values) });
+      }
+      if (method === 'GET' && u.endsWith('/settings/')) {
+        return jsonRes(Object.entries(stored).map(([key, value]) => ({ key, value })));
+      }
+      return jsonRes({});
+    }));
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('reads whether approvals are on and when they last went off, by the server', async () => {
+    expect(await readBrowserApproveSteps()).toEqual({ asks: false, offAtMs: 1_700_000_000_123 });
+    stored.browser_approve_steps = 'true';
+    expect(await readBrowserApproveSteps()).toEqual({ asks: true, offAtMs: 1_700_000_000_123 });
+    // A server that doesn't stamp it.
+    delete stored.browser_approve_steps_off_at;
+    expect(await readBrowserApproveSteps()).toEqual({ asks: true, offAtMs: null });
+  });
+
+  it('is null when the settings cannot be read', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
+    expect(await readBrowserApproveSteps()).toBeNull();
+  });
+
+  /* This tab read approvals off; the person turned them off again from a
+     card after another device turned them on and off. The write still goes,
+     so the server stamps the new time; the stamp itself is never written. */
+  it('writes approvals off even when this tab already reads them off, and never the stamp', async () => {
+    await fetchSettings();
+    await updateSettings({ browserApproveSteps: false, browserApproveStepsOffAt: 5 });
+    expect(puts).toEqual([{ browser_approve_steps: 'false' }]);
+    expect(stored.browser_approve_steps_off_at).toBe('1700000000123');
+  });
+
+  it('reads after a save started before it', async () => {
+    await fetchSettings();
+    const save = updateSettings({ browserApproveSteps: true });
+    const read = readBrowserApproveSteps();
+    expect(await read).toEqual({ asks: true, offAtMs: 1_700_000_000_123 });
+    await save;
+  });
+});
+
 // A MindsHub key the user typed must not be stored by the sidecar at all. The
 // Settings form writes it twice from one keystroke — the `minds_api_key` row
 // and the raw value inside the provider card — so both halves have to be
@@ -749,6 +846,21 @@ describe('fetchSession error hydration (ENG-1304)', () => {
     const task = await fetchSession('c1');
     const err = task.messages.find((m) => m.role === 'error');
     expect(err).toMatchObject({ code: 'free_serving_paused', resetAt: '2099-01-02T00:00:00Z', requestId: 'corr-hosted' });
+  });
+
+  it("carries a budget stop's scope onto its error row", async () => {
+    stubEndpoints([
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: '', events: [
+        { type: 'response.created' },
+        { type: 'response.failed', code: 'budget_exceeded', error: 'Budget used up.', budget_scope: 'workspace', budget_period: 'day', budget_model: 'haiku-4-5' },
+      ] },
+    ]);
+    const { fetchSession } = await import('./api');
+    const task = await fetchSession('c1');
+    expect(task.messages.find((m) => m.role === 'error')).toMatchObject({
+      code: 'budget_exceeded', budgetScope: 'workspace', budgetPeriod: 'day', budgetModel: 'haiku-4-5',
+    });
   });
 });
 
@@ -1618,6 +1730,85 @@ describe('req() timeout scoping', () => {
  * A definite answer is answered; a transient one is thrown for the caller to
  * ask again.
  */
+describe('account deletion requests', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  let calls;
+  const respond = (res) => {
+    calls = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      calls.push({ url: String(url), options });
+      return res;
+    }));
+  };
+  const OPEN = { requestedAt: '2026-11-17T18:30:00Z', deleteBy: '2026-12-17T18:30:00Z' };
+
+  it('reads the open request from the hub route', async () => {
+    respond(jsonRes(OPEN));
+
+    await expect(getDeletionRequest()).resolves.toEqual(OPEN);
+    expect(calls[0].url).toMatch(/\/hub\/deletion-request\/$/);
+    expect(calls[0].options?.method ?? 'GET').toBe('GET');
+  });
+
+  it('reads a 404 as no open request', async () => {
+    respond(jsonRes({ detail: 'Not Found' }, false, 404));
+
+    await expect(getDeletionRequest()).resolves.toBeNull();
+  });
+
+  it('rejects on any other failure, so it is never mistaken for no request', async () => {
+    respond(jsonRes({ detail: 'boom' }, false, 502));
+
+    await expect(getDeletionRequest()).rejects.toMatchObject({ status: 502 });
+  });
+
+  describe.each([
+    ['GET', getDeletionRequest],
+    ['POST', requestAccountDeletion],
+  ])('%s deadline', (_method, send) => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('covers the wait for the access token', async () => {
+      hostMock.getAccessToken.mockImplementationOnce(() => new Promise(() => {}));
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+
+      const onError = vi.fn();
+      send().catch(onError);
+      await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS);
+
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ name: 'AbortError' }));
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('aborts a stalled network request', async () => {
+      const fetchMock = _abortAwareFetch(2 * SHORT_REQUEST_TIMEOUT_MS, OPEN);
+      vi.stubGlobal('fetch', fetchMock);
+
+      const onError = vi.fn();
+      send().catch(onError);
+      await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ name: 'AbortError' }));
+    });
+  });
+
+  it('posts the request and rejects with the status on failure', async () => {
+    respond(jsonRes(OPEN));
+    await expect(requestAccountDeletion()).resolves.toEqual(OPEN);
+    expect(calls[0].url).toMatch(/\/hub\/deletion-request\/$/);
+    expect(calls[0].options.method).toBe('POST');
+
+    respond(jsonRes({ detail: 'slow down' }, false, 429));
+    await expect(requestAccountDeletion()).rejects.toMatchObject({ status: 429 });
+  });
+});
+
 describe('fetchHubWorkspaces', () => {
   const DARK = { enabled: false, reachable: false, workspaces: [], activeWorkspaceId: null };
 
@@ -1783,6 +1974,30 @@ describe('paginated /items', () => {
     expect(res.status).toBe('ok');
     expect(res.task.hasMoreMessages).toBe(true);
     expect(res.task.messagesCursor).toBe('cursor-9');
+  });
+
+  it('shows a reloaded message without the Notion page text it was sent with', async () => {
+    const sent = 'what changed?\n\n[Notion pages added for this message — Anton-only context, do not echo back]\n--- Notion page t1: Roadmap ---\nQ3 goals';
+    const fetchMock = vi.fn(async (url) => jsonRes(
+      String(url).includes('/items') ? { items: [{ role: 'user', content: sent }], hasMore: true, nextBefore: 'c' } : meta,
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const { fetchSession, fetchOlderMessages } = await import('./api');
+
+    expect((await fetchSession('c1')).messages[0].content).toBe('what changed?');
+    expect((await fetchOlderMessages('c1', 'c')).messages[0].content).toBe('what changed?');
+  });
+
+  it('titles a conversation without the Notion page note the server kept in it', async () => {
+    const fetchMock = vi.fn(async (url) => jsonRes(
+      String(url).includes('/items')
+        ? { items: [], hasMore: false, nextBefore: null }
+        : { ...meta, title: 'what is this page about?\n\n[Notion pages added for this message — Anton-only cont' },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    const { fetchSession } = await import('./api');
+
+    expect((await fetchSession('c1')).title).toBe('what is this page about?');
   });
 
   it('fetchOlderMessages requests the given cursor and returns the next page', async () => {
@@ -1996,5 +2211,22 @@ describe('SharePoint routes', () => {
     expect(err.message).toBe(detail);
     expect(err.status).toBe(status);
     expect(err.code).not.toBe('sharepoint_unavailable');
+  });
+});
+
+describe('voiceOperate', () => {
+  it("sends the browser's time zone so dates count from the person's today", async () => {
+    globalThis.fetch = vi.fn(async () => jsonRes({ content: 'Done.', tool_calls: [] }));
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    await voiceOperate([{ role: 'user', content: 'Flights the weekend after Thanksgiving.' }], 'Projects: general');
+
+    const [url, init] = globalThis.fetch.mock.calls[0];
+    expect(String(url)).toContain('/voice/operate');
+    expect(JSON.parse(init.body)).toEqual({
+      messages: [{ role: 'user', content: 'Flights the weekend after Thanksgiving.' }],
+      snapshot: 'Projects: general',
+      timezone: zone,
+    });
   });
 });

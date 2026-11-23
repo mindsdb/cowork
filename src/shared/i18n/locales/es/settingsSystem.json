@@ -142,6 +142,16 @@
     "cancel": "Cancelar",
     "signingOut": "Cerrando sesión…",
     "signOut": "Cerrar sesión",
+    "delete": {
+      "title": "Eliminar cuenta",
+      "subtitle": "Solicita la eliminación permanente de tu cuenta de MindsHub.",
+      "button": "Eliminar cuenta",
+      "confirmTitle": "¿Eliminar tu cuenta de MindsHub?",
+      "confirmBody": "El equipo de soporte verificará tu solicitud y gestionará la eliminación de tu cuenta y tus datos personales en un plazo de 30 días. Es posible que se conserven algunos registros de cuenta, facturación y soporte. Si una organización con otros miembros te pertenece, soporte te ayudará primero a transferir la titularidad. Los demás miembros conservarán la organización y sus datos compartidos. La eliminación es irreversible.",
+      "sending": "Enviando…",
+      "requested": "Solicitud enviada el {requestedOn}. Fecha prevista de eliminación: {deleteBy}.",
+      "error": "No pudimos confirmar tu solicitud. Puedes volver a intentarlo sin riesgo."
+    },
     "web": {
       "title": "Gestionada a través de MindsHub",
       "body": "En la versión web, la cuenta se gestiona a través de MindsHub."
@@ -177,13 +187,17 @@
       "pendingAction": "{rule} Esperando que tu banco confirme el último cargo.",
       "badgeOn": "Recarga automática activada",
       "badgeFailed": "Falló la recarga automática",
-      "badgePaused": "Recarga automática en pausa"
+      "badgePaused": "Recarga automática en pausa",
+      "offMobile": "La recarga automática está desactivada.",
+      "paymentFailedMobile": "Falló la recarga automática: no pudimos cobrar a tu tarjeta."
     },
     "low": {
       "off": "Saldo bajo. Agrega fondos o activa la recarga automática para que tus tareas sigan ejecutándose.",
       "ok": "Saldo bajo. La recarga automática lo repondrá.",
       "pending": "Saldo bajo. La recarga automática está esperando a tu banco.",
-      "other": "Saldo bajo. Agrega fondos para que tus tareas sigan ejecutándose."
+      "other": "Saldo bajo. Agrega fondos para que tus tareas sigan ejecutándose.",
+      "offMobile": "Saldo bajo.",
+      "otherMobile": "Saldo bajo."
     },
     "balance": {
       "title": "Saldo",
@@ -192,7 +206,8 @@
       "spentRange": "de crédito gastado del {start} al {end}",
       "spentDate": "de crédito gastado {date}",
       "spentThisPeriod": "de crédito gastado en este período",
-      "notOwner": "Solo el responsable de facturación de tu organización puede agregar fondos o cambiar la recarga automática."
+      "notOwner": "Solo el responsable de facturación de tu organización puede agregar fondos o cambiar la recarga automática.",
+      "emptyMobile": "Tu saldo está vacío. Los modelos de pago no están disponibles."
     },
     "signIn": {
       "title": "Inicia sesión para ver tu uso",
@@ -203,8 +218,24 @@
     "error": {
       "title": "No se pudo cargar el uso",
       "body": "MindsHub no respondió. Inténtalo de nuevo o revisa tu uso en la consola.",
-      "tryAgain": "Reintentar"
+      "tryAgain": "Reintentar",
+      "bodyMobile": "MindsHub no respondió."
     },
-    "empty": "Todavía no hay uso para mostrar en esta cuenta."
+    "empty": "Todavía no hay uso para mostrar en esta cuenta.",
+    "plan": {
+      "title": "{tier, select, plus {Plan Plus} pro {Plan Pro} other {Plan}}",
+      "renewsOn": "Se renueva el {date}",
+      "endsOn": "Termina el {date}",
+      "ending": "Por terminar",
+      "pastDue": "Pago fallido",
+      "pastDueBody": "No pudimos renovar tu plan. Actualiza tu tarjeta en Administrar para conservarlo.",
+      "windowName": "{window, select, 7d {Cupo semanal} other {Cupo de 5 horas}}",
+      "windowUsed": "{percent} usado",
+      "windowUsedResets": "{percent} usado · se renueva a las {time}",
+      "windowMeterLabel": "{window, select, 7d {Cupo semanal usado} other {Cupo de 5 horas usado}}",
+      "afterCap": "Al agotar cualquiera de los cupos, las tareas usan tu saldo a tarifas de API o se pausan hasta que se renueve.",
+      "upgrade": "{tier, select, plus {Obtener Plus} pro {Mejorar a Pro} other {Mejorar plan}}",
+      "manage": "Administrar"
+    }
   }
 }

@@ -142,6 +142,16 @@
     "cancel": "Cancelar",
     "signingOut": "Saindo…",
     "signOut": "Sair",
+    "delete": {
+      "title": "Excluir conta",
+      "subtitle": "Solicite a exclusão permanente da sua conta MindsHub.",
+      "button": "Excluir conta",
+      "confirmTitle": "Excluir sua conta MindsHub?",
+      "confirmBody": "A equipe de suporte verificará sua solicitação e providenciará a exclusão da conta e dos seus dados pessoais em até 30 dias. Alguns registros de conta, cobrança e suporte podem ser mantidos. Se você for titular de uma organização com outros membros, o suporte ajudará primeiro a transferir a titularidade. Os demais membros manterão a organização e os dados compartilhados. A exclusão é irreversível.",
+      "sending": "Enviando…",
+      "requested": "Solicitação feita em {requestedOn}. Data prevista para exclusão: {deleteBy}.",
+      "error": "Não foi possível confirmar sua solicitação. Você pode tentar novamente com segurança."
+    },
     "web": {
       "title": "Gerenciada pelo MindsHub",
       "body": "Na versão web, a conta é gerenciada pelo MindsHub."
@@ -177,13 +187,17 @@
       "pendingAction": "{rule} Aguardando seu banco confirmar a última cobrança.",
       "badgeOn": "Recarga automática ativada",
       "badgeFailed": "Falha na recarga automática",
-      "badgePaused": "Recarga automática pausada"
+      "badgePaused": "Recarga automática pausada",
+      "offMobile": "A recarga automática está desativada.",
+      "paymentFailedMobile": "Falha na recarga automática: não conseguimos cobrar seu cartão."
     },
     "low": {
       "off": "Saldo baixo. Adicione fundos ou ative a recarga automática para manter as tarefas rodando.",
       "ok": "Saldo baixo. A recarga automática vai repô-lo.",
       "pending": "Saldo baixo. A recarga automática está aguardando seu banco.",
-      "other": "Saldo baixo. Adicione fundos para manter as tarefas rodando."
+      "other": "Saldo baixo. Adicione fundos para manter as tarefas rodando.",
+      "offMobile": "Saldo baixo.",
+      "otherMobile": "Saldo baixo."
     },
     "balance": {
       "title": "Saldo",
@@ -192,7 +206,8 @@
       "spentRange": "de crédito gasto de {start} a {end}",
       "spentDate": "de crédito gasto {date}",
       "spentThisPeriod": "de crédito gasto neste período",
-      "notOwner": "Somente o responsável pelo faturamento da sua organização pode adicionar fundos ou alterar a recarga automática."
+      "notOwner": "Somente o responsável pelo faturamento da sua organização pode adicionar fundos ou alterar a recarga automática.",
+      "emptyMobile": "Seu saldo está vazio. Os modelos pagos estão indisponíveis."
     },
     "signIn": {
       "title": "Entre para ver seu uso",
@@ -203,8 +218,24 @@
     "error": {
       "title": "Não foi possível carregar o uso",
       "body": "O MindsHub não respondeu. Tente novamente ou verifique seu uso no console.",
-      "tryAgain": "Tentar novamente"
+      "tryAgain": "Tentar novamente",
+      "bodyMobile": "O MindsHub não respondeu."
     },
-    "empty": "Ainda não há uso para mostrar nesta conta."
+    "empty": "Ainda não há uso para mostrar nesta conta.",
+    "plan": {
+      "title": "{tier, select, plus {Plano Plus} pro {Plano Pro} other {Plano}}",
+      "renewsOn": "Renova em {date}",
+      "endsOn": "Termina em {date}",
+      "ending": "Terminando",
+      "pastDue": "Falha no pagamento",
+      "pastDueBody": "Não foi possível renovar seu plano. Atualize seu cartão em Gerenciar para mantê-lo.",
+      "windowName": "{window, select, 7d {Cota semanal} other {Cota de 5 horas}}",
+      "windowUsed": "{percent} usados",
+      "windowUsedResets": "{percent} usados · renova às {time}",
+      "windowMeterLabel": "{window, select, 7d {Cota semanal usada} other {Cota de 5 horas usada}}",
+      "afterCap": "Ao esgotar qualquer uma das cotas, as tarefas usam seu saldo a preços de API ou ficam pausadas até a renovação.",
+      "upgrade": "{tier, select, plus {Assinar Plus} pro {Mudar para Pro} other {Fazer upgrade}}",
+      "manage": "Gerenciar"
+    }
   }
 }

@@ -5,7 +5,7 @@ import { downloadUnavailableMessage } from '../../lib/browserDownload';
 //
 //   left   — artifact title (truncated)
 //   middle — Preview / Source / Review modes
-//   right  — comments · stats · Publish control · ⋯ menu · close
+//   right  — Publish control · ⋯ menu · close
 //
 // With quick edits on (capabilities.canQuickEdit, ENG-4227), Preview carries a
 // chat bar at the bottom: the user asks for a change and the server makes it
@@ -15,7 +15,7 @@ import { downloadUnavailableMessage } from '../../lib/browserDownload';
 // popover, backed by the usePublish state machine — so this component is
 // just chrome + preview.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   allocateConversationId,
   mountArtifactPreview,
@@ -30,7 +30,7 @@ import {
 import Ico from '../Icons';
 import { deleteArtifactAndSync } from '../../lib/artifactsStore';
 import { needsClientUnpublishBeforeDelete } from '../../lib/artifactActions';
-import { artifactAuthorship } from '../../lib/artifactAuthorship';
+import { useArtifactAuthorship } from '../../hooks/useArtifactAuthorship';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
 import { fetchAuthenticatedResponse } from '../../lib/authenticatedResource';
 import {
@@ -40,7 +40,12 @@ import {
   loadArtifactDraftText,
   loadArtifactDraftDocument,
   loadArtifactRevisions,
+  loadCommentImage,
+  uploadCommentImage,
 } from '../../lib/artifactWorkspaceApi';
+import { composeCommentText, threadImageFiles } from '../../lib/commentImages';
+import { commentFixMessage } from '../../lib/commentFixRequest';
+import { imageAttachment } from '../../lib/imageAttachments';
 import {
   RefusedDraftLink,
   draftLinkLifetimeMs,
@@ -69,23 +74,26 @@ import { useArtifactWorkspace } from './workspace/useArtifactWorkspace';
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 import { ArtifactViewerBody } from './ArtifactViewerBody';
 import { usePreviewDiagnostics } from './usePreviewDiagnostics';
+import { normalizePreviewView, usePreviewView } from './usePreviewView';
+import { usePreviewFit } from './usePreviewFit';
 import { usePreviewCheckTarget } from './usePreviewCheckTarget';
 import { usePreviewReloadTransition } from './usePreviewReloadTransition';
 import { useViewerLayers } from './useViewerLayers';
-import { ViewerLayerToggle, ViewerLayerToggles } from './ViewerLayerToggle';
+import { useViewerLayout } from './useViewerLayout';
+import { ViewerModeRail } from './ViewerModeRail';
 import { QuickEditBar } from './quickEdit/QuickEditBar';
 import { useQuickEdit } from './quickEdit/useQuickEdit';
 import { countUserPrompts } from '../../lib/quickEditPrompt';
-import { useChatTranscript } from '../../lib/chatTranscriptContext';
+import { useChatTranscript, useConversationTranscript, useConversationTranscripts } from '../../lib/chatTranscriptContext';
 import { requestConversationRefresh } from '../../lib/conversationRefresh';
 import { useModelPickerContext } from '../../lib/modelPickerContext';
 import { ModelEffortPicker, pickedEffort } from '../ModelEffortPicker';
 import { MODEL_ROUTER } from '../../lib/modelCatalog';
 import { useArtifactStats } from './stats/useArtifactStats';
-import { useStatsUiEnabled } from './stats/statsUiAccess';
 import { inlineHtmlFromApi } from '../../lib/inlineHtmlAssets';
 import { canPreviewDocument, documentPreviewType } from '../../preview/kinds';
 import { useTranslation } from '../../../lib/i18n';
+import { htmlText, showArtifactOnScreen } from '../../lib/voice/screenArtifacts';
 import './artifactWorkspace.css';
 import {
   artifactExtension,
@@ -130,6 +138,9 @@ function isSameArtifact(a, b) {
   return (a.path || '') === (b.path || '');
 }
 
+// How long "Published" stays after a reviewed change goes live.
+const PUBLISHED_NOTICE_MS = 4000;
+
 /* The prompt's text when a close would drop Edit text. While the workspace
    status is 'saving', a request that has already gone out decides what
    happens to the text: a save keeps it unless the save fails, and a revision
@@ -148,6 +159,18 @@ export function ArtifactViewer({
   onAddressWithAgent,
   conversationId = null,
   resolveRepairConversation = null,
+  // Outside a chat: show chat `id` (the bar's "Open in chat"). The viewer
+  // stays open while the agent works there, and follows the reply itself.
+  onOpenConversation = null,
+  // One Share clicked outside the viewer (a new object per click): the viewer
+  // opens with its Share panel showing. `shareEntry` names where, for the
+  // sharing events of that panel only; later opens are the header's own.
+  shareRequest = null,
+  shareEntry = 'viewer',
+  // One open-comments counter clicked outside the viewer (a new object per
+  // click, ENG-4560): the viewer opens on its Comments panel this time, and
+  // later opens keep the layers this device remembers.
+  commentsRequest = null,
 }) {
   const { t } = useTranslation('artifacts');
   const orgMode = useOrgMode();
@@ -230,9 +253,14 @@ export function ArtifactViewer({
   const inboxOpen = sidePanel === 'comments';
   // The inbox controls keep their boolean interface. Opening the inbox
   // replaces Stats; closing it leaves Stats alone.
+  const sidePanelRef = useRef(sidePanel);
+  sidePanelRef.current = sidePanel;
+  const setLayerRef = useRef(null);
   const setInboxOpen = useCallback((next) => {
+    const value = typeof next === 'function' ? next(sidePanelRef.current === 'comments') : next;
+    // The inbox takes the slot from Stats, so the Stats layer goes off too.
+    if (value) setLayerRef.current?.('stats', false);
     setSidePanel((current) => {
-      const value = typeof next === 'function' ? next(current === 'comments') : next;
       if (value) return 'comments';
       return current === 'comments' ? null : current;
     });
@@ -277,16 +305,41 @@ export function ArtifactViewer({
     if (!openRef.current || !isSameArtifact(updated, artifactRef.current)) return;
     onChangeRef.current?.(updated);
   }, []);
-  const pub = usePublish(artifact, { onChange: reportChange, enabled: open });
+  const [closedShareRequest, setClosedShareRequest] = useState(null);
+  const panelEntry = shareRequest && closedShareRequest !== shareRequest ? shareEntry : 'viewer';
+  const pub = usePublish(artifact, { onChange: reportChange, enabled: open, entry: panelEntry });
   const workspace = useArtifactWorkspace(artifact, {
     open,
     onChange: reportChange,
     previewOnly: !!documentType,
   });
   // The viewer's layers over its one preview (ENG-4227): Live edit (the
-  // quick-edit bar), Source (the code editor) and Comments, each a header
-  // toggle, remembered on this device.
-  const { layers, setLayer } = useViewerLayers();
+  // editor), Comments and Stats, each a tab on the panel rail with its own
+  // side panel; Live edit and Comments are remembered on this device.
+  const { layers, setLayer, restoreLayers } = useViewerLayers();
+  setLayerRef.current = setLayer;
+  // Comments asked for from outside: on for this open only, not remembered.
+  // Closing puts the remembered layers back for the next open.
+  useEffect(() => {
+    if (open && commentsRequest) setLayer('comments', true, { remember: false });
+  }, [open, commentsRequest, setLayer]);
+  useEffect(() => {
+    if (!open) restoreLayers();
+  }, [open, restoreLayers]);
+  const sidePanelId = useId();
+  const { layout, toggle: toggleLayout } = useViewerLayout();
+  // Cmd/Ctrl+Shift+Enter maximizes and restores. Keys typed inside the
+  // artifact's own frame never reach this window, so the page keeps its keys.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKeyDown = (event) => {
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.key !== 'Enter') return;
+      event.preventDefault();
+      toggleLayout('maximized');
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open, toggleLayout]);
   // The bar takes the caret when the viewer opens (QuickEditBar), once per open.
   const [barFocusRequest, setBarFocusRequest] = useState(0);
   const barFocusUsed = useRef(0);
@@ -343,6 +396,9 @@ export function ArtifactViewer({
   commentLayerRequestedRef.current = commentLayerRequested;
   // Whether the mounted preview was loaded with the bridge.
   const commentLayerMountedRef = useRef(false);
+  // Where the editor was when Live edit went off, for a comment-layer reload
+  // that follows to land there too.
+  const leftEditorViewRef = useRef(null);
   const _akParts = artifactKey.split('/');
   const commentUserDir = _akParts[0] || '';
   const commentReportId = _akParts.slice(1).join('/') || '';
@@ -363,6 +419,20 @@ export function ArtifactViewer({
   // agent-written HTML that could otherwise post into this channel. Same
   // rationale as the comments bridge's `commentsOpen` gate below.
   const diagnostics = usePreviewDiagnostics(iframeRef, {
+    enabled: open && !!(previewUrl || previewDoc),
+    resetKey: previewUrl || previewDoc,
+  });
+  // Where the user is in the preview, so Edit opens on the same slide. Same
+  // gate and reset as the diagnostics above, for the same reasons.
+  // A reload the viewer makes after a change keeps the place
+  // (`keepPlace`, below): the preview goes back to the same slide.
+  const previewView = usePreviewView(iframeRef, {
+    enabled: open && !!(previewUrl || previewDoc),
+    resetKey: previewUrl || previewDoc,
+    scopeKey: open ? `${artifact?.id || ''}:${artifact?.path || ''}` : '',
+  });
+  // A page cut off in the frame with nothing to scroll is fitted to it.
+  const previewFit = usePreviewFit(iframeRef, {
     enabled: open && !!(previewUrl || previewDoc),
     resetKey: previewUrl || previewDoc,
   });
@@ -393,10 +463,42 @@ export function ArtifactViewer({
     }
     return ok;
   }, [comments, workspace]);
-  const createArtifactComment = useCallback((payload) => comments.create({
-    ...payload,
-    revisionId: workspace.currentRevision?.id || null,
-  }), [comments.create, workspace.currentRevision?.id]);
+  // A comment's images (Files, from a composer here or the on-artifact layer)
+  // are stored with the artifact first; the comment's text then names them
+  // (lib/commentImages, ENG-4410). A failed upload posts nothing, so the
+  // draft stays where it was typed.
+  const commentTextWithImages = useCallback(async (text, images) => {
+    const files = Array.isArray(images) ? images.filter(Boolean) : [];
+    if (!files.length) return text;
+    try {
+      const stored = await Promise.all(files.map(async (file) => {
+        const saved = await uploadCommentImage(artifact, file);
+        return { id: saved.id, name: file.name };
+      }));
+      return composeCommentText(text, stored);
+    } catch (uploadError) {
+      setErr(uploadError?.message || t('imageAttachments.uploadFailed'));
+      return null;
+    }
+  }, [artifact, t]);
+  const createArtifactComment = useCallback(async ({ images, ...payload }) => {
+    const text = await commentTextWithImages(payload.text, images);
+    if (text === null) return false;
+    return comments.create({
+      ...payload,
+      text,
+      revisionId: workspace.currentRevision?.id || null,
+    });
+  }, [commentTextWithImages, comments.create, workspace.currentRevision?.id]);
+  const readCommentImage = useCallback(
+    (imageId, options) => loadCommentImage(artifact, imageId, options),
+    [artifact],
+  );
+  const replyToComment = useCallback(async (threadId, text, images) => {
+    const withImages = await commentTextWithImages(text, images);
+    if (withImages === null) return false;
+    return comments.reply(threadId, withImages);
+  }, [commentTextWithImages, comments.reply]);
   // The injected layer owns the on-artifact UI (pins, hover highlight, thread
   // popovers) and reports mode changes; this hook pushes the thread list down
   // and exposes the imperative controls the toolbar + inbox drive. Marker
@@ -413,32 +515,48 @@ export function ArtifactViewer({
     enabled: open && commentsEnabled && commentsOpen && !liveAppView,
     markersVisible: commentsOpen && markersShown,
     onCreate: createArtifactComment,
-    onReply: comments.reply,
+    onReply: replyToComment,
     onStatus: setCommentStatus,
     onEditThread: comments.editThread,
     onDeleteThread: comments.deleteThread,
     onEditReply: comments.editReply,
     onDeleteReply: comments.deleteReply,
+    loadImage: readCommentImage,
   });
 
   // One switch for the whole comments chrome. Opening resets to the default
   // sub-state (markers on, no side panel); closing also drops the iframe out of
   // comment-placement mode so no pin cursor lingers on a "plain" preview.
   // Either way Stats closes, since it shares the docked slot.
+  // Comments and Live edit are exclusive (useViewerLayers): Comments on turns
+  // Live edit off, so unsaved editor text is asked about first, and Comments
+  // opens once the user agrees to drop it.
+  // The layer to turn on once the user agrees to drop unsaved Live edit text.
+  const layerAfterSourceOffRef = useRef(null);
+  // Comments opened from its tab starts in Comment mode, ready to place one,
+  // not Navigate. Restored on open, it starts in Navigate as before.
+  const commentModeOnOpenRef = useRef(false);
   const toggleComments = () => {
-    setLayer('comments', !(layers.comments && commentsEnabled));
-  };
-
-  // Stats turns comment mode off, so no markers are drawn beside it and at
-  // most one header switch is on.
-  const toggleStats = () => {
-    if (sidePanel === 'stats') {
-      setSidePanel(null);
+    const on = !(layers.comments && commentsEnabled);
+    if (on && layers.source && workspace.dirty) {
+      layerAfterSourceOffRef.current = 'comments';
+      setSourceOffPrompt(true);
       return;
     }
-    layer.exitMode();
-    setLayer('comments', false);
-    setSidePanel('stats');
+    commentModeOnOpenRef.current = on;
+    setLayer('comments', on);
+  };
+
+  // Stats is the third layer (ENG-4455): on, it turns Live edit and Comments
+  // off (comment mode included, so no markers are drawn beside it), asking
+  // first about unsaved Live edit text, as Comments does.
+  const toggleStats = (on) => {
+    if (on && layers.source && workspace.dirty) {
+      layerAfterSourceOffRef.current = 'stats';
+      setSourceOffPrompt(true);
+      return;
+    }
+    setLayer('stats', on);
   };
 
   // The Comments layer drives the comments chrome. Turned on (or restored on
@@ -450,13 +568,18 @@ export function ArtifactViewer({
       setMarkersShown(true);
       setCommentsOpen(true);
       setSidePanel('comments');
+      if (commentModeOnOpenRef.current) {
+        commentModeOnOpenRef.current = false;
+        layer.enterModeWhenReady?.();
+      }
       return;
     }
+    commentModeOnOpenRef.current = false;
     layer.exitMode();
     setCommentsOpen(false);
     setSidePanel((current) => (current === 'comments' ? null : current));
     setTextSelection(null);
-  }, [open, layers.comments, commentsEnabled, layer.exitMode]);
+  }, [open, layers.comments, commentsEnabled, layer.exitMode, layer.enterModeWhenReady]);
 
   useEffect(() => {
     if (!open || workspace.repair?.status !== 'queued') return undefined;
@@ -480,6 +603,19 @@ export function ArtifactViewer({
   }, [comments.markRead, comments.unreadCount, inboxOpen]);
 
   const addressCommentWithAgent = async (thread) => {
+    // With the "Ask for a change" bar, the comment is sent there as a message,
+    // so its progress shows where every other change does, and comments sent
+    // while one runs queue up behind it (ENG-4383).
+    if (canQuickEdit && thread?.id) {
+      if (quickEdit.runningThreadId === thread.id || quickEdit.queuedThreadIds.includes(thread.id)) return;
+      const imageFiles = await threadImageFiles(thread, (id) => loadCommentImage(artifact, id));
+      // Not awaited: the bar shows the run, and the inbox follows it there.
+      void quickEdit.send(commentFixMessage(thread), {
+        images: imageFiles.map(imageAttachment),
+        threadId: thread.id,
+      });
+      return;
+    }
     if (!onAddressWithAgent || repairBusy) return;
     setRepairBusy(true);
     setErr('');
@@ -501,6 +637,12 @@ export function ArtifactViewer({
         previewErrors: diagnostics.errors,
       });
       if (requested) {
+        // The thread's images go with the prompt, which names them in order
+        // (ENG-4410).
+        const imageFiles = await threadImageFiles(thread, (id) => loadCommentImage(artifact, id));
+        // The repair is reviewed here, so the viewer stays open and follows
+        // the turn (ENG-4560).
+        const restoreAgentChat = followAgentChat(targetConversationId);
         let started;
         try {
           started = await onAddressWithAgent({
@@ -508,12 +650,16 @@ export function ArtifactViewer({
             prompt: requested.prompt,
             repair: requested.repair,
             conversationId: targetConversationId,
+            attachments: imageFiles.map(imageAttachment),
+            inBackground: true,
           });
         } catch (startError) {
+          restoreAgentChat();
           try { await workspace.cancelRepair(requested.repair.id); } catch { /* keep original error */ }
           throw startError;
         }
         if (started === false) {
+          restoreAgentChat();
           await workspace.cancelRepair(requested.repair.id);
           // `false` has several causes (no provider, a project this user can't
           // run, a chat deleted meanwhile), so the message names none of them.
@@ -549,6 +695,68 @@ export function ArtifactViewer({
   const textExt = isText
     ? ((artifact?.ext || '').toLowerCase() || artifactExtension(actionPath))
     : '';
+
+  /* A page previewed by URL (the desktop, and the web with draft links)
+     shows in a frame this page can't read: sandboxed without same-origin
+     access, and on the web on the draft host. Its HTML is read the way a
+     text preview is, for the operator below: through the drafts route when
+     the draft can carry the person's credential, else the desktop's file
+     preview. Only once the operator first asks, so a page opened outside a
+     call is read once, for its frame. */
+  const readsPreviewSource = open && previewKind === 'static' && !!previewUrl
+    && (draftPreviewUrl ? canFetchDraftWithCredentials(draftPreviewUrl, host.getApiOrigin()) : !host.isWeb);
+  /* The page's HTML as read so far (`html`) and whether the read is still on
+     its way (`reading`), for the page shown now: the first call starts the
+     read. Null when the page needs none. */
+  const previewSourceRef = useRef(null);
+  useEffect(() => {
+    previewSourceRef.current = null;
+    if (!readsPreviewSource) return undefined;
+    let cancelled = false;
+    let source = null;
+    const read = async () => (draftPreviewUrl ? loadArtifactDraftText(draftPreviewUrl) : previewArtifact(actionPath));
+    previewSourceRef.current = () => {
+      if (source) return source;
+      source = { html: '', reading: true };
+      read()
+        .then((data) => {
+          if (typeof data?.content === 'string') source.html = data.content;
+        })
+        .catch((error) => {
+          // The operator then says no text of it can be read.
+          if (!cancelled) diagnostic('renderer.cowork.components.artifact.ArtifactViewer', 'WARNING', 'artifact_screen_text_read_failed', error);
+        })
+        .finally(() => { source.reading = false; });
+      return source;
+    };
+    return () => {
+      cancelled = true;
+      previewSourceRef.current = null;
+    };
+  }, [readsPreviewSource, previewUrl, draftPreviewUrl, actionPath]);
+
+  /* What a voice call's operator reads of this artifact while it is open
+     (lib/voice/screenArtifacts.js): its title, its type and the text it
+     shows, read when the operator asks. */
+  const onScreenRef = useRef(null);
+  onScreenRef.current = { artifact, textPreview, previewDoc, textExt };
+  useEffect(() => {
+    if (!open || !artifact) return undefined;
+    return showArtifactOnScreen(() => {
+      const { artifact: shown, textPreview: text, previewDoc: doc, textExt: ext } = onScreenRef.current;
+      if (!shown) return null;
+      let visible = text?.content || '';
+      if (!visible) {
+        try { visible = iframeRef.current?.contentDocument?.body?.innerText || ''; } catch { visible = ''; }
+      }
+      if (!visible && doc) visible = htmlText(doc);
+      const source = visible ? null : previewSourceRef.current?.();
+      if (source) visible = htmlText(source.html);
+      const type = shown.type || (ext || artifactExtension(shown.path || '')).replace(/^\./, '');
+      return { title: shown.title || shown.path?.split('/').pop() || '', type, text: visible, reading: Boolean(source?.reading) };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, artifact?.path]);
   /*
    * With live apps on, a full-stack app shares through "Share with…" on its
    * card, and cowork-server refuses to publish one as a page, so the header
@@ -565,22 +773,27 @@ export function ArtifactViewer({
   // server-sent role: a guessed reviewer would hide "Another member" on the
   // user's own artifact, and a guessed owner would hide it on a colleague's.
   // Server-sent workspace capabilities win; otherwise the card's (ENG-2979).
-  const authorship = artifactAuthorship(
+  // The owner is named once MindsHub answers for `ownerUserId` (ENG-4455).
+  const authorship = useArtifactAuthorship(
     (workspace.capabilitiesFromServer ? workspace.capabilities : null) ?? artifact?.capabilities,
   );
 
-  // Stats are for the owner of a published artifact only, and only where the
-  // hidden Stats UI is turned on. The header applies the same rule to its button.
-  const statsUiEnabled = useStatsUiEnabled();
-  const statsAvailable = statsUiEnabled && !!pub.publishedUrl && canManage;
+  // Stats are for the owner of a published artifact only.
+  const statsAvailable = !!pub.publishedUrl && canManage;
   const statsOpen = open && statsAvailable && sidePanel === 'stats';
   const stats = useArtifactStats(artifact, { enabled: statsOpen });
-  // Stats closes when it stops being available and with the viewer, so the
-  // next artifact does not open and report it unasked. The comments inbox
-  // keeps its state across closes.
+  // The Stats layer drives the docked slot. It turns off when Stats stops
+  // being available and with the viewer, so the next artifact does not open
+  // and report it unasked. The comments inbox keeps its state across closes.
   useEffect(() => {
-    if (sidePanel === 'stats' && (!open || !statsAvailable)) setSidePanel(null);
-  }, [open, sidePanel, statsAvailable]);
+    if (open && layers.stats && statsAvailable) {
+      layer.exitMode();
+      setSidePanel('stats');
+      return;
+    }
+    setSidePanel((current) => (current === 'stats' ? null : current));
+    if (layers.stats) setLayer('stats', false);
+  }, [open, layers.stats, statsAvailable, layer.exitMode, setLayer]);
   // One event per open and artifact, after its first successful load. The
   // viewer outlives an artifact switch, so the ref holds which artifact was
   // reported rather than a flag. The hook returns no data for an artifact it
@@ -878,8 +1091,12 @@ export function ArtifactViewer({
   useEffect(() => {
     if (!open || !commentsOpen || !commentLayerRequested) return;
     if (!(previewUrl || previewDoc) || commentLayerMountedRef.current) return;
+    // The page comes back on the slide the user was commenting on, or the
+    // one they were editing when they came from Live edit.
+    previewView.keepPlace(leftEditorViewRef.current);
+    leftEditorViewRef.current = null;
     setReloadNonce((n) => n + 1);
-  }, [open, commentsOpen, commentLayerRequested, previewUrl, previewDoc]);
+  }, [open, commentsOpen, commentLayerRequested, previewUrl, previewDoc, previewView.keepPlace]);
 
   // Parse CSV → GFM pipe table once per loaded text. We cap at
   // CSV_PREVIEW_ROW_LIMIT data rows to keep the markdown renderer
@@ -894,17 +1111,50 @@ export function ArtifactViewer({
 
   // Keep these callbacks above the early return: the viewer remains mounted
   // while `open` changes, so every render must execute the same hook sequence.
-  const onReload = useCallback(() => {
+  const reloadPreview = useCallback(() => {
     if (!hasPreviewSource) return;
     setIframeReady(false);
     setReloadNonce((n) => n + 1);
   }, [hasPreviewSource]);
 
+  // Keeping the place across a reload the viewer makes after a change
+  // (ENG-4383): a save, a quick edit, an agent's change, the preview check,
+  // the comment layer arriving. The preview goes back to the slide it was
+  // on, or, with Live edit on, to the one the editor is on, since that is
+  // where the user was working. The user's own Reload (the ⋯ menu) starts
+  // the page over, as a reload in a browser would.
+  const editorViewRef = useRef(null);
+  const onEditorView = useCallback((view) => { editorViewRef.current = view; }, []);
+  useEffect(() => { editorViewRef.current = null; }, [open, artifact?.id, artifact?.path]);
+  const sourceOnRef = useRef(false);
+  const { keepPlace, forgetPlace } = previewView;
+  const keepPreviewPlace = useCallback(() => {
+    keepPlace(sourceOnRef.current ? editorViewRef.current : null);
+  }, [keepPlace]);
+  const reloadKeepingPlace = useCallback(() => {
+    keepPreviewPlace();
+    reloadPreview();
+  }, [keepPreviewPlace, reloadPreview]);
+  const onReload = useCallback(() => {
+    forgetPlace();
+    reloadPreview();
+  }, [forgetPlace, reloadPreview]);
+  // Content that changed elsewhere (the host reports a new mtime) reloads
+  // the preview through its new version: that keeps the place too.
+  const mtimeRef = useRef({ key: '', mtime: null });
+  useEffect(() => {
+    const key = `${artifact?.id || ''}:${artifact?.path || ''}`;
+    const mtime = artifact?.mtime ?? null;
+    const previous = mtimeRef.current;
+    mtimeRef.current = { key, mtime };
+    if (open && previous.key === key && previous.mtime !== null && mtime !== previous.mtime) keepPreviewPlace();
+  }, [open, artifact?.id, artifact?.path, artifact?.mtime, keepPreviewPlace]);
+
   const saveWorkspace = useCallback(async (...args) => {
     const saved = await workspace.save(...args);
-    if (saved) onReload();
+    if (saved) reloadKeepingPlace();
     return saved;
-  }, [onReload, workspace.save]);
+  }, [reloadKeepingPlace, workspace.save]);
 
   // The agent's preview check (ENG-4207): while this viewer shows an iframe
   // preview, a check for its slug reloads it here and reports what it saw.
@@ -916,10 +1166,14 @@ export function ArtifactViewer({
   // A quick edit's reloads (its preview check, the applied edit, its Undo)
   // cover the preview while it reloads instead of flashing it blank
   // (usePreviewReloadTransition). Other reloads stay as they were.
-  const previewReload = usePreviewReloadTransition({ enabled: framedPreview, iframeReady });
+  const previewReload = usePreviewReloadTransition({
+    enabled: framedPreview,
+    iframeReady,
+    hold: previewView.whenRestored,
+  });
   const reloadPreviewSmoothly = useCallback(() => {
-    void previewReload.reload(onReload);
-  }, [onReload, previewReload.reload]);
+    void previewReload.reload(reloadKeepingPlace);
+  }, [reloadKeepingPlace, previewReload.reload]);
   usePreviewCheckTarget({
     slug: artifact?.slug || artifactFolder.split(/[\\/]/).filter(Boolean).pop() || '',
     enabled: framedPreview,
@@ -931,7 +1185,31 @@ export function ArtifactViewer({
   // The chat the viewer sits in, when it does: the bar mirrors the agent's
   // reply to a message it handed to that chat from the same task state the
   // transcript renders (no second stream). Another chat's messages are not it.
-  const chatTranscript = useChatTranscript();
+  const inChatTranscript = useChatTranscript();
+  // Outside a chat (the Artifacts page) the viewer stays open when it hands a
+  // message to the artifact's chat, and follows that chat's transcript from
+  // the app's task state instead (ENG-4560).
+  const [agentChatId, setAgentChatId] = useState(null);
+  useEffect(() => { setAgentChatId(null); }, [open, artifact?.id]);
+  const agentChatIdRef = useRef(agentChatId);
+  agentChatIdRef.current = agentChatId;
+  const handedOffTranscript = useConversationTranscript(inChatTranscript ? null : agentChatId);
+  const transcripts = useConversationTranscripts();
+  const transcriptsRef = useRef(transcripts);
+  transcriptsRef.current = transcripts;
+  // Follow chat `id` from here on; the returned function puts back the one
+  // followed before, for a send that did not start.
+  const followAgentChat = (id) => {
+    if (inChatTranscript || !id) return () => {};
+    const before = agentChatIdRef.current;
+    agentChatIdRef.current = String(id);
+    setAgentChatId(String(id));
+    return () => {
+      agentChatIdRef.current = before;
+      setAgentChatId(before);
+    };
+  };
+  const chatTranscript = inChatTranscript || handedOffTranscript;
   const chatMessages = chatTranscript
     && (!conversationId || String(chatTranscript.conversationId || '') === String(conversationId))
     ? chatTranscript.messages
@@ -947,8 +1225,17 @@ export function ArtifactViewer({
   const [changedElsewhere, setChangedElsewhere] = useState(false);
   useEffect(() => { setChangedElsewhere(false); }, [open, artifact?.id]);
   const turnWatchRef = useRef({ live: false, startHead: null });
+  // A change to a published artifact from the bar is reviewed before it goes
+  // live (ENG-4409): the comparison opens with Publish this change, Keep as
+  // draft and, for a direct edit, Undo. Desktop only: MindsHub mode
+  // autopublishes, and has no Update to offer.
+  const reviewsPublish = !!pub.publishedUrl && !pub.orgMode && canManage && publishable && hasActionPath;
+  // The bar handed a message to this chat, so the turn that ends next is the
+  // one that made its change.
+  const handedOffRef = useRef(false);
+  useEffect(() => { handedOffRef.current = false; }, [open, artifact?.id]);
   const latestRef = useRef({});
-  latestRef.current = { workspace, artifact };
+  latestRef.current = { workspace, artifact, pub, reviewsPublish };
   useEffect(() => {
     const watch = turnWatchRef.current;
     if (!open) {
@@ -958,6 +1245,8 @@ export function ArtifactViewer({
     if (chatLive && !watch.live) watch.startHead = workspace.currentRevision?.id || null;
     if (!chatLive && watch.live) {
       const startHead = watch.startHead;
+      const handedOff = handedOffRef.current;
+      handedOffRef.current = false;
       void (async () => {
         let head = null;
         try {
@@ -975,10 +1264,15 @@ export function ArtifactViewer({
           return;
         }
         void previewReload.reload(() => {
-          onReload();
+          reloadKeepingPlace();
           reportChange({ ...card, mtime: Date.now() / 1000 });
         });
         try { await ws.load(); } catch { /* the preview shows the change either way */ }
+        const { pub: publication, reviewsPublish: reviews } = latestRef.current;
+        if (handedOff && reviews && startHead) {
+          void publication.refresh?.();
+          await ws.reviewPublish?.(startHead, head);
+        }
       })();
     }
     watch.live = chatLive;
@@ -987,7 +1281,7 @@ export function ArtifactViewer({
   const reloadChangedElsewhere = () => {
     setChangedElsewhere(false);
     void previewReload.reload(() => {
-      onReload();
+      reloadKeepingPlace();
       reportChange({ ...artifact, mtime: Date.now() / 1000 });
     });
     void workspace.load().catch(() => {});
@@ -1008,6 +1302,8 @@ export function ArtifactViewer({
   const resolveArtifactConversation = async () => conversationId
     || (resolveRepairConversation ? await resolveRepairConversation(artifact) : '')
     || '';
+  // Comments the bar resolved by applying their fix, so an Undo reopens them.
+  const resolvedByEditRef = useRef(new Set());
   const quickEdit = useQuickEdit(artifact, {
     enabled: open && canQuickEdit,
     // Without a decisions model every message goes to the chat. An older
@@ -1016,10 +1312,28 @@ export function ArtifactViewer({
     headRevisionId: workspace.currentRevision?.id || null,
     resolveConversation: async () => (await resolveArtifactConversation()) || null,
     // Same send the comment repair uses, with a fresh chat as the last resort.
-    continueInChat: async (prompt) => {
+    // Outside a chat the turn runs in that chat without leaving this page.
+    continueInChat: async (prompt, images = [], { recount } = {}) => {
       if (!onAddressWithAgent) return false;
       const target = (await resolveArtifactConversation()) || repairConversationId;
-      const started = await onAddressWithAgent({ artifact, prompt, conversationId: target });
+      // The chat followed until now may not be this one: count the prompt's
+      // earlier copies in the chat it goes to.
+      if (!inChatTranscript && target) {
+        recount?.(countUserPrompts(transcriptsRef.current?.(target)?.messages, prompt));
+      }
+      const restoreAgentChat = followAgentChat(target);
+      handedOffRef.current = true;
+      let started = false;
+      try {
+        started = await onAddressWithAgent({
+          artifact, prompt, conversationId: target, attachments: images, inBackground: true,
+        });
+      } finally {
+        if (started === false) {
+          handedOffRef.current = false;
+          restoreAgentChat();
+        }
+      }
       return started !== false;
     },
     countInChat: (prompt) => countUserPrompts(chatMessages, prompt),
@@ -1032,7 +1346,7 @@ export function ArtifactViewer({
     },
     // As after a Source save: the host hears of the new content (its card
     // and any URL it derives), and the preview reloads in the same render.
-    onApplied: async ({ previewFresh = false } = {}) => {
+    onApplied: async ({ previewFresh = false, edit = null } = {}) => {
       // The server keeps the edit (or its undo) in the chat's quick-edit card;
       // the open chat fetches it again to show it.
       if (conversationId) requestConversationRefresh(conversationId);
@@ -1044,19 +1358,141 @@ export function ArtifactViewer({
         // preview reloads, in one render, behind the reload cover. Not
         // awaited: the bar is free again while the cover fades.
         void previewReload.reload(() => {
-          onReload();
+          reloadKeepingPlace();
           reportChange({ ...artifact, mtime: Date.now() / 1000 });
         });
       }
       await loading;
+      if (!reviewsPublish) return;
+      // The draft is now ahead of the published page (or, after an undo, may
+      // be level with it again): the Share control learns which.
+      void pub.refresh();
+      if (edit?.previousRevisionId && edit.revisionId) {
+        await workspace.reviewPublish?.(edit.previousRevisionId, edit.revisionId, { replyId: edit.replyId });
+      }
     },
     onStale: () => { void workspace.load(); },
+    // A comment sent to the bar (Address with agent) is resolved once the
+    // edit made for it is applied, as the agent's repair resolved it, and
+    // opened again if that edit is undone. Only a comment still open is
+    // resolved, and only one resolved this way is reopened.
+    onThreadAddressed: (threadId) => {
+      const thread = comments.threads.find((item) => item.id === threadId);
+      if (!thread || thread.status === 'resolved' || thread.status === 'dismissed') return;
+      resolvedByEditRef.current.add(threadId);
+      void setCommentStatus(threadId, 'resolved');
+    },
+    onThreadReopened: (threadId) => {
+      if (!resolvedByEditRef.current.delete(threadId)) return;
+      // Dismissed or reopened by hand since: the person's choice stands.
+      const thread = comments.threads.find((item) => item.id === threadId);
+      if (thread?.status !== 'resolved') return;
+      void setCommentStatus(threadId, 'open');
+    },
   });
+
+  // The publish review's choices (ENG-4409). Publish this change re-publishes
+  // the draft to the same link with the same access (usePublish update), then
+  // says "Published" for a moment. Keep as draft closes it, leaving the
+  // header's "Unshared changes" and the Share panel's Update. Undo is the
+  // bar's own, offered while that edit is still the one to undo.
+  const [publishReviewFailed, setPublishReviewFailed] = useState(false);
+  const [changePublished, setChangePublished] = useState(false);
+  const reviewingPublish = workspace.comparison?.kind === 'publish';
+  useEffect(() => { setPublishReviewFailed(false); }, [workspace.comparison]);
+  useEffect(() => { setChangePublished(false); }, [open, artifact?.id]);
+  useEffect(() => {
+    if (!changePublished) return undefined;
+    const timer = setTimeout(() => setChangePublished(false), PUBLISHED_NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [changePublished]);
+  const reviewReplyId = reviewingPublish ? workspace.comparison.review?.replyId || null : null;
+  const reviewReply = reviewReplyId ? quickEdit.messages.find((m) => m.id === reviewReplyId) : null;
+  const publishReview = reviewingPublish ? {
+    busy: pub.phase === 'updating' || !!reviewReply?.undoing,
+    error: (publishReviewFailed && pub.error) || reviewReply?.undoError || '',
+    onPublish: async () => {
+      setPublishReviewFailed(false);
+      if (await pub.update()) {
+        workspace.setComparison(null);
+        setChangePublished(true);
+      } else {
+        setPublishReviewFailed(true);
+      }
+    },
+    onKeepDraft: () => {
+      workspace.setComparison(null);
+      void pub.refresh();
+    },
+    onUndo: reviewReplyId && quickEdit.undoableId === reviewReplyId && !quickEdit.running
+      ? async () => {
+        if (await quickEdit.undo(reviewReplyId)) workspace.setComparison(null);
+      }
+      : undefined,
+  } : null;
+
+  // Changes not shared yet (ENG-4595): the draft has moved past the live
+  // page. Opening the artifact shows them against the shared version, with
+  // Publish changes and Keep as draft, once per open; the header's "Unshared
+  // changes" opens the same review again. The shared version is the one the
+  // workspace load names (`publishedRevision`).
+  const unsharedFrom = workspace.publishedRevision?.id || null;
+  const unsharedTo = workspace.currentRevision?.id || null;
+  const canReviewUnshared = open && canManage && publishable && !!pub.publishedUrl && !!pub.modified
+    && !!unsharedFrom && !!unsharedTo && unsharedFrom !== unsharedTo;
+  const reviewUnshared = useCallback(() => {
+    if (!canReviewUnshared || workspace.comparison) return;
+    void workspace.reviewPublish(unsharedFrom, unsharedTo, { unshared: true });
+  }, [canReviewUnshared, unsharedFrom, unsharedTo, workspace]);
+  // The artifact whose review has shown this open: once per open, so keeping
+  // the draft (or a quick edit's own review) never brings it back by itself.
+  const unsharedShownRef = useRef('');
+  const unsharedKey = open ? (artifactIdentity(artifact) || artifact?.path || '') : '';
+  useEffect(() => {
+    if (!unsharedKey) unsharedShownRef.current = '';
+  }, [unsharedKey]);
+  useEffect(() => {
+    if (!canReviewUnshared || !unsharedKey || unsharedShownRef.current === unsharedKey) return;
+    // Not over something already on screen, a running edit or unsaved text.
+    if (workspace.comparison || quickEdit.running || workspace.dirty) return;
+    unsharedShownRef.current = unsharedKey;
+    reviewUnshared();
+  }, [canReviewUnshared, unsharedKey, workspace.comparison, workspace.dirty, quickEdit.running, reviewUnshared]);
 
   // Live edit (`source`): the code editor, in the preview's place at any
   // width. Turning it off with unsaved text asks first.
   const canSource = !!workspace.source && workspace.capabilities?.canEdit !== false;
   const sourceOn = layers.source && canSource;
+  sourceOnRef.current = sourceOn;
+  // Leaving Live edit for Comments, Stats or the plain preview (ENG-4455):
+  // the preview goes to where the editor was, so the user stays on the slide
+  // they were working on. The preview can only take a place as it loads, so
+  // it reloads behind the cover, unless the comment layer is about to reload
+  // it anyway, which then lands there. Nothing reloads when the editor is
+  // where the preview already is.
+  const wasSourceOnRef = useRef(sourceOn);
+  useEffect(() => {
+    const was = wasSourceOnRef.current;
+    wasSourceOnRef.current = sourceOn;
+    if (!was || sourceOn || !open || !framedPreview) return;
+    const view = editorViewRef.current;
+    if (!view) return;
+    const editorAt = JSON.stringify(normalizePreviewView({ ...view, type: 'view' }));
+    if (editorAt === JSON.stringify(previewView.view)) return;
+    if (layers.comments && commentLayerRequested && !commentLayerMountedRef.current) {
+      leftEditorViewRef.current = view;
+      return;
+    }
+    // Comments asked for Comment mode on the page this reload replaces.
+    const commentMode = layers.comments;
+    void previewReload.reload(() => {
+      if (commentMode) layer.enterModeOnNextLoad?.();
+      keepPlace(view);
+      reloadPreview();
+    });
+  // Only on Live edit going off; the rest is read as it is then.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceOn]);
   const setSourceLayer = (on) => {
     if (!on && workspace.dirty) {
       setSourceOffPrompt(true);
@@ -1310,30 +1746,41 @@ export function ArtifactViewer({
     onClose?.();
   };
 
-  // The layer toggles on the revision line, before History: Live edit (the
-  // code editor; `source` inside) and Comments, each only where allowed.
-  const layerControls = canSource || commentsEnabled ? (
-    <ViewerLayerToggles label={t('layers.ariaLabel')}>
-      {canSource && (
-        <ViewerLayerToggle
-          icon={Ico.edit(14)}
-          label={t('layers.source')}
-          pressed={sourceOn}
-          onToggle={(on) => setSourceLayer(on)}
-        />
-      )}
-      {commentsEnabled && (
-        <ViewerLayerToggle
-          icon={Ico.chats(14)}
-          label={t('layers.comments')}
-          pressed={!!commentsOpen}
-          onToggle={() => toggleComments()}
-          badge={comments.unreadCount}
-          badgeLabel={t('header.commentsUnread', { count: comments.unreadCount })}
-        />
-      )}
-    </ViewerLayerToggles>
-  ) : null;
+  // The panel rail on the viewer's right edge (ViewerModeRail, ENG-4455): one
+  // tab per layer this person may use, each opening its side panel. Clicking
+  // the open one closes it; the unsaved Live edit prompt guards both ways out.
+  // Comments still to review: open ones, as an inbox counts what is in it.
+  // Resolved and dismissed ones are done with.
+  const openCommentCount = (comments.threads || [])
+    .filter((thread) => thread.status !== 'resolved' && thread.status !== 'dismissed').length;
+  const railTabs = [
+    canSource && {
+      id: 'source',
+      icon: Ico.edit(16),
+      label: t('layers.source'),
+      description: t('rail.sourceHint'),
+      pressed: sourceOn,
+      onSelect: () => setSourceLayer(!sourceOn),
+    },
+    commentsEnabled && {
+      id: 'comments',
+      icon: Ico.chats(16),
+      label: t('layers.comments'),
+      description: t('rail.commentsHint'),
+      pressed: !!commentsOpen,
+      onSelect: () => toggleComments(),
+      badge: openCommentCount,
+      badgeLabel: t('rail.commentsOpen', { count: openCommentCount }),
+    },
+    statsAvailable && {
+      id: 'stats',
+      icon: Ico.chartColumn(16),
+      label: t('layers.stats'),
+      description: t('rail.statsHint'),
+      pressed: statsOpen,
+      onSelect: () => toggleStats(!statsOpen),
+    },
+  ].filter(Boolean);
   // The address pill: where this artifact can be opened. A published page or
   // a running live app has its own address; a draft has the address the
   // browser-tab action opens, or none until a signed link is minted.
@@ -1349,13 +1796,12 @@ export function ArtifactViewer({
     controller: comments,
     onToggle: toggleComments,
   };
-  const headerStats = statsUiEnabled ? { open: sidePanel === 'stats', onToggle: toggleStats } : null;
   const bodyStats = {
     open: statsOpen,
     controller: stats,
     accessMode: pub.accessMode,
     accessLoaded: !!pub.accessLoaded,
-    onClose: () => setSidePanel(null),
+    onClose: () => setLayer('stats', false),
   };
   const publication = {
     canManage,
@@ -1364,6 +1810,9 @@ export function ArtifactViewer({
     hasActionPath,
     isPublished,
     disabledReason,
+    shareRequest,
+    onShareRequestClosed: () => setClosedShareRequest(shareRequest),
+    onReviewUnshared: canReviewUnshared && !workspace.comparison ? reviewUnshared : null,
   };
   const artifactActions = {
     canOpenInBrowserTab: !!browserTabUrl,
@@ -1426,6 +1875,10 @@ export function ArtifactViewer({
     doc: previewDoc,
     kind: previewKind,
     iframeRef,
+    view: previewView,
+    fitStyle: previewFit.style,
+    // The Live editor's own place, for a save made from it (keepPreviewPlace).
+    onEditorView,
     title,
     iframeReady,
     setIframeReady,
@@ -1448,8 +1901,18 @@ export function ArtifactViewer({
     onStatus: setCommentStatus,
     onAddressWithAgent: documentType ? undefined : addressCommentWithAgent,
     onCreate: createArtifactComment,
+    loadCommentImage: readCommentImage,
+    // Comments sent to the "Ask for a change" bar: the one it is on, and
+    // those waiting their turn.
+    agentRunningThreadId: canQuickEdit ? quickEdit.runningThreadId : null,
+    agentQueuedThreadIds: canQuickEdit ? quickEdit.queuedThreadIds : [],
     textSelection,
     setTextSelection,
+  };
+
+  const headerLayout = {
+    ...layout,
+    onToggle: toggleLayout,
   };
 
   return (
@@ -1459,6 +1922,7 @@ export function ArtifactViewer({
       size="lg"
       width="min(1080px, 94vw)"
       height="min(820px, 88vh)"
+      fullBleed={layout.maximized}
       labelledBy="artifact-viewer-title"
     >
       <ArtifactViewerHeader
@@ -1466,17 +1930,16 @@ export function ArtifactViewer({
         authorship={authorship}
         workspace={workspaceView}
         review={headerReview}
-        stats={headerStats}
         publication={publication}
         actions={artifactActions}
         diagnostics={diagnostics}
         address={addressModel}
+        layout={headerLayout}
         onClose={requestClose}
       />
 
       {workspace.currentRevision && (
         <ArtifactRevisionBar
-          layerControls={layerControls}
           revision={workspace.currentRevision}
           revisions={workspace.revisions}
           status={workspace.status}
@@ -1485,16 +1948,8 @@ export function ArtifactViewer({
           onSave={() => saveWorkspace()}
           onDiscard={workspace.discard}
           onCompare={workspace.compareRevision}
+          saveInEditor={sourceOn}
         />
-      )}
-      {/* No revision line to sit on (a published page someone reviews, say):
-          the toggles get a line of their own. */}
-      {!workspace.currentRevision && layerControls && (
-        <div className="artifact-revision-bar is-centered is-layers-only">
-          <span />
-          <div className="artifact-revision-center">{layerControls}</div>
-          <span />
-        </div>
       )}
       {(workspace.error || workspace.conflict) && (
         <div className="artifact-workspace-notice" role="alert">
@@ -1515,6 +1970,11 @@ export function ArtifactViewer({
         <button type="button" className="artifact-feedback-notice" onClick={onReload}>
           {Ico.reload(14)} <span>{t('viewer.linkExpired')}</span>
         </button>
+      )}
+      {changePublished && (
+        <div className="artifact-feedback-notice is-status" role="status">
+          {Ico.check(14)} <span>{t('viewer.changePublished')}</span>
+        </div>
       )}
       {feedbackNotice && (
         <button
@@ -1601,14 +2061,32 @@ export function ArtifactViewer({
         </div>
       )}
 
-      <ArtifactViewerBody
-        layers={{ source: sourceOn }}
-        workspace={{ ...workspaceView, save: saveWorkspace }}
-        preview={previewModel}
-        review={bodyReview}
-        stats={bodyStats}
-        agentReview={{ busy: repairBusy, setBusy: setRepairBusy }}
-      />
+      {/* The body and, on its right edge, the panel rail. */}
+      <div className="artifact-viewer-workarea">
+        <ArtifactViewerBody
+          layers={{
+            source: sourceOn,
+            // The Live edit panel's close: the same way out as its rail tab.
+            onExitSource: () => setSourceLayer(false),
+            // Save and Discard, in the Live edit panel.
+            editActions: {
+              dirty: !!workspace.dirty,
+              saving: workspace.status === 'saving',
+              canEdit: workspace.capabilities?.canEdit !== false,
+              onSave: () => saveWorkspace(),
+              onDiscard: workspace.discard,
+            },
+          }}
+          workspace={{ ...workspaceView, save: saveWorkspace }}
+          preview={previewModel}
+          review={bodyReview}
+          stats={bodyStats}
+          agentReview={{ busy: repairBusy, setBusy: setRepairBusy }}
+          publishReview={publishReview}
+          sidePanelId={sidePanelId}
+        />
+        <ViewerModeRail label={t('rail.ariaLabel')} tabs={railTabs} panelId={sidePanelId} />
+      </div>
 
       {canQuickEdit && (
         <QuickEditBar
@@ -1636,7 +2114,15 @@ export function ArtifactViewer({
           onDiscardUnsaved={workspace.discard}
           focusRequest={barFocusRequest}
           focusUsed={barFocusUsed}
-          onOpenChat={onClose}
+          // Inside a chat, closing the viewer shows it. Outside one, the host
+          // opens the chat the bar handed the message to.
+          onOpenChat={!inChatTranscript && onOpenConversation && agentChatId
+            ? () => onOpenConversation(chatTranscript?.conversationId || agentChatId)
+            : onClose}
+          // A comment the agent worked on in the chat: once its turn ends the
+          // bar asks whether to resolve it (ENG-4560).
+          threadStatus={(threadId) => (comments.threads || []).find((item) => item.id === threadId)?.status || null}
+          onResolveThread={(threadId) => setCommentStatus(threadId, 'resolved')}
         />
       )}
 
@@ -1647,11 +2133,23 @@ export function ArtifactViewer({
         confirmLabel={t('layers.sourceOffPrompt.confirmLabel')}
         cancelLabel={t('viewer.keepEditing')}
         destructive
-        onClose={() => setSourceOffPrompt(false)}
+        onClose={() => {
+          layerAfterSourceOffRef.current = null;
+          setSourceOffPrompt(false);
+        }}
         onConfirm={() => {
           setSourceOffPrompt(false);
           workspace.discard();
-          setLayer('source', false);
+          // Asked on the way to Comments or Stats: open it, which turns Live
+          // edit off.
+          const next = layerAfterSourceOffRef.current;
+          if (next) {
+            layerAfterSourceOffRef.current = null;
+            if (next === 'comments') commentModeOnOpenRef.current = true;
+            setLayer(next, true);
+          } else {
+            setLayer('source', false);
+          }
         }}
       />
 

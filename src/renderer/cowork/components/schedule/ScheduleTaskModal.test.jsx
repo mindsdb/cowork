@@ -193,3 +193,33 @@ describe('ScheduleTaskModal — model', () => {
     expect((await submitted(onSubmit, /Save changes/i)).model).toBe('default');
   });
 });
+
+describe('ScheduleTaskModal — started from a chat', () => {
+  it('opens with the prompt filled in and the chat’s project picked, and saves it as a new schedule', async () => {
+    const { onSubmit } = renderModal({ initial: { prompt: 'Find open grants for my NGO' }, defaultProjectPath: '/work/metrics' });
+    expect(screen.getByLabelText(/What should Anton do/)).toHaveValue('Find open grants for my NGO');
+    fireEvent.click(screen.getByRole('button', { name: /^Schedule$/ }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    const [payload, id] = onSubmit.mock.calls[0];
+    expect(payload).toMatchObject({ prompt: 'Find open grants for my NGO', project_id: 'proj-metrics' });
+    expect(id).toBeNull();
+  });
+
+  it('opens empty without a starting prompt', () => {
+    renderModal({ initial: null });
+    expect(screen.getByLabelText(/What should Anton do/)).toHaveValue('');
+  });
+});
+
+describe('ScheduleTaskModal — while a save is out', () => {
+  it('disables both ways to submit and says it is saving', () => {
+    const { onSubmit } = renderModal({ initial: { prompt: 'Find open grants for my NGO' }, busy: true });
+    const saving = screen.getByRole('button', { name: 'Saving…' });
+    const runOnce = screen.getByRole('button', { name: 'Save and run once' });
+    expect(saving).toBeDisabled();
+    expect(runOnce).toBeDisabled();
+    fireEvent.click(saving);
+    fireEvent.click(runOnce);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+});

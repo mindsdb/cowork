@@ -4,13 +4,14 @@ import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
 import { isModelLocked, isModelRestricted, isModelBudgetReached } from '../../lib/modelCatalog';
-import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, budgetSpec, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle, showJevSwitch, showRouterRoleRow } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, resolveImageModel, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, budgetSpec, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle, showJevSwitch, showRouterRoleRow, jevClassifySwitch } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
 import { deriveProviderStatus, friendlyProviderError, mindsProbeNotice, probePolicyUnavailableSentence, probeRateLimitedSentence } from '../../lib/providerStatus';
 import { useHubUsageContext } from '../../lib/hubUsageContext';
 import { USAGE_ACTIONS, usageActionUrl, allowanceStopCopy, freeServingPausedCopy, budgetExceededCopy } from '../../lib/usageWarnings';
+import { offersBilling } from '../../lib/billingLinks';
 import { ToggleGroup } from '../../components/ui/ToggleGroup';
 import { Switch } from '../../components/ui/Switch';
 import { Badge, Button, Input, Checkbox, Select, Tooltip } from '../../components/ui';
@@ -20,8 +21,9 @@ import { host } from '../../../platform/host';
 import { DEFAULT_SKIN, SKINS, SKIN_LOCKED, normalizeSkin, skinLabel } from '../../../lib/skins';
 import { stockBackground } from '../../../lib/stockThemeTokens';
 import { STOCK_GREETING } from '../../../lib/orgBranding';
-import { MINDS_API_BASE, MINDS_API_KEY_URL, MINDS_REGISTER_URL } from '../../../lib/mindsUrls';
+import { MINDS_API_BASE, MINDS_API_KEY_URL, mindsRegisterUrl, consoleUrlFor } from '../../../lib/mindsUrls';
 import { useBudgetsUrl } from '../../hooks/useBudgetsUrl';
+import { useAccountUser } from '../../hooks/useAccountUser';
 import { useOrgMode } from '../../../lib/orgMode';
 import { isElectron } from '../../../platform/host';
 import ChannelsView from '../ChannelsView';
@@ -33,6 +35,9 @@ import { SettingsGroup, SettingsLayoutContext, Section, SettingsSectionPanel } f
 import CodingAgentSettingsSection from './CodingAgentSettingsSection';
 import OrgBrandingFields from './OrgBrandingFields';
 import BrowserSettingsSection from './BrowserSettingsSection';
+import DecisionModelSettingsGroup from './DecisionModelSettingsGroup';
+import VoiceSettingsSection from './VoiceSettingsSection';
+import { llmViaMindsHub } from '../../lib/voice/voicePrefs';
 import ComputersSettingsSection from './ComputersSettingsSection';
 import { navItemsForHost } from './settingsNavigation';
 import i18n, { useTranslation } from '../../../lib/i18n';
@@ -97,13 +102,16 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
   if (!PLATFORM_UI || !providerTestsAvailable) {
     return <div className="text-[12px] text-ink-3">{t('providers.unavailable')}</div>;
   }
+  if (!offersBilling() && ['no_credits', 'budget_reached', 'billing_unavailable'].includes(notice.kind)) {
+    return <div className="text-[12px] text-ink-3">{t('providers.unavailable')}</div>;
+  }
   const byok = <div className="text-ink-3">{t('probe.byok')}</div>;
   if (notice.kind === 'no_credits') {
     return (
       <div className="text-[12px] leading-[1.6] grid gap-px">
         <div>
           <span className="text-danger font-semibold">{t('probe.noCredits')}{' '}</span>
-          <button
+          {offersBilling() && <button
             type="button"
             // Recorded before the navigation, so web and
             // desktop count identically. `host.openExternal` is
@@ -116,7 +124,7 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
               return host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
             }}
             className={LINK_BTN}
-          >{t('probe.topUp')}</button>
+          >{t('probe.topUp')}</button>}
         </div>
         {byok}
       </div>
@@ -134,7 +142,7 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
       <div className="text-[12px] leading-[1.6] grid gap-px">
         <div>
           <span className="text-danger">{body} </span>
-          <button
+          {offersBilling() && <button
             type="button"
             onClick={() => {
               // Literal triggers inline, so the analytics vocabulary sweep sees them.
@@ -142,7 +150,7 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
               return host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
             }}
             className={LINK_BTN}
-          >{t('probe.addFunds')}</button>
+          >{t('probe.addFunds')}</button>}
         </div>
         {byok}
       </div>
@@ -154,7 +162,8 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
       <div className="text-[12px] leading-[1.6] grid gap-px">
         <div>
           <span className="text-danger">{t('probe.budgetReached', { detail: budgetExceededCopy({ usage }) })} </span>
-          <ViewBudgetsLink>{t('probe.viewBudgetsArrow')}</ViewBudgetsLink>
+          {/* The test call itself was refused, so this is a denial's link. */}
+          <ViewBudgetsLink fromDenial>{t('probe.viewBudgetsArrow')}</ViewBudgetsLink>
         </div>
         {byok}
       </div>
@@ -177,9 +186,11 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
   return null;
 }
 
-/** The Budgets tab for this session's organization; credits do not lift a budget. */
-function ViewBudgetsLink({ children }) {
-  const budgetsUrl = useBudgetsUrl();
+/** The Budgets tab for this session's organization; credits do not lift a budget.
+    `fromDenial` when a call was refused, not when a spent budget is only foreseen. */
+function ViewBudgetsLink({ children, fromDenial = false }) {
+  const budgetsUrl = useBudgetsUrl({ fromDenial });
+  if (!offersBilling()) return null;
   return (
     <button
       type="button"
@@ -209,6 +220,9 @@ export function UnavailableModelHint({ label, restricted, budgetReached = false,
         {t('agent.modelRestricted', { model: label })}
       </div>
     );
+  }
+  if (!offersBilling()) {
+    return <div className="text-[11.5px] text-ink-3">{t('agent.modelUnavailable', { model: label })}</div>;
   }
   if (budgetReached) {
     return (
@@ -875,12 +889,21 @@ export default function SettingsView({
   const { settings, setSetting, dirty: settingsDirty } = draft;
   const lastSavedSettings = committedSettings;
   const codeModeAccess = useCodeModeAccess();
+  /* The MindsHub key link names the organization and account it was opened
+     for, as the account menu's console links do (ENG-3274), so the console
+     opens its API keys page on this organization rather than whichever one the
+     browser's own session has active. Whatever the token knows is sent; the
+     other providers' pages are not the console and stay bare. */
+  const accountUser = useAccountUser(isSsoConnected);
+  const getKeyHref = (type) => (type === 'minds-cloud' && GET_KEY_URL[type]
+    ? consoleUrlFor(GET_KEY_URL[type], { organizationId: accountUser?.orgId ?? null, subject: accountUser?.sub ?? null })
+    : GET_KEY_URL[type]);
   const canEditBranding = Boolean(orgBranding?.enabled && orgBranding?.canEdit);
   const visibleNav = navItemsForHost(
     host.isWeb,
     codeModeAccess.available,
     codeModeAccess.enabled,
-    { branding: canEditBranding },
+    { branding: canEditBranding, mobileShell: host.isMobileShell },
   );
   // Branding is for org admins; anyone else sent there (a deep link, a
   // stale section) lands on Appearance, where their own look is.
@@ -920,7 +943,7 @@ export default function SettingsView({
   // Per-role "refetching model list on dropdown open" flag — drives the
   // trigger's spinner so a still-open dropdown showing possibly-stale
   // locked/unlocked state doesn't read as done loading.
-  const [modelRefreshing, setModelRefreshing] = useState({ planning: false, coding: false, router: false, codingAgent: false });
+  const [modelRefreshing, setModelRefreshing] = useState({ planning: false, coding: false, router: false, codingAgent: false, image: false });
   // Start by distrusting a persisted provider failure. The mount-time check
   // below decides whether it is still real before failure UI is shown. A deployment
   // with testing disabled keeps the stored result without running connectivity tests.
@@ -1048,6 +1071,7 @@ export default function SettingsView({
   const roleModelValue = (role, fallback = '') => canonicalModelForRole(role) || fallback || '';
   // effectiveRoleProvider already falls back to MindsHub, as the server does.
   const jevSwitchShown = showJevSwitch(settings?.routing, roleProviderType('coding'));
+  const jevClassify = jevClassifySwitch(settings, roleProviderType('coding'));
   const setRoleDriver = (role, providerType, model) => {
     const normalizedType = providerValueToType(providerType) || 'minds-cloud';
     // null is a tombstone ("clear the stored row so the server's enabled-aware
@@ -1086,6 +1110,10 @@ export default function SettingsView({
   // adding e.g. an Anthropic key "just works" without touching the
   // custom-model controls. Falls back to MindsHub when nothing is
   // configured so the unconfigured baseline still surfaces a row.
+  // Signed in to a MindsHub server for inference: a keyed MindsHub card,
+  // or the platform's sign-in. Then the decision model is Jev there.
+  const mindsConnected = visibleProviders.some((p) => p.type === 'minds-cloud' && providerConfigured(p))
+    || (PLATFORM_UI && Boolean(isSsoConnected));
   const defaultModeProviderType = (() => {
     const minds = visibleProviders.find((p) => p.type === 'minds-cloud');
     if (minds && providerConfigured(minds)) return 'minds-cloud';
@@ -1596,7 +1624,7 @@ export default function SettingsView({
                             {withLink(t('providers.getKey', { link: LINK_TOKEN }), (
                               <Tooltip content={t('providers.openInBrowser', { url: GET_KEY_URL[p.type].replace(/^https?:\/\//, '') })}>
                                 <a
-                                  href={GET_KEY_URL[p.type]}
+                                  href={getKeyHref(p.type)}
                                   target="_blank"
                                   rel="noreferrer noopener"
                                   className="text-accent"
@@ -1610,7 +1638,7 @@ export default function SettingsView({
                             {t('providers.noAccount')}{' '}
                             <Tooltip content={t('providers.signUpTooltip')}>
                               <a
-                                href={MINDS_REGISTER_URL}
+                                href={mindsRegisterUrl(isElectron ? 'desktop' : 'web')}
                                 target="_blank"
                                 rel="noreferrer noopener"
                                 className="text-accent"
@@ -1725,6 +1753,13 @@ export default function SettingsView({
                   visibleProviders[0];
                 const multipleProviders = visibleProviders.length > 1;
 
+                // Plain bold field label. Note: no dotted underline — that reads as
+                // a "hover for a tooltip" affordance, and none is wired here.
+                const fieldLabel = (text) => (
+                  <span className="text-xs font-bold text-ink tracking-[0.02em]">{text}</span>
+                );
+
+
                 // For each role: render provider selector (when N>1) +
                 // model field. When the user picks a new provider, auto-
                 // fill the role with that provider's recommended default
@@ -1826,12 +1861,6 @@ export default function SettingsView({
                     if (effortKey) setSetting(effortKey, '');
                   };
 
-                  // Plain bold field label. Note: no dotted underline — that reads as
-                  // a "hover for a tooltip" affordance, and none is wired here.
-                  const fieldLabel = (text) => (
-                    <span className="text-xs font-bold text-ink tracking-[0.02em]">{text}</span>
-                  );
-
                   const probeNoticeNode = probeNotice ? (
                     <MindsProbeNotice notice={probeNotice} usage={hubUsage} isBillingOwner={isBillingOwner} providerTestsAvailable={providerTestsAvailable} />
                   ) : null;
@@ -1906,6 +1935,7 @@ export default function SettingsView({
                                 modelProviders: settings.modelProviders,
                                 modelFamilies: settings.modelFamilies,
                                 modelDisabledReasons: settings.modelDisabledReasons,
+                                modelCoveredByTier: settings.modelCoveredByTier,
                               },
                             );
                             return (
@@ -1993,6 +2023,72 @@ export default function SettingsView({
                     </Section>
                   );
                 };
+                // The model Anton's generate_image tool runs on (ENG-4024).
+                // MindsHub serves every image model, so there is no provider to
+                // pick and no free-text id: just the catalog's `kind: "image"`
+                // rows, which no chat row above ever lists.
+                const ImageModelRow = () => {
+                  const imageModels = Array.isArray(settings.imageModels) ? settings.imageModels : [];
+                  const subtitle = t('agent.roles.imageSubtitle');
+                  if (imageModels.length === 0) {
+                    // With MindsHub connected and still no image models, the
+                    // catalog has none to offer (or could not be read), and a
+                    // row with nothing in it is noise. An org runs on its
+                    // managed MindsHub, and has no LLM Providers section to
+                    // point at, so the same holds there.
+                    const minds = visibleProviders.find((p) => p.type === 'minds-cloud');
+                    if (orgMode || (minds && providerConfigured(minds))) return null;
+                    return (
+                      <Section title={t('agent.roles.image')} subtitle={subtitle}>
+                        <div className="text-[11.5px] text-ink-3">
+                          {t('agent.imageModelNeedsMindsHub')}
+                        </div>
+                      </Section>
+                    );
+                  }
+                  const modelEnabled = settings.modelEnabled || {};
+                  const curModel = resolveImageModel(settings.imageModel, {
+                    catalogDefault: settings.imageModelDefault,
+                  });
+                  // No free text here (allowOther false), so a saved id the
+                  // catalog dropped shows as a stale pin to re-pick.
+                  const { showStalePin, selectValue } = resolveModelPickerValue(curModel, imageModels, false);
+                  const modelOptions = buildModelOptions(
+                    curModel, imageModels, false, showStalePin, modelEnabled,
+                    settings.modelLabels || {},
+                    {
+                      modelProviders: settings.modelProviders,
+                      modelFamilies: settings.modelFamilies,
+                      modelDisabledReasons: settings.modelDisabledReasons,
+                      modelCoveredByTier: settings.modelCoveredByTier,
+                    },
+                  );
+                  return (
+                    <Section title={t('agent.roles.image')} subtitle={subtitle}>
+                      <div className="grid gap-1.5">
+                        <label className="grid gap-1">
+                          {fieldLabel(t('agent.modelLabel'))}
+                          <ModelSelect
+                            value={selectValue}
+                            onValueChange={(next) => setSetting('imageModel', next)}
+                            onOpenChange={(isOpen) => refreshModelsOnOpen('image', isOpen)}
+                            loading={modelRefreshing.image}
+                            title={t('agent.imageModelHint')}
+                            options={modelOptions}
+                          />
+                        </label>
+                        {!!curModel && isModelLocked(modelEnabled, curModel) && (
+                          <UnavailableModelHint
+                            label={displayModelLabel(curModel, settings.modelLabels || {})}
+                            restricted={isModelRestricted(modelEnabled, settings.modelDisabledReasons, curModel)}
+                            budgetReached={isModelBudgetReached(modelEnabled, settings.modelDisabledReasons, curModel)}
+                            isBillingOwner={isBillingOwner}
+                          />
+                        )}
+                      </div>
+                    </Section>
+                  );
+                };
                 return (
                   <>
                     {RoleRow({ role: 'planning', label: t('agent.roles.planning') })}
@@ -2001,11 +2097,28 @@ export default function SettingsView({
                     {showRouterRoleRow(settings.routing, settings.gate)
                       && RoleRow({ role: 'router', label: t('agent.roles.router') })}
                     {RoleRow({ role: 'coding', label: t('agent.roles.coding') })}
+                    {ImageModelRow()}
+                    {/* The decision model: Jev when signed in to MindsHub for
+                        inference, else the organization's own endpoint, for
+                        whoever may set it (routing.canSetDecisionModel). */}
+                    <DecisionModelSettingsGroup
+                      embedded
+                      settings={settings}
+                      setSetting={setSetting}
+                      agentLabel={agentLabel || 'Anton'}
+                      mindsConnected={mindsConnected}
+                    />
                   </>
                 );
               })()}
             </SettingsGroup>
           </div>}
+          {/* Without the Model router card, the decision model is a group of its own. */}
+          {!PLATFORM_UI && (
+            <div className="order-3">
+              <DecisionModelSettingsGroup settings={settings} setSetting={setSetting} agentLabel={agentLabel || 'Anton'} />
+            </div>
+          )}
         </div>
 
         <SettingsGroup title={t('memory.title')}>
@@ -2046,7 +2159,10 @@ export default function SettingsView({
 
         <BrowserSettingsSection settings={settings} setSetting={setSetting} agentLabel={agentLabel || 'Anton'} signedInToMindsHub={PLATFORM_UI && isSsoConnected} />
 
-        {(hasBudgetSettings || jevSwitchShown) && (
+        {/* Voice calls run on MindsHub: only when it is the LLM provider. */}
+        {llmViaMindsHub(settings) && <VoiceSettingsSection agentLabel={agentLabel || 'Anton'} />}
+
+        {(hasBudgetSettings || jevSwitchShown || jevClassify.shown) && (
           <SettingsGroup title={t('advanced.title')} collapsible defaultCollapsed>
             {hasBudgetSettings && <>
             {hasLimitsSwitch && (
@@ -2126,6 +2242,21 @@ export default function SettingsView({
                   checked={settings.jevDecisionsEnabled ?? true}
                   onCheckedChange={(v) => setSetting('jevDecisionsEnabled', v)}
                   aria-label={t('advanced.jev.title')}
+                />
+              </Section>
+            )}
+            {jevClassify.shown && (
+              <Section
+                title={t('advanced.jevClassify.title')}
+                subtitle={jevClassify.available
+                  ? t('advanced.jevClassify.subtitle', { agent: agentLabel || 'Anton' })
+                  : t('advanced.jevClassify.unavailable')}
+              >
+                <Switch
+                  checked={jevClassify.checked}
+                  disabled={!jevClassify.available}
+                  onCheckedChange={(v) => setSetting('jevClassifyEnabled', v)}
+                  aria-label={t('advanced.jevClassify.title')}
                 />
               </Section>
             )}

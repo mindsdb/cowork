@@ -82,6 +82,8 @@ export type PageWorldRequest =
   /* Focuses an element for a key press; `editing` when the key edits text. */
   | { kind: 'focus'; id: number; editing: boolean }
   | { kind: 'select'; id: number; values: string[] }
+  /* The control a click at this point of the viewport lands on. */
+  | { kind: 'atPoint'; x: number; y: number }
   | { kind: 'watch' };
 
 export interface RawSnapshot {
@@ -115,6 +117,12 @@ export type LocateResult =
 export type SelectResult =
   | { ok: true; chosen: string[] }
   | { ok: false; reason: 'not_found' | 'secret' | 'not_select' | 'no_option' | 'single'; options?: string[] };
+
+/** The control under a point that a click there would press: a button, a
+    link, a menu item, a tab, an option or another clickable element, with its
+    element id. Null when the point is on none of those (plain content, a text
+    field, a check box, a slider) or on a frame, whose inside isn't readable. */
+export type PointControl = { id: number; role: string; name: string } | null;
 
 /** A text field focused for typing. `selected`: its text is selected, so a
     Backspace clears it. A secret field is left alone, and `unfocusable` means
@@ -212,6 +220,25 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
     const tabindex = el.getAttribute('tabindex');
     if (el.hasAttribute('onclick') || (tabindex !== null && tabindex !== '-1')) return 'clickable';
     return '';
+  };
+
+  /* Roles a click by position may not land on: one of them can commit
+     something (Place order, Send, Delete), and only the agent's gate can tell
+     which, so the step must name the element. */
+  const POINT_CONTROL_ROLES = new Set([
+    'button', 'link', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'tab', 'option', 'treeitem', 'clickable',
+  ]);
+
+  /* The element's id in this document, numbering it when it has none yet. */
+  const idOf = (el: Element): number => {
+    let id = world.byElement.get(el);
+    if (id === undefined) {
+      id = world.next;
+      world.next += 1;
+      world.byElement.set(el, id);
+      world.ids.set(id, el);
+    }
+    return id;
   };
 
   const textOf = (el: Element): string => (el as HTMLElement).innerText ?? el.textContent ?? '';
@@ -320,13 +347,7 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       }
       if (!isShown) continue;
       if (elements.length >= maxElements) continue;
-      let id = world.byElement.get(el);
-      if (id === undefined) {
-        id = world.next;
-        world.next += 1;
-        world.byElement.set(el, id);
-        world.ids.set(id, el);
-      }
+      const id = idOf(el);
       elements.push(describe(el, id, role, !visible));
       if (visible) {
         boxes.push({
@@ -495,6 +516,24 @@ export function pageWorld(doc: Document, world: PageWorldState, request: PageWor
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
       return { ok: true, chosen: matches.map((m) => clean((m as HTMLOptionElement).label || (m as HTMLOptionElement).text, 120)) };
+    }
+    case 'atPoint': {
+      // The deepest element there, inside open shadow roots too.
+      let el: Element | null = typeof doc.elementFromPoint === 'function' ? doc.elementFromPoint(request.x, request.y) : null;
+      while (el?.shadowRoot) {
+        const inner = el.shadowRoot.elementFromPoint(request.x, request.y);
+        if (!inner || inner === el) break;
+        el = inner;
+      }
+      // The nearest element a person would click: a label inside a button is the button.
+      for (let at: Node | null = el; at; at = parentAcross(at)) {
+        if (at.nodeType !== 1) continue;
+        const role = roleOf(at as Element);
+        if (!role) continue;
+        if (!POINT_CONTROL_ROLES.has(role) || tagOf(at as Element) === 'iframe') return null;
+        return { id: idOf(at as Element), role, name: nameOf(at as Element, role) };
+      }
+      return null;
     }
     case 'watch':
       world.observer ??= new MutationObserver(onMutations);

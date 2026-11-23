@@ -258,7 +258,7 @@
     "topUp": "Guthaben aufladen →",
     "addFunds": "Guthaben aufladen →",
     "slowDown": "{sentence} Das liegt nicht am Guthaben.",
-    "budgetReached": "Das Budget Ihrer Organisation ist aufgebraucht. {detail}",
+    "budgetReached": "Ein Budget ist aufgebraucht. {detail}",
     "viewBudgetsArrow": "Budgets anzeigen →"
   },
   "providers": {
@@ -315,7 +315,9 @@
       "router": "Modell für Routing und Zusammenfassung",
       "coding": "Coding-Modell",
       "planningSubtitle": "Für Schlussfolgern, Orchestrierung und Antworten.",
-      "codingSubtitle": "Für die Codegenerierung im Scratchpad."
+      "codingSubtitle": "Für die Codegenerierung im Scratchpad.",
+      "image": "Bildmodell",
+      "imageSubtitle": "Zum Erzeugen und Bearbeiten von Bildern."
     },
     "providerLabel": "Anbieter:",
     "modelLabel": "Modell:",
@@ -331,9 +333,12 @@
     "modelUnavailable": "{model} ist nicht verfügbar. Wählen Sie ein anderes Modell oder wenden Sie sich an Ihren Administrator.",
     "modelRestricted": "{model} wurde von einem Administrator Ihrer Organisation eingeschränkt. Wählen Sie ein anderes Modell.",
     "modelNeedsCredits": "{model} benötigt Guthaben. {link}, um es zu nutzen.",
+    "modelNeedsCreditsNoLink": "{model} benötigt Guthaben.",
     "topUpBalance": "Laden Sie Ihr Guthaben auf",
-    "modelBudgetReached": "{model} kann nicht ausgeführt werden, weil das Budget Ihrer Organisation aufgebraucht ist.",
-    "viewBudgets": "Budgets anzeigen"
+    "modelBudgetReached": "{model} kann nicht ausgeführt werden, weil ein Budget dafür aufgebraucht ist.",
+    "viewBudgets": "Budgets anzeigen",
+    "imageModelNeedsMindsHub": "Die Bildgenerierung läuft über MindsHub. Füge MindsHub unter LLM-Anbieter hinzu, um ein Bildmodell auszuwählen.",
+    "imageModelHint": "Wähle das Modell, mit dem Bilder erzeugt werden."
   },
   "memory": {
     "title": "Gedächtnis",
@@ -384,6 +389,11 @@
     "jev": {
       "title": "Schnelle Antworten mit Jev",
       "subtitle": "Jev, das Entscheidungsmodell von MindsHub, liest jede Nachricht und den aktuellen Gesprächsverlauf, um zu entscheiden, ob Ihr gewähltes Modell direkt antworten kann, und prüft, ob {agent} seine Arbeit abgeschlossen hat. Deaktivieren Sie die Option, damit jede Nachricht von {agent} bearbeitet wird."
+    },
+    "jevClassify": {
+      "title": "Jev für die Klassifizierung verwenden",
+      "subtitle": "Lässt {agent} viele Texte in Kategorien einordnen oder zu jedem eine Ja/Nein-Frage beantworten – mit Jev, dem Entscheidungsmodell von MindsHub, statt mit Ihrem gewählten Modell. Schneller und günstiger bei großen Mengen. Deaktivieren Sie die Option, damit Texte mit Ihrem gewählten Modell eingeordnet werden.",
+      "unavailable": "Nur verfügbar, wenn das Coding-Modell über MindsHub läuft."
     }
   },
   "desktop": {
@@ -494,5 +504,12 @@
       "saved": "Gespeichert. Mitglieder sehen es, wenn sie die App oder die Einstellungen das nächste Mal öffnen.",
       "clean": "Keine nicht gespeicherten Branding-Änderungen"
     }
+  },
+  "voice": {
+    "title": "Stimme",
+    "agentTitle": "Sprachagent",
+    "agentHelp": "Sprechen Sie über die Anruftaste mit {agent}. Aus blendet die Anruftasten aus und beendet einen laufenden Anruf.",
+    "voiceTitle": "Stimme",
+    "voiceHelp": "Wählen Sie eine aus, um sie zu hören. {agent} sagt in jeder neuen Stimme einen kurzen Satz."
   }
 }

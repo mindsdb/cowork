@@ -1,13 +1,28 @@
-// View stats of one published artifact, for its owner.
+// View stats and viewer analytics of one published artifact, for its owner.
 //
-// Loads every time the Stats panel opens (`enabled` turns true) and never
-// polls. Desktop addresses the artifact by path and org mode by project and
-// id, the same split usePublish makes. API functions are called only from
-// callbacks, never during render.
+// Loads every time the Stats panel (or the Share panel) opens (`enabled`
+// turns true) and never polls. Desktop addresses the artifact by path and org
+// mode by project and id, the same split usePublish makes. API functions are
+// called only from callbacks, never during render.
+//
+// The Stats panel and the Share panel each hold one of these. A settings
+// change saved in one is announced to the other (`trackingChanges`), so the
+// two never disagree about whether analytics is on.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchPublishStats, publishTargetPath, setPublishTracking } from '../../../api';
-import { loadArtifactStats, setArtifactTracking } from '../../../lib/artifactWorkspaceApi';
+import {
+  deletePublishStats,
+  fetchPublishStats,
+  fetchPublishStatsViewer,
+  publishTargetPath,
+  setPublishTracking,
+} from '../../../api';
+import {
+  deleteArtifactStats,
+  loadArtifactStats,
+  loadArtifactStatsViewer,
+  setArtifactTracking,
+} from '../../../lib/artifactWorkspaceApi';
 import { useOrgMode } from '../../../../lib/orgMode';
 import i18n from '../../../../lib/i18n';
 
@@ -23,6 +38,27 @@ function identityOf(artifact) {
   return `${artifact?.projectId || ''}/${artifact?.id || ''}/${artifact?.folder || artifact?.path || ''}`;
 }
 
+// `true`/`false` is the analytics switch alone; an object may carry either.
+function settingsPatch(settings) {
+  if (typeof settings === 'boolean') return { tracking: settings };
+  const patch = {};
+  if (typeof settings?.tracking === 'boolean') patch.tracking = settings.tracking;
+  if (typeof settings?.require_email === 'boolean') patch.require_email = settings.require_email;
+  return patch;
+}
+
+// Saved settings, announced to every hook showing the same artifact.
+const listeners = new Set();
+export const trackingChanges = {
+  subscribe(listener) {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  },
+  emit(identity, patch) {
+    listeners.forEach((listener) => listener(identity, patch));
+  },
+};
+
 export function useArtifactStats(artifact, { enabled = false } = {}) {
   const orgMode = useOrgMode();
   // Data, error and the saving lock are stored with the identity they belong
@@ -31,7 +67,10 @@ export function useArtifactStats(artifact, { enabled = false } = {}) {
   const [entry, setEntry] = useState(null);
   const [errorEntry, setErrorEntry] = useState(null);
   const [busyKey, setBusyKey] = useState(null);
+  const [deletingKey, setDeletingKey] = useState(null);
   const [loading, setLoading] = useState(false);
+  // The viewer whose visits are on screen: `{ key, id, data, loading, error }`.
+  const [viewerEntry, setViewerEntry] = useState(null);
 
   const artifactRef = useRef(artifact);
   artifactRef.current = artifact;
@@ -41,10 +80,23 @@ export function useArtifactStats(artifact, { enabled = false } = {}) {
   // Bumped by every load and by every close, so a response that belongs to
   // an earlier open or to another artifact is dropped instead of painted.
   const requestRef = useRef(0);
+  const viewerRequestRef = useRef(0);
   const busyKeyRef = useRef(null);
   const data = entry && entry.key === identity ? entry.value : null;
   const error = errorEntry && errorEntry.key === identity ? errorEntry.value : null;
   const trackingBusy = busyKey === identity;
+  const deleting = deletingKey === identity;
+  const viewer = viewerEntry && viewerEntry.key === identity
+    ? { id: viewerEntry.id, data: viewerEntry.data, loading: viewerEntry.loading, error: viewerEntry.error }
+    : null;
+
+  const patchSettings = useCallback((key, patch) => setEntry((current) => (
+    current && current.key === key
+      ? { ...current, value: { ...current.value, ...patch } }
+      : current
+  )), []);
+
+  useEffect(() => trackingChanges.subscribe((key, patch) => patchSettings(key, patch)), [patchSettings]);
 
   const reload = useCallback(async () => {
     const request = ++requestRef.current;
@@ -69,6 +121,8 @@ export function useArtifactStats(artifact, { enabled = false } = {}) {
     // viewer's "first load of this open" check never sees the previous data.
     setEntry(null);
     setErrorEntry(null);
+    setViewerEntry(null);
+    viewerRequestRef.current += 1;
     if (!enabled) {
       requestRef.current += 1;
       setLoading(false);
@@ -77,28 +131,27 @@ export function useArtifactStats(artifact, { enabled = false } = {}) {
     reload();
   }, [enabled, identity, reload]);
 
-  const setTracking = useCallback(async (next) => {
+  // Saves the analytics switch (a boolean) or `{ tracking, require_email }`.
+  const setTracking = useCallback(async (settings) => {
     const key = identityRef.current;
-    if (busyKeyRef.current === key || !data) return false;
-    const previous = data.tracking;
-    const patch = (tracking) => setEntry((current) => (
-      current && current.key === key
-        ? { ...current, value: { ...current.value, tracking } }
-        : current
-    ));
+    const patch = settingsPatch(settings);
+    if (busyKeyRef.current === key || !data || !Object.keys(patch).length) return false;
+    const previous = Object.fromEntries(Object.keys(patch).map((name) => [name, data[name]]));
     busyKeyRef.current = key;
     setBusyKey(key);
     setErrorEntry(null);
-    patch(next);
+    patchSettings(key, patch);
     try {
       const target = artifactRef.current;
       const result = orgMode
-        ? await setArtifactTracking(target, next)
-        : await setPublishTracking(publishTargetPath(target), next);
-      patch(typeof result?.tracking === 'boolean' ? result.tracking : next);
+        ? await setArtifactTracking(target, settings)
+        : await setPublishTracking(publishTargetPath(target), settings);
+      const saved = { ...patch, ...settingsPatch(result || {}) };
+      patchSettings(key, saved);
+      trackingChanges.emit(key, saved);
       return true;
     } catch (e) {
-      patch(previous);
+      patchSettings(key, previous);
       // One error slot serves the whole hook: a late failure for an artifact
       // no longer on screen must not overwrite the current artifact's error.
       if (identityRef.current === key) setErrorEntry({ key, value: toStatsError(e) });
@@ -108,9 +161,73 @@ export function useArtifactStats(artifact, { enabled = false } = {}) {
       if (busyKeyRef.current === key) busyKeyRef.current = null;
       setBusyKey((current) => (current === key ? null : current));
     }
-  }, [data, orgMode]);
+  }, [data, orgMode, patchSettings]);
 
-  return { data, loading, error, trackingBusy, reload, setTracking };
+  const setRequireEmail = useCallback((on) => setTracking({ require_email: !!on }), [setTracking]);
+
+  const openViewer = useCallback(async (viewerId) => {
+    if (!viewerId) return;
+    const request = ++viewerRequestRef.current;
+    const key = identityRef.current;
+    setViewerEntry({ key, id: viewerId, data: null, loading: true, error: null });
+    try {
+      const target = artifactRef.current;
+      const next = orgMode
+        ? await loadArtifactStatsViewer(target, viewerId)
+        : await fetchPublishStatsViewer(publishTargetPath(target), viewerId);
+      if (request === viewerRequestRef.current) {
+        setViewerEntry({ key, id: viewerId, data: next, loading: false, error: null });
+      }
+    } catch (e) {
+      if (request === viewerRequestRef.current) {
+        setViewerEntry({ key, id: viewerId, data: null, loading: false, error: toStatsError(e) });
+      }
+    }
+  }, [orgMode]);
+
+  const closeViewer = useCallback(() => {
+    viewerRequestRef.current += 1;
+    setViewerEntry(null);
+  }, []);
+
+  // Deletes every view, visit and viewer recorded, then reads the stats
+  // again so the panel shows what is left (the settings).
+  const deleteAnalytics = useCallback(async () => {
+    const key = identityRef.current;
+    if (deletingKey === key) return false;
+    setDeletingKey(key);
+    setErrorEntry(null);
+    try {
+      const target = artifactRef.current;
+      if (orgMode) await deleteArtifactStats(target);
+      else await deletePublishStats(publishTargetPath(target));
+      if (identityRef.current === key) {
+        closeViewer();
+        await reload();
+      }
+      return true;
+    } catch (e) {
+      if (identityRef.current === key) setErrorEntry({ key, value: toStatsError(e) });
+      return false;
+    } finally {
+      setDeletingKey((current) => (current === key ? null : current));
+    }
+  }, [deletingKey, orgMode, closeViewer, reload]);
+
+  return {
+    data,
+    loading,
+    error,
+    trackingBusy,
+    deleting,
+    viewer,
+    reload,
+    setTracking,
+    setRequireEmail,
+    openViewer,
+    closeViewer,
+    deleteAnalytics,
+  };
 }
 
 export default useArtifactStats;

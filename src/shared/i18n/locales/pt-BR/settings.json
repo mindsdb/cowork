@@ -258,7 +258,7 @@
     "topUp": "Recarregar saldo →",
     "addFunds": "Adicionar fundos →",
     "slowDown": "{sentence} Não é um problema de créditos.",
-    "budgetReached": "O orçamento da sua organização acabou. {detail}",
+    "budgetReached": "Um orçamento acabou. {detail}",
     "viewBudgetsArrow": "Ver orçamentos →"
   },
   "providers": {
@@ -315,7 +315,9 @@
       "router": "Modelo de roteamento e resumo",
       "coding": "Modelo de código",
       "planningSubtitle": "Usado para raciocinar, orquestrar e responder.",
-      "codingSubtitle": "Usado para gerar código no scratchpad."
+      "codingSubtitle": "Usado para gerar código no scratchpad.",
+      "image": "Modelo de imagem",
+      "imageSubtitle": "Usado para gerar e editar imagens."
     },
     "providerLabel": "Provedor:",
     "modelLabel": "Modelo:",
@@ -331,9 +333,12 @@
     "modelUnavailable": "{model} não está disponível. Escolha outro modelo ou fale com seu administrador.",
     "modelRestricted": "Um administrador da sua organização restringiu {model}. Escolha outro modelo.",
     "modelNeedsCredits": "{model} precisa de créditos. {link} para usá-lo.",
+    "modelNeedsCreditsNoLink": "{model} precisa de créditos.",
     "topUpBalance": "Recarregue seu saldo",
-    "modelBudgetReached": "{model} não pode ser executado porque o orçamento da sua organização acabou.",
-    "viewBudgets": "Ver orçamentos"
+    "modelBudgetReached": "{model} não pode ser executado porque um orçamento que o cobre acabou.",
+    "viewBudgets": "Ver orçamentos",
+    "imageModelNeedsMindsHub": "A geração de imagens funciona com o MindsHub. Adicione-o em Provedores de LLM para escolher um modelo de imagem.",
+    "imageModelHint": "Escolha o modelo usado para gerar imagens."
   },
   "memory": {
     "title": "Memória",
@@ -384,6 +389,11 @@
     "jev": {
       "title": "Respostas rápidas com Jev",
       "subtitle": "Jev, o modelo de decisão do MindsHub, lê cada mensagem e a conversa recente para decidir se o modelo escolhido pode respondê-la diretamente, e verifica se {agent} terminou o trabalho. Desative para que {agent} processe cada mensagem."
+    },
+    "jevClassify": {
+      "title": "Usar Jev para classificação",
+      "subtitle": "Permite que {agent} classifique muitos textos em categorias, ou responda a uma pergunta de sim ou não sobre cada um, com Jev, o modelo de decisão do MindsHub, em vez do modelo escolhido. Mais rápido e barato para grandes volumes. Desative para rotular os textos com o modelo escolhido.",
+      "unavailable": "Disponível apenas quando o modelo de código roda no MindsHub."
     }
   },
   "desktop": {
@@ -494,5 +504,12 @@
       "saved": "Salvo. Os membros verão na próxima vez que abrirem o app ou as Configurações.",
       "clean": "Nenhuma alteração de marca não salva"
     }
+  },
+  "voice": {
+    "title": "Voz",
+    "agentTitle": "Agente de voz",
+    "agentHelp": "Converse com {agent} pelo botão de chamada. Desativado oculta os botões de chamada e encerra a chamada em andamento.",
+    "voiceTitle": "Voz",
+    "voiceHelp": "Escolha uma para ouvi-la. {agent} diz uma frase curta em cada voz nova."
   }
 }

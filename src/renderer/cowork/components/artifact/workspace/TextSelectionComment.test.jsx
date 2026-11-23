@@ -49,6 +49,7 @@ describe('TextSelectionComment', () => {
       selector: JSON.stringify(SELECTION),
       text: 'tighten this',
       kind: 'review',
+      images: [],
     });
   });
 });

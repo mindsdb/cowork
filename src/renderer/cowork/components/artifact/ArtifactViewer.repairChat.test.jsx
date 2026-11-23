@@ -146,6 +146,15 @@ describe('the chat an artifact repair is addressed to', () => {
     );
   });
 
+  // The repair is reviewed in the viewer, so the host runs its turn without
+  // showing the chat (ENG-4560).
+  it('asks the host to run the turn in the background', async () => {
+    const onAddressWithAgent = addressWithAgent({ resolveRepairConversation: vi.fn(async () => ORIGIN_CHAT) });
+
+    await waitFor(() => expect(onAddressWithAgent).toHaveBeenCalled());
+    expect(onAddressWithAgent).toHaveBeenCalledWith(expect.objectContaining({ inBackground: true }));
+  });
+
   it('mints a new chat when the host cannot reach the origin chat', async () => {
     const onAddressWithAgent = addressWithAgent({
       resolveRepairConversation: vi.fn(async () => ''),

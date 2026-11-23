@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 
 // token-refresh.ts pulls in keychain-service.ts, which imports the native
 // `keytar` module at load time — fine on macOS (Keychain Services), but it
@@ -11,8 +11,15 @@ vi.mock('./keychain-service', () => ({
   setRefreshToken: vi.fn(),
 }));
 
-import { getRefreshToken } from './keychain-service';
-import { parseAppIdFromClientId, startRefreshLoop, stopAllRefreshLoops } from './token-refresh';
+import { getRefreshToken, setRefreshToken } from './keychain-service';
+import { parseAppIdFromClientId, refreshAccessTokenNow, startRefreshLoop, stopAllRefreshLoops } from './token-refresh';
+import { APP_SECRET_HEADER, clearAppSecret, newAppSecret, setServerTrust } from './app-secret';
+
+// A legacy server is running unless a test says otherwise.
+beforeEach(() => {
+  newAppSecret();
+  setServerTrust('legacy');
+});
 
 describe('parseAppIdFromClientId', () => {
   it('extracts the leading project number from a standard client id', () => {
@@ -86,5 +93,269 @@ describe('tick — refresh request body', () => {
     const body = await runOneTick({ client_id: 'cid-123', client_secret: 'csecret-456' });
     const params = new URLSearchParams(body);
     expect(params.get('client_secret')).toBe('csecret-456');
+  });
+});
+
+describe('tick — refresh outcomes', () => {
+  afterEach(() => {
+    stopAllRefreshLoops();
+    vi.restoreAllMocks();
+  });
+
+  const TOKEN_URL = 'https://token.example.com/token';
+
+  // Records every token-endpoint call and every PATCH /token body, and lets
+  // a test script the token endpoint's behaviour call by call.
+  function mockServer(tokenEndpoint: Array<() => Response>) {
+    const tokenCalls: string[] = [];
+    const patches: Record<string, string>[] = [];
+    globalThis.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = typeof url === 'string' ? url : url.toString();
+      if (href.includes('/credentials')) {
+        return new Response(JSON.stringify({ client_id: 'cid', client_secret: '' }), { status: 200 });
+      }
+      if (href.endsWith('/token') && init?.method === 'PATCH') {
+        patches.push(JSON.parse(init.body as string));
+        return new Response('{}', { status: 200 });
+      }
+      if (href === TOKEN_URL) {
+        const next = tokenEndpoint[tokenCalls.length];
+        tokenCalls.push(init?.body as string);
+        if (!next) throw new Error('token endpoint called too many times');
+        return next();
+      }
+      throw new Error(`unexpected fetch: ${href}`);
+    }) as unknown as typeof fetch;
+    return { tokenCalls, patches };
+  }
+
+  const TICK_MS = 5 * 60 * 1000;
+
+  it('marks an expired connection needs_reconnect once its refresh token is missing three ticks in a row', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(getRefreshToken).mockResolvedValue(null);
+      const { tokenCalls, patches } = mockServer([]);
+
+      startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date(Date.now() - 1000).toISOString(), TOKEN_URL, undefined, true);
+
+      await vi.advanceTimersByTimeAsync(TICK_MS);
+      expect(patches).toEqual([]);
+      await vi.advanceTimersByTimeAsync(TICK_MS);
+      expect(patches).toEqual([{ status: 'needs_reconnect' }]);
+      expect(tokenCalls).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a connection whose refresh token comes back after a keychain miss', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(getRefreshToken)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce('rt-1')
+        .mockResolvedValue(null);
+      const { patches } = mockServer([
+        () => new Response(JSON.stringify({ error: 'temporarily_unavailable' }), { status: 503 }),
+      ]);
+
+      startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date(Date.now() - 1000).toISOString(), TOKEN_URL, undefined, true);
+
+      // Two misses, a successful read, then two more misses: the count
+      // restarted, so the connection is still not marked.
+      await vi.advanceTimersByTimeAsync(4 * TICK_MS);
+      expect(patches).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('leaves an expired connection alone when its connector always issues a refresh token', async () => {
+    // A missing token here is a keychain miss (locked or denied after sleep),
+    // not a dead grant: the next tick tries again.
+    vi.mocked(getRefreshToken).mockResolvedValue(null);
+    const { tokenCalls, patches } = mockServer([]);
+
+    startRefreshLoop('google_drive', 'my-drive', 'user@example.com', new Date(Date.now() - 1000).toISOString(), TOKEN_URL);
+
+    await vi.waitFor(() => expect(vi.mocked(getRefreshToken)).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(patches).toEqual([]);
+    expect(tokenCalls).toHaveLength(0);
+  });
+
+  it('leaves a not-yet-expired connection with no refresh token alone', async () => {
+    vi.mocked(getRefreshToken).mockResolvedValue(null);
+    const { patches } = mockServer([]);
+
+    // Inside the pre-refresh window, but not expired.
+    startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date(Date.now() + 60_000).toISOString(), TOKEN_URL, undefined, true);
+
+    await vi.waitFor(() => expect(vi.mocked(getRefreshToken)).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(patches).toEqual([]);
+  });
+
+  it('retries once immediately with the same token after a network failure', async () => {
+    vi.mocked(getRefreshToken).mockResolvedValue('rt-1');
+    const { tokenCalls, patches } = mockServer([
+      () => { throw new TypeError('fetch failed'); },
+      () => new Response(JSON.stringify({ access_token: 'at-2', expires_in: 3600, refresh_token: 'rt-2' }), { status: 200 }),
+    ]);
+
+    startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date().toISOString(), TOKEN_URL);
+
+    await vi.waitFor(() => expect(patches).toHaveLength(1));
+    expect(tokenCalls).toHaveLength(2);
+    expect(new URLSearchParams(tokenCalls[1]).get('refresh_token')).toBe('rt-1');
+    expect(patches[0].access_token).toBe('at-2');
+    expect(vi.mocked(setRefreshToken)).toHaveBeenCalledWith('notion', 'user@example.com:ws-1', 'rt-2');
+  });
+
+  it('retries once right away when the refresh request stalls past its timeout', async () => {
+    vi.mocked(getRefreshToken).mockResolvedValue('rt-1');
+    const { tokenCalls, patches } = mockServer([
+      () => { throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); },
+      () => new Response(JSON.stringify({ access_token: 'at-2', expires_in: 3600 }), { status: 200 }),
+    ]);
+
+    startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date().toISOString(), TOKEN_URL);
+
+    await vi.waitFor(() => expect(patches).toHaveLength(1));
+    expect(tokenCalls).toHaveLength(2);
+    const refreshCalls = vi.mocked(globalThis.fetch).mock.calls.filter((c) => c[0] === TOKEN_URL);
+    expect(refreshCalls.every((c) => (c[1] as RequestInit).signal instanceof AbortSignal)).toBe(true);
+  });
+
+  it('does not retry an invalid_grant', async () => {
+    vi.mocked(getRefreshToken).mockResolvedValue('rt-1');
+    const { tokenCalls, patches } = mockServer([
+      () => new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 }),
+    ]);
+
+    startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date().toISOString(), TOKEN_URL);
+
+    await vi.waitFor(() => expect(patches).toEqual([{ status: 'needs_reconnect' }]));
+    expect(tokenCalls).toHaveLength(1);
+  });
+
+  it('marks needs_reconnect when Slack answers 200 with ok: false, invalid_refresh_token', async () => {
+    vi.mocked(getRefreshToken).mockResolvedValue('xoxe-1');
+    const { tokenCalls, patches } = mockServer([
+      () => new Response(JSON.stringify({ ok: false, error: 'invalid_refresh_token' }), { status: 200 }),
+    ]);
+
+    startRefreshLoop('slack', 'my-slack', 'ann@acme.com:T1', new Date().toISOString(), TOKEN_URL);
+
+    await vi.waitFor(() => expect(patches).toEqual([{ status: 'needs_reconnect' }]));
+    expect(tokenCalls).toHaveLength(1);
+    expect(vi.mocked(setRefreshToken)).not.toHaveBeenCalledWith('slack', expect.anything(), expect.anything());
+  });
+
+  it('keeps the connection on a transient Slack ok: false and stores nothing', async () => {
+    vi.mocked(getRefreshToken).mockResolvedValue('xoxe-1');
+    const { tokenCalls, patches } = mockServer([
+      () => new Response(JSON.stringify({ ok: false, error: 'ratelimited' }), { status: 200 }),
+    ]);
+
+    startRefreshLoop('slack', 'my-slack', 'ann@acme.com:T1', new Date().toISOString(), TOKEN_URL);
+
+    await vi.waitFor(() => expect(tokenCalls).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(patches).toEqual([]);
+  });
+});
+
+describe('app-held secrets on the refresh path', () => {
+  afterEach(() => {
+    stopAllRefreshLoops();
+    clearAppSecret();
+    vi.restoreAllMocks();
+  });
+
+  const TOKEN_URL = 'https://token.example.com/token';
+
+  /** A token endpoint that rotates the refresh token on every call, and a
+   *  keychain that keeps whatever was last written, like the real ones. */
+  function rotatingProvider() {
+    let stored = 'rt-1';
+    let issued = 1;
+    vi.mocked(getRefreshToken).mockImplementation(async () => stored);
+    vi.mocked(setRefreshToken).mockImplementation(async (_e, _a, token) => { stored = token; });
+    const usedRefreshTokens: string[] = [];
+    const patches: Array<{ headers: Record<string, string>; body: Record<string, string> }> = [];
+    globalThis.fetch = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      const href = typeof url === 'string' ? url : url.toString();
+      if (href.includes('/credentials')) {
+        return new Response(JSON.stringify({ client_id: 'cid', client_secret: '' }), { status: 200 });
+      }
+      if (href.endsWith('/token') && init?.method === 'PATCH') {
+        patches.push({ headers: init.headers as Record<string, string>, body: JSON.parse(init.body as string) });
+        return new Response('{}', { status: 200 });
+      }
+      if (href === TOKEN_URL) {
+        usedRefreshTokens.push(new URLSearchParams(init?.body as string).get('refresh_token') ?? '');
+        // Slow enough that an unserialized second refresh would read the old token.
+        await new Promise((r) => setTimeout(r, 20));
+        issued++;
+        return new Response(JSON.stringify({ access_token: `at-${issued}`, expires_in: 3600, refresh_token: `rt-${issued}` }), { status: 200 });
+      }
+      throw new Error(`unexpected fetch: ${href}`);
+    }) as unknown as typeof fetch;
+    return { usedRefreshTokens, patches };
+  }
+
+  it('sends the app secret on PATCH /token in protected mode', async () => {
+    const secret = newAppSecret();
+    setServerTrust('protected');
+    const { patches } = rotatingProvider();
+
+    startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date().toISOString(), TOKEN_URL);
+
+    await vi.waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0].headers[APP_SECRET_HEADER]).toBe(secret);
+    expect(patches[0].body.access_token).toBe('at-2');
+  });
+
+  it('sends no app secret in legacy mode', async () => {
+    newAppSecret();
+    setServerTrust('legacy');
+    const { patches } = rotatingProvider();
+
+    startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date().toISOString(), TOKEN_URL);
+
+    await vi.waitFor(() => expect(patches).toHaveLength(1));
+    expect(Object.keys(patches[0].headers)).not.toContain(APP_SECRET_HEADER);
+  });
+
+  it('runs a forced refresh after an in-flight tick, never reusing a rotated refresh token', async () => {
+    const { usedRefreshTokens, patches } = rotatingProvider();
+
+    // Already inside the refresh window, so the loop's first tick refreshes too.
+    startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date().toISOString(), TOKEN_URL);
+    const forced = await refreshAccessTokenNow('notion', 'user@example.com:ws-1');
+
+    expect(usedRefreshTokens).toEqual(['rt-1', 'rt-2']);
+    expect(forced).toEqual({ access_token: 'at-3', expires_at: expect.any(String) });
+    expect(patches.map((p) => p.body.access_token)).toEqual(['at-2', 'at-3']);
+  });
+
+  it.each(['untrusted', 'none'] as const)('neither refreshes nor sends a token while the server is %s', async (trust) => {
+    setServerTrust(trust);
+    const { usedRefreshTokens, patches } = rotatingProvider();
+
+    startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date().toISOString(), TOKEN_URL);
+    const forced = await refreshAccessTokenNow('notion', 'user@example.com:ws-1');
+
+    expect(forced).toBeNull();
+    expect(usedRefreshTokens).toEqual([]);
+    expect(patches).toEqual([]);
+  });
+
+  it('returns null for a forced refresh with no loop running', async () => {
+    rotatingProvider();
+    expect(await refreshAccessTokenNow('notion', 'nobody@example.com')).toBeNull();
   });
 });

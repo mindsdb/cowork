@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('../../platform/host', () => ({ host: { isWeb: true } }));
 
 import {
+  artifactSection,
+  groupArtifactsBySection,
   artifactShareState,
   audienceCountsPhrase,
   filterPeople,
@@ -448,3 +450,46 @@ describe('Share or Shared', () => {
     expect(artifactShareState({ ...card, accessMode: 'public' }, { audienceKnown: false }).kind).toBe('public');
   });
 });
+
+
+// Artifacts are grouped as skills are, by the server's skill rule (ENG-4455).
+describe('artifactSection and groupArtifactsBySection', () => {
+  const art = (id, extra = {}) => ({ id, title: id, capabilities: { role: 'owner' }, ...extra });
+  const theirs = { capabilities: { role: 'reviewer' } };
+  const TEAMS = [{ id: 't-all', display_name: 'All members', is_default: true }, { id: 't-1', display_name: 'Platform' }];
+
+  it('puts the caller\'s own by audience (everyone or default team, a team, else theirs) and anyone else\'s as shared with them', () => {
+    expect(artifactSection(art('a', { orgAllowed: true }))).toBe('org');
+    expect(artifactSection(art('b', { allowedTeamIds: ['t-all'] }), { teams: TEAMS })).toBe('org');
+    expect(artifactSection(art('c', { allowedTeamIds: ['t-1'] }), { teams: TEAMS })).toBe('team');
+    expect(artifactSection(art('d', { accessEmails: ['x@example.com'] }))).toBe('mine');
+    expect(artifactSection(art('e', { ...theirs, accessEmails: ['me@example.com'] }))).toBe('shared_with_me');
+    expect(artifactSection(art('f', { capabilities: { role: 'reviewer', ownerUnknown: true } }))).toBe('shared_with_me');
+    // Someone else's, shared with a team or everyone: still shared with me.
+    expect(artifactSection(art('g', { ...theirs, allowedTeamIds: ['t-1'] }), { teams: TEAMS })).toBe('shared_with_me');
+    expect(artifactSection(art('h', { ...theirs, orgAllowed: true }))).toBe('shared_with_me');
+  });
+
+  it('counts an audience the card does not know by its owner alone', () => {
+    expect(artifactSection(art('g', { allowedTeamIds: null }))).toBe('mine');
+    expect(artifactSection(art('h', { ...theirs, allowedTeamIds: null }))).toBe('shared_with_me');
+  });
+
+  it('lists the caller\'s own first, then what they share, and what others shared last', () => {
+    const groups = groupArtifactsBySection([
+      art('theirs-1', theirs),
+      art('org-1', { orgAllowed: true }),
+      art('mine-1'),
+      art('team-1', { allowedTeamIds: ['t-1'] }),
+      art('mine-2'),
+    ], { orgName: 'Acme', teams: TEAMS });
+
+    expect(groups.map((g) => [g.id, g.artifacts.map((a) => a.id)])).toEqual([
+      ['mine', ['mine-1', 'mine-2']],
+      ['team', ['team-1']],
+      ['org', ['org-1']],
+      ['shared_with_me', ['theirs-1']],
+    ]);
+  });
+});
+

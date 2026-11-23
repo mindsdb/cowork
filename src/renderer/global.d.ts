@@ -80,6 +80,16 @@ interface AntonTronAPI {
   }>;
   oauthCancel: () => Promise<boolean>;
   keychainRevoke: (opts: { engine: string; name: string; accountEmail: string }) => Promise<{ ok: boolean; reason?: string }>;
+  setConnectionAccessMode?: (opts: { engine: string; name: string; accessMode: string }) => Promise<{ ok: boolean; access_mode?: string; status?: number; reason?: string }>;
+  customMcpAvailable?: () => Promise<boolean>;
+  customMcpConnect?: (opts: import('./platform/host').CustomMcpConnectOpts) => Promise<import('./platform/host').CustomMcpConnectResult>;
+  customMcpSummary?: (opts: { id: string }) => Promise<import('./platform/host').CustomMcpSummaryResult>;
+  customMcpTools?: (opts: { id: string }) => Promise<import('./platform/host').CustomMcpToolsResult>;
+  customMcpSetTools?: (opts: { id: string; tools: string[] }) => Promise<import('./platform/host').CustomMcpSetToolsResult>;
+  customMcpReconnect?: (opts: { id: string; confirmedLoginHosts?: string[] }) => Promise<import('./platform/host').CustomMcpReconnectResult>;
+  customMcpDisconnect?: (opts: { id: string }) => Promise<import('./platform/host').CustomMcpDisconnectResult>;
+  notionSearchPages?: (opts: { name: string; query: string }) => Promise<import('./platform/host').NotionPagesBridgeResult>;
+  notionFetchPage?: (opts: { name: string; page: string }) => Promise<import('./platform/host').NotionPagesBridgeResult>;
   onOAuthRefreshError: (cb: (payload: { engine: string; name: string; accountEmail: string; permanent: boolean }) => void) => () => void;
   oauthPickDriveFiles: (opts: { engine: string; name: string; accountEmail: string; fileIds?: string[]; projectName?: string }) => Promise<{
     ok: boolean;

@@ -5,6 +5,7 @@ import { host } from '../../../platform/host';
 import { useAccountUser } from '../../hooks/useAccountUser';
 import { useHubUsageContext } from '../../lib/hubUsageContext';
 import { trackBillingOpened } from '../../lib/analytics';
+import { billingCopyKey, offersBilling } from '../../lib/billingLinks';
 import {
   USAGE_ACTIONS,
   usageActionUrl,
@@ -17,6 +18,8 @@ import {
 } from '../../lib/usageWarnings';
 import { SettingsSectionPanel } from './settingsLayout';
 import { useTranslation } from '../../../lib/i18n';
+import { useUpgradeOffer } from '../../hooks/useUpgradeOffer';
+import { isPaidPlan, WINDOW_WARN_PERCENT } from '../../lib/subscriptionPlan';
 
 /* Settings → Usage (ENG-1782). The lightweight view of what the console's
    billing page shows: the free MindsHub Air allowance with when it refills, the
@@ -35,6 +38,7 @@ function openConsole(action, isBillingOwner) {
 // USAGE_ACTIONS stays the fallback for an action this section doesn't know.
 function ActionButton({ action, isBillingOwner, variant = 'default' }) {
   const { t } = useTranslation('settingsSystem');
+  if (!offersBilling()) return null;
   return (
     <Button variant={variant} size="sm" onClick={() => openConsole(action, isBillingOwner)}>
       {t(`usage.actions.${action.key}`, { defaultValue: action.label })}
@@ -51,7 +55,93 @@ const describableGrant = (free) => !!free && (free.limit === -1 || free.limit > 
 // its own element without the sentence being built from fragments.
 const SLOT = '\u2060SLOT\u2060';
 
-function FreeTokensCard({ free, isBillingOwner }) {
+/* "Get Plus", "Upgrade to Pro" (ENG-4186): only where this session may buy,
+   which useUpgradeOffer decides. */
+function UpgradeButton({ upgrade, tier, variant = 'default' }) {
+  const { t } = useTranslation('settingsSystem');
+  if (!tier || !upgrade.canOffer(tier)) return null;
+  return (
+    <Button variant={variant} size="sm" onClick={() => upgrade.open(tier, 'usage_settings')}>
+      {t('usage.plan.upgrade', { tier })}
+      <Icon of={ExternalLink} size={12} />
+    </Button>
+  );
+}
+
+/* One window of a paid plan: its share used and when it frees up. A
+   percentage only, never dollars or tokens (ENG-4186). */
+function WindowMeter({ w }) {
+  const { t } = useTranslation('settingsSystem');
+  const reset = formatResetTime(w.resetsAt);
+  const pct = Math.round(w.percentUsed);
+  const full = w.percentUsed >= 100;
+  const warm = !full && w.percentUsed >= WINDOW_WARN_PERCENT;
+  return (
+    <div className="mt-3">
+      <div className="flex items-baseline justify-between mb-1.5 gap-3">
+        <div className="text-[13px] text-ink-2">{t('usage.plan.windowName', { window: w.window })}</div>
+        <div className="text-[12px] text-ink-3 tabular-nums">
+          {reset
+            ? t('usage.plan.windowUsedResets', { percent: `${pct}%`, time: reset })
+            : t('usage.plan.windowUsed', { percent: `${pct}%` })}
+        </div>
+      </div>
+      <Meter
+        value={w.percentUsed / 100}
+        tone={full ? 'danger' : warm ? 'warning' : 'accent'}
+        label={t('usage.plan.windowMeterLabel', { window: w.window })}
+      />
+    </div>
+  );
+}
+
+/* Settings → Usage's plan card for Plus and Pro (ENG-4186): which plan, when
+   it renews or ends, the two window meters, and Upgrade or Manage. Free and
+   no plan render no card: Free sees its allowance as before, plus Get Plus. */
+function PlanCard({ plan, upgrade }) {
+  const { t } = useTranslation('settingsSystem');
+  if (!isPaidPlan(plan)) return null;
+  // Inside the mobile app the card shows the plan and its windows only: no
+  // failed payment and no word about the wallet, like the Free card there.
+  const billing = offersBilling();
+  const pastDue = billing && plan.status === 'past_due';
+  const date = formatResetDate(plan.renewsAt);
+  const ending = plan.cancelAtPeriodEnd || plan.status === 'canceled';
+  let periodLine = null;
+  if (date) periodLine = ending ? t('usage.plan.endsOn', { date }) : t('usage.plan.renewsOn', { date });
+  return (
+    <div className={CARD}>
+      <div className="flex items-center justify-between gap-3 mb-1">
+        <div className="text-base font-semibold text-ink">{t('usage.plan.title', { tier: plan.tier })}</div>
+        {pastDue && <Badge variant="warning" size="xs" dot>{t('usage.plan.pastDue')}</Badge>}
+        {plan.status !== 'past_due' && ending && <Badge variant="muted" size="xs">{t('usage.plan.ending')}</Badge>}
+      </div>
+      {periodLine && <div className="text-[12px] text-ink-3">{periodLine}</div>}
+      {pastDue && <div className="text-[12px] text-warning-text mt-1">{t('usage.plan.pastDueBody')}</div>}
+      {plan.windows.map((w) => <WindowMeter key={w.window} w={w} />)}
+      {billing && <div className="text-[12px] text-ink-3 mt-3">{t('usage.plan.afterCap')}</div>}
+      {upgrade.eligible && (
+        <div className="flex flex-wrap gap-2 mt-3">
+          <UpgradeButton upgrade={upgrade} tier={upgrade.tier} variant="primary" />
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => {
+              // A route to the billing page, not an upgrade.
+              trackBillingOpened('usage_settings');
+              host.openExternal(upgrade.manageUrl);
+            }}
+          >
+            {t('usage.plan.manage')}
+            <Icon of={ExternalLink} size={12} />
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FreeTokensCard({ free, isBillingOwner, upgrade = null }) {
   const { t } = useTranslation('settingsSystem');
   if (!describableGrant(free)) return null;
   const unlimited = free.limit === -1;
@@ -88,14 +178,15 @@ function FreeTokensCard({ free, isBillingOwner }) {
             <div className="text-[13px] text-ink-3 tabular-nums">{t('usage.free.left', { percent: formatPercentShort(fractionLeft) })}</div>
           </div>
           <Meter value={fraction} tone={exhausted ? 'danger' : low ? 'warning' : 'accent'} label={t('usage.free.meterLabel')} />
-          <div className="text-[12px] text-ink-3 mt-2">
+          {offersBilling() && <div className="text-[12px] text-ink-3 mt-2">
             {exhausted
               ? (reset ? t('usage.free.usedUpUntil', { time: reset }) : t('usage.free.usedUp'))
               : (reset ? t('usage.free.afterUntil', { time: reset }) : t('usage.free.after'))}
-          </div>
+          </div>}
         </>
       )}
       <div className="flex gap-2 mt-3">
+        {upgrade?.plan?.tier === 'free' && <UpgradeButton upgrade={upgrade} tier="plus" variant="primary" />}
         <ActionButton action={USAGE_ACTIONS.viewUsage} isBillingOwner={isBillingOwner} />
       </div>
     </div>
@@ -103,13 +194,13 @@ function FreeTokensCard({ free, isBillingOwner }) {
 }
 
 function autoTopUpLine(t, auto) {
-  if (!auto?.enabled) return { text: t('usage.autoTopUp.off'), tone: 'text-ink-3' };
+  if (!auto?.enabled) return { text: t(billingCopyKey('usage.autoTopUp.off')), tone: 'text-ink-3' };
   const target = auto.rechargeToUsd != null ? formatUsd(auto.rechargeToUsd) : null;
   const floor = auto.thresholdUsd != null ? formatUsd(auto.thresholdUsd) : null;
   const rule = target && floor ? t('usage.autoTopUp.rule', { target, floor }) : t('usage.autoTopUp.on');
   switch (auto.status) {
     case 'payment_failed':
-      return { text: t('usage.autoTopUp.paymentFailed'), tone: 'text-danger-text' };
+      return { text: t(billingCopyKey('usage.autoTopUp.paymentFailed')), tone: 'text-danger-text' };
     case 'cap_reached':
       return { text: t('usage.autoTopUp.capReached', { rule }), tone: 'text-warning-text' };
     case 'pending_action':
@@ -121,10 +212,10 @@ function autoTopUpLine(t, auto) {
 
 // Mirrors the usage bar's balance_low copy, so "turn on" only shows when auto top up is off.
 function lowBalanceLine(t, auto) {
-  if (!auto?.enabled) return t('usage.low.off');
+  if (!auto?.enabled) return t(billingCopyKey('usage.low.off'));
   if (auto.status === 'ok') return t('usage.low.ok');
   if (auto.status === 'pending_action') return t('usage.low.pending');
-  return t('usage.low.other');
+  return t(billingCopyKey('usage.low.other'));
 }
 
 function spentLabel(t, spend) {
@@ -136,7 +227,7 @@ function spentLabel(t, spend) {
   return t('usage.balance.spentThisPeriod');
 }
 
-function BalanceCard({ balance, auto, spend, isBillingOwner }) {
+function BalanceCard({ balance, auto, spend, isBillingOwner, upgrade = null }) {
   const { t } = useTranslation('settingsSystem');
   if (!balance) return null;
   const empty = isBalanceEmpty(balance);
@@ -154,7 +245,7 @@ function BalanceCard({ balance, auto, spend, isBillingOwner }) {
       <div className={`text-[26px] font-semibold tabular-nums leading-tight ${amountTone}`}>{formatUsd(balance.usd)}</div>
       <div className="text-[12px] text-ink-3 mt-1">
         {empty
-          ? t('usage.balance.empty')
+          ? t(billingCopyKey('usage.balance.empty'))
           : low
             ? lowBalanceLine(t, auto)
             : t('usage.balance.usedBy')}
@@ -166,10 +257,11 @@ function BalanceCard({ balance, auto, spend, isBillingOwner }) {
         </div>
       )}
       <div className={`text-[12px] mt-3 ${autoLine.tone}`}>{autoLine.text}</div>
-      {!isBillingOwner && (
+      {!isBillingOwner && offersBilling() && (
         <div className="text-[12px] text-ink-3 mt-2">{t('usage.balance.notOwner')}</div>
       )}
       <div className="flex flex-wrap gap-2 mt-3">
+        {upgrade && <UpgradeButton upgrade={upgrade} tier="plus" />}
         <ActionButton action={USAGE_ACTIONS.addFunds} isBillingOwner={isBillingOwner} variant="primary" />
         {auto?.status === 'payment_failed'
           ? <ActionButton action={USAGE_ACTIONS.updatePaymentMethod} isBillingOwner={isBillingOwner} />
@@ -184,13 +276,22 @@ export default function UsageSection({ isSsoConnected = false, onOpenAccount }) 
   const accountUser = useAccountUser(isSsoConnected);
   const ctx = useHubUsageContext();
   const usage = ctx?.usage;
+  const upgrade = useUpgradeOffer();
+  // A Free plan's "Get Plus" sits on the allowance card, or on the balance
+  // card when there is no allowance to show.
+  const freePlan = upgrade.plan?.tier === 'free';
+  // On Plus or Pro the plan pays for Air, so the free allowance card would
+  // count Air use the plan covers and say the balance is paying for it. The
+  // plan card's meters are the account's figure instead.
+  const paidPlan = isPaidPlan(upgrade.plan);
+  const freeCardShown = describableGrant(usage?.freeTokens);
 
   let body;
   if (!accountUser) {
     body = (
       <div className={`${CARD} flex flex-col items-start gap-3`}>
         <div className="text-base font-semibold text-ink">{t('usage.signIn.title')}</div>
-        <div className="text-[13px] text-ink-3">{t('usage.signIn.body')}</div>
+        {offersBilling() && <div className="text-[13px] text-ink-3">{t('usage.signIn.body')}</div>}
         {onOpenAccount && <Button variant="primary" size="sm" onClick={onOpenAccount}>{t('usage.signIn.goToAccount')}</Button>}
       </div>
     );
@@ -203,7 +304,7 @@ export default function UsageSection({ isSsoConnected = false, onOpenAccount }) 
     body = (
       <div className={`${CARD} flex flex-col items-start gap-3`}>
         <div className="text-base font-semibold text-ink">{t('usage.error.title')}</div>
-        <div className="text-[13px] text-ink-3">{t('usage.error.body')}</div>
+        <div className="text-[13px] text-ink-3">{t(billingCopyKey('usage.error.body'))}</div>
         <div className="flex gap-2">
           {ctx?.refresh && (
             <Button variant="default" size="sm" onClick={() => ctx.refresh()}>
@@ -218,9 +319,18 @@ export default function UsageSection({ isSsoConnected = false, onOpenAccount }) 
   } else {
     body = (
       <>
-        <FreeTokensCard free={usage.freeTokens} isBillingOwner={usage.isBillingOwner} />
-        <BalanceCard balance={usage.balance} auto={usage.autoTopUp} spend={usage.creditSpend} isBillingOwner={usage.isBillingOwner} />
-        {!describableGrant(usage.freeTokens) && !usage.balance && (
+        <PlanCard plan={upgrade.plan} upgrade={upgrade} />
+        {!paidPlan && <FreeTokensCard free={usage.freeTokens} isBillingOwner={usage.isBillingOwner} upgrade={upgrade} />}
+        {offersBilling() && (
+          <BalanceCard
+            balance={usage.balance}
+            auto={usage.autoTopUp}
+            spend={usage.creditSpend}
+            isBillingOwner={usage.isBillingOwner}
+            upgrade={freePlan && !freeCardShown ? upgrade : null}
+          />
+        )}
+        {!paidPlan && !describableGrant(usage.freeTokens) && (!offersBilling() || !usage.balance) && (
           <div className={`${CARD} text-[13px] text-ink-3`}>{t('usage.empty')}</div>
         )}
       </>

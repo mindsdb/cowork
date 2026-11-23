@@ -30,7 +30,7 @@ export function MoreNotices({ count, onShow }: { count: number; onShow: () => vo
  * One status line that peeks out from behind the composer. It stays within
  * two lines; technical detail opens on request instead of growing the strip.
  */
-export function ComposerLip({ notice, more = 0, onShowMore = () => {}, onChooseModel, onAddCredits, onViewBudgets = () => {}, onReopen, onDismiss }: {
+export function ComposerLip({ notice, more = 0, onShowMore = () => {}, onChooseModel, onAddCredits, onViewBudgets = () => {}, onReopen, onAllowWrites = () => {}, onDismiss }: {
   notice: ComposerNotice;
   more?: number;
   onShowMore?: () => void;
@@ -38,6 +38,7 @@ export function ComposerLip({ notice, more = 0, onShowMore = () => {}, onChooseM
   onAddCredits: (billingTrigger: string) => void;
   onViewBudgets?: () => void;
   onReopen: () => void;
+  onAllowWrites?: () => void;
   onDismiss: (key: string) => void;
 }) {
   const { t } = useTranslation('code');
@@ -50,6 +51,7 @@ export function ComposerLip({ notice, more = 0, onShowMore = () => {}, onChooseM
   const primary = notice.addCredits ? { label: t('composerLip.addCredits'), onClick: () => onAddCredits(notice.billingTrigger || 'unknown') }
     : notice.viewBudgets ? { label: t('composerLip.viewBudgets'), onClick: onViewBudgets }
     : notice.reopen ? { label: notice.reopening ? t('composerLip.reopening') : t('composerLip.reopen'), onClick: onReopen, disabled: notice.reopening }
+    : notice.allowWrites ? { label: t('composerLip.allowWrites'), onClick: onAllowWrites, disabled: notice.actionDisabled }
       : notice.chooseModel ? { label: t('composerLip.chooseModel'), onClick: onChooseModel }
         : null;
   const others = [

@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { expect, it, vi } from 'vitest';
 
 /* The desktop names MindsHub on the browser's model-provider line while the
@@ -44,5 +45,22 @@ it.each([
   ['names no provider while the app is signed out', false],
 ])('the browser group %s', async (_case, signedIn) => {
   renderSettings(signedIn);
+  // On the browser switch, on hover.
+  await userEvent.hover(await screen.findByRole('switch', { name: 'Browser mode' }));
   expect(await screen.findByText(pageContentLine('Cowork', { signedInToMindsHub: signedIn }))).toBeInTheDocument();
+});
+
+it.each([
+  ['shows Voice when MindsHub is the LLM provider', 'minds-cloud', true],
+  ['shows Voice when no provider is set (MindsHub by default)', undefined, true],
+  ['hides Voice with another LLM provider', 'anthropic', false],
+])('Settings %s', async (_case, planningProvider, shown) => {
+  render(<SettingsView
+    settings={{ configReady: true, planningProvider }} setSetting={vi.fn()} onSave={vi.fn(async () => ({}))} theme="dark" skin="normal" customTheme={{}}
+    onThemeChange={vi.fn()} onSkinChange={vi.fn()} onCustomThemeChange={vi.fn()}
+    agentLabel="Cowork" serverOnline section="agent" onSectionChange={vi.fn()} isSsoConnected={false}
+  />);
+  await screen.findByRole('switch', { name: 'Browser mode' });
+  if (shown) expect(screen.getByRole('switch', { name: 'Voice agent' })).toBeInTheDocument();
+  else expect(screen.queryByRole('switch', { name: 'Voice agent' })).not.toBeInTheDocument();
 });

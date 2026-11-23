@@ -6,17 +6,23 @@
         "addFunds": "Ajouter des fonds",
         "setUpAutoTopUp": "Configurer la recharge auto",
         "manageAutoTopUp": "Gérer la recharge auto",
-        "updatePaymentMethod": "Mettre à jour le moyen de paiement"
+        "updatePaymentMethod": "Mettre à jour le moyen de paiement",
+        "upgrade": "{tier, select, plus {Passer à Plus} pro {Passer à Pro} other {Changer de forfait}}"
       },
       "noFreeGrant": "Ce compte n’inclut pas de jetons MindsHub Air gratuits. MindsHub Air utilise votre solde, comme tous les autres modèles.",
       "allowanceStop": {
         "noGrant": "{noGrant} Votre solde est épuisé : ajoutez des fonds pour continuer.",
         "withTime": "Votre quota gratuit MindsHub Air est épuisé, tout comme votre solde. Ajoutez des fonds pour continuer, ou attendez qu’il se renouvelle à {time}.",
-        "noTime": "Votre quota gratuit MindsHub Air est épuisé, tout comme votre solde. Ajoutez des fonds pour continuer."
+        "noTime": "Votre quota gratuit MindsHub Air est épuisé, tout comme votre solde. Ajoutez des fonds pour continuer.",
+        "noTimeMobile": "Votre quota gratuit MindsHub Air est épuisé, tout comme votre solde.",
+        "noGrantMobile": "{noGrant} Votre solde est épuisé.",
+        "withTimeMobile": "Votre quota gratuit MindsHub Air est épuisé, tout comme votre solde. Réinitialisation à {time}."
       },
       "freeServingPaused": {
         "until": "MindsHub Air gratuit est suspendu pour tout le monde jusqu’à {until}. Votre quota n’est pas consommé. Ajoutez des fonds pour continuer dès maintenant.",
-        "dailyReset": "MindsHub Air gratuit est suspendu pour tout le monde jusqu’à la réinitialisation du budget quotidien. Votre quota n’est pas consommé. Ajoutez des fonds pour continuer dès maintenant."
+        "dailyReset": "MindsHub Air gratuit est suspendu pour tout le monde jusqu’à la réinitialisation du budget quotidien. Votre quota n’est pas consommé. Ajoutez des fonds pour continuer dès maintenant.",
+        "untilMobile": "MindsHub Air gratuit est suspendu pour tout le monde jusqu’à {until}. Votre quota n’est pas consommé.",
+        "dailyResetMobile": "MindsHub Air gratuit est suspendu pour tout le monde jusqu’à la réinitialisation du budget quotidien. Votre quota n’est pas consommé."
       },
       "resting": {
         "resetsAt": "Réinitialisation à {time}.",
@@ -26,13 +32,17 @@
       "percentLeft": "{percent} de votre quota gratuit restant",
       "autoTopUpFailed": {
         "title": "Échec de la recharge auto",
-        "body": "Nous n’avons pas pu débiter votre carte. Ajoutez des fonds ou mettez à jour votre moyen de paiement."
+        "body": "Nous n’avons pas pu débiter votre carte. Ajoutez des fonds ou mettez à jour votre moyen de paiement.",
+        "bodyMobile": "Nous n’avons pas pu débiter votre carte."
       },
       "balanceEmpty": {
         "title": "Solde épuisé",
         "body": "Ajoutez des fonds pour lancer une autre tâche.",
         "freeUsedToo": "Votre quota gratuit est également épuisé. Ajoutez des fonds ou attendez qu’il se renouvelle.",
-        "freeUsedTooWithTime": "Votre quota gratuit est également épuisé. Ajoutez des fonds ou attendez qu’il se renouvelle à {time}."
+        "freeUsedTooWithTime": "Votre quota gratuit est également épuisé. Ajoutez des fonds ou attendez qu’il se renouvelle à {time}.",
+        "freeUsedTooMobile": "Votre quota gratuit est également épuisé.",
+        "freeUsedTooWithTimeMobile": "Votre quota gratuit est également épuisé. Réinitialisation à {time}.",
+        "bodyMobile": "Votre solde est vide. Les modèles payants sont indisponibles."
       },
       "balanceLow": {
         "title": "Solde bientôt épuisé",
@@ -40,7 +50,9 @@
         "autoCovers": "Il reste {usd}. La recharge auto s’en chargera.",
         "autoPending": "Il reste {usd}. La recharge auto attend la réponse de votre banque.",
         "autoCapReached": "Il reste {usd} et la recharge auto est suspendue pour respecter son plafond mensuel. Ajoutez des fonds pour continuer.",
-        "body": "Il reste {usd}. Ajoutez des fonds ou activez la recharge auto."
+        "body": "Il reste {usd}. Ajoutez des fonds ou activez la recharge auto.",
+        "bodyMobile": "Il reste {usd}.",
+        "autoCapReachedMobile": "Il reste {usd} et la recharge auto est suspendue pour respecter son plafond mensuel."
       },
       "freeUsed": {
         "title": "Quota gratuit épuisé",
@@ -55,8 +67,22 @@
         "balanceLowToo": "Votre solde est également bas ({usd})."
       },
       "budgetExceeded": {
-        "raise": "Les modèles payants sont bloqués jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ».",
-        "airHasRoom": "Les modèles payants sont bloqués jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ». MindsHub Air reste disponible tant que son quota gratuit n’est pas épuisé."
+        "raise": "{hasModel, select, true {{scope, select, org {{model} est bloqué jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.} other {{model} est bloqué jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.}}} other {{scope, select, org {Les modèles payants sont bloqués jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ».} other {Les modèles payants sont bloqués jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ».}}}}",
+        "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} est bloqué jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.} other {{model} est bloqué jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.}}} other {{scope, select, org {Les modèles payants sont bloqués jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ». MindsHub Air reste disponible tant que son quota gratuit n’est pas épuisé.} other {Les modèles payants sont bloqués jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ». MindsHub Air reste disponible tant que son quota gratuit n’est pas épuisé.}}}}"
+      },
+      "window": {
+        "usedUpTitle": "{window, select, 7d {Quota hebdomadaire épuisé} other {Quota de 5 heures épuisé}}",
+        "onWallet": "Votre solde est utilisé aux tarifs API jusqu’à la réinitialisation.",
+        "onWalletWithTime": "Votre solde est utilisé aux tarifs API jusqu’à la réinitialisation à {time}.",
+        "paused": "Les tâches de votre forfait sont en pause jusqu’à la réinitialisation. Ajoutez des fonds pour continuer.",
+        "pausedWithTime": "Les tâches de votre forfait sont en pause jusqu’à {time}. Ajoutez des fonds pour continuer.",
+        "pausedMobile": "Les tâches de votre forfait sont en pause jusqu’à la réinitialisation.",
+        "pausedWithTimeMobile": "Les tâches de votre forfait sont en pause jusqu’à {time}.",
+        "lowTitle": "{percent} de votre quota {window, select, 7d {hebdomadaire} other {de 5 heures}} utilisé",
+        "lowThenWallet": "Ensuite, les tâches utilisent votre solde aux tarifs API jusqu’à la réinitialisation.",
+        "lowThenWalletWithTime": "Ensuite, les tâches utilisent votre solde aux tarifs API jusqu’à la réinitialisation à {time}.",
+        "lowThenPause": "Ensuite, les tâches sont en pause jusqu’à la réinitialisation.",
+        "lowThenPauseWithTime": "Ensuite, les tâches sont en pause jusqu’à {time}."
       }
     },
     "scheduleWhen": {
@@ -95,7 +121,8 @@
         "walletEmpty": "Aucun crédit disponible. Ajoutez des fonds pour utiliser MindsHub.",
         "allowanceExhausted": "Aucun jeton MindsHub Air gratuit disponible et le solde est épuisé.",
         "freeAirPaused": "MindsHub Air gratuit est actuellement suspendu.",
-        "budgetExceeded": "Le budget de votre organisation est épuisé."
+        "budgetExceeded": "Un budget est épuisé.",
+        "walletEmptyMobile": "Aucun crédit disponible."
       },
       "missingApiKey": "Ajoutez une clé API à droite.",
       "missingBaseUrl": "Ajoutez une URL de base à droite.",
@@ -192,8 +219,8 @@
       "unjudgeable": {
         "both": "Les deux modèles ont manqué de crédits avant de terminer : ce tour ne peut donc pas être évalué.",
         "one": "{name} a manqué de crédits avant de terminer : ce tour ne peut donc pas être évalué.",
-        "bothBudget": "Les deux modèles ont atteint le budget de votre organisation avant de terminer : ce tour ne peut donc pas être évalué.",
-        "oneBudget": "{name} a atteint le budget de votre organisation avant de terminer : ce tour ne peut donc pas être évalué."
+        "bothBudget": "{scope, select, org {Les deux modèles ont atteint le budget de votre organisation} workspace {Les deux modèles ont atteint le budget de cet espace de travail} api_key {Les deux modèles ont atteint le budget de cette clé API} team {Les deux modèles ont atteint le budget de votre équipe} member {Les deux modèles ont atteint votre budget} other {Les deux modèles ont atteint un budget}} avant de terminer : ce tour ne peut donc pas être évalué.",
+        "oneBudget": "{scope, select, org {{name} a atteint le budget de votre organisation} workspace {{name} a atteint le budget de cet espace de travail} api_key {{name} a atteint le budget de cette clé API} team {{name} a atteint le budget de votre équipe} member {{name} a atteint votre budget} other {{name} a atteint un budget}} avant de terminer : ce tour ne peut donc pas être évalué."
       },
       "verdict": {
         "tie": "À peu près pareil",
@@ -223,7 +250,9 @@
         "oneWorking": "Vous pourrez poursuivre quand {name} aura terminé.",
         "bothContinued": "Les deux côtés ont été poursuivis en tâches : cette comparaison n’accepte plus de messages.",
         "sideContinued": "{name} a été poursuivi en tâche. Envoyez uniquement à {other}.",
-        "sideWorking": "{name} est encore en cours. Envoyez uniquement à {other}, ou patientez."
+        "sideWorking": "{name} est encore en cours. Envoyez uniquement à {other}, ou patientez.",
+        "outOfCreditsBothMobile": "Les deux modèles se sont arrêtés, faute de solde.",
+        "outOfCreditsOneMobile": "{name} s’est arrêté, faute de solde."
       },
       "twiceTheCredits": "Une comparaison exécute deux modèles : elle consomme donc environ deux fois plus de crédits qu’une tâche.",
       "turnsTitle": "{nameA} : {countA, plural, one {# tour} other {# tours}} · {nameB} : {countB, plural, one {# tour} other {# tours}}",
@@ -347,6 +376,7 @@
     "artifactAuthorship": {
       "unknownOwner": "Propriétaire inconnu",
       "otherMemberDescription": "Créé par un autre membre de ce projet. Vous pouvez le consulter, mais pas le modifier.",
+      "namedOwnerDescription": "Créé par {name}, un autre membre de ce projet. Vous pouvez le consulter, mais pas le modifier.",
       "unknownOwnerDescription": "Aucun propriétaire n’est enregistré pour cet artefact."
     },
     "artifactExport": {
@@ -377,6 +407,14 @@
     "browserSession": {
       "opened": "Navigateur ouvert"
     },
+    "browserSteps": {
+      "open": "Ouverture de {site}",
+      "read": "Lecture de la page",
+      "look": "Examen de la page",
+      "act": "Travail sur la page",
+      "handOver": "Vous attend dans le navigateur",
+      "generic": "Utilisation du navigateur"
+    },
     "figureSources": {
       "noSource": "Aucune source : aucune étape de cette réponse n’a renvoyé ce nombre. Vérifiez-le avant de vous en servir.",
       "repeated": "Repris d’une réponse précédente",
@@ -392,7 +430,8 @@
       "andMore": "{source} et {count} autres"
     },
     "connectionIdentity": {
-      "unrecognizedConnector": "Connecteur non reconnu"
+      "unrecognizedConnector": "Connecteur non reconnu",
+      "mcpServer": "Serveur MCP"
     },
     "datasourceSubmission": {
       "errors": {
@@ -453,7 +492,11 @@
       "needsCredits": "Crédits requis",
       "budgetReached": {
         "tag": "Budget atteint",
-        "title": "Le budget de votre organisation est épuisé. Un propriétaire ou un administrateur peut l’augmenter dans « Budgets »."
+        "title": "Un budget couvrant ce modèle est épuisé. Un administrateur peut l’augmenter dans « Budgets »."
+      },
+      "notInTier": {
+        "tag": "{tier, select, plus {Plus requis} pro {Pro requis} other {Forfait supérieur requis}}",
+        "title": "Le quota de votre forfait ne couvre pas ce modèle. Changez de forfait ou ajoutez des crédits pour l’utiliser aux tarifs API."
       }
     },
     "settingsTransform": {
@@ -494,7 +537,8 @@
     },
     "antonErrors": {
       "noProvider": "Aucun fournisseur de LLM n’est connecté à ce compte. Commencez gratuitement avec MindsHub ou ajoutez votre propre fournisseur dans les paramètres.",
-      "couldNotComplete": "Impossible de terminer cette tâche."
+      "couldNotComplete": "Impossible de terminer cette tâche.",
+      "noProviderMobile": "Connectez votre propre fournisseur dans les paramètres."
     },
     "displayToggle": {
       "switchStyle": "Passer au style {style}"
@@ -543,6 +587,7 @@
     "missed": "Manquée",
     "lastFailed": "Dernier échec",
     "lastRunFailed": "Échec de la dernière exécution",
+    "stoppedAtLimit": "Arrêtée à une limite",
     "done": "Terminée",
     "active": "Active"
   },
@@ -572,11 +617,30 @@
     "autoPausedNote": "« Reprendre » réactive la planification et peut rattraper une exécution en attente. « Exécuter maintenant » l’exécute une fois, tout de suite.",
     "partialTitle": "La dernière exécution s’est arrêtée en cours de route",
     "partialNote": "Certaines de ses actions ont pu aboutir. Vérifiez l’exécution avant de la relancer.",
+    "limitTitle": "La dernière exécution s’est arrêtée à une limite",
+    "limitNote": "Une partie du travail a pu être effectuée. Vérifiez l’exécution avant de la relancer.",
     "failedTitle": "La dernière exécution a échoué",
     "resume": "Reprendre",
     "runNow": "Exécuter maintenant",
     "reviewRun": "Vérifier l’exécution",
-    "runAgain": "Relancer"
+    "runAgain": "Relancer",
+    "openSettings": "Ouvrir les Paramètres"
+  },
+  "scheduleRunNotice": {
+    "untitled": "Tâche planifiée",
+    "failedTitle": "Échec d’une tâche planifiée",
+    "failedBody": "« {title} » n’a pas terminé sa dernière exécution. Cliquez pour vérifier.",
+    "failedToast": "La tâche planifiée « {title} » n’a pas terminé sa dernière exécution.",
+    "succeededTitle": "Tâche planifiée terminée",
+    "succeededBody": "« {title} » a terminé une exécution. Cliquez pour l’ouvrir.",
+    "succeededToast": "La tâche planifiée « {title} » a terminé une exécution.",
+    "openAction": "Ouvrir la tâche"
+  },
+  "scheduleNotifyMenu": {
+    "label": "Notifications",
+    "heading": "Me notifier pour",
+    "failed": "Exécutions en échec",
+    "succeeded": "Exécutions réussies"
   },
   "scheduleTaskModal": {
     "cadence": {
@@ -606,6 +670,7 @@
     "atMinute": "à la minute",
     "at": "à",
     "time": "Heure",
+    "timeZone": "Fuseau horaire",
     "nextRuns": "{count, plural, one {Prochaine exécution : {runs}} other {Prochaines exécutions : {runs}}}",
     "timePassed": "Cette heure est déjà passée.",
     "name": "Nom",
@@ -652,7 +717,8 @@
       "running": "En cours",
       "success": "Réussie",
       "failed": "Échec",
-      "cancelled": "Arrêtée"
+      "cancelled": "Arrêtée",
+      "stoppedAtLimit": "Arrêtée à une limite"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "En cours d’exécution",
