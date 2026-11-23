@@ -6,7 +6,8 @@
         "addFunds": "Ajouter des fonds",
         "setUpAutoTopUp": "Configurer la recharge auto",
         "manageAutoTopUp": "Gérer la recharge auto",
-        "updatePaymentMethod": "Mettre à jour le moyen de paiement"
+        "updatePaymentMethod": "Mettre à jour le moyen de paiement",
+        "upgrade": "{tier, select, plus {Passer à Plus} pro {Passer à Pro} other {Changer de forfait}}"
       },
       "noFreeGrant": "Ce compte n’inclut pas de jetons MindsHub Air gratuits. MindsHub Air utilise votre solde, comme tous les autres modèles.",
       "allowanceStop": {
@@ -68,6 +69,20 @@
       "budgetExceeded": {
         "raise": "{hasModel, select, true {{scope, select, org {{model} est bloqué jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.} other {{model} est bloqué jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.}}} other {{scope, select, org {Les modèles payants sont bloqués jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ».} other {Les modèles payants sont bloqués jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ».}}}}",
         "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} est bloqué jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.} other {{model} est bloqué jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.}}} other {{scope, select, org {Les modèles payants sont bloqués jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ». MindsHub Air reste disponible tant que son quota gratuit n’est pas épuisé.} other {Les modèles payants sont bloqués jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ». MindsHub Air reste disponible tant que son quota gratuit n’est pas épuisé.}}}}"
+      },
+      "window": {
+        "usedUpTitle": "{window, select, 7d {Quota hebdomadaire épuisé} other {Quota de 5 heures épuisé}}",
+        "onWallet": "Votre solde est utilisé aux tarifs API jusqu’à la réinitialisation.",
+        "onWalletWithTime": "Votre solde est utilisé aux tarifs API jusqu’à la réinitialisation à {time}.",
+        "paused": "Les tâches de votre forfait sont en pause jusqu’à la réinitialisation. Ajoutez des fonds pour continuer.",
+        "pausedWithTime": "Les tâches de votre forfait sont en pause jusqu’à {time}. Ajoutez des fonds pour continuer.",
+        "pausedMobile": "Les tâches de votre forfait sont en pause jusqu’à la réinitialisation.",
+        "pausedWithTimeMobile": "Les tâches de votre forfait sont en pause jusqu’à {time}.",
+        "lowTitle": "{percent} de votre quota {window, select, 7d {hebdomadaire} other {de 5 heures}} utilisé",
+        "lowThenWallet": "Ensuite, les tâches utilisent votre solde aux tarifs API jusqu’à la réinitialisation.",
+        "lowThenWalletWithTime": "Ensuite, les tâches utilisent votre solde aux tarifs API jusqu’à la réinitialisation à {time}.",
+        "lowThenPause": "Ensuite, les tâches sont en pause jusqu’à la réinitialisation.",
+        "lowThenPauseWithTime": "Ensuite, les tâches sont en pause jusqu’à {time}."
       }
     },
     "scheduleWhen": {
@@ -478,6 +493,10 @@
       "budgetReached": {
         "tag": "Budget atteint",
         "title": "Un budget couvrant ce modèle est épuisé. Un administrateur peut l’augmenter dans « Budgets »."
+      },
+      "notInTier": {
+        "tag": "{tier, select, plus {Plus requis} pro {Pro requis} other {Forfait supérieur requis}}",
+        "title": "Le quota de votre forfait ne couvre pas ce modèle. Changez de forfait ou ajoutez des crédits pour l’utiliser aux tarifs API."
       }
     },
     "settingsTransform": {

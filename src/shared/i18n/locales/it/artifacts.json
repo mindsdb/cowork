@@ -246,8 +246,12 @@
     "changeNavigation": "Scorri le modifiche",
     "publishedArtifact": "Artefatto pubblicato",
     "reviewBeforePublishing": "Controlla la modifica prima di pubblicarla",
+    "reviewUnshared": "Modifiche non ancora condivise",
     "keepDraft": "Mantieni come bozza",
     "publishChange": "Pubblica questa modifica",
+    "publishChanges": "Pubblica modifiche",
+    "sharedVersion": "Versione condivisa",
+    "draftVersion": "Bozza",
     "publishing": "Pubblicazione…"
   },
   "htmlEditor": {
@@ -426,7 +430,8 @@
     "moreActions": "Altre azioni",
     "reloadPreview": "Ricarica anteprima",
     "close": "Chiudi",
-    "unsharedChangesHint": "Il link condiviso mostra una versione precedente. Usa Aggiorna in Condividi per pubblicare le modifiche."
+    "unsharedChangesHint": "Il link condiviso mostra una versione precedente. Usa Aggiorna in Condividi per pubblicare le modifiche.",
+    "reviewUnsharedHint": "Rivedi e pubblica le modifiche che il link condiviso non mostra ancora"
   },
   "body": {
     "previewWatermark": "Anteprima",
@@ -546,7 +551,9 @@
     "owner": {
       "you": "Tu",
       "youHint": "Tuo, condiviso con altre persone."
-    }
+    },
+    "openComments": "{count, plural, one {# commento aperto} other {# commenti aperti}}",
+    "openCommentsHint": "Apri l’anteprima sui commenti"
   },
   "compare": {
     "refused": "Questo lato stava ancora completando il turno precedente, quindi non ha ricevuto il tuo messaggio. Lo trovi di nuovo nella casella qui sotto.",
@@ -745,6 +752,13 @@
     "workingInChat": "In corso nella chat…",
     "sentToChat": "Inviato alla chat.",
     "chatStopped": "Il turno della chat si è interrotto prima di rispondere.",
+    "resolveThread": {
+      "question": "Segnare il commento come risolto?",
+      "resolve": "Risolvi",
+      "notNow": "Non ora",
+      "resolved": "Commento risolto.",
+      "failed": "Impossibile risolvere il commento. Riprova."
+    },
     "unsavedConfirm": {
       "title": "Hai modifiche non salvate. Salvarle prima di inviare?",
       "save": "Salva e invia",
@@ -755,6 +769,7 @@
     "queued": "In coda",
     "queueLabel": "In attesa",
     "removeQueued": "Rimuovi dalla coda",
+    "hide": "Nascondi messaggi",
     "comment": {
       "onArtifact": "Gestisci questo commento sull'artefatto:",
       "onText": "Gestisci questo commento sul testo «{quote}»:",

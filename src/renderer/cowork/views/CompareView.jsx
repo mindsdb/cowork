@@ -65,6 +65,7 @@ import {
   composerBlock,
   divergedAt,
   isCreditFailure,
+  noticeStopsSide,
   silentFor,
   unjudgeableReason,
   formatDuration,
@@ -87,6 +88,7 @@ import {
   verdictLabel,
 } from '../lib/compareSides';
 import i18n, { useTranslation } from '../../lib/i18n';
+import { useUsageActions } from '../hooks/useUpgradeOffer';
 
 const tr = (key, vars) => i18n.t(`compare.${key}`, { ns: 'artifacts', ...vars });
 
@@ -127,12 +129,18 @@ function namesFor(models, a, b) {
   );
 }
 
-/** The credits notice a model would get on its own, from the shared usage rules. */
-function useCreditNotices(modelIds) {
+/** The credits notice a model would get on its own, from the shared usage
+ *  rules. `modelCoveredByTier` (id to the cheapest plan covering it) lets a
+ *  pick outside a Plus or Pro plan speak of the wallet, as the composer does. */
+function useCreditNotices(modelIds, modelCoveredByTier = null) {
   const hubUsage = useHubUsageContext();
   const usage = hubUsage?.usage ?? null;
   const providerType = hubUsage?.providerType;
-  const notices = modelIds.map((model) => deriveUsageWarning(usage, { providerType, model: model || null }));
+  const notices = modelIds.map((model) => deriveUsageWarning(usage, {
+    providerType,
+    model: model || null,
+    coveredByTier: modelCoveredByTier?.[model] ?? null,
+  }));
   return { notices, isBillingOwner: !!usage?.isBillingOwner };
 }
 
@@ -150,6 +158,7 @@ function CreditNotice({ notice, isBillingOwner, trigger }) {
   const { t } = useTranslation('artifacts');
   const consoleLink = useConsoleLink();
   const [dismissed, dismiss] = useUsageBarDismiss();
+  const usageActions = useUsageActions();
   if (!notice) return null;
   if (!offersBilling()) {
     return notice.blocks ? <Alert variant="warning">{t('chatView.cards.providerLimitBody', { ns: 'chat' })}</Alert> : null;
@@ -157,7 +166,7 @@ function CreditNotice({ notice, isBillingOwner, trigger }) {
   const key = notice.dismissKey ?? notice.kind;
   const closable = !notice.blocks;
   if (closable && dismissed.includes(key)) return null;
-  const actions = billingActions(notice.actions);
+  const actions = usageActions.visible(billingActions(notice.actions));
   return (
     <Alert variant={NOTICE_VARIANT[notice.tone] || 'info'} title={notice.title} className="relative w-full pr-10">
       {closable && (
@@ -176,7 +185,9 @@ function CreditNotice({ notice, isBillingOwner, trigger }) {
         {actions.length > 0 && (
           <span className="flex flex-wrap gap-2">
             {actions.map((action) => (
-              <Button key={action.key} size="sm" variant={action.key === 'addFunds' ? 'primary' : 'subtle'} onClick={() => openBilling(action, isBillingOwner, trigger, consoleLink)}>
+              <Button key={action.key} size="sm" variant={action.key === 'addFunds' ? 'primary' : 'subtle'} onClick={() => (usageActions.isUpgrade(action)
+                ? usageActions.openUpgrade(action, 'compare')
+                : openBilling(action, isBillingOwner, trigger, consoleLink))}>
                 {action.label}
               </Button>
             ))}
@@ -337,6 +348,7 @@ export default function CompareView({ models = [], modelMeta, projects = [], age
       <ComparisonDetail
         comparisonId={openId}
         models={models}
+        modelMeta={modelMeta}
         projects={projects}
         agentLabel={agentLabel}
         firstSend={firstSend?.comparisonId === openId ? firstSend : null}
@@ -612,7 +624,7 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
 
   const nameA = modelName(models, sides.a.model);
   const nameB = modelName(models, sides.b.model);
-  const credits = useCreditNotices([sides.a.model, sides.b.model]);
+  const credits = useCreditNotices([sides.a.model, sides.b.model], modelMeta?.modelCoveredByTier);
   const creditNotice = compareCreditNotice(credits.notices);
   // A side that could not run at all would stop on its first step.
   const ready = prompt.trim() && sides.a.model && sides.b.model && !busy && !creditNotice?.blocks;
@@ -937,7 +949,7 @@ function useComparisonSides(comparison, { onRefused } = {}) {
   return { tasks, busy, errors, ready, unknown, lastEventAt, send, stop, refresh, load, recheck };
 }
 
-function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSend, onFirstSendDone, onBack, onDeleted, onOpenTask, onOpenSettings }) {
+function ComparisonDetail({ comparisonId, models, modelMeta, projects, agentLabel, firstSend, onFirstSendDone, onBack, onDeleted, onOpenTask, onOpenSettings }) {
   const { t } = useTranslation('artifacts');
   const [comparison, setComparison] = useState(null);
   const [error, setError] = useState('');
@@ -1030,7 +1042,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
   // All or nothing: a message meant for both must not quietly reach only the
   // side that happens to be free, which would make the two diverge.
   const names = namesFor(models, sides.a, sides.b);
-  const credits = useCreditNotices([sides.a?.model, sides.b?.model]);
+  const credits = useCreditNotices([sides.a?.model, sides.b?.model], modelMeta?.modelCoveredByTier);
   const consoleLink = useConsoleLink();
   // A side whose state is unknown may still be mid-turn: its cost waits too.
   const holding = Object.fromEntries(SIDE_LABELS.map((label) => [label, !!busy[label] || !!unknown[label]]));
@@ -1040,7 +1052,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
   // the account still cannot pay for its model. The next usage refresh (every
   // 30s, and on window focus) lifts it once funds arrive.
   const outOfCredits = SIDE_LABELS.filter((l, i) => (
-    isCreditFailure(turns[l][turns[l].length - 1]) && credits.notices[i]?.kind === 'balance_empty'
+    isCreditFailure(turns[l][turns[l].length - 1]) && noticeStopsSide(credits.notices[i])
   ));
   // A continued side takes no messages, so it is never waited for.
   const unloaded = SIDE_LABELS.filter((label) => !(tasks[label] && ready[label]) && !sides[label]?.continuedAt);

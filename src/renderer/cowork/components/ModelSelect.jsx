@@ -84,6 +84,13 @@
 //     no "Add credits" button attaches: credits cannot lift an admin rule.
 //   - `budgetReached`: a spending budget is used up. Disabled, tagged
 //     "Budget reached", never `locked`: credits do not raise a budget.
+//   - `tierLocked` (ENG-4186): the org's plan does not cover this model and
+//     the wallet cannot pay for it. Also `locked`, so "Add credits" stays;
+//     "Upgrade" joins it when this session may buy a plan (useUpgradeOffer).
+//   - `coveredByTier`: the cheapest plan covering the model. On a Plus or
+//     Pro plan, an available row with no other tag shows that plan's name,
+//     so a subscriber sees what the allowance covers and what it does not.
+//     On Free or with no plan it is not shown: those pickers read as before.
 //   - `pin: 'top' | 'bottom'`: render outside the maker groups, unheaded,
 //     at the top/bottom of the list (stale-pin and "Other…" entries).
 //     Pinned entries also bypass the search filter: "Other…" is the escape
@@ -107,6 +114,8 @@ import Combobox from './ui/Combobox.jsx';
 import ProviderIcon from './ProviderIcon.jsx';
 import { Tooltip } from './ui';
 import { useTranslation } from '../../lib/i18n';
+import { useUpgradeOffer } from '../hooks/useUpgradeOffer';
+import { cleanRequiredTier, isPaidPlan } from '../lib/subscriptionPlan';
 
 // How long the flyout stays open after the pointer leaves both the footer
 // row and the panel itself, with nothing else happening — long enough that
@@ -193,6 +202,32 @@ function creditsAction(t, isBillingOwner, consoleLink) {
         onMouseDown={(e) => e.stopPropagation()}
       >
         {t('picker.addCredits')}
+      </button>
+    </Tooltip>
+  );
+}
+
+/* The "Upgrade" button on a row the plan does not cover (ENG-4186), beside
+   "Add credits": either one makes the model usable. Same metrics and the same
+   click guards as creditsAction. */
+function upgradeRowAction(t, tier, onUpgrade) {
+  return (
+    <Tooltip content={t('picker.upgradeTooltip', { tier })}>
+      <button
+        type="button"
+        className={cn(
+          'shrink-0 rounded-full border border-solid border-accent bg-accent-bg',
+          'px-[7px] py-[1px] text-[10.5px] leading-[15px] text-accent font-semibold',
+          'cursor-pointer [transition:opacity_var(--dur-hover)_ease]',
+          'hover:opacity-85',
+        )}
+        onClick={(e) => {
+          e.stopPropagation();
+          onUpgrade(tier);
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {t('picker.upgrade')}
       </button>
     </Tooltip>
   );
@@ -419,6 +454,9 @@ export function ModelSelect({
   const emptyText = emptyTextProp ?? t('picker.empty');
   const isBillingOwner = !!useHubUsageContext()?.usage?.isBillingOwner;
   const consoleLink = useConsoleLink();
+  const upgrade = useUpgradeOffer();
+  const paidTier = isPaidPlan(upgrade.plan) ? upgrade.plan.tier : null;
+  const { canOffer, open: openUpgrade } = upgrade;
   const groups = useMemo(() => {
     // A locked row gets the route to credits attached here, so neither builder
     // has to know how to render one. An explicit `action` from a call site wins
@@ -429,7 +467,30 @@ export function ModelSelect({
           return { ...o, title: undefined, tag: t('picker.unavailable'), action: undefined };
         }
         if (!PLATFORM_UI && o.locked) return { ...o, tag: t('picker.unavailable') };
-        return o.locked && !o.action ? { ...o, action: creditsAction(t, isBillingOwner, consoleLink) } : o;
+        if (o.locked && !o.action) {
+          // Outside the plan: "Upgrade" to the tier that covers it, beside
+          // "Add credits" (ENG-4186). Falls back to the next tier up when the
+          // catalog does not say which.
+          const tier = o.tierLocked ? (o.requiredTier || upgrade.tier) : null;
+          const credits = creditsAction(t, isBillingOwner, consoleLink);
+          if (tier && canOffer(tier)) {
+            return {
+              ...o,
+              action: (
+                <span className="inline-flex shrink-0 items-center gap-[4px]">
+                  {upgradeRowAction(t, tier, (pick) => openUpgrade(pick, 'model_picker'))}
+                  {credits}
+                </span>
+              ),
+            };
+          }
+          return { ...o, action: credits };
+        }
+        // On Plus or Pro, an open row names the plan that covers it.
+        if (paidTier && !o.disabled && !o.tag && !o.pin && cleanRequiredTier(o.coveredByTier)) {
+          return { ...o, tag: t('picker.tierTag', { tier: o.coveredByTier }) };
+        }
+        return o;
       });
     const top = entries.filter((o) => o.pin === 'top');
     const bottom = entries.filter((o) => o.pin === 'bottom');
@@ -440,7 +501,7 @@ export function ModelSelect({
       ...grouped,
       ...(bottom.length ? [{ key: PIN_BOTTOM, name: null, items: bottom }] : []),
     ];
-  }, [options, t, isBillingOwner, consoleLink]);
+  }, [options, t, isBillingOwner, paidTier, canOffer, openUpgrade, upgrade.tier, consoleLink]);
 
   // This component takes over the Combobox's open state ONLY when the effort
   // feature is opted into (`modelEfforts` passed at all) — a footer pick

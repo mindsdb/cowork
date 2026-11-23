@@ -33,18 +33,6 @@
     },
     "field": {
       "optional": "（任意）"
-    },
-    "sortHeader": {
-      "label": "リストを並べ替え",
-      "sortBy": "{column}で並べ替え",
-      "columns": {
-        "name": "名前",
-        "project": "プロジェクト",
-        "updated": "更新日",
-        "activity": "アクティビティ",
-        "type": "種類",
-        "status": "状態"
-      }
     }
   },
   "rail": {

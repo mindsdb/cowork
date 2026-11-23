@@ -417,4 +417,23 @@ describe('ArtifactViewer stats analytics', () => {
       hasViews: false,
     });
   });
+
+  // ENG-4560: the Artifacts page's open-comments counter.
+  it('opens on Comments for a comments request, without remembering it for the next open', async () => {
+    const props = { onClose: vi.fn(), onChange: vi.fn(), artifact: CARD };
+    const view = render(<ArtifactViewer {...props} open commentsRequest={{}} />);
+    await settle();
+
+    expect(panels()).toMatchObject({ comments: 'true', inbox: 'true', stats: 'false' });
+    expect(screen.getByRole('button', { name: 'Comments' })).toHaveAttribute('aria-pressed', 'true');
+    expect(window.localStorage.getItem('cowork.artifactViewer.layers.v1')).toBeNull();
+
+    view.rerender(<ArtifactViewer {...props} open={false} />);
+    await settle();
+    view.rerender(<ArtifactViewer {...props} open />);
+    await settle();
+
+    expect(panels()).toMatchObject({ comments: 'false', inbox: 'false' });
+  });
 });
+

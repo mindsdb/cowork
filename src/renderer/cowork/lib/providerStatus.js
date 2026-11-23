@@ -12,6 +12,7 @@ const tr = (key, vars) => i18n.t(`messages.providerStatus.${key}`, { ns: 'projec
 
 /**
  * @typedef {'wallet_empty'
+ *   | 'window_allowance_exhausted'
  *   | 'included_allowance_exhausted'
  *   | 'free_air_daily_spend_fuse_exceeded'
  *   | 'budget_exceeded'
@@ -92,6 +93,9 @@ export function deriveProviderStatus(type, {
    turns it into presentation. */
 const PROBE_NOTICE_KIND = {
   wallet_empty: 'no_credits',
+  // A Plus or Pro window is used up and the wallet is empty: credits are the
+  // way on now, as for an empty wallet.
+  window_allowance_exhausted: 'no_credits',
   included_allowance_exhausted: 'allowance_used',
   free_air_daily_spend_fuse_exceeded: 'paused',
   budget_exceeded: 'budget_reached',
@@ -152,6 +156,7 @@ export function probePolicyUnavailableSentence() {
    a refill time: the row has no room to be wrong about one. */
 const PROBE_REASON_ROW_COPY = {
   wallet_empty: () => tr(billingCopyKey('row.walletEmpty')),
+  window_allowance_exhausted: () => tr(billingCopyKey('row.walletEmpty')),
   included_allowance_exhausted: () => tr('row.allowanceExhausted'),
   free_air_daily_spend_fuse_exceeded: () => tr('row.freeAirPaused'),
   budget_exceeded: () => tr('row.budgetExceeded'),
@@ -166,7 +171,7 @@ const PROBE_REASON_ROW_COPY = {
    the velocity limit share "HTTP 429" or "HTTP 402", and only the reason says
    which one fired. */
 export function friendlyProviderError(detail, reason = null) {
-  if (!offersBilling() && ['wallet_empty', 'included_allowance_exhausted', 'budget_exceeded', 'policy_unavailable'].includes(reason?.code)) {
+  if (!offersBilling() && ['wallet_empty', 'window_allowance_exhausted', 'included_allowance_exhausted', 'budget_exceeded', 'policy_unavailable'].includes(reason?.code)) {
     return i18n.t('providers.unavailable', { ns: 'settings' });
   }
   if (reason && Object.hasOwn(PROBE_REASON_ROW_COPY, reason.code)) return PROBE_REASON_ROW_COPY[reason.code]();

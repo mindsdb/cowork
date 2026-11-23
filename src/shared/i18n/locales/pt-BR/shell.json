@@ -33,18 +33,6 @@
     },
     "field": {
       "optional": "(opcional)"
-    },
-    "sortHeader": {
-      "label": "Ordenar a lista",
-      "sortBy": "Ordenar por {column}",
-      "columns": {
-        "name": "Nome",
-        "project": "Projeto",
-        "updated": "Atualizado",
-        "activity": "Atividade",
-        "type": "Tipo",
-        "status": "Status"
-      }
     }
   },
   "rail": {

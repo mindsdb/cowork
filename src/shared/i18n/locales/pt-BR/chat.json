@@ -114,13 +114,23 @@
       "viewBudgets": "Ver orçamentos",
       "balanceRanOutMobile": "Seu saldo acabou antes de esta tarefa terminar.",
       "autoTopUpFailedBodyMobile": "Não conseguimos cobrar seu cartão.",
-      "connectProviderBodyMobile": "Conecte seu próprio provedor em Configurações."
+      "connectProviderBodyMobile": "Conecte seu próprio provedor em Configurações.",
+      "windowUsedUpTitle": "Cota do plano esgotada",
+      "windowPausedUntil": "Você usou sua cota {window, select, 7d {semanal} 5h {de 5 horas} other {do plano}} e seu saldo está vazio. Pausado até {time}. Adicione fundos para continuar.",
+      "windowPaused": "Você usou sua cota {window, select, 7d {semanal} 5h {de 5 horas} other {do plano}} e seu saldo está vazio. Pausado até a renovação. Adicione fundos para continuar.",
+      "windowPausedUntilMobile": "Você usou sua cota {window, select, 7d {semanal} 5h {de 5 horas} other {do plano}}. Pausado até {time}.",
+      "windowPausedMobile": "Você usou sua cota {window, select, 7d {semanal} 5h {de 5 horas} other {do plano}}. Pausado até a renovação."
     },
     "usageAlert": {
       "freeLow": "Resta {percent} da cota gratuita do Air",
       "freeLowRefills": "Resta {percent} da cota gratuita do Air · renova às {time}",
       "freeUsed": "Cota gratuita do Air esgotada · usando seu saldo agora",
-      "freeUsedUntil": "Cota gratuita do Air esgotada · usando seu saldo até {time}"
+      "freeUsedUntil": "Cota gratuita do Air esgotada · usando seu saldo até {time}",
+      "windowLow": "{percent} da sua cota {window, select, 7d {semanal} other {de 5 horas}} usados",
+      "windowLowResets": "{percent} da sua cota {window, select, 7d {semanal} other {de 5 horas}} usados · renova às {time}",
+      "windowUsed": "{window, select, 7d {Cota semanal esgotada} other {Cota de 5 horas esgotada}}",
+      "windowUsedUntil": "{window, select, 7d {Cota semanal esgotada} other {Cota de 5 horas esgotada}} · pausado até {time}",
+      "windowOnWallet": "{window, select, 7d {Cota semanal esgotada} other {Cota de 5 horas esgotada}} · usando seu saldo a preços de API"
     },
     "reconnect": {
       "couldNotReconnect": "Não foi possível reconectar. Tente sair e entrar novamente.",
@@ -149,7 +159,9 @@
       "needsCreditsBody": "Você não tem créditos suficientes para este modelo. Recarregue seu saldo para usá-lo.",
       "disabledBody": "Este modelo está desativado no seu espaço de trabalho. Escolha outro modelo em Configurações.",
       "topUpBalance": "Recarregar saldo",
-      "needsCreditsBodyMobile": "Você não tem créditos suficientes para este modelo."
+      "needsCreditsBodyMobile": "Você não tem créditos suficientes para este modelo.",
+      "notInTierTitle": "{model} não está no seu plano",
+      "notInTierBody": "{tier, select, plus {{model} está incluído no Plus.} pro {{model} está incluído no Pro.} other {Seu plano não inclui {model}.}} Faça upgrade ou adicione fundos para usá-lo a preços de API."
     },
     "overloaded": {
       "theModelProvider": "O provedor do modelo",

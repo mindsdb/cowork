@@ -90,6 +90,10 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
   const [reviewRevision, setReviewRevision] = useState(null);
   const [draft, setDraft] = useState('');
   const [revisions, setRevisions] = useState([]);
+  // The revision the live page shows (ENG-4595), from the workspace load:
+  // what "Review changes" compares the draft against. Null when unpublished
+  // or unknown.
+  const [publishedRevision, setPublishedRevision] = useState(null);
   const [capabilities, setCapabilities] = useState(null);
   const [commentsReady, setCommentsReady] = useState(false);
   const [commentsOffReason, setCommentsOffReason] = useState('');
@@ -234,6 +238,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
       setRepair(loaded.repair || null);
       const bundledRevisions = Array.isArray(loaded.revisions) ? loaded.revisions : null;
       if (bundledRevisions) setRevisions(bundledRevisions);
+      setPublishedRevision(loaded.publishedRevision?.id ? loaded.publishedRevision : null);
       setComparison(null);
       // Take over the view only for a decision the user can still act on: the
       // same file, and the agent's revision still head. A repair the artifact
@@ -302,6 +307,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
     setReviewRevision(null);
     setDraft('');
     setRevisions([]);
+    setPublishedRevision(null);
     setCapabilities(null);
     setCommentsReady(false);
     setUnsupportedReason('');
@@ -583,6 +589,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
     dirty,
     currentRevision,
     revisions,
+    publishedRevision,
     capabilities,
     capabilitiesFromServer,
     commentsReady,
@@ -611,7 +618,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
     addressWithAgent, cancelRepair, capabilities, capabilitiesFromServer, changeMode, commentsReady,
     commentsOffReason,
     compareRevision, comparison, conflict, currentRevision, decideRepair, dirty, discard, draft, error, load,
-    mode, previewOnly, refreshRepair, releaseRepairsForComment, repair, repairPending,
+    mode, previewOnly, publishedRevision, refreshRepair, releaseRepairsForComment, repair, repairPending,
     repairSuperseded, restoreRevision, reviewPublish, revisions, save, source, status,
     supported, unsupportedReason,
   ]);

@@ -27,6 +27,7 @@ import { useOrgMode } from '../../../../lib/orgMode';
 import {
   canUseArtifactWorkspace,
   loadArtifactAccess,
+  republishArtifact,
   setArtifactAccess,
 } from '../../../lib/artifactWorkspaceApi';
 import { publishFailureReason, publishRefusalMessage } from './publishErrors';
@@ -340,13 +341,15 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
     }
   }, [phase, canAct, orgMode, targetPath, identityKey, publishedUrl, artifact, onChange, entry]);
 
+  // Publish changes: the draft goes live at the same link, with the access it
+  // has. In MindsHub mode too (ENG-4595), through the workspace route.
   const update = useCallback(async () => {
-    if (phase !== 'idle' || orgMode || !targetPath) return false;
+    if (phase !== 'idle' || !canAct) return false;
     setPhase('updating');
     setError('');
     setNotice('');
     try {
-      const r = await updateArtifact(targetPath);
+      const r = orgMode ? await republishArtifact(artifact) : await updateArtifact(targetPath);
       setModified(false);
       setNotice(republishNotice(r));
       setLinkOwnerRecorded(true);
@@ -360,7 +363,7 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
     } finally {
       setPhase('idle');
     }
-  }, [phase, orgMode, targetPath, publishedUrl, artifact, onChange]);
+  }, [phase, canAct, orgMode, targetPath, publishedUrl, artifact, onChange]);
 
   /* Resolves to { ok, notice }: whether the artifact stopped pointing at its
      page, and what to tell the person when the page itself stays live. The

@@ -246,8 +246,12 @@
     "changeNavigation": "Step through changes",
     "publishedArtifact": "Published artifact",
     "reviewBeforePublishing": "Review the change before publishing",
+    "reviewUnshared": "Changes not shared yet",
     "keepDraft": "Keep as draft",
     "publishChange": "Publish this change",
+    "publishChanges": "Publish changes",
+    "sharedVersion": "Shared version",
+    "draftVersion": "Draft",
     "publishing": "Publishing…"
   },
   "htmlEditor": {
@@ -426,7 +430,8 @@
     "moreActions": "More actions",
     "reloadPreview": "Reload preview",
     "close": "Close",
-    "unsharedChangesHint": "The shared link shows an earlier version. Use Update in Share to publish the changes."
+    "unsharedChangesHint": "The shared link shows an earlier version. Use Update in Share to publish the changes.",
+    "reviewUnsharedHint": "Review and publish the changes the shared link doesn't show yet"
   },
   "body": {
     "previewWatermark": "Preview",
@@ -546,7 +551,9 @@
     "owner": {
       "you": "You",
       "youHint": "Yours, shared with others."
-    }
+    },
+    "openComments": "{count, plural, one {# open comment} other {# open comments}}",
+    "openCommentsHint": "Open the preview on its comments"
   },
   "compare": {
     "refused": "This side was still working on its last turn, so it didn't get your message. It's back in the box below.",
@@ -745,6 +752,13 @@
     "workingInChat": "Working in the chat…",
     "sentToChat": "Sent to the chat.",
     "chatStopped": "The chat turn stopped before it answered.",
+    "resolveThread": {
+      "question": "Mark the comment as resolved?",
+      "resolve": "Resolve",
+      "notNow": "Not now",
+      "resolved": "Comment resolved.",
+      "failed": "Couldn't resolve the comment. Try again."
+    },
     "unsavedConfirm": {
       "title": "You have unsaved changes. Save them before sending?",
       "save": "Save and send",
@@ -755,6 +769,7 @@
     "queued": "Queued",
     "queueLabel": "Waiting to run",
     "removeQueued": "Remove from queue",
+    "hide": "Hide messages",
     "comment": {
       "onArtifact": "Address this comment on the artifact:",
       "onText": "Address this comment on the text “{quote}”:",

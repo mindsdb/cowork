@@ -246,8 +246,12 @@
     "changeNavigation": "変更を順に移動",
     "publishedArtifact": "公開済みのアーティファクト",
     "reviewBeforePublishing": "公開する前に変更を確認",
+    "reviewUnshared": "まだ共有されていない変更",
     "keepDraft": "下書きのままにする",
     "publishChange": "この変更を公開",
+    "publishChanges": "変更を公開",
+    "sharedVersion": "共有中のバージョン",
+    "draftVersion": "下書き",
     "publishing": "公開中…"
   },
   "htmlEditor": {
@@ -426,7 +430,8 @@
     "moreActions": "その他の操作",
     "reloadPreview": "プレビューを再読み込み",
     "close": "閉じる",
-    "unsharedChangesHint": "共有リンクには以前のバージョンが表示されています。変更を公開するには、［共有］の［更新］を使ってください。"
+    "unsharedChangesHint": "共有リンクには以前のバージョンが表示されています。変更を公開するには、［共有］の［更新］を使ってください。",
+    "reviewUnsharedHint": "共有リンクにまだ反映されていない変更を確認して公開します"
   },
   "body": {
     "previewWatermark": "プレビュー",
@@ -546,7 +551,9 @@
     "owner": {
       "you": "あなた",
       "youHint": "あなたのもので、ほかの人と共有しています。"
-    }
+    },
+    "openComments": "{count, plural, other {未解決のコメント # 件}}",
+    "openCommentsHint": "コメントを表示してプレビューを開く"
   },
   "compare": {
     "refused": "この側は前のターンをまだ処理中だったため、メッセージを受け取っていません。メッセージは下の入力欄に戻してあります。",
@@ -745,6 +752,13 @@
     "workingInChat": "チャットで処理中…",
     "sentToChat": "チャットに送信しました。",
     "chatStopped": "チャットのターンは回答前に停止しました。",
+    "resolveThread": {
+      "question": "コメントを解決済みにしますか？",
+      "resolve": "解決",
+      "notNow": "後で",
+      "resolved": "コメントを解決しました。",
+      "failed": "コメントを解決できませんでした。もう一度お試しください。"
+    },
     "unsavedConfirm": {
       "title": "未保存の変更があります。送信する前に保存しますか？",
       "save": "保存して送信",
@@ -755,6 +769,7 @@
     "queued": "待機中",
     "queueLabel": "実行待ち",
     "removeQueued": "キューから削除",
+    "hide": "メッセージを非表示",
     "comment": {
       "onArtifact": "アーティファクトへのこのコメントに対応してください：",
       "onText": "テキスト「{quote}」へのこのコメントに対応してください：",

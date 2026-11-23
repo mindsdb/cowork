@@ -84,7 +84,7 @@ import { ViewerModeRail } from './ViewerModeRail';
 import { QuickEditBar } from './quickEdit/QuickEditBar';
 import { useQuickEdit } from './quickEdit/useQuickEdit';
 import { countUserPrompts } from '../../lib/quickEditPrompt';
-import { useChatTranscript } from '../../lib/chatTranscriptContext';
+import { useChatTranscript, useConversationTranscript, useConversationTranscripts } from '../../lib/chatTranscriptContext';
 import { requestConversationRefresh } from '../../lib/conversationRefresh';
 import { useModelPickerContext } from '../../lib/modelPickerContext';
 import { ModelEffortPicker, pickedEffort } from '../ModelEffortPicker';
@@ -159,11 +159,18 @@ export function ArtifactViewer({
   onAddressWithAgent,
   conversationId = null,
   resolveRepairConversation = null,
+  // Outside a chat: show chat `id` (the bar's "Open in chat"). The viewer
+  // stays open while the agent works there, and follows the reply itself.
+  onOpenConversation = null,
   // One Share clicked outside the viewer (a new object per click): the viewer
   // opens with its Share panel showing. `shareEntry` names where, for the
   // sharing events of that panel only; later opens are the header's own.
   shareRequest = null,
   shareEntry = 'viewer',
+  // One open-comments counter clicked outside the viewer (a new object per
+  // click, ENG-4560): the viewer opens on its Comments panel this time, and
+  // later opens keep the layers this device remembers.
+  commentsRequest = null,
 }) {
   const { t } = useTranslation('artifacts');
   const orgMode = useOrgMode();
@@ -309,8 +316,16 @@ export function ArtifactViewer({
   // The viewer's layers over its one preview (ENG-4227): Live edit (the
   // editor), Comments and Stats, each a tab on the panel rail with its own
   // side panel; Live edit and Comments are remembered on this device.
-  const { layers, setLayer } = useViewerLayers();
+  const { layers, setLayer, restoreLayers } = useViewerLayers();
   setLayerRef.current = setLayer;
+  // Comments asked for from outside: on for this open only, not remembered.
+  // Closing puts the remembered layers back for the next open.
+  useEffect(() => {
+    if (open && commentsRequest) setLayer('comments', true, { remember: false });
+  }, [open, commentsRequest, setLayer]);
+  useEffect(() => {
+    if (!open) restoreLayers();
+  }, [open, restoreLayers]);
   const sidePanelId = useId();
   const { layout, toggle: toggleLayout } = useViewerLayout();
   // Cmd/Ctrl+Shift+Enter maximizes and restores. Keys typed inside the
@@ -625,6 +640,9 @@ export function ArtifactViewer({
         // The thread's images go with the prompt, which names them in order
         // (ENG-4410).
         const imageFiles = await threadImageFiles(thread, (id) => loadCommentImage(artifact, id));
+        // The repair is reviewed here, so the viewer stays open and follows
+        // the turn (ENG-4560).
+        const restoreAgentChat = followAgentChat(targetConversationId);
         let started;
         try {
           started = await onAddressWithAgent({
@@ -633,12 +651,15 @@ export function ArtifactViewer({
             repair: requested.repair,
             conversationId: targetConversationId,
             attachments: imageFiles.map(imageAttachment),
+            inBackground: true,
           });
         } catch (startError) {
+          restoreAgentChat();
           try { await workspace.cancelRepair(requested.repair.id); } catch { /* keep original error */ }
           throw startError;
         }
         if (started === false) {
+          restoreAgentChat();
           await workspace.cancelRepair(requested.repair.id);
           // `false` has several causes (no provider, a project this user can't
           // run, a chat deleted meanwhile), so the message names none of them.
@@ -1164,7 +1185,31 @@ export function ArtifactViewer({
   // The chat the viewer sits in, when it does: the bar mirrors the agent's
   // reply to a message it handed to that chat from the same task state the
   // transcript renders (no second stream). Another chat's messages are not it.
-  const chatTranscript = useChatTranscript();
+  const inChatTranscript = useChatTranscript();
+  // Outside a chat (the Artifacts page) the viewer stays open when it hands a
+  // message to the artifact's chat, and follows that chat's transcript from
+  // the app's task state instead (ENG-4560).
+  const [agentChatId, setAgentChatId] = useState(null);
+  useEffect(() => { setAgentChatId(null); }, [open, artifact?.id]);
+  const agentChatIdRef = useRef(agentChatId);
+  agentChatIdRef.current = agentChatId;
+  const handedOffTranscript = useConversationTranscript(inChatTranscript ? null : agentChatId);
+  const transcripts = useConversationTranscripts();
+  const transcriptsRef = useRef(transcripts);
+  transcriptsRef.current = transcripts;
+  // Follow chat `id` from here on; the returned function puts back the one
+  // followed before, for a send that did not start.
+  const followAgentChat = (id) => {
+    if (inChatTranscript || !id) return () => {};
+    const before = agentChatIdRef.current;
+    agentChatIdRef.current = String(id);
+    setAgentChatId(String(id));
+    return () => {
+      agentChatIdRef.current = before;
+      setAgentChatId(before);
+    };
+  };
+  const chatTranscript = inChatTranscript || handedOffTranscript;
   const chatMessages = chatTranscript
     && (!conversationId || String(chatTranscript.conversationId || '') === String(conversationId))
     ? chatTranscript.messages
@@ -1267,12 +1312,28 @@ export function ArtifactViewer({
     headRevisionId: workspace.currentRevision?.id || null,
     resolveConversation: async () => (await resolveArtifactConversation()) || null,
     // Same send the comment repair uses, with a fresh chat as the last resort.
-    continueInChat: async (prompt, images = []) => {
+    // Outside a chat the turn runs in that chat without leaving this page.
+    continueInChat: async (prompt, images = [], { recount } = {}) => {
       if (!onAddressWithAgent) return false;
       const target = (await resolveArtifactConversation()) || repairConversationId;
+      // The chat followed until now may not be this one: count the prompt's
+      // earlier copies in the chat it goes to.
+      if (!inChatTranscript && target) {
+        recount?.(countUserPrompts(transcriptsRef.current?.(target)?.messages, prompt));
+      }
+      const restoreAgentChat = followAgentChat(target);
       handedOffRef.current = true;
-      const started = await onAddressWithAgent({ artifact, prompt, conversationId: target, attachments: images });
-      if (started === false) handedOffRef.current = false;
+      let started = false;
+      try {
+        started = await onAddressWithAgent({
+          artifact, prompt, conversationId: target, attachments: images, inBackground: true,
+        });
+      } finally {
+        if (started === false) {
+          handedOffRef.current = false;
+          restoreAgentChat();
+        }
+      }
       return started !== false;
     },
     countInChat: (prompt) => countUserPrompts(chatMessages, prompt),
@@ -1369,6 +1430,34 @@ export function ArtifactViewer({
       }
       : undefined,
   } : null;
+
+  // Changes not shared yet (ENG-4595): the draft has moved past the live
+  // page. Opening the artifact shows them against the shared version, with
+  // Publish changes and Keep as draft, once per open; the header's "Unshared
+  // changes" opens the same review again. The shared version is the one the
+  // workspace load names (`publishedRevision`).
+  const unsharedFrom = workspace.publishedRevision?.id || null;
+  const unsharedTo = workspace.currentRevision?.id || null;
+  const canReviewUnshared = open && canManage && publishable && !!pub.publishedUrl && !!pub.modified
+    && !!unsharedFrom && !!unsharedTo && unsharedFrom !== unsharedTo;
+  const reviewUnshared = useCallback(() => {
+    if (!canReviewUnshared || workspace.comparison) return;
+    void workspace.reviewPublish(unsharedFrom, unsharedTo, { unshared: true });
+  }, [canReviewUnshared, unsharedFrom, unsharedTo, workspace]);
+  // The artifact whose review has shown this open: once per open, so keeping
+  // the draft (or a quick edit's own review) never brings it back by itself.
+  const unsharedShownRef = useRef('');
+  const unsharedKey = open ? (artifactIdentity(artifact) || artifact?.path || '') : '';
+  useEffect(() => {
+    if (!unsharedKey) unsharedShownRef.current = '';
+  }, [unsharedKey]);
+  useEffect(() => {
+    if (!canReviewUnshared || !unsharedKey || unsharedShownRef.current === unsharedKey) return;
+    // Not over something already on screen, a running edit or unsaved text.
+    if (workspace.comparison || quickEdit.running || workspace.dirty) return;
+    unsharedShownRef.current = unsharedKey;
+    reviewUnshared();
+  }, [canReviewUnshared, unsharedKey, workspace.comparison, workspace.dirty, quickEdit.running, reviewUnshared]);
 
   // Live edit (`source`): the code editor, in the preview's place at any
   // width. Turning it off with unsaved text asks first.
@@ -1723,6 +1812,7 @@ export function ArtifactViewer({
     disabledReason,
     shareRequest,
     onShareRequestClosed: () => setClosedShareRequest(shareRequest),
+    onReviewUnshared: canReviewUnshared && !workspace.comparison ? reviewUnshared : null,
   };
   const artifactActions = {
     canOpenInBrowserTab: !!browserTabUrl,
@@ -2024,7 +2114,15 @@ export function ArtifactViewer({
           onDiscardUnsaved={workspace.discard}
           focusRequest={barFocusRequest}
           focusUsed={barFocusUsed}
-          onOpenChat={onClose}
+          // Inside a chat, closing the viewer shows it. Outside one, the host
+          // opens the chat the bar handed the message to.
+          onOpenChat={!inChatTranscript && onOpenConversation && agentChatId
+            ? () => onOpenConversation(chatTranscript?.conversationId || agentChatId)
+            : onClose}
+          // A comment the agent worked on in the chat: once its turn ends the
+          // bar asks whether to resolve it (ENG-4560).
+          threadStatus={(threadId) => (comments.threads || []).find((item) => item.id === threadId)?.status || null}
+          onResolveThread={(threadId) => setCommentStatus(threadId, 'resolved')}
         />
       )}
 

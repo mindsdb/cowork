@@ -93,9 +93,10 @@ function undoErrorMessage(error) {
  * @param {string | null} opts.headRevisionId  The draft revision on screen.
  * @param {() => Promise<string | null>} opts.resolveConversation  The chat the
  *   artifact belongs to, or null; the server notes an applied edit there.
- * @param {(prompt: string, images: object[]) => Promise<boolean>} opts.continueInChat
+ * @param {(prompt: string, images: object[], extra: { recount: (count: number) => void }) => Promise<boolean>} opts.continueInChat
  *   Send the prompt (quickEditChatPrompt) to that chat as a normal turn, with
  *   the message's images as pending attachments; false when no turn started.
+ *   `recount` corrects countInChat's answer once the chat is known.
  * @param {(prompt: string) => number} [opts.countInChat]  How many user
  *   messages in that chat already read `prompt`, so the reply can be found
  *   after it (lib/quickEditPrompt chatReplyFor).
@@ -204,7 +205,11 @@ export function useQuickEdit(artifact, {
       patchReply(replyId, { state: 'handing-off', summary, chatPrompt, chatBefore });
       let started = false;
       try {
-        started = await depsRef.current.continueInChat?.(chatPrompt, images);
+        started = await depsRef.current.continueInChat?.(chatPrompt, images, {
+          // The chat it goes to may hold earlier copies the count above did
+          // not see (a chat not on screen, ENG-4560).
+          recount: (count) => patchReply(replyId, { chatBefore: Number(count) || 0 }),
+        });
       } catch {
         started = false;
       }
@@ -408,7 +413,8 @@ export function useQuickEdit(artifact, {
   const askAgent = useCallback((replyId) => {
     const reply = messagesRef.current.find((m) => m.id === replyId);
     if (!reply?.request) return Promise.resolve(false);
-    return run(reply.request, { forceRoute: 'agent', images: reply.images || [] });
+    // Still the comment's message: the chat's answer can resolve it.
+    return run(reply.request, { forceRoute: 'agent', images: reply.images || [], threadId: reply.threadId || null });
   }, [run]);
 
   // Undo puts back every file the edit changed and removes those it created

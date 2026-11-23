@@ -1486,6 +1486,48 @@ describe('the bound subject on the event, not only the person (ENG-2206)', () =>
     expect(event.properties.sso_plan_tier).toBe('free');
   });
 
+  it('stamps the plan the usage read names over the realm roles', async () => {
+    // Realm roles know no Plus, and a legacy `pro-hub` role outlives the
+    // subscription it came with, so the usage read's plan is the tier.
+    getAccessToken.mockResolvedValue(
+      fakeJwt({
+        sub: 'user-plan',
+        email: 'a@example.com',
+        activate_organization: { id: 'org-abc', name: 'Acme' },
+        realm_access: { roles: ['free', 'pro-hub'] },
+      })
+    );
+    const fetchMock = mockFetch();
+    const { trackTokenCapHit } = await importAnalytics();
+    const { setUsagePlanTier } = await import('./usagePlanTier');
+
+    setUsagePlanTier('plus');
+    await trackTokenCapHit('window_allowance_exhausted');
+    const event = await sentEvent(fetchMock, 'token_cap_hit');
+    expect(event.properties.sso_plan_tier).toBe('plus');
+    expect(event.properties.$set.plan_tier).toBe('plus');
+    expect(event.properties.$set.is_free_tier).toBe(false);
+
+    // No plan on the read (gate off, older server): the roles decide, as before.
+    setUsagePlanTier(null);
+    fetchMock.mockClear();
+    await trackTokenCapHit('token_limit');
+    expect((await sentEvent(fetchMock, 'token_cap_hit')).properties.sso_plan_tier).toBe('pro');
+  });
+
+  it('keeps staff and team over the usage read\'s plan', async () => {
+    getAccessToken.mockResolvedValue(
+      fakeJwt({ sub: 'user-staff', email: 'a@example.com', realm_access: { roles: ['staff'] } })
+    );
+    const fetchMock = mockFetch();
+    const { trackTokenCapHit } = await importAnalytics();
+    const { setUsagePlanTier } = await import('./usagePlanTier');
+
+    setUsagePlanTier('free');
+    await trackTokenCapHit('token_limit');
+    expect((await sentEvent(fetchMock, 'token_cap_hit')).properties.sso_plan_tier).toBe('staff');
+  });
+
   it('does not widen the session segments onto unrelated events', async () => {
     getAccessToken.mockResolvedValue(
       fakeJwt({

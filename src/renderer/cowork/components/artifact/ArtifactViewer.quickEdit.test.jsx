@@ -136,7 +136,7 @@ vi.mock('../ConfirmModal', () => ({
 }));
 
 import { ArtifactViewer } from './ArtifactViewer';
-import { ChatTranscriptContext } from '../../lib/chatTranscriptContext';
+import { ChatTranscriptContext, ConversationTranscriptsContext, transcriptLookup } from '../../lib/chatTranscriptContext';
 import { ModelPickerContext } from '../../lib/modelPickerContext';
 
 const artifact = {
@@ -525,6 +525,7 @@ describe('ArtifactViewer quick edit bar', () => {
       prompt: 'Add last quarter sales from the warehouse\n\n(About the artifact `launch-brief`.)',
       conversationId: 'conv-1',
       attachments: [],
+      inBackground: true,
     });
     // Closing the viewer shows the chat; the bar adds no button for it.
     expect(within(thread()).queryByRole('button', { name: 'Open in chat' })).toBeNull();
@@ -586,6 +587,7 @@ describe('ArtifactViewer quick edit bar', () => {
         prompt: 'Why is revenue down?\n\n(About the artifact `launch-brief`.)',
         conversationId: 'conv-1',
         attachments: [],
+        inBackground: true,
       });
     });
   });
@@ -1030,6 +1032,127 @@ describe('ArtifactViewer quick edit bar', () => {
 
       await within(thread()).findByText('Sent to the chat.');
       expect(within(thread()).queryByText('Not this one.')).toBeNull();
+    });
+  });
+
+  // On the Artifacts page (ENG-4560): no chat around the viewer. A message the
+  // bar hands to the agent runs in the artifact's chat while the viewer stays
+  // open, and the bar follows that chat from the app's tasks.
+  describe('outside a chat', () => {
+    const PROMPT = 'Add last quarter sales\n\n(About the artifact `launch-brief`.)';
+    function renderOnArtifactsPage(tasks, props = {}) {
+      const ui = (list) => (
+        <ConversationTranscriptsContext.Provider value={transcriptLookup(list)}>
+          <ArtifactViewer
+            open
+            artifact={artifact}
+            onClose={props.onClose || vi.fn()}
+            resolveRepairConversation={vi.fn(async () => 'origin-chat')}
+            {...props}
+          />
+        </ConversationTranscriptsContext.Provider>
+      );
+      const view = render(ui(tasks));
+      return { ...view, update: (list) => view.rerender(ui(list)) };
+    }
+    const chat = (messages, extra = {}) => ({ id: 'origin-chat', messages, ...extra });
+
+    it('hands the message to the artifact chat in the background and mirrors its reply, staying open', async () => {
+      const onClose = vi.fn();
+      const onAddressWithAgent = vi.fn(async () => true);
+      workspaceApi.streamQuickEdit.mockImplementation(plays({ type: 'done', status: 'agent', summary: '' }));
+      // Another chat answering the same prompt is not this one.
+      const other = { id: 'other-chat', messages: [{ role: 'user', content: PROMPT }, { role: 'assistant', content: 'Not this one.' }] };
+      const view = renderOnArtifactsPage([other], { onAddressWithAgent, onClose });
+      await screen.findByTitle('Launch brief');
+
+      ask('Add last quarter sales');
+      await within(thread()).findByText('Sent to the chat.');
+      expect(onAddressWithAgent).toHaveBeenCalledWith(expect.objectContaining({
+        prompt: PROMPT, conversationId: 'origin-chat', inBackground: true,
+      }));
+      expect(within(thread()).queryByText('Not this one.')).toBeNull();
+
+      view.update([other, chat([{ role: 'user', content: PROMPT }, { role: '_streaming', content: 'Pulling the sales', steps: [] }])]);
+      expect(await within(thread()).findByText(/Pulling the sales/)).toBeInTheDocument();
+
+      view.update([other, chat([{ role: 'user', content: PROMPT }, { role: 'assistant', content: 'Added a Q3 sales column.' }])]);
+      expect(await within(thread()).findByText('Added a Q3 sales column.')).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+      expect(bar()).toBeInTheDocument();
+    });
+
+    it('reads the reply to its own message when the chat asked the same before', async () => {
+      workspaceApi.streamQuickEdit.mockImplementation(plays({ type: 'done', status: 'agent', summary: '' }));
+      const earlier = [{ role: 'user', content: PROMPT }, { role: 'assistant', content: 'An older answer.' }];
+      const view = renderOnArtifactsPage([chat(earlier)], { onAddressWithAgent: vi.fn(async () => true) });
+      await screen.findByTitle('Launch brief');
+
+      ask('Add last quarter sales');
+      await within(thread()).findByText('Sent to the chat.');
+      expect(within(thread()).queryByText('An older answer.')).toBeNull();
+
+      view.update([chat([...earlier, { role: 'user', content: PROMPT }, { role: 'assistant', content: 'The new answer.' }])]);
+      expect(await within(thread()).findByText('The new answer.')).toBeInTheDocument();
+      expect(within(thread()).queryByText('An older answer.')).toBeNull();
+    });
+
+    it('follows a chat its first turn renamed', async () => {
+      workspaceApi.streamQuickEdit.mockImplementation(plays({ type: 'done', status: 'agent', summary: '' }));
+      const view = renderOnArtifactsPage([], { onAddressWithAgent: vi.fn(async () => true) });
+      await screen.findByTitle('Launch brief');
+      ask('Add last quarter sales');
+      await within(thread()).findByText('Sent to the chat.');
+
+      view.update([{ id: 'server-id', renamedFrom: 'origin-chat', messages: [{ role: 'user', content: PROMPT }, { role: 'assistant', content: 'Done in the renamed chat.' }] }]);
+      expect(await within(thread()).findByText('Done in the renamed chat.')).toBeInTheDocument();
+    });
+
+    it('opens that chat from "Open in chat" while the turn waits on a question', async () => {
+      const onClose = vi.fn();
+      const onOpenConversation = vi.fn();
+      workspaceApi.streamQuickEdit.mockImplementation(plays({ type: 'done', status: 'agent', summary: '' }));
+      const view = renderOnArtifactsPage([], { onAddressWithAgent: vi.fn(async () => true), onClose, onOpenConversation });
+      await screen.findByTitle('Launch brief');
+      ask('Add last quarter sales');
+      await within(thread()).findByText('Sent to the chat.');
+
+      view.update([chat([
+        { role: 'user', content: PROMPT },
+        { role: '_streaming', content: '', steps: [{ badge: 'AskUser', status: 'in_progress', data: { answer: null } }] },
+      ])]);
+      fireEvent.click(await within(thread()).findByRole('button', { name: 'Open in chat' }));
+      expect(onOpenConversation).toHaveBeenCalledWith('origin-chat');
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('refreshes the head revision when the turn it handed off ends', async () => {
+      workspaceApi.loadArtifactRevisions.mockReset();
+      workspaceApi.loadArtifactRevisions.mockResolvedValue({ revisions: [{ id: 'r9' }, { id: 'r1' }] });
+      workspaceMock.load.mockClear();
+      workspaceApi.streamQuickEdit.mockImplementation(plays({ type: 'done', status: 'agent', summary: '' }));
+      const view = renderOnArtifactsPage([chat([])], { onAddressWithAgent: vi.fn(async () => true) });
+      await screen.findByTitle('Launch brief');
+      ask('Add last quarter sales');
+      await within(thread()).findByText('Sent to the chat.');
+
+      view.update([chat([{ role: 'user', content: PROMPT }, { role: '_streaming', content: 'Working', steps: [] }])]);
+      view.update([chat([{ role: 'user', content: PROMPT }, { role: 'assistant', content: 'Added a Q3 column.' }])]);
+
+      await waitFor(() => expect(workspaceApi.loadArtifactRevisions).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(workspaceMock.load).toHaveBeenCalled());
+    });
+
+    it('follows nothing when the turn did not start', async () => {
+      workspaceApi.streamQuickEdit.mockImplementation(plays({ type: 'done', status: 'agent', summary: '' }));
+      renderOnArtifactsPage(
+        [chat([{ role: 'user', content: PROMPT }, { role: 'assistant', content: 'From before.' }])],
+        { onAddressWithAgent: vi.fn(async () => false) },
+      );
+      await screen.findByTitle('Launch brief');
+      ask('Add last quarter sales');
+      expect(await within(thread()).findByRole('alert')).toHaveTextContent("Couldn't continue in the chat.");
+      expect(within(thread()).queryByText('From before.')).toBeNull();
     });
   });
 
@@ -1788,6 +1911,105 @@ describe('ArtifactViewer comments to the change bar', () => {
 
     expect(workspaceApi.streamQuickEdit).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('list', { name: 'Waiting to run' })).toBeNull();
+  });
+
+  // A comment the agent took over in the chat (ENG-4560): once its turn ends
+  // the bar asks whether to resolve it, with Resolve beside the question.
+  describe('resolving a comment the agent answered', () => {
+    const COMMENT_PROMPT = 'Address this comment on the element `h1`:\n> Make it blue\n\n(About the artifact `launch-brief`.)';
+    function renderInChat(messages) {
+      const ui = (msgs) => (
+        <ChatTranscriptContext.Provider value={{ conversationId: 'conv-1', messages: msgs }}>
+          <ArtifactViewer open artifact={artifact} onClose={vi.fn()} conversationId="conv-1" onAddressWithAgent={vi.fn(async () => true)} />
+        </ChatTranscriptContext.Provider>
+      );
+      const view = render(ui(messages));
+      return { ...view, update: (msgs) => view.rerender(ui(msgs)) };
+    }
+    async function sendComment(t1) {
+      await screen.findAllByTitle('Launch brief');
+      fireEvent.click(screen.getByRole('button', { name: /^Comments/ }));
+      await waitFor(() => expect(commentsPanel.props).not.toBeNull());
+      await act(async () => { await commentsPanel.props.onAddressWithAgent(t1); });
+    }
+    const QUESTION = 'Mark the comment as resolved?';
+
+    it('asks once the turn has ended, and Resolve resolves the comment', async () => {
+      const t1 = commentThread('t1', 'Make it blue');
+      commentsState.threads = [t1];
+      commentsState.setStatus = vi.fn(async (_id, status) => { t1.status = status; return true; });
+      workspaceApi.streamQuickEdit.mockImplementation(plays({ type: 'done', status: 'agent', summary: '' }));
+      const view = renderInChat([]);
+      await sendComment(t1);
+      await within(thread()).findByText('Sent to the chat.');
+
+      view.update([{ role: 'user', content: COMMENT_PROMPT }, { role: '_streaming', content: 'Making it blue', steps: [] }]);
+      await within(thread()).findByText(/Making it blue/);
+      expect(within(thread()).queryByText(QUESTION)).toBeNull();
+
+      view.update([{ role: 'user', content: COMMENT_PROMPT }, { role: 'assistant', content: 'The heading is blue now.' }]);
+      expect(await within(thread()).findByText(QUESTION)).toBeInTheDocument();
+      fireEvent.click(within(thread()).getByRole('button', { name: 'Resolve' }));
+
+      await waitFor(() => expect(commentsState.setStatus).toHaveBeenCalledWith('t1', 'resolved'));
+      expect(await within(thread()).findByText('Comment resolved.')).toBeInTheDocument();
+      expect(within(thread()).queryByText(QUESTION)).toBeNull();
+    });
+
+    it('goes away on Not now, leaving the comment open', async () => {
+      const t1 = commentThread('t1', 'Make it blue');
+      commentsState.threads = [t1];
+      workspaceApi.streamQuickEdit.mockImplementation(plays({ type: 'done', status: 'agent', summary: '' }));
+      const view = renderInChat([]);
+      await sendComment(t1);
+      await within(thread()).findByText('Sent to the chat.');
+      view.update([{ role: 'user', content: COMMENT_PROMPT }, { role: 'assistant', content: 'The heading is blue now.' }]);
+
+      fireEvent.click(await within(thread()).findByRole('button', { name: 'Not now' }));
+      expect(within(thread()).queryByText(QUESTION)).toBeNull();
+      expect(commentsState.setStatus).not.toHaveBeenCalled();
+    });
+
+    it('does not ask about a comment already resolved', async () => {
+      const t1 = commentThread('t1', 'Make it blue');
+      commentsState.threads = [t1];
+      workspaceApi.streamQuickEdit.mockImplementation(plays({ type: 'done', status: 'agent', summary: '' }));
+      const view = renderInChat([]);
+      await sendComment(t1);
+      await within(thread()).findByText('Sent to the chat.');
+      t1.status = 'resolved';
+      view.update([{ role: 'user', content: COMMENT_PROMPT }, { role: 'assistant', content: 'The heading is blue now.' }]);
+
+      await within(thread()).findByText('The heading is blue now.');
+      expect(within(thread()).queryByText(QUESTION)).toBeNull();
+    });
+
+    it('does not ask after a direct edit, which resolves the comment itself', async () => {
+      const t1 = commentThread('t1', 'Make it blue');
+      commentsState.threads = [t1];
+      commentsState.setStatus = vi.fn(async (_id, status) => { t1.status = status; return true; });
+      workspaceApi.streamQuickEdit.mockImplementation(plays(applied));
+      renderInChat([]);
+      await sendComment(t1);
+      await waitFor(() => expect(commentsState.setStatus).toHaveBeenCalledWith('t1', 'resolved'));
+      await within(thread()).findByText('Made the title blue.');
+      expect(within(thread()).queryByText(QUESTION)).toBeNull();
+    });
+
+    it('does not ask about a message that is no comment', async () => {
+      workspaceApi.streamQuickEdit.mockImplementation(plays({ type: 'done', status: 'agent', summary: '' }));
+      const view = renderInChat([]);
+      await screen.findAllByTitle('Launch brief');
+      ask('Make it blue');
+      await within(thread()).findByText('Sent to the chat.');
+      view.update([
+        { role: 'user', content: 'Make it blue\n\n(About the artifact `launch-brief`.)' },
+        { role: 'assistant', content: 'The heading is blue now.' },
+      ]);
+
+      await within(thread()).findByText('The heading is blue now.');
+      expect(within(thread()).queryByText(QUESTION)).toBeNull();
+    });
   });
 
   it('leaves a comment dismissed since alone when its fix is undone', async () => {
