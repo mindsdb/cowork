@@ -47,6 +47,7 @@ import {
   requireWebOrganizationCacheIdentity,
 } from './cowork/lib/organizationCacheIdentity';
 import { prepareForOrganizationReload } from './cowork/lib/organizationTransition';
+import { noteAccountVisit } from './cowork/lib/accountVisit';
 import { captureConsoleHandoff } from './cowork/lib/consoleHandoff';
 import { captureSettingsDeepLink } from './cowork/lib/settingsDeepLink';
 import { captureSignupWelcome } from './cowork/lib/signupWelcome';
@@ -114,6 +115,9 @@ const codeFixture = import.meta.env.DEV && new URLSearchParams(window.location.s
 if (!legacyTenant && !codeFixture) requireWebOrganizationCacheIdentity();
 
 function bindOrganizationCacheTokens(tokens: { token?: string }) {
+  // Before the pin below lets the app write this account's caches, which are
+  // part of what says the account has been here before.
+  noteAccountVisit(tokens.token);
   if (pinWebOrganizationCacheIdentity(tokens.token) === 'changed') {
     prepareForOrganizationReload();
   }

@@ -14,7 +14,7 @@ Every translation follows this page. When a term here appears in English, use ex
 
 ## Never translate
 
-Anton · MindsHub · Cowork · a deployment's brand name · model and provider names (Claude, GPT, Gemini, Jev) · file formats (PNG, SVG, PDF, KB, MB) · `8-Bit` · keyboard keys.
+Anton · MindsHub · Cowork · a deployment's brand name · model and provider names (Claude, GPT, Gemini, Jev) · the plan names **Plus** and **Pro** ("Plus plan" translates *plan*, never *Plus*) · file formats (PNG, SVG, PDF, KB, MB) · `8-Bit` · keyboard keys.
 
 ## Terms
 
@@ -53,6 +53,10 @@ Anton · MindsHub · Cowork · a deployment's brand name · model and provider n
 | Step (of a task) | Paso | Etapa | |
 | Figure (a number in an answer) | Cifra | Número | |
 | Match system | Igual que el sistema | Igual ao sistema | |
+| Plan (Free / Plus / Pro) | Plan | Plano | Subscription tier (ENG-4186). FR *forfait*, DE *Plan*, IT *piano*, JA プラン, KO 플랜, ZH 套餐 |
+| Plan allowance (5-hour / weekly) | Cupo (de 5 horas / semanal) | Cota (de 5 horas / semanal) | A plan's rolling window. Same word as the free allowance in each locale; JA uses 利用枠 here (無料枠 stays for the free one) |
+| Wallet (pay-as-you-go funds) | Saldo | Saldo | Always the locale's word for *balance*, never a separate "wallet" term |
+| API rates | Tarifas de API | Preços de API | FR *tarifs API*, DE *API-Preise*, IT *tariffe API*, JA API料金, KO API 요금, ZH API 价格 |
 
 ## Japanese (`ja`)
 

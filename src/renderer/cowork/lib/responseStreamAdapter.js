@@ -10,6 +10,16 @@ import i18n from '../../lib/i18n';
 /* User-facing copy, translated when the event is reduced (never at import). */
 const tr = (key, vars) => i18n.t(`messages.responseStream.${key}`, { ns: 'projects', ...vars });
 
+/* The turn-failure codes that count as a paywall impression (token_cap_hit);
+   see the `response.failed` branch for why each is in or out. */
+const TOKEN_CAP_CODES = new Set([
+  'token_limit',
+  'included_allowance_exhausted',
+  'model_access_denied',
+  'window_allowance_exhausted',
+  'model_not_in_tier',
+]);
+
 // Anton /v1/responses → ThinkingStep adapter.
 //
 // Anton's SSE stream emits one of three top-level event types:
@@ -638,11 +648,17 @@ export function reduceStream(state, event, now = Date.now, { replay = false } = 
     // `model_restricted`: an org admin's model rule, which credits do not lift.
     // `budget_exceeded`: a spent budget, which credits do not lift either.
     //
+    // ENG-4186 adds the two paid-plan stops, each a paywall impression too:
+    //   window_allowance_exhausted    a Plus or Pro window is used up and the
+    //                                 wallet cannot carry the task past it
+    //   model_not_in_tier             the plan does not cover the model and
+    //                                 the wallet cannot pay for it
+    //
     // One event carrying `reason` rather than three events, so the impression
     // stays a single series and keeps this once-per-receipt guarantee.
     // A failed turn keeps the text it got as its (partial) answer.
     state = promoteToAnswer(state);
-    if (!replay && (event.code === 'token_limit' || event.code === 'included_allowance_exhausted' || event.code === 'model_access_denied')) {
+    if (!replay && TOKEN_CAP_CODES.has(event.code)) {
       try { _trackTokenCapHit(event.code); }
       catch { /* analytics must never break streaming */ }
     }

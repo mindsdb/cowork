@@ -556,13 +556,15 @@ export function RecipientField({
     <div className="flex min-w-0 flex-col">
       <div
         ref={anchorRef}
-        className="flex h-[34px] min-w-0 items-center gap-2 rounded-card-row border border-solid bg-surface pl-[10px] pr-2"
+        // In the tones of the cards and switches beside it (the access card,
+        // viewer analytics), so it reads as a field to use, not a disabled one.
+        className="flex h-[36px] min-w-0 items-center gap-2 rounded-card-row border border-solid bg-surface-2 pl-[10px] pr-2"
         style={{
           borderColor: focused ? 'var(--accent)' : 'var(--line)',
           transition: 'border-color var(--dur-hover) ease',
         }}
       >
-        <span aria-hidden="true" className="inline-flex shrink-0 text-ink-4">{Ico.search(14)}</span>
+        <span aria-hidden="true" className="inline-flex shrink-0 text-ink-3">{Ico.search(14)}</span>
         <input
           ref={inputRef}
           role="combobox"
@@ -593,7 +595,7 @@ export function RecipientField({
             // An address typed and left is added rather than lingering.
             if (typedIsEmail && (emailsOnly || allowExternal)) commitEmail();
           }}
-          className="min-w-0 flex-1 bg-transparent border-0 [outline:none] p-0 font-body text-[13px] text-ink"
+          className="min-w-0 flex-1 bg-transparent border-0 [outline:none] p-0 font-body text-sm text-ink placeholder:text-ink-3"
         />
       </div>
 
@@ -624,7 +626,7 @@ export function RecipientField({
           {rows.map((item) => <RecipientRow key={item.key} item={item} onRemove={() => removeItem(item)} />)}
         </ul>
       )}
-      <span className="mt-[6px] font-body text-xs text-ink-3" data-testid="recipient-summary" aria-live="polite">{held ? t('recipients.checking') : summary}</span>
+      <span className="mt-[6px] font-body text-xs leading-[1.4] text-ink-3" data-testid="recipient-summary" aria-live="polite">{held ? t('recipients.checking') : summary}</span>
     </div>
   );
 }

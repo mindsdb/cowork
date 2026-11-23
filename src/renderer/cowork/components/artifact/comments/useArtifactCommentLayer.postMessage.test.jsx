@@ -142,3 +142,58 @@ describe('useArtifactCommentLayer images', () => {
     expect(loadImage).toHaveBeenCalledTimes(1);
   });
 });
+
+// Opening Comments from its tab starts in Comment mode (ENG-4455). The page
+// reloads with the layer, so the request waits for the layer's 'ready'.
+describe('useArtifactCommentLayer enterModeWhenReady', () => {
+  function ModeHarness({ onLayer }) {
+    const iframeRef = useRef(null);
+    onLayer(useArtifactCommentLayer(iframeRef, { threads: [], viewer: { id: 'u1' }, enabled: true }));
+    return <iframe ref={iframeRef} title="Draft preview" srcDoc="<html></html>" />;
+  }
+  const fromFrame = (frame, data) => fireEvent(window, new MessageEvent('message', {
+    source: frame.contentWindow,
+    data: { source: 'anton-comments', ...data },
+  }));
+  const modeMessages = (spy) => spy.mock.calls.map(([msg]) => msg.type).filter((type) => type.endsWith('-mode'));
+
+  it('enters Comment mode once the layer is ready, and stops asking once it is in it', () => {
+    let layer;
+    render(<ModeHarness onLayer={(value) => { layer = value; }} />);
+    const frame = screen.getByTitle('Draft preview');
+    const spy = vi.spyOn(frame.contentWindow, 'postMessage');
+
+    layer.enterModeWhenReady();
+    fromFrame(frame, { type: 'ready' });
+    expect(modeMessages(spy)).toEqual(['enter-mode', 'enter-mode']);
+
+    fromFrame(frame, { type: 'mode', active: true });
+    fromFrame(frame, { type: 'ready' });
+    expect(modeMessages(spy)).toEqual(['enter-mode', 'enter-mode']);
+  });
+
+  it('drops the request when the user picks Navigate first', () => {
+    let layer;
+    render(<ModeHarness onLayer={(value) => { layer = value; }} />);
+    const frame = screen.getByTitle('Draft preview');
+    const spy = vi.spyOn(frame.contentWindow, 'postMessage');
+
+    layer.enterModeWhenReady();
+    layer.setPlacing(false);
+    fromFrame(frame, { type: 'ready' });
+    expect(modeMessages(spy)).toEqual(['enter-mode', 'exit-mode']);
+  });
+
+  it('asks the next page for Comment mode, and nothing of the page going away', () => {
+    let layer;
+    render(<ModeHarness onLayer={(value) => { layer = value; }} />);
+    const frame = screen.getByTitle('Draft preview');
+    const spy = vi.spyOn(frame.contentWindow, 'postMessage');
+
+    layer.enterModeOnNextLoad();
+    expect(modeMessages(spy)).toEqual([]);
+
+    fromFrame(frame, { type: 'ready' });
+    expect(modeMessages(spy)).toEqual(['enter-mode']);
+  });
+});

@@ -29,6 +29,9 @@ const rendered = {
   identityToken: null as string | null,
   identityReadyAtApp: false,
   iconAtApp: null as string | null,
+  visitToken: null as string | null,
+  visitNotedBeforePin: false,
+  visitNotedAtApp: false,
 };
 
 // Mirrors @react-keycloak/core's provider: LoadingComponent until init resolves.
@@ -63,6 +66,7 @@ vi.mock('./App', () => ({
   default: () => {
     rendered.app = true;
     rendered.identityReadyAtApp = rendered.identityToken === 'initial-token';
+    rendered.visitNotedAtApp = rendered.visitToken === 'initial-token';
     rendered.iconAtApp = document.querySelector('link[rel="icon"]')?.getAttribute('href') ?? null;
     return null;
   },
@@ -82,6 +86,17 @@ vi.mock('./cowork/lib/organizationCacheIdentity', () => ({
   pinWebOrganizationCacheIdentity: (token?: string) => {
     rendered.identityToken = token ?? null;
     return 'pinned';
+  },
+}));
+
+vi.mock('./cowork/lib/accountVisit', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./cowork/lib/accountVisit')>()),
+  noteAccountVisit: (token?: string) => {
+    // Pinning is what lets the app write the account's caches, which the
+    // visit reads as "has been here before". StrictMode renders the provider
+    // twice, so only the first token counts.
+    if (rendered.visitToken === null) rendered.visitNotedBeforePin = rendered.identityToken === null;
+    rendered.visitToken = token ?? null;
   },
 }));
 
@@ -127,6 +142,9 @@ async function renderOnHost(hostname: string, search = '') {
   rendered.identityToken = null;
   rendered.identityReadyAtApp = false;
   rendered.iconAtApp = null;
+  rendered.visitToken = null;
+  rendered.visitNotedBeforePin = false;
+  rendered.visitNotedAtApp = false;
 
   // happy-dom's location is read-only; replace the descriptor for the case.
   Object.defineProperty(window, 'location', {
@@ -329,6 +347,14 @@ describe('web-main console handoff', () => {
     const r = await renderOnHost('cowork.mindshub.ai');
 
     expect(r.handoffAtProvider).toBeNull();
+  });
+
+  it("notes the account's visit from its first token, before the account's caches can be written", async () => {
+    const r = await renderOnHost('cowork.mindshub.ai', '?from=console&placement=sign-in');
+
+    expect(r.visitToken).toBe('initial-token');
+    expect(r.visitNotedBeforePin).toBe(true);
+    expect(r.visitNotedAtApp).toBe(true);
   });
 });
 

@@ -151,3 +151,19 @@ describe('TasksView', () => {
     expect(screen.queryByRole('button', { name: /^Sort/ })).not.toBeInTheDocument();
   });
 });
+
+
+// The Sort pill and filters above the list do the sorting; a long list has
+// no header row of its own (ENG-4585).
+describe('TasksView long list', () => {
+  const many = (n) => Array.from({ length: n }, (_, i) => ({
+    id: `m${i}`, title: `Task ${String.fromCharCode(97 + (i % 26))}${i}`, projectName: 'metrics',
+    updatedAt: `2026-09-${String(10 + (i % 18)).padStart(2, '0')}T10:00:00Z`,
+  }));
+
+  it('has no sort header row, and still sorts from the pill', () => {
+    setup({ tasks: many(40), schedules: [] });
+    expect(screen.queryByRole('toolbar')).toBeNull();
+    expect(screen.getByRole('combobox', { name: 'Sort' })).toBeInTheDocument();
+  });
+});

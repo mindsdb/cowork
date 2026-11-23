@@ -21,7 +21,12 @@ export interface FailureRecovery {
   billingTrigger?: BillingTrigger;
 }
 
-export type BillingTrigger = 'token_limit' | 'included_allowance_exhausted' | 'free_serving_paused';
+export type BillingTrigger =
+  | 'token_limit'
+  | 'included_allowance_exhausted'
+  | 'free_serving_paused'
+  | 'window_allowance_exhausted'
+  | 'model_not_in_tier';
 
 export const FAILURE_RECOVERY: Partial<Record<string, FailureRecovery>> = {
   insufficient_credits: {
@@ -55,6 +60,22 @@ export const FAILURE_RECOVERY: Partial<Record<string, FailureRecovery>> = {
     body: () => i18n.t('composerNotices.freeAirPaused.body', { ns: 'code' }),
     addCredits: true,
     billingTrigger: 'free_serving_paused',
+  },
+  // A Plus or Pro window is used up and the wallet is empty: the window is
+  // the plan's included allowance, so it reads like the free one running out.
+  window_allowance_exhausted: {
+    title: () => i18n.t('composerNotices.allowanceExhausted.title', { ns: 'code' }),
+    body: () => i18n.t('composerNotices.allowanceExhausted.body', { ns: 'code' }),
+    addCredits: true,
+    billingTrigger: 'window_allowance_exhausted',
+  },
+  // The plan does not cover this model and the wallet is empty: credits pay
+  // for it at API rates, or a model the plan covers runs now.
+  model_not_in_tier: {
+    title: (modelName) => i18n.t('composerNotices.insufficientCredits.title', { ns: 'code', model: modelName }),
+    body: () => i18n.t('composerNotices.insufficientCredits.body', { ns: 'code' }),
+    addCredits: true,
+    billingTrigger: 'model_not_in_tier',
   },
   // Credits do not lift it, but MindsHub Air may still run free.
   budget_exceeded: {

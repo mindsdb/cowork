@@ -34,7 +34,7 @@ const accountUser = vi.hoisted(() => vi.fn(() => null));
 vi.mock('../hooks/useAccountUser', () => ({ useAccountUser: () => accountUser() }));
 
 import ChatView, { ModelUnavailableCard } from './ChatView';
-import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_BUDGETS_URL } from '../../lib/mindsUrls';
+import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_BUDGETS_URL, MINDS_BUDGETS_DENIAL_URL } from '../../lib/mindsUrls';
 import { HubUsageContext } from '../lib/hubUsageContext';
 
 const taskWith = (messages) => ({
@@ -108,7 +108,7 @@ describe('billing_opened trigger per call site', () => {
 
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('budget_exceeded');
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledTimes(1);
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BUDGETS_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(new URL(MINDS_BUDGETS_DENIAL_URL).toString());
   });
 
   it("budget_exceeded: signed in, View budgets opens the task organization's Budgets tab", async () => {
@@ -122,6 +122,8 @@ describe('billing_opened trigger per call site', () => {
     expect(opened.searchParams.get('tab')).toBe('budgets');
     expect(opened.searchParams.get('organization')).toBe('org-123');
     expect(opened.searchParams.get('subject')).toBe('user-9');
+    // A denial, so the console records the visit as coming from one.
+    expect(opened.searchParams.get('from')).toBe('budget_denial');
   });
 
   it('free_serving_paused: a billing owner lands on the add-funds form, like the other stopped-task cards', async () => {

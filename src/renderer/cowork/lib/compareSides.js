@@ -3,7 +3,7 @@
 // message and whatever the agent answered to it.
 
 import { offeredModels } from './modelPickerOptions';
-import { billingCopyKey } from './billingLinks';
+import { offersBilling } from './billingLinks';
 import { budgetScopeOf } from './budgetScope';
 import i18n from '../../lib/i18n';
 
@@ -27,9 +27,16 @@ export function compareAvailable({ platformUi, pickerMode, models = [], modelEna
 const FAILED_ROLES = new Set(['error', 'provider_required']);
 
 /** Failures that mean the account could not pay for the turn, not that the
- *  model did badly: the paid balance ran out, the free Air allowance did, or
- *  a spending budget stopped paid models. */
-export const CREDIT_FAILURE_CODES = new Set(['token_limit', 'included_allowance_exhausted', 'budget_exceeded']);
+ *  model did badly: the paid balance ran out, the free Air allowance did, a
+ *  spending budget stopped paid models, or, on Plus or Pro with an empty
+ *  wallet, a plan window ran out or the plan does not cover the model. */
+export const CREDIT_FAILURE_CODES = new Set([
+  'token_limit',
+  'included_allowance_exhausted',
+  'budget_exceeded',
+  'window_allowance_exhausted',
+  'model_not_in_tier',
+]);
 
 export function isCreditFailure(turn) {
   return turn?.reply === 'failed' && CREDIT_FAILURE_CODES.has(turn.failureCode);
@@ -126,7 +133,7 @@ export function unjudgeableReason(aTurns = [], bTurns = [], names = { a: 'A', b:
   if (turn === null) return null;
   const sides = { a: aTurns[turn], b: bTurns[turn] };
   const out = ['a', 'b'].filter((l) => isCreditFailure(sides[l]));
-  if (out.length === 0) return null;
+  if (out.length === 0 || !offersBilling()) return null;
   // Credits do not lift a budget, so a budget stop is never called running out of credits.
   const budget = out.every((l) => sides[l].failureCode === 'budget_exceeded');
   // Both sides name one budget only when they agree on whose it is.
@@ -247,6 +254,7 @@ export function sideStatus(turns = [], { busy = false, continued = false } = {})
   if (last.reply === 'running') return { tone: 'working', label: tr('status.working') };
   if (last.reply === 'done') return { tone: 'done', label: tr('status.done') };
   if (isCreditFailure(last)) {
+    if (!offersBilling()) return { tone: 'failed', label: tr('status.stopped') };
     return { tone: 'failed', label: last.failureCode === 'budget_exceeded' ? tr('status.budgetReached') : tr('status.outOfCredits') };
   }
   if (last.reply === 'failed' && last.failureCode === 'rate_limited') return { tone: 'failed', label: tr('status.rateLimited') };
@@ -278,10 +286,11 @@ export function composerBlock(target, sides = {}, names = { a: 'A', b: 'B' }, { 
   // Both sides spend from one wallet, so once one side has stopped for want of
   // credits any follow-up would stop too. Blocks until the account can pay.
   if (outOfCredits.length > 0) {
+    if (!offersBilling()) return { message: tr('status.stopped'), canSwitch: false };
     return {
       message: outOfCredits.length === 2
-        ? tr(billingCopyKey('block.outOfCreditsBoth'))
-        : tr(billingCopyKey('block.outOfCreditsOne'), { name: names[outOfCredits[0]] }),
+        ? tr('block.outOfCreditsBoth')
+        : tr('block.outOfCreditsOne', { name: names[outOfCredits[0]] }),
       canSwitch: false,
       action: 'addFunds',
     };
@@ -337,6 +346,17 @@ export function silentFor(lastEventAt, now, threshold = STALL_HINT_MS) {
 const NOTICE_RANK = { danger: 3, warning: 2, info: 1 };
 
 /**
+ * Whether a side's credits notice (lib/usageWarnings) means its model cannot
+ * run at all: the wallet is empty and nothing else pays for the model, or, on
+ * Plus or Pro with an empty wallet, the plan window that covers the model is
+ * used up. A window used up while the wallet can pay is `window_on_wallet`,
+ * which does not stop the side.
+ */
+export function noticeStopsSide(notice) {
+  return notice?.kind === 'balance_empty' || notice?.kind === 'window_exhausted';
+}
+
+/**
  * One credits notice for a comparison, from the notice each side's model would
  * get on its own (lib/usageWarnings' deriveComposerWarning). The more severe
  * wins; resting figures are left out, since they are not warnings. `blocks` is
@@ -350,7 +370,7 @@ export function compareCreditNotice(notices = []) {
     .sort((x, y) => NOTICE_RANK[y.tone] - NOTICE_RANK[x.tone]);
   const notice = ranked[0];
   if (!notice) return null;
-  const blocks = notices.some((n) => n?.kind === 'balance_empty');
+  const blocks = notices.some(noticeStopsSide);
   const body = notice.kind === 'balance_low'
     ? `${notice.body} ${tr('twiceTheCredits')}`
     : notice.body;

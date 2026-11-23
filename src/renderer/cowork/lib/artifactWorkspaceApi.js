@@ -2,6 +2,7 @@ import { authFetch, BASE } from '../api';
 import { iterateSSE } from './responseStreamAdapter';
 import { host } from '../../platform/host';
 import { artifactIdentity } from './artifactIdentity';
+import { trackingSettingsBody } from './trackingSettings';
 import i18n from '../../lib/i18n';
 
 const tr = (key, vars) => i18n.t(`messages.artifactWorkspaceApi.${key}`, { ns: 'projects', ...vars });
@@ -361,6 +362,17 @@ export function loadArtifactAccess(artifact) {
   return request(`${ref.base}/access`);
 }
 
+// Who a published artifact reaches, for anyone who may preview it, not only
+// its owner (ENG-4455): `{ accessMode, ownerOnly, orgAllowed, allowedTeamIds,
+// allowedUserIds, accessEmails, names }`. Never the password. `names` false
+// means the caller is outside the artifact's org and is told only how it is
+// shared: the lists come back empty.
+export function loadArtifactAudience(artifact) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/audience`);
+}
+
 // Setting an audience is a re-publish server-side: the target stores access
 // alongside the bundle and reuses the existing report_id, so the shared URL
 // survives the change and nothing has to be unpublished first. `access` goes
@@ -375,6 +387,14 @@ export function setArtifactAccess(artifact, access) {
   });
 }
 
+// Publish changes (ENG-4595): the draft goes live at the same link with the
+// access it already has. Owner-only; 404 when nothing is published.
+export function republishArtifact(artifact) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/republish`, { method: 'POST' });
+}
+
 // Owner-only, like loadArtifactAccess above: view counts of the published
 // artifact and, on a restricted link, who opened it.
 export function loadArtifactStats(artifact) {
@@ -383,13 +403,30 @@ export function loadArtifactStats(artifact) {
   return request(`${ref.base}/stats`);
 }
 
-export function setArtifactTracking(artifact, enabled) {
+// `settings`: the analytics switch as a boolean, or `{ tracking,
+// require_email }` with omitted fields left unchanged (trackingSettingsBody).
+export function setArtifactTracking(artifact, settings) {
   const ref = artifactRef(artifact);
   if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
   return request(`${ref.base}/stats/tracking`, {
     method: 'PUT',
-    body: JSON.stringify({ enabled }),
+    body: JSON.stringify(trackingSettingsBody(settings)),
   });
+}
+
+// One viewer's visits, each with its time per section. Owner-only.
+export function loadArtifactStatsViewer(artifact, viewerId) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  if (!viewerId) return Promise.reject(new Error('No viewer'));
+  return request(`${ref.base}/stats/viewers/${encodeURIComponent(viewerId)}`);
+}
+
+// Deletes every view, visit and viewer recorded for the artifact. Owner-only.
+export function deleteArtifactStats(artifact) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/stats`, { method: 'DELETE' });
 }
 
 export function requestAgentRepair(artifact, payload) {

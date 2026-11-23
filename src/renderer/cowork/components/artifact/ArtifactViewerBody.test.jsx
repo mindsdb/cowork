@@ -1,8 +1,12 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+const sourceEditor = vi.hoisted(() => ({ props: null }));
 vi.mock('./workspace/ArtifactSourceEditor', () => ({
-  ArtifactSourceEditor: () => <div data-testid="source-editor">Editor</div>,
+  ArtifactSourceEditor: (props) => {
+    if (props.active) sourceEditor.props = props;
+    return <div data-testid="source-editor">Editor</div>;
+  },
 }));
 const comparison = vi.hoisted(() => ({ props: null }));
 vi.mock('./workspace/ArtifactComparison', () => ({
@@ -27,7 +31,7 @@ vi.mock('./workspace/TextSelectionComment', () => ({
 import { ArtifactViewerBody } from './ArtifactViewerBody';
 
 function renderBody(
-  mode, previewOverrides = {}, workspaceOverrides = {}, stats = undefined, reviewOverrides = {},
+  mode, previewOverrides = {}, workspaceOverrides = {}, stats = undefined, reviewOverrides = {}, layers = null,
 ) {
   const workspace = {
     mode,
@@ -98,6 +102,7 @@ function renderBody(
   };
 
   return <ArtifactViewerBody
+    layers={layers}
     workspace={workspace}
     preview={preview}
     review={review}
@@ -335,20 +340,64 @@ describe('ArtifactViewerBody comments chrome', () => {
   });
 });
 
-describe('ArtifactViewerBody inbox exit', () => {
+// One side panel for Live edit, the inbox and Stats (ENG-4455): it stays
+// mounted while any is open and swaps only its content, sliding in with the
+// first and out with the last.
+describe('ArtifactViewerBody side panel', () => {
   afterEach(() => vi.useRealTimers());
 
-  it('slides the inbox out before it goes when Comments turns off', () => {
-    vi.useFakeTimers();
-    const on = { open: true, enabled: true, inboxOpen: true, userDir: 'u', reportId: 'r' };
-    const view = render(renderBody('preview', {}, {}, undefined, on));
-    expect(commentsChrome.panel.leaving).toBe(false);
+  const commentsOn = { open: true, enabled: true, inboxOpen: true, userDir: 'u', reportId: 'r' };
+  const statsController = { data: null, loading: true, error: null, reload: vi.fn(), setTracking: vi.fn() };
+  const statsOn = { open: true, controller: statsController, accessMode: 'public', accessLoaded: true, onClose: vi.fn() };
+  const panel = () => screen.getByTestId('viewer-side-panel');
 
-    view.rerender(renderBody('preview', {}, {}, undefined, { ...on, open: false, inboxOpen: false }));
+  it('keeps the same panel across Comments, Stats and Live edit, swapping only its content', () => {
+    const view = render(renderBody('preview', {}, {}, undefined, commentsOn));
+    const node = panel();
+    expect(node).toHaveAttribute('data-mode', 'comments');
+    expect(within(node).getByTestId('comments-inbox')).toBeInTheDocument();
+
+    view.rerender(renderBody('preview', {}, {}, statsOn, {}));
+    expect(panel()).toBe(node);
+    expect(node).toHaveAttribute('data-mode', 'stats');
+    expect(node).not.toHaveClass('is-leaving');
+    expect(within(node).getByTestId('stats-panel')).toBeInTheDocument();
+    expect(within(node).queryByTestId('comments-inbox')).toBeNull();
+
+    view.rerender(renderBody('edit'));
+    expect(panel()).toBe(node);
+    expect(node).toHaveAttribute('data-mode', 'source');
+    expect(within(node).getByTestId('live-edit-slot')).toBeInTheDocument();
+    expect(within(node).queryByTestId('stats-panel')).toBeNull();
+  });
+
+  it('slides out with what it held when the last panel closes', () => {
+    vi.useFakeTimers();
+    const view = render(renderBody('preview', {}, {}, undefined, commentsOn));
+    expect(panel()).not.toHaveClass('is-leaving');
+
+    view.rerender(renderBody('preview', {}, {}, undefined, { ...commentsOn, open: false, inboxOpen: false }));
+    expect(panel()).toHaveClass('is-leaving');
     expect(screen.getByTestId('comments-inbox')).toBeInTheDocument();
-    expect(commentsChrome.panel.leaving).toBe(true);
 
     act(() => { vi.advanceTimersByTime(160); });
-    expect(screen.queryByTestId('comments-inbox')).toBeNull();
+    expect(screen.queryByTestId('viewer-side-panel')).toBeNull();
+  });
+
+  it('gives the editor the Live edit panel to render its controls into', () => {
+    const onExitSource = vi.fn();
+    render(renderBody('preview', {}, {}, undefined, {}, { source: true, onExitSource, editActions: null }));
+
+    const slot = screen.getByTestId('live-edit-slot');
+    expect(panel()).toContainElement(slot);
+    expect(sourceEditor.props.controlsTarget).toBe(slot);
+
+    act(() => { screen.getByRole('button', { name: 'Close Live edit panel' }).click(); });
+    expect(onExitSource).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows no panel on the plain preview', () => {
+    render(renderBody('preview'));
+    expect(screen.queryByTestId('viewer-side-panel')).toBeNull();
   });
 });

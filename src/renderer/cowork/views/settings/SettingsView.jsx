@@ -102,6 +102,9 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
   if (!PLATFORM_UI || !providerTestsAvailable) {
     return <div className="text-[12px] text-ink-3">{t('providers.unavailable')}</div>;
   }
+  if (!offersBilling() && ['no_credits', 'budget_reached', 'billing_unavailable'].includes(notice.kind)) {
+    return <div className="text-[12px] text-ink-3">{t('providers.unavailable')}</div>;
+  }
   const byok = <div className="text-ink-3">{t('probe.byok')}</div>;
   if (notice.kind === 'no_credits') {
     return (
@@ -159,7 +162,8 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
       <div className="text-[12px] leading-[1.6] grid gap-px">
         <div>
           <span className="text-danger">{t('probe.budgetReached', { detail: budgetExceededCopy({ usage }) })} </span>
-          <ViewBudgetsLink>{t('probe.viewBudgetsArrow')}</ViewBudgetsLink>
+          {/* The test call itself was refused, so this is a denial's link. */}
+          <ViewBudgetsLink fromDenial>{t('probe.viewBudgetsArrow')}</ViewBudgetsLink>
         </div>
         {byok}
       </div>
@@ -182,9 +186,10 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
   return null;
 }
 
-/** The Budgets tab for this session's organization; credits do not lift a budget. */
-function ViewBudgetsLink({ children }) {
-  const budgetsUrl = useBudgetsUrl();
+/** The Budgets tab for this session's organization; credits do not lift a budget.
+    `fromDenial` when a call was refused, not when a spent budget is only foreseen. */
+function ViewBudgetsLink({ children, fromDenial = false }) {
+  const budgetsUrl = useBudgetsUrl({ fromDenial });
   if (!offersBilling()) return null;
   return (
     <button
@@ -216,6 +221,9 @@ export function UnavailableModelHint({ label, restricted, budgetReached = false,
       </div>
     );
   }
+  if (!offersBilling()) {
+    return <div className="text-[11.5px] text-ink-3">{t('agent.modelUnavailable', { model: label })}</div>;
+  }
   if (budgetReached) {
     return (
       <div className="text-[11.5px] text-ink-3">
@@ -223,9 +231,6 @@ export function UnavailableModelHint({ label, restricted, budgetReached = false,
         <ViewBudgetsLink>{t('agent.viewBudgets')}</ViewBudgetsLink>
       </div>
     );
-  }
-  if (!offersBilling()) {
-    return <div className="text-[11.5px] text-ink-3">{t('agent.modelNeedsCreditsNoLink', { model: label })}</div>;
   }
   return (
     <div className="text-[11.5px] text-ink-3">
@@ -1930,6 +1935,7 @@ export default function SettingsView({
                                 modelProviders: settings.modelProviders,
                                 modelFamilies: settings.modelFamilies,
                                 modelDisabledReasons: settings.modelDisabledReasons,
+                                modelCoveredByTier: settings.modelCoveredByTier,
                               },
                             );
                             return (
@@ -2054,6 +2060,7 @@ export default function SettingsView({
                       modelProviders: settings.modelProviders,
                       modelFamilies: settings.modelFamilies,
                       modelDisabledReasons: settings.modelDisabledReasons,
+                      modelCoveredByTier: settings.modelCoveredByTier,
                     },
                   );
                   return (
