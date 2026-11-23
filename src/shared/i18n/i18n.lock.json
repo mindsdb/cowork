@@ -136951,6 +136951,40 @@
       "text": "053461ce86d2"
     }
   },
+  "projects:scheduleDetail.runStatus.writesRefused": {
+    "de": {
+      "from": "ad2815011b06",
+      "text": "2fe1e22b3e85"
+    },
+    "es": {
+      "from": "ad2815011b06",
+      "text": "26c3067a8c8d"
+    },
+    "fr": {
+      "from": "ad2815011b06",
+      "text": "c9626f081b51"
+    },
+    "it": {
+      "from": "ad2815011b06",
+      "text": "6ce3ac7366d0"
+    },
+    "ja": {
+      "from": "ad2815011b06",
+      "text": "4d308e52d1be"
+    },
+    "ko": {
+      "from": "ad2815011b06",
+      "text": "3c0b4608ab88"
+    },
+    "pt-BR": {
+      "from": "ad2815011b06",
+      "text": "4852182ca222"
+    },
+    "zh-CN": {
+      "from": "ad2815011b06",
+      "text": "2fad9a962a99"
+    }
+  },
   "projects:scheduleDetail.running": {
     "de": {
       "from": "46c541363b02",
@@ -137867,6 +137901,40 @@
     "zh-CN": {
       "from": "cae7d57bc067",
       "text": "ca4d973c0b00"
+    }
+  },
+  "projects:scheduleRunAlert.approvalTitle": {
+    "de": {
+      "from": "2dfdfcd50d2c",
+      "text": "50a156e5ff95"
+    },
+    "es": {
+      "from": "2dfdfcd50d2c",
+      "text": "b40950909b36"
+    },
+    "fr": {
+      "from": "2dfdfcd50d2c",
+      "text": "0b4e14da10a2"
+    },
+    "it": {
+      "from": "2dfdfcd50d2c",
+      "text": "d80bf45ecae1"
+    },
+    "ja": {
+      "from": "2dfdfcd50d2c",
+      "text": "ea5c92201d27"
+    },
+    "ko": {
+      "from": "2dfdfcd50d2c",
+      "text": "5f8fc20ad675"
+    },
+    "pt-BR": {
+      "from": "2dfdfcd50d2c",
+      "text": "f594a30e007c"
+    },
+    "zh-CN": {
+      "from": "2dfdfcd50d2c",
+      "text": "86af012468a3"
     }
   },
   "projects:scheduleRunAlert.autoPausedNote": {
@@ -139023,6 +139091,40 @@
     "zh-CN": {
       "from": "272dba4e3914",
       "text": "d3ce0ecc248f"
+    }
+  },
+  "projects:scheduleStatus.writesRefused": {
+    "de": {
+      "from": "db0e960b68b5",
+      "text": "9f81e0a75797"
+    },
+    "es": {
+      "from": "db0e960b68b5",
+      "text": "e132626f7a4a"
+    },
+    "fr": {
+      "from": "db0e960b68b5",
+      "text": "936f25f927f3"
+    },
+    "it": {
+      "from": "db0e960b68b5",
+      "text": "b349f5d00026"
+    },
+    "ja": {
+      "from": "db0e960b68b5",
+      "text": "5743f6298212"
+    },
+    "ko": {
+      "from": "db0e960b68b5",
+      "text": "7b5078c89f0b"
+    },
+    "pt-BR": {
+      "from": "db0e960b68b5",
+      "text": "2a6ddbf3b716"
+    },
+    "zh-CN": {
+      "from": "db0e960b68b5",
+      "text": "0740d5fc2342"
     }
   },
   "projects:scheduleTaskModal.accountDefault": {

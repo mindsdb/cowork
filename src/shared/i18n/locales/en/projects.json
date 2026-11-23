@@ -588,6 +588,7 @@
     "lastFailed": "Last failed",
     "lastRunFailed": "Last run failed",
     "stoppedAtLimit": "Stopped at a limit",
+    "writesRefused": "Needs approval",
     "done": "Done",
     "active": "Active"
   },
@@ -619,6 +620,7 @@
     "partialNote": "Some of its actions may have completed. Review the run before running it again.",
     "limitTitle": "The last run stopped at a limit",
     "limitNote": "Some of its work may be done. Review the run before running it again.",
+    "approvalTitle": "The last run’s changes weren’t approved",
     "failedTitle": "The last run failed",
     "resume": "Resume",
     "runNow": "Run now",
@@ -718,7 +720,8 @@
       "success": "Succeeded",
       "failed": "Failed",
       "cancelled": "Stopped",
-      "stoppedAtLimit": "Stopped at a limit"
+      "stoppedAtLimit": "Stopped at a limit",
+      "writesRefused": "Not approved"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "Running now",

@@ -588,6 +588,7 @@
     "lastFailed": "Zuletzt fehlgeschlagen",
     "lastRunFailed": "Letzte Ausführung fehlgeschlagen",
     "stoppedAtLimit": "An Limit gestoppt",
+    "writesRefused": "Freigabe nötig",
     "done": "Fertig",
     "active": "Aktiv"
   },
@@ -619,6 +620,7 @@
     "partialNote": "Einige Aktionen wurden möglicherweise abgeschlossen. Prüfen Sie die Ausführung, bevor Sie sie wiederholen.",
     "limitTitle": "Die letzte Ausführung wurde an einem Limit gestoppt",
     "limitNote": "Ein Teil der Arbeit ist möglicherweise erledigt. Prüfen Sie die Ausführung, bevor Sie sie wiederholen.",
+    "approvalTitle": "Die Änderungen des letzten Laufs wurden nicht freigegeben",
     "failedTitle": "Die letzte Ausführung ist fehlgeschlagen",
     "resume": "Fortsetzen",
     "runNow": "Jetzt ausführen",
@@ -718,7 +720,8 @@
       "success": "Erfolgreich",
       "failed": "Fehlgeschlagen",
       "cancelled": "Gestoppt",
-      "stoppedAtLimit": "An Limit gestoppt"
+      "stoppedAtLimit": "An Limit gestoppt",
+      "writesRefused": "Nicht freigegeben"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "Läuft gerade",
