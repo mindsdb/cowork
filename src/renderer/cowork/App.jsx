@@ -201,6 +201,7 @@ import {
 } from './lib/browserApproval';
 import { forgetLegacyBrowserPrefs, setBrowserSettingSaver, syncBrowserPrefs } from './lib/browserPrefs';
 import { reportTurnEnd, TURN_STOPPED, waitForTurnEnd } from './lib/voice/turnEnds';
+import { SharedArtifactPreview } from './components/artifact/SharedArtifactPreview';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 /* One-of-ten encouraging follow-ups picked when a connect task is
@@ -700,16 +701,15 @@ export function searchRecents(tasks, projects) {
   ];
 }
 
-function RoutedArtifactsView({ loadedLocationKey, ...props }) {
+function RoutedArtifactsView(props) {
   const location = useLocation();
   const navigate = useNavigate();
-  const sharedUrl = loadedLocationKey === location.key ? location.state?.sharedArtifactUrl : null;
-  // Clear the notification once handled, so a reload or Back/Forward doesn't reopen it.
-  const clearShared = useCallback(
-    () => navigate({ pathname: location.pathname, search: location.search }, { replace: true }),
-    [navigate, location.pathname, location.search],
-  );
-  return <ArtifactsView {...props} sharedUrl={sharedUrl} onSharedUrlHandled={clearShared} />;
+  const target = location.state?.sharedArtifact;
+  return <>
+    <ArtifactsView {...props} />
+    {target && <SharedArtifactPreview key={location.key} target={target}
+      onClose={() => navigate({ pathname: location.pathname, search: location.search }, { replace: true })} />}
+  </>;
 }
 
 function AppCore() {
@@ -934,7 +934,6 @@ function AppCore() {
   const runnableProjects = useMemo(() => projects.filter(canRunProject), [projects]);
   const [moveModalTask, setMoveModalTask] = useState(null);  // task pending a move-to-project
   const [artifacts, setArtifacts] = useState([]);
-  const [artifactsLocationKey, setArtifactsLocationKey] = useState(null);
   // False until the first artifacts fetch settles, so Live Artifacts shows
   // skeletons instead of a premature "No artifacts yet".
   const [artifactsLoaded, setArtifactsLoaded] = useState(false);
@@ -963,12 +962,7 @@ function AppCore() {
   useEffect(() => { artifactsRef.current = artifacts; }, [artifacts]);
   // Every load of `artifacts` goes through this loader. Strict: a failed load
   // must not read as an empty list.
-  const [artifactsLoader] = useState(() => createLatestLoader(async () => {
-    // Only a successful listing started on this navigation can settle its tap.
-    const locationKey = routerRef.current.state.location.key;
-    return { locationKey, data: await fetchArtifactsStrict() };
-  }, ({ locationKey, data }) => {
-    setArtifactsLocationKey(locationKey);
+  const [artifactsLoader] = useState(() => createLatestLoader(fetchArtifactsStrict, (data) => {
     // One-time arm/disarm decision for the first-artifact tip, taken on
     // the session's first successful fetch: empty list = fresh account
     // (watch for the first artifact); anything else = existing account
@@ -2473,8 +2467,11 @@ function AppCore() {
     // Only the push controller delivers a pending tap. An address-bar fragment
     // must never instruct the app to open an external destination.
     if (path.startsWith('/artifacts#shared=')) {
-      const sharedArtifactUrl = safeExternalUrl(new URLSearchParams(path.split('#')[1]).get('shared'));
-      routerRef.current.navigate('/artifacts', { state: { sharedArtifactUrl } });
+      const params = new URLSearchParams(path.split('#')[1]);
+      const ref = params.get('ref');
+      const [project_id, artifact_id] = ref?.split('/') ?? [];
+      const sharedArtifact = ref ? { project_id, artifact_id } : { url: safeExternalUrl(params.get('shared')) };
+      routerRef.current.navigate('/artifacts', { state: { sharedArtifact } });
     } else {
       routerRef.current.navigate(path);
     }
@@ -7655,7 +7652,6 @@ function AppCore() {
           // this page, and follows the reply from that chat's task (ENG-4560).
           <ConversationTranscriptsContext.Provider value={artifactTranscripts}>
           <RoutedArtifactsView
-            loadedLocationKey={artifactsLocationKey}
             artifacts={artifacts}
             onArtifactChanged={handleArtifactChanged}
             onRefreshArtifacts={reloadArtifacts}

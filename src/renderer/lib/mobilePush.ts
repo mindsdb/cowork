@@ -13,8 +13,7 @@
 //     offers "Get notified when your tasks finish"; "Turn on" fires the OS
 //     prompt, "Not now" snoozes the offer for 14 days.
 //   - A tap on a notification opens its `path` in the app's router, or its
-//     shared artifact in the viewer when it's in the user's list, or its URL in
-//     the system browser. A tap that
+//     shared artifact through the signed-in preview lookup. A tap that
 //     arrives before the router exists (cold start, or before sign-in, which
 //     reloads the page) is kept in sessionStorage and applied once it does.
 //   - On sign-out, before the tokens are cleared: DELETE the device token, so
@@ -122,12 +121,12 @@ export function actionForNotification(data: unknown): PushTapAction {
   if (path) return { type: 'navigate', path };
   const url = safeExternalUrl(record.url);
   if (record.kind === 'artifact_shared') {
-    // Live Artifacts opens the viewer only for a card already in the signed-in
-    // user's list, and the browser otherwise. A URL too long for the path cap
-    // goes straight to the browser.
-    if (!url) return { type: 'navigate', path: '/artifacts' };
-    const destination = safeInAppPath('/artifacts#' + new URLSearchParams({ shared: url }));
-    if (destination) return { type: 'navigate', path: destination };
+    const ref = record.artifact_ref;
+    const params = new URLSearchParams({ shared: '' });
+    if (typeof ref === 'string' && /^[a-f0-9-]{36}\/[a-f0-9]{32}$/i.test(ref)) params.set('ref', ref);
+    else if (url) params.set('shared', url);
+    const route = safeInAppPath('/artifacts#' + params);
+    return { type: 'navigate', path: route ?? '/artifacts#shared=' };
   }
   if (url) return { type: 'open-url', url };
   return { type: 'none' };

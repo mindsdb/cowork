@@ -129,10 +129,16 @@ describe('actionForNotification (tap routing)', () => {
       .toEqual({ type: 'navigate', path: '/artifacts#shared=https%3A%2F%2Fview.mindshub.ai%2Fa%2Fxyz' });
   });
 
-  it('opens a shared artifact url too long for an in-app path in the browser', () => {
+  it('prefers the stable reference for a new shared-artifact notification', () => {
+    const ref = '22222222-2222-4222-8222-222222222222/11111111111141118111111111111111';
+    expect(actionForNotification({ kind: 'artifact_shared', artifact_ref: ref, url: 'https://view.example/a/old' }))
+      .toEqual({ type: 'navigate', path: '/artifacts#' + new URLSearchParams({ shared: '', ref }) });
+  });
+
+  it('keeps an oversized shared link inside the app', () => {
     const url = 'https://view.mindshub.ai/a/' + 'x'.repeat(2100);
     expect(actionForNotification({ kind: 'artifact_shared', url }))
-      .toEqual({ type: 'open-url', url });
+      .toEqual({ type: 'navigate', path: '/artifacts#shared=' });
   });
 
   it('keeps the path cap for a raw shared-artifact path', () => {

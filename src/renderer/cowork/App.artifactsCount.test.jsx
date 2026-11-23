@@ -7,6 +7,7 @@ import userEvent from '@testing-library/user-event';
 
 const spies = vi.hoisted(() => ({
   setNavigator: vi.fn(),
+  fetchSharedArtifactPreview: vi.fn(),
   deleteArtifact: vi.fn(),
   deleteProject: vi.fn(),
   fetchArtifacts: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock('../lib/mobilePush', async (importOriginal) => ({
 
 vi.mock('./api', async (importOriginal) => ({
   ...(await importOriginal()),
+  fetchSharedArtifactPreview: (...args) => spies.fetchSharedArtifactPreview(...args),
   fetchHealth: vi.fn(async () => ({ status: 'ok', config_ready: true })),
   fetchSessions: vi.fn(async () => []),
   fetchSession: vi.fn(async () => ({ messages: [] })),
@@ -85,7 +87,7 @@ vi.mock('../platform/host', async (importOriginal) => {
   };
 });
 
-vi.mock('./components/artifact', async (importOriginal) => ({
+vi.mock('./components/artifact/ArtifactViewer', async (importOriginal) => ({
   ...(await importOriginal()),
   ArtifactViewer: ({ open, artifact }) => open ? <div role="dialog">{artifact.title}</div> : null,
 }));
@@ -181,30 +183,33 @@ describe('shared artifact navigation', () => {
 
   const sharePath = (url) => '/artifacts#' + new URLSearchParams({ shared: url });
 
-  it('opens a queued tap after a cold start loads the signed-in collection', async () => {
-    const url = 'https://view.example/r/weekly';
+  it.each([
+    ['a shared image', '.png'],
+    ['an older artifact outside the latest 80', '.md'],
+  ])('opens %s after a cold start without waiting for the listing', async (title, ext) => {
+    const url = 'https://view.example/a/old-share/';
     window.history.replaceState(null, '', '/');
     spies.setNavigator.mockImplementationOnce((navigate) => { navigate(sharePath(url)); });
-    spies.fetchArtifactsStrict.mockResolvedValue([{ ...alpha, publishedUrl: url, title: 'Weekly review' }]);
+    spies.fetchArtifactsStrict.mockReturnValue(new Promise(() => {}));
+    spies.fetchSharedArtifactPreview.mockResolvedValue({
+      ...alpha, title, ext, type: 'file', path: '/old/file' + ext, draftUrl: '/api/v1/artifacts/drafts/project/old/file' + ext,
+    });
     render(<App />);
-    expect(await screen.findByRole('dialog')).toHaveTextContent('Weekly review');
-    await waitFor(() => expect(window.history.state?.usr?.sharedArtifactUrl).toBeFalsy());
+    expect(await screen.findByText(title)).toBeInTheDocument();
+    expect(spies.fetchSharedArtifactPreview).toHaveBeenCalledWith({ url }, expect.any(AbortSignal));
+    expect((await import('../platform/host')).host.openExternal).not.toHaveBeenCalled();
   });
 
-  it('waits for the navigation refresh when a newly shared artifact arrives', async () => {
-    const { host } = await import('../platform/host');
-    const url = 'https://view.example/r/newly-shared';
-    window.history.replaceState(null, '', '/artifacts');
+  it('keeps a revoked share in the app and reads by stable identity', async () => {
+    const project_id = '11111111-1111-4111-8111-111111111111';
+    const artifact_id = '22222222222242228222222222222222';
+    const params = new URLSearchParams({ shared: '', ref: project_id + '/' + artifact_id });
+    spies.setNavigator.mockImplementationOnce((navigate) => navigate('/artifacts#' + params));
+    spies.fetchSharedArtifactPreview.mockRejectedValue(new Error('Not found'));
     render(<App />);
-    await expectCount(3);
-    const refresh = deferred();
-    spies.fetchArtifactsStrict.mockReturnValue(refresh.promise);
-    const [navigate] = spies.setNavigator.mock.lastCall;
-    await act(async () => navigate(sharePath(url)));
-    expect(host.openExternal).not.toHaveBeenCalled();
-    await act(async () => refresh.resolve([{ ...alpha, publishedUrl: url, title: 'New share' }]));
-    expect(await screen.findByRole('dialog')).toHaveTextContent('New share');
-    expect(host.openExternal).not.toHaveBeenCalled();
+    expect(await screen.findByText('Could not open this artifact for review')).toBeInTheDocument();
+    expect(spies.fetchSharedArtifactPreview).toHaveBeenCalledWith({ project_id, artifact_id }, expect.any(AbortSignal));
+    expect((await import('../platform/host')).host.openExternal).not.toHaveBeenCalled();
   });
 
   it('treats an ordinary artifacts link as a collection visit', async () => {

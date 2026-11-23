@@ -1685,6 +1685,10 @@ export async function fetchArtifactsStrict({ projectId, projectPath } = {}) {
   return Array.isArray(data) ? data : [];
 }
 
+export function fetchSharedArtifactPreview(target, signal) {
+  return req('/artifacts/shared-preview', { method: 'POST', body: JSON.stringify(target), signal });
+}
+
 export async function previewArtifact(path) {
   return req(`/artifacts/preview?path=${encodeURIComponent(path)}`);
 }
