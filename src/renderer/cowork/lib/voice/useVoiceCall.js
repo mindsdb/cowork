@@ -13,8 +13,10 @@
 // - `end` sends `session.close` and waits briefly for `session.closed`, so the
 //   session ends and its usage is final; the microphone stops with the call.
 //   The person's own hang-up (`hangUp`: the card's X, or asking the call to
-//   hang up, `hangUpAfterAnswer`) stops the microphone at once first. A call
-//   that fades out keeps listening until it really ends.
+//   hang up, `hangUpAfterAnswer`, or saying goodbye, `endOnGoodbye`, which
+//   catches a goodbye GPT-Live answers itself and never hands back) stops the
+//   microphone at once first. A call that fades out keeps listening until it
+//   really ends.
 // - `meters` holds an AnalyserNode for each voice ({agent, user}), for the
 //   card's sound waves. Listening only: the audio element plays the voice.
 // - A session's voice is fixed when it starts, so `switchVoice` hangs up at
@@ -36,6 +38,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { startVoiceSession } from '../../api';
 import i18n from '../../../lib/i18n';
+import { isGoodbye } from './goodbye';
 import { forTheAvatar, withoutPhoneNumbers } from './forTheAvatar';
 
 const CHANNEL = 'oai-events';
@@ -95,6 +98,9 @@ const IDLE_CHECK_MS = 1_000;
 // A call-back that hears nothing from GPT-Live this long after it starts stops
 // analyzing and opens the microphone, so the person can speak.
 export const ANALYZE_MAX_MS = 20_000;
+
+// What the call's model is told when the person ended the call by voice.
+const GOODBYE_LINE = 'The user is ending the call. Say only one brief, warm goodbye, and nothing else.';
 
 const OPENINGS = {
   // Mid-task the call opens silent: Anton has the task's context and waits
@@ -173,7 +179,9 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
   // `pending` what to announce once it is live.
   const call = useRef(null);
   const meters = useRef({ agent: null, user: null });
-  const heard = useRef({ pending: '', lastTurn: '' });
+  // `pending`: heard since the last delegation. `utterance`: what the person
+  // said since Anton last replied, and `replied` once he starts to.
+  const heard = useRef({ pending: '', lastTurn: '', utterance: '', replied: false });
   const speakingTimer = useRef(null);
   // When Anton last said something, and the session's opening.
   const spoke = useRef(0);
@@ -252,6 +260,12 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
       send({ type: 'session.commentary.append', event_id: eventId('nothing'), delegation_id: delegationId, content: 'I didn\'t catch the request. Ask the user to say it again.' });
       return;
     }
+    // The person is ending the call (ENG-4631): no need for the operator.
+    if (asking.goodbye || (!asking.ending && isGoodbye(request))) {
+      send({ type: 'session.commentary.append', event_id: eventId('bye'), delegation_id: delegationId, content: GOODBYE_LINE });
+      void goodbyeRef.current?.(asking);
+      return;
+    }
     setWorking(true);
     workingRef.current = true;
     let content;
@@ -269,7 +283,7 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     if (call.current !== asking) return;
     send({ type: 'session.commentary.append', event_id: eventId('result'), delegation_id: delegationId, content });
     // The person asked to hang up (hangUpAfterAnswer): the goodbye, then the card's X.
-    if (asking.hangUpAfter) {
+    if (asking.hangUpAfter && !asking.goodbye) {
       await afterLineRef.current?.(asking);
       await foldAndEndRef.current?.(asking);
     }
@@ -327,6 +341,8 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
         lastActive.current = Date.now();
         const delta = String(event.delta || '');
         heard.current.pending += delta;
+        if (heard.current.replied) heard.current = { ...heard.current, utterance: '', replied: false };
+        heard.current.utterance += delta;
         setCaptions((c) => ({ ...c, user: tail(c.last === 'user' ? c.user + delta : delta.trimStart()), last: 'user' }));
         break;
       }
@@ -336,6 +352,12 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
         agentLine.current = (agentLine.current + delta).slice(-400);
         // Anton is speaking: from here the person can answer.
         stopAnalyzing();
+        // His reply to a goodbye he answered himself, as small talk: GPT-Live
+        // often doesn't hand one back, so the call ends after it (ENG-4631).
+        if (!heard.current.replied) {
+          heard.current.replied = true;
+          if (isGoodbye(heard.current.utterance)) void goodbyeRef.current?.(call.current);
+        }
         setCaptions((c) => ({ ...c, agent: tail(c.last === 'agent' ? c.agent + delta : delta.trimStart()), last: 'agent' }));
         setAgentSpeaking(true);
         spoke.current = Date.now();
@@ -385,6 +407,7 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
   const afterLineRef = useRef(afterLine);
   afterLineRef.current = afterLine;
   const foldAndEndRef = useRef(null);
+  const goodbyeRef = useRef(null);
   // Folds the card, then hangs up `owner`: a call that replaced it since (a
   // voice switch) is not this one's to end.
   const foldAndEnd = useCallback(async (owner) => {
@@ -415,7 +438,7 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     setWorking(false);
     workingRef.current = false;
     setMicOn(kind !== 'preview' && kind !== 'callBack');
-    heard.current = { pending: '', lastTurn: '' };
+    heard.current = { pending: '', lastTurn: '', utterance: '', replied: false };
     let mine = null;
     try {
       const peer = new RTCPeerConnection();
@@ -541,6 +564,19 @@ export function useVoiceCall({ onAsk, context, busy, onAway }) {
     stopMicrophone(owner);
     return true;
   }, [stopMicrophone]);
+
+  // The person ended the call by voice ("you're dismissed", "bye"): the
+  // microphone stops at once, and the call ends as the X ends it once Anton's
+  // goodbye is said. Once per call, however many ways it was heard.
+  const endOnGoodbye = useCallback(async (owner) => {
+    if (!owner || call.current !== owner || owner.ending || owner.goodbye) return;
+    owner.goodbye = true;
+    owner.ending = true;
+    stopMicrophone(owner);
+    await afterLine(owner);
+    await foldAndEnd(owner);
+  }, [afterLine, foldAndEnd, stopMicrophone]);
+  goodbyeRef.current = endOnGoodbye;
 
   // Hangs up at once and starts again in `voice`, which says a short line
   // (`kind` 'switch' on a call, 'preview' with no call).

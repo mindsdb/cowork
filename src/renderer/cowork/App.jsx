@@ -183,7 +183,7 @@ import BlankBrowserPanel from './components/browser/BlankBrowserPanel';
 import { BrowserPanel } from './components/browser/BrowserPanel';
 import { useVoiceCall, voiceCallRunning } from './lib/voice/useVoiceCall';
 import { askInTask, createCallWork, createQueueWatch, sendForOwnTurn } from './lib/voice/callWork';
-import { describeScreen, describeSteps, isRunning, runOperator } from './lib/voice/operator';
+import { describeFound, describeScreen, describeSteps, findTasks, isRunning, runOperator } from './lib/voice/operator';
 import { artifactsOnScreen } from './lib/voice/screenArtifacts';
 import { createSeenCallBack } from './lib/voice/seenCallBack';
 import {
@@ -802,6 +802,9 @@ function AppCore() {
   // drain and every queue write report to it.
   const callQueueWatchRef = useRef(createQueueWatch());
   const voiceHistoryRef = useRef([]);
+  // Tasks the call's search_tasks found, by id, so open_task can open one
+  // older than the tasks loaded here.
+  const callFoundRef = useRef(new Map());
   // The call hung up while Anton worked on its requests: it calls back with the result.
   const callBackRef = useRef(false);
   const callBackSeenRef = useRef({ canCallBack: false });
@@ -5259,12 +5262,13 @@ function AppCore() {
     const wanted = String(name || '').trim().toLowerCase();
     return (callScreenRef.current.projects || []).find((p) => p.name.toLowerCase() === wanted) || null;
   };
-  // Work the call gave Anton that is still running: one at a time, so two
-  // requests never run side by side and two answers never talk over each
-  // other. A request while one runs is queued behind it or, when it should
+  // Work the call gave Anton that is still running, each in its own task.
+  // Work for a new task, or a task the call isn't working in, starts at once
+  // beside it (ENG-4631: it used to queue behind whatever ran). More work in a
+  // task the call is busy in is queued behind it there or, when it should
   // replace it, the person is asked first (the operator decides, from
   // ask_anton's refusal).
-  const callBusy = () => callWorkRef.current.first();
+  const callBusyIn = (taskId) => (taskId ? callWorkRef.current.inTask(taskId)[0] || null : null);
   // The call's last work went without an answer to say (given up on): with
   // nothing left running, there is nothing to call back about.
   const callWorkGone = () => {
@@ -5274,16 +5278,16 @@ function AppCore() {
   };
   const callActions = {
     ask_anton: async ({ request, task_id: taskId, project }) => {
-      const busy = callBusy();
+      const existing = taskId && taskId !== 'new' ? callTask(taskId) : null;
+      const busy = callBusyIn(existing?.id);
       if (busy) {
-        const where = tasksRef.current.find((t) => t.id === busy.taskId)?.title;
-        return `Not started: ${agentLabel} is still working on "${busy.request}"${where ? ` in "${where}"` : ''}. `
-          + 'Tell the user that, then either queue this with queue_for_anton, or ask whether to stop that work '
-          + 'and do this now (stop_task, then ask_anton).';
+        return `Not started: ${agentLabel} is still working on "${busy.request}" in "${existing.title}". `
+          + 'Tell the user that, then queue this there with queue_for_anton when it adds to that work, start it in a '
+          + "new task (task_id 'new') when it is separate work, or ask whether to stop that work and do this now "
+          + '(stop_task, then ask_anton).';
       }
       const inProject = project ? callProject(project) : null;
       if (project && !inProject) throw new Error(`There is no project called "${project}".`);
-      const existing = taskId && taskId !== 'new' ? callTask(taskId) : null;
       if (existing && !(callScreenRef.current.route === 'task' && callScreenRef.current.currentTask?.id === existing.id)) {
         selectTask(existing.id);
       }
@@ -5356,9 +5360,25 @@ function AppCore() {
       return `Moved "${task.title}" to ${known ? `"${known.name}"` : `a new project, "${project}"`}.`;
     },
     open_task: ({ task_id: taskId }) => {
-      const task = callTask(taskId);
+      // A task search_tasks found can be older than the tasks loaded here.
+      const found = callFoundRef.current.get(String(taskId));
+      const task = found && !tasksRef.current.some((t) => t.id === found.id) ? found : callTask(taskId);
       selectTask(task.id);
       return `Opened "${task.title}".`;
+    },
+    // Tasks by what the person calls them ("the pricing one"), including those
+    // too old for the snapshot's recent list (ENG-4631).
+    search_tasks: async ({ query }) => {
+      const text = String(query || '').trim();
+      let hits = [];
+      try {
+        hits = (await searchCowork(text))?.results || [];
+      } catch {
+        // The loaded tasks still answer.
+      }
+      const found = findTasks({ query: text, tasks: tasksRef.current, hits });
+      found.forEach((t) => callFoundRef.current.set(t.id, t));
+      return describeFound(text, found);
     },
     open_project: ({ project }) => {
       const known = callProject(project);
@@ -5430,7 +5450,7 @@ function AppCore() {
     request,
     history: voiceHistoryRef.current,
     snapshot: () => describeScreen({
-      ...callScreenRef.current, tasks: tasksRef.current, callTaskId: callTaskIdRef.current, working: callBusy(),
+      ...callScreenRef.current, tasks: tasksRef.current, callTaskId: callTaskIdRef.current, working: callWorkRef.current.all(),
       browserPage: pageOriginForContext(carriedPageRef.current?.() || ''),
       artifacts: artifactsOnScreen(),
       waiting: tasksRef.current
@@ -5496,7 +5516,10 @@ function AppCore() {
       // Calling while a call back is due: the work goes on, and its result is
       // said on this call. Work left over with nothing running anywhere is
       // stale: it would hold the call busy for good.
-      if (!callBackRef.current) voiceHistoryRef.current = [];
+      if (!callBackRef.current) {
+        voiceHistoryRef.current = [];
+        callFoundRef.current = new Map();
+      }
       const anythingRunning = Boolean(activeStreamingTaskIdRef.current) || tasksRef.current.some(isRunning)
         || Object.values(messageQueueRef.current).some((queue) => queue?.length);
       if (!anythingRunning) callWorkRef.current.clear();
