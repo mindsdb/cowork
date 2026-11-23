@@ -33,7 +33,7 @@ const readyItems = [
   {
     folder_id: 'server', folder_name: 'Server', workspace_path: '/task/server',
     remote_url: 'https://github.com/mindsdb/server.git', base_branch: 'staging',
-    task_branch: 'cowork/task/server', status: 'ready' as const, detail: '',
+    task_branch: 'cowork/task/server', head_revision: 'a'.repeat(40), status: 'ready' as const, detail: '',
   },
 ];
 
@@ -57,7 +57,7 @@ describe('DraftPullRequestSection', () => {
     mocks.deliveryPlan.mockResolvedValue({ items: readyItems, integrations: [integration] });
   });
 
-  it('creates drafts only for the repositories the user selected', async () => {
+  it('creates drafts only for the repositories the user selected, pinned to what they reviewed', async () => {
     const user = userEvent.setup();
     const onCreate = vi.fn(async () => []);
     render(<DraftPullRequestSection {...defaults} onCreate={onCreate} />);
@@ -71,7 +71,14 @@ describe('DraftPullRequestSection', () => {
       'Improve project delivery',
       '',
       'work',
-      [{ folder_id: 'server', title: 'Improve project delivery', body: '' }],
+      [{
+        folder_id: 'server',
+        title: 'Improve project delivery',
+        body: '',
+        head_revision: 'a'.repeat(40),
+        task_branch: 'cowork/task/server',
+        remote_url: 'https://github.com/mindsdb/server.git',
+      }],
     ));
   });
 

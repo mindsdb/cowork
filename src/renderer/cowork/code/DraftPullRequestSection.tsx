@@ -29,6 +29,11 @@ export interface DraftPullRequestInput {
   folder_id: string;
   title: string;
   body: string;
+  // What the person confirmed. The server refuses a folder that has moved on
+  // since, rather than publishing a commit or destination nobody reviewed.
+  head_revision?: string | null;
+  task_branch?: string | null;
+  remote_url?: string | null;
 }
 
 const NO_CONNECTIONS: ProjectConnection[] = [];
@@ -392,6 +397,9 @@ export function DraftPullRequestSection({
             folder_id: item.folder_id,
             title: overrides[item.folder_id]?.title || title.trim(),
             body: overrides[item.folder_id]?.body ?? body.trim(),
+            head_revision: item.head_revision,
+            task_branch: item.task_branch,
+            remote_url: item.remote_url,
           }));
           const records = await onCreate(title.trim(), body.trim(), connectionName || null, drafts);
           setLastAttempt(records);
