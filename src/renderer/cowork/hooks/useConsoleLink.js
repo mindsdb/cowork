@@ -4,7 +4,7 @@ import { useAccountUser } from './useAccountUser';
 
 /**
  * Names this session's organization and account on a console link, so the
- * console opens that organization rather than the browser's last one (ENG-3274).
+ * console opens that organization rather than the browser's last one (ENG-4333).
  * Call the result on render, not after an await, so web popup blockers allow it.
  */
 export function useConsoleLink() {
