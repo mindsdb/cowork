@@ -715,6 +715,14 @@ describe('rate_limited failure card (ENG-1537)', () => {
     screen.getByRole('button', { name: 'Try again' }).click();
     expect(onSend).toHaveBeenCalledWith('draw me a chart', [], { docContext: null });
   });
+
+  it('asks for a doc again when the failed message asked for one', () => {
+    const onSend = vi.fn();
+    const [user, error] = failedTurn('rate_limited', BODY);
+    render(<ChatView task={taskWith([{ ...user, output: 'doc' }, error])} onSend={onSend} />);
+    screen.getByRole('button', { name: 'Try again' }).click();
+    expect(onSend).toHaveBeenCalledWith('draw me a chart', [], { docContext: null, output: 'doc' });
+  });
 });
 
 describe('server_busy failure card', () => {

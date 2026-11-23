@@ -250,7 +250,7 @@ describe('DocModal panel rail', () => {
     expect(screen.queryByRole('button', { name: /^Comments/ })).toBeNull();
   });
 
-  describe('Open chat (ENG-4599)', () => {
+  describe('Open chat', () => {
     const ORIGIN = '3f6a1c8e-6b1d-4a2f-9a1e-2c7d5b0e4a11';
     const fromChat = { ...artifact, originConversationId: ORIGIN };
     const renderWithChats = async ({ status = 'ok', conversationId = null } = {}) => {

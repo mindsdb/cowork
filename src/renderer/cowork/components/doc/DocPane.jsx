@@ -125,7 +125,7 @@ export function writeErrorText(e) {
 export default function DocPane({
   projectRef, artifactId, title: fallbackTitle, variant = 'side', expanded = false, fillsWindow = false,
   onToggleExpand, maximized = false, onToggleMaximized, onClose, onAskAgent, onViewChange,
-  // The preview rail's actions below its tabs (DocModal's Open chat, ENG-4599).
+  // The preview rail's actions below its tabs (DocModal's Open chat).
   railActions = [],
 }) {
   const {
@@ -451,7 +451,11 @@ export default function DocPane({
       pane.focus({ preventScroll: true });
     });
   }, [stepBack]);
-  const ownUndo = (target) => editable && !version && !commenting && !(target instanceof HTMLInputElement);
+  // A field of its own (a tab's name, the "Ask for a change" bar, a comment
+  // box) keeps its own undo; a code block's textarea is the doc's text.
+  const ownField = (target) => target instanceof HTMLInputElement
+    || (target instanceof HTMLTextAreaElement && !target.closest('[data-block-id]'));
+  const ownUndo = (target) => editable && !version && !commenting && !ownField(target);
   const onKeyDownCapture = (e) => {
     const mod = e.metaKey || e.ctrlKey;
     if (!mod || e.altKey) return;

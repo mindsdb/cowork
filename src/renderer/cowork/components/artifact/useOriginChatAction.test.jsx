@@ -1,4 +1,4 @@
-// The rail's Open chat (ENG-4599): hidden in the origin chat, enabled for a
+// The rail's Open chat: hidden in the origin chat, enabled for a
 // chat that can be opened, disabled with the reason otherwise, and settled
 // when the preview opens rather than on click.
 import { afterEach, describe, expect, it, vi } from 'vitest';

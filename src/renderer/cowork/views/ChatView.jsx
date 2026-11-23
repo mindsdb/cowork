@@ -94,7 +94,7 @@ import { providerOverloadedButtons } from '../lib/turnErrorActions';
 import { isSkippedFailedAssistant, isOrphanUser as isOrphanUserPure, lastVisibleTurnIdx } from '../lib/turnVisibility';
 import { isThinkingActive } from '../lib/thinkingActive';
 import { splitTurnSegments, liveSegmentIndex } from '../lib/turnSegments';
-import { addonRowLabel, queuedReasonKey } from '../lib/addons';
+import { addonRowLabel, needsOwnTurn, queuedReasonKey } from '../lib/addons';
 import { linkFigureSteps } from '../lib/figureSources';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { billingActions, billingCopyKey, offersBilling } from '../lib/billingLinks';
@@ -2197,8 +2197,14 @@ function lastUserMessageBefore(visibleMessages, i) {
     const m = visibleMessages[j];
     if (m?.role === 'user' && typeof m.content === 'string' && m.content) {
       // The doc it was sent beside, when this app sent it: a resend goes with
-      // that one, never with whatever doc is open now.
-      return { text: m.content, attachments: Array.isArray(m.attachments) ? m.attachments : [], docContext: m.docContext || null };
+      // that one, never with whatever doc is open now. Asked for as a doc, it
+      // is asked for as one again.
+      return {
+        text: m.content,
+        attachments: Array.isArray(m.attachments) ? m.attachments : [],
+        docContext: m.docContext || null,
+        output: m.output || null,
+      };
     }
   }
   return null;
@@ -2414,7 +2420,9 @@ export default function ChatView({
   const effectiveRailOpen = !pane && !railFloats && railOpen;
   // A comparison pane never resends on its own: it would give one side a
   // turn the other never got, and the two would stop being comparable.
-  const sendAgain = pane ? undefined : (text, attachments, docContext = null) => onSend?.(text, attachments, { docContext });
+  const sendAgain = pane ? undefined : (text, attachments, docContext = null, output = null) => (
+    onSend?.(text, attachments, { docContext, ...(output ? { output } : {}) })
+  );
   const railOverlayOpen = !pane && railFloats && railNarrowOpen;
   /* The floating rail drawer counts as an overlay, so the desktop browser
      pane's native view steps aside rather than draw over it. */
@@ -3716,7 +3724,7 @@ export default function ChatView({
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
-                      onRetry={resend && sendAgain ? () => sendAgain(resend.text, resend.attachments, resend.docContext) : undefined}
+                      onRetry={resend && sendAgain ? () => sendAgain(resend.text, resend.attachments, resend.docContext, resend.output) : undefined}
                       reconnectable={m.reconnectable}
                       providerLabel={m.providerLabel}
                       errorText={m.content}
@@ -3807,7 +3815,7 @@ export default function ChatView({
                       title={t('chatView.errors.contentRecoveryTitle')}
                       body={t('chatView.errors.contentRecoveryBody')}
                       buttons={resend && sendAgain
-                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext), primary: true }]
+                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext, resend.output), primary: true }]
                         : []}
                     />
                   );
@@ -3858,7 +3866,7 @@ export default function ChatView({
                         ? t('chatView.errors.billingUnavailableBody')
                         : t('chatView.errors.providerUnauthorizedBody')}
                       buttons={resend && sendAgain
-                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext), primary: true }]
+                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext, resend.output), primary: true }]
                         : []}
                     />
                   );
@@ -3883,7 +3891,7 @@ export default function ChatView({
                       title={t('chatView.errors.workerUnresponsiveTitle')}
                       body={t('chatView.errors.workerUnresponsiveBody')}
                       buttons={resend && sendAgain
-                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext), primary: true }]
+                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext, resend.output), primary: true }]
                         : []}
                     />
                   );
@@ -3907,7 +3915,7 @@ export default function ChatView({
                         : t('chatView.errors.modelTimeoutOperatorBody')}
                       buttons={[
                         ...(resend && sendAgain
-                          ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext), primary: true }]
+                          ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext, resend.output), primary: true }]
                           : []),
                         ...(PLATFORM_UI ? [{ label: t('chatView.cards.openSettings'), onClick: () => onOpenSettings?.('agent') }] : []),
                       ]}
@@ -3931,7 +3939,7 @@ export default function ChatView({
                       title={t('chatView.errors.turnLostTitle')}
                       body={t('chatView.errors.turnLostBody')}
                       buttons={resend && sendAgain
-                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext), primary: true }]
+                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext, resend.output), primary: true }]
                         : []}
                     />
                   );
@@ -3959,7 +3967,7 @@ export default function ChatView({
                         {m._reconnecting && <Reconnecting />}
                       </>}
                       buttons={resend && !turnMayBeRunning && sendAgain
-                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext), primary: true }]
+                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext, resend.output), primary: true }]
                         : []}
                     />
                   );
@@ -4010,7 +4018,7 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       body={m.content}
                       retryAt={m.retryAt}
-                      onRetry={rlResend && sendAgain ? () => sendAgain(rlResend.text, rlResend.attachments, rlResend.docContext) : undefined}
+                      onRetry={rlResend && sendAgain ? () => sendAgain(rlResend.text, rlResend.attachments, rlResend.docContext, rlResend.output) : undefined}
                     />
                   );
                 }
@@ -4031,7 +4039,7 @@ export default function ChatView({
                       title={t('chatView.errors.serverBusyTitle')}
                       body={m.content}
                       retryAt={m.retryAt}
-                      onRetry={busyResend && sendAgain ? () => sendAgain(busyResend.text, busyResend.attachments, busyResend.docContext) : undefined}
+                      onRetry={busyResend && sendAgain ? () => sendAgain(busyResend.text, busyResend.attachments, busyResend.docContext, busyResend.output) : undefined}
                     />
                   );
                 }
@@ -4053,7 +4061,7 @@ export default function ChatView({
                       body={m.content}
                       retryAt={m.retryAt}
                       onRetry={unavailableResend && sendAgain
-                        ? () => sendAgain(unavailableResend.text, unavailableResend.attachments, unavailableResend.docContext)
+                        ? () => sendAgain(unavailableResend.text, unavailableResend.attachments, unavailableResend.docContext, unavailableResend.output)
                         : undefined}
                     />
                   );
@@ -4400,7 +4408,7 @@ export default function ChatView({
                     ) : null}
                     {q.addonPending ? (
                       <span role="status" className="text-ink-3 text-[12px] px-1" aria-label={t('chatView.addon.addingToTask')}>…</span>
-                    ) : (onAddQueuedToTask && isStreaming && !q.paused && !String(task?.id ?? '').startsWith('tmp-') && !(q.attachments || []).length && (
+                    ) : (onAddQueuedToTask && isStreaming && !q.paused && !String(task?.id ?? '').startsWith('tmp-') && !(q.attachments || []).length && !needsOwnTurn(q) && (
                       <Tooltip content={t('chatView.addon.addToTask')}>
                         <button
                           type="button"

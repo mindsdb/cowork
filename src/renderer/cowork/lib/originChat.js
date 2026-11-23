@@ -1,4 +1,4 @@
-// "Open chat" on a preview's rail (ENG-4599): the way from an artifact or doc
+// "Open chat" on a preview's rail: the way from an artifact or doc
 // back to the chat it was made in.
 //
 // The app hands the previews two things through OriginChatContext: `open(id)`

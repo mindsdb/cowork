@@ -1,8 +1,8 @@
 // A doc opened over the page (from the library or the rail), in the doc editor.
 // Like the artifact viewer it opens full screen or at the viewer's own size,
 // sharing that remembered choice; full screen on a Mac makes its header the
-// window's title bar. Its rail offers Open chat, the chat the doc was made in
-// (ENG-4599), unless that chat is the one on screen (`conversationId`).
+// window's title bar. Its rail offers Open chat, the chat the doc was made in,
+// unless that chat is the one on screen (`conversationId`).
 import { Modal } from '../ui/Modal';
 import DocPane from './DocPane';
 import { useViewerModal } from '../artifact/useViewerLayout';

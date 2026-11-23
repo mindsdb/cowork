@@ -588,6 +588,20 @@ describe('DocPane undo, notices and shortcuts', () => {
     expect(api.postDocOps.mock.calls[1][2].ops).toEqual(undo);
   });
 
+  it('leaves Cmd+Z to a text box of its own in the pane (the ask bar, a comment)', async () => {
+    const user = userEvent.setup();
+    api.postDocOps.mockImplementation(answered({ undo: [{ op: 'update', tab: 't_1', id: 'b_task', set: { done: false } }] }));
+    render(<DocPane projectRef="p1" artifactId="a1" />);
+    await user.click(await screen.findByRole('checkbox', { name: 'Mark done' }));
+    await waitFor(() => expect(api.postDocOps).toHaveBeenCalledTimes(1));
+    const box = document.createElement('textarea');
+    screen.getByRole('region').appendChild(box);
+    box.focus();
+    await user.keyboard('{Meta>}z{/Meta}');
+    expect(api.postDocOps).toHaveBeenCalledTimes(1);
+    expect(box).toHaveFocus();
+  });
+
   it('takes the Edit menu\'s Undo (a historyUndo input) the same way, not the browser\'s', async () => {
     const user = userEvent.setup();
     const undo = [{ op: 'update', tab: 't_1', id: 'b_task', set: { done: false } }];

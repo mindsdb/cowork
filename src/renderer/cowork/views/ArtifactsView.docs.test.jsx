@@ -19,7 +19,7 @@ vi.mock('../../platform/host', () => ({ host: hostMock }));
 vi.mock('../lib/analytics', () => ({ trackArtifactPublished: vi.fn() }));
 vi.mock('../components/ui/Toast', () => ({ useToastManager: () => ({ add: vi.fn() }) }));
 // The doc editor itself is tested on its own; here it only has to be the thing that opens.
-// It draws the real rail's actions (Open chat, ENG-4599).
+// It draws the real rail's actions (Open chat).
 vi.mock('../components/doc/DocPane', async () => {
   const { ViewerModeRail } = await import('../components/artifact/ViewerModeRail');
   return {
@@ -103,7 +103,7 @@ describe('Edit with agent from a doc in the library', () => {
   });
 });
 
-describe('Open chat from a doc in the library (ENG-4599)', () => {
+describe('Open chat from a doc in the library', () => {
   it('closes the doc and opens the chat it was made in', async () => {
     const user = userEvent.setup();
     const chats = { open: vi.fn(), check: vi.fn().mockResolvedValue('ok') };

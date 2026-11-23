@@ -1493,7 +1493,7 @@ export function ArtifactViewer({
   };
   // Modal hands its own argument to onClose; a plain close runs nothing after.
   const requestClose = () => closeThen(null);
-  // The rail's Open chat (ENG-4599): the chat this artifact was made in.
+  // The rail's Open chat: the chat this artifact was made in.
   const openChatAction = useOriginChatAction({ artifact, open, conversationId, close: closeThen });
 
   if (!open || !artifact) return null;

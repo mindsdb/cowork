@@ -6,7 +6,7 @@
 // preview. Each tab names itself, with a line on what it is for, on hover and
 // focus. Up and down arrows move between the tabs.
 //
-// Below the tabs, apart from them, sit the rail's actions (ENG-4599: Open
+// Below the tabs, apart from them, sit the rail's actions (Open
 // chat): plain buttons that do something once and open no panel, so they
 // have no pressed state. A disabled action stays focusable and hoverable
 // (`aria-disabled`, not `disabled`), so its tooltip can say why.

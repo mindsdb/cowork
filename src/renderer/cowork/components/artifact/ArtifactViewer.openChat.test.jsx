@@ -1,4 +1,4 @@
-// The viewer rail's Open chat (ENG-4599), as the library and the Live
+// The viewer rail's Open chat, as the library and the Live
 // artifacts rail open the viewer: it closes the viewer and opens the chat the
 // artifact was made in, and is absent inside that chat.
 

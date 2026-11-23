@@ -700,7 +700,7 @@ export async function fetchOlderMessages(id, cursor, { timeoutMs } = {}) {
 
 /**
  * Whether conversation `id` can be opened, from its metadata alone (the
- * preview's Open chat, ENG-4599): 'ok'; 'not_found' when it is gone;
+ * preview's Open chat): 'ok'; 'not_found' when it is gone;
  * 'forbidden' when it is someone else's; 'unavailable' on any other failure.
  *
  * @param {string} id

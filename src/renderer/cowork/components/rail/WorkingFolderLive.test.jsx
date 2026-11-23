@@ -65,7 +65,7 @@ vi.mock('../../lib/artifactsStore', async (importOriginal) => ({
   deleteArtifactAndSync: vi.fn(),
 }));
 // The doc editor is tested on its own; here it only has to be what opens.
-// It draws the real rail's actions (Open chat, ENG-4599).
+// It draws the real rail's actions (Open chat).
 vi.mock('../doc/DocPane', async () => {
   const { ViewerModeRail } = await import('../artifact/ViewerModeRail');
   return {
@@ -1109,7 +1109,7 @@ describe('a doc in the artifacts rail (desktop)', () => {
     expect(openPath).not.toHaveBeenCalled();
   });
 
-  it('closes the doc and opens the chat it was made in from Open chat (ENG-4599)', async () => {
+  it('closes the doc and opens the chat it was made in from Open chat', async () => {
     const chats = { open: vi.fn(), check: vi.fn().mockResolvedValue('ok') };
     fetchArtifacts.mockResolvedValue([doc({ originConversationId: 'conv-origin' })]);
     render(

@@ -1427,7 +1427,7 @@ describe('fetchInFlightList', () => {
   });
 });
 
-describe('fetchConversationStatus — whether a preview can open its chat (ENG-4599)', () => {
+describe('fetchConversationStatus — whether a preview can open its chat', () => {
   const stubMeta = (spec) => vi.stubGlobal('fetch', vi.fn(async () => {
     if (spec === 'throw') throw new Error('offline');
     return jsonRes({ id: 'c1' }, spec.ok ?? true, spec.status ?? 200);

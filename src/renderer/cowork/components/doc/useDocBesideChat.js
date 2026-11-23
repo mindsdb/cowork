@@ -22,6 +22,9 @@ export function useDocBesideChat({ taskId, projectId, streaming, onSend, enabled
   const [resizing, setResizing] = useState(false);
   // Docs the person closed here: the agent editing one again does not reopen it.
   const dismissed = useRef(new Set());
+  // Docs whose creation already opened here. The stream replays recent events
+  // on every (re)connect, which must not bring one back over the doc on screen.
+  const announced = useRef(new Set());
 
   const docFor = (artifact) => ({
     taskId,
@@ -48,6 +51,7 @@ export function useDocBesideChat({ taskId, projectId, streaming, onSend, enabled
     setDoc(null);
     setExpanded(false);
     dismissed.current = new Set();
+    announced.current = new Set();
     return () => clearDocView(taskId);
   }, [taskId]);
 
@@ -55,7 +59,12 @@ export function useDocBesideChat({ taskId, projectId, streaming, onSend, enabled
   // an idle chat should hold no stream open.
   useConversationDocs(taskId, {
     enabled: enabled && streaming,
-    onCreated: (ev) => open({ ...(ev.card || {}), id: ev.artifactId, title: ev.title }),
+    onCreated: (ev) => {
+      if (!ev.artifactId || dismissed.current.has(ev.artifactId)) return;
+      if (ev.replayed && announced.current.has(ev.artifactId)) return;
+      announced.current.add(ev.artifactId);
+      open({ ...(ev.card || {}), id: ev.artifactId, title: ev.title });
+    },
     // The agent changing a doc (say, asked to from the library) brings it up
     // beside the chat, unless the person already has a doc open or closed this one.
     onUpdated: (ev) => {

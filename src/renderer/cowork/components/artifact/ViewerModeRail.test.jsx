@@ -97,7 +97,7 @@ describe('ViewerModeRail', () => {
     expect(comments.parentElement.querySelector('.artifact-feedback-badge')).toHaveTextContent('3');
   });
 
-  describe('actions (ENG-4599)', () => {
+  describe('actions', () => {
     const openChat = (over = {}) => ({
       id: 'open-chat',
       icon: <svg />,

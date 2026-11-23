@@ -2352,7 +2352,7 @@ describe('"Edit with agent" on a doc opened from the library', () => {
     expect(spies.streamMessage).not.toHaveBeenCalled();
     expect(uploadAttachments).not.toHaveBeenCalled();
     expect(await screen.findByRole('button', { name: 'Pick a passage' })).toBeInTheDocument();
-    // A new chat clears the composer as any chat switch does, without sending its files (ENG-3661).
+    // A new chat clears the composer as any chat switch does, without sending its files.
     expect(screen.queryByText('notes.txt')).toBeNull();
   });
 

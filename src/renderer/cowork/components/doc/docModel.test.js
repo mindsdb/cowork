@@ -577,4 +577,22 @@ describe('undo', () => {
     expect(undoStillApplies({ ...after, tabs: [tab([p1])] }, undo)).toBe(false);
     expect(undoStillApplies({ ...after, tabs: [...after.tabs, { id: 't_3', title: 'Deleted', blocks: [] }] }, undo)).toBe(false);
   });
+
+  it('does not undo an added tab once someone wrote in it', () => {
+    const after = { title: 'Plan', tabs: [tab([p1]), { id: 't_2', title: 'Added', blocks: [] }] };
+    const undo = { after, ops: [{ op: 'delete_tab', tab: 't_2' }] };
+    expect(undoStillApplies(after, undo)).toBe(true);
+    const written = { ...after, tabs: [after.tabs[0], { ...after.tabs[1], blocks: [{ id: 'b_7', type: 'paragraph', text: 'Agent', by: 'agent' }] }] };
+    expect(undoStillApplies(written, undo)).toBe(false);
+  });
+
+  it('applies and recognises an undo in a tab other than the first, by the tab each op names', () => {
+    const doc = { title: 'Plan', tabs: [tab([p1]), { id: 't_2', title: 'Second', blocks: [{ ...p2 }] }] };
+    const undo = [{ op: 'delete', tab: 't_2', target: ['b_2'] }];
+    const next = applyLocal(doc, undo);
+    expect(next.tabs[1].blocks).toEqual([]);
+    expect(next.tabs[0].blocks.map((b) => b.id)).toEqual(['b_1']);
+    expect(holdsEdit(doc, undo)).toBe(false);
+    expect(holdsEdit(next, undo)).toBe(true);
+  });
 });

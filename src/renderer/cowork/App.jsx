@@ -3128,7 +3128,7 @@ function AppCore() {
   };
   const selectTaskRef = useRef(selectTask);
   selectTaskRef.current = selectTask;
-  // A preview's Open chat (ENG-4599, lib/originChat): shows a chat, and says
+  // A preview's Open chat (lib/originChat): shows a chat, and says
   // beforehand whether it can be opened.
   const originChat = useMemo(() => ({
     open: (id) => selectTaskRef.current(id),
@@ -4491,7 +4491,7 @@ function AppCore() {
           ? {
               ...t,
               messages: withThinkingPlaceholder(
-                [{ role: 'user', content: text, attachments: sendingAttachments, ...(docContext ? { docContext } : {}) }],
+                [{ role: 'user', content: text, attachments: sendingAttachments, ...(docContext ? { docContext } : {}), ...(meta?.output ? { output: meta.output } : {}) }],
                 // New-task path: the placeholder phase is genuinely
                 // "spinning up the conversation" — anton-core has to
                 // boot the LLM session, attach memories, etc. — so
@@ -5002,6 +5002,7 @@ function AppCore() {
             attachments: [...(t.attachments || []), ...sendingAttachments],
             messages: withThinkingPlaceholder([...t.messages, {
               role: 'user', content: text, attachments: sendingAttachments, ...(docContext ? { docContext } : {}),
+              ...(opts.output ? { output: opts.output } : {}),
             }]),
             // "Reviving" a task (replying in an existing one) must
             // bump updatedAt locally — the server only rewrites

@@ -1,4 +1,4 @@
-// The rail's "Open chat" action (ENG-4599) for an artifact or doc preview:
+// The rail's "Open chat" action for an artifact or doc preview:
 // closes the preview and shows the chat the artifact was made in. Disabled,
 // with the reason on hover, when that chat cannot be opened; absent inside
 // that chat itself. See lib/originChat.js for the decision.

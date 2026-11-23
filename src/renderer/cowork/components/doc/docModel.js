@@ -556,10 +556,12 @@ const positionOf = (index, length) => (index > 0 ? Math.min(length, index - 1) :
 
 export function applyLocal(doc, ops, { tab: tabId } = {}) {
   const work = structuredClone(doc);
-  const tab = findTab(work, tabId);
   // The person's edit, as the server marks it.
   const mark = (b) => { b.by = 'user'; };
   for (const op of ops) {
+    // An undo the server answered with names its tab in each op; the editor's
+    // own ops are all in the tab the write names.
+    const tab = findTab(work, op.tab || tabId);
     switch (op.op) {
       case 'update': {
         if (!tab) return null;
@@ -733,8 +735,7 @@ export function holdsEdit(doc, ops, { tab } = {}) {
     return inserted.every((x) => have.has(x.id));
   }
   if (ops.some((op) => SERVER_WORK.has(op.op) || (op.op === 'insert' && !op.blocks))) return false;
-  const at = findTab(doc, tab);
-  const removals = ops.map((op) => removedFrom(doc, at, op));
+  const removals = ops.map((op) => removedFrom(doc, findTab(doc, op.tab || tab), op));
   if (removals.includes(false)) return false;
   const rest = ops.filter((_, i) => removals[i] === undefined);
   const replayed = applyLocal(doc, rest, { tab });
@@ -755,13 +756,21 @@ export function undoStillApplies(doc, { ops, after }) {
   const plain = (b) => b && Object.fromEntries(Object.entries(b).filter(([k]) => k !== 'v' && k !== 'by'));
   const asLeft = (id) => now.has(id) && sameValue(plain(now.get(id)), plain(then.get(id)));
   const tabTitle = (d, id) => d.tabs.find((t) => t.id === id)?.title;
+  // A tab the undo would remove still holds just what the write left in it,
+  // so undoing "add a tab" never takes the agent's text written there since.
+  const tabAsLeft = (id) => {
+    const nowTab = doc.tabs.find((t) => t.id === id);
+    const thenTab = after.tabs.find((t) => t.id === id);
+    return !!nowTab && !!thenTab && nowTab.blocks.length === thenTab.blocks.length
+      && nowTab.blocks.every((b, i) => b.id === thenTab.blocks[i].id && asLeft(b.id));
+  };
   return ops.every((op) => {
     switch (op.op) {
       case 'delete': return op.target.every(asLeft);
       case 'replace': return asLeft(op.target);
       case 'move': return op.ids.every(asLeft);
       case 'insert': return op.blocks.every((b) => !now.has(b.id));
-      case 'delete_tab': return tabTitle(doc, op.tab) !== undefined;
+      case 'delete_tab': return tabAsLeft(op.tab);
       case 'add_tab': return tabTitle(doc, op.id) === undefined;
       case 'rename_tab': return tabTitle(doc, op.tab) === tabTitle(after, op.tab);
       case 'rename_doc': return doc.title === after.title;
