@@ -4,7 +4,7 @@
 // are not part of it, and both used to render there because the header only ever
 // asked about capabilities. Delete stays reachable from the gallery card.
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 vi.mock('../../../platform/host', () => ({
   host: {
@@ -21,7 +21,11 @@ vi.mock('../../../platform/host', () => ({
 vi.mock('./publish/PublishMenu', () => ({
   PublishMenu: () => <button type="button">Share</button>,
 }));
+vi.mock('./publish/SharedWithMenu', () => ({
+  SharedWithMenu: () => <button type="button">Shared (read-only)</button>,
+}));
 
+import * as api from '../../api';
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 import { setOrgMode } from '../../../lib/orgMode';
 import { artifactAuthorship } from '../../lib/artifactAuthorship';
@@ -68,7 +72,10 @@ const props = {
   onClose: vi.fn(),
 };
 
-afterEach(() => setOrgMode(false));
+afterEach(() => {
+  setOrgMode(false);
+  vi.restoreAllMocks();
+});
 
 describe('preview window chrome in org mode', () => {
   // Sharing used to be hidden here, on the grounds that publishing "lives on the
@@ -80,6 +87,34 @@ describe('preview window chrome in org mode', () => {
     render(<ArtifactViewerHeader {...props} />);
 
     expect(screen.getByRole('button', { name: /Share/ })).toBeInTheDocument();
+  });
+
+  it.each(['revision', 'mtime'])('lets a viewer report changed content when its %s changes', async (field) => {
+    setOrgMode(true);
+    const report = vi.spyOn(api, 'reportArtifactContent').mockResolvedValue({ id: 'receipt', status: 'received' });
+    const artifact = { projectId: '9c8d86e7-8b7a-4d2a-8981-385b369af213', id: 'a8c2272e0000400080000000000000aa', mtime: 100 };
+    const header = (revisionId, mtime) => (
+      <ArtifactViewerHeader {...props} workspace={{ ...workspace, currentRevision: revisionId ? { id: revisionId } : null }}
+        actions={{ ...props.actions, artifact: { ...artifact, mtime } }} />
+    );
+    const firstRevision = field === 'revision' ? 'revision-one' : null;
+    const view = render(header(firstRevision, 100));
+    const button = () => screen.getByRole('button', { name: 'Report content' });
+    const submitReport = async () => {
+      fireEvent.click(button());
+      fireEvent.click(await screen.findByRole('button', { name: 'Send report' }));
+      expect(await screen.findByText('Report received.')).toBeInTheDocument();
+    };
+    await submitReport();
+    view.rerender(header(firstRevision, 100));
+    expect(button()).toBeDisabled();
+
+    view.rerender(field === 'revision' ? header('revision-two', 100) : header(null, 101));
+    expect(button()).toBeEnabled();
+    expect(screen.queryByText('Report received.')).not.toBeInTheDocument();
+    await submitReport();
+    expect(report).toHaveBeenCalledTimes(2);
+    expect(report).toHaveBeenLastCalledWith(artifact.projectId, artifact.id);
   });
 
   // The ⋯ menu stays hidden: its entries are OS/file actions plus `/publish`
@@ -183,5 +218,58 @@ describe('top-bar toggle semantics', () => {
 
     expect(screen.getByRole('button', { name: 'Close' })).not.toHaveAttribute('aria-pressed');
     expect(screen.getByRole('button', { name: 'More actions' })).not.toHaveAttribute('aria-pressed');
+  });
+});
+
+// ENG-4455: someone else's shared artifact keeps a "Shared" button, opening the
+// read-only panel, and its tag names the owner.
+describe('a colleague\'s artifact in org mode', () => {
+  const reviewer = (over = {}) => ({
+    ...props,
+    authorship: artifactAuthorship({ role: 'reviewer', canEdit: false, ownerUserId: 'u-ana' }, { ownerName: 'Ana Ruiz' }),
+    workspace: { ...workspace, capabilities: { role: 'reviewer', canEdit: false, ownerUserId: 'u-ana' } },
+    publication: { ...props.publication, canManage: false, isPublished: true, controller: { ...props.publication.controller, publishedUrl: 'https://share/abc' } },
+    actions: { ...props.actions, artifact: { id: '7db94eb8f0a54c7e9c1d2b3a4f5e6d70', projectId: 'proj-1', publishedUrl: 'https://share/abc' } },
+    ...over,
+  });
+
+  it('names the owner and offers the read-only Shared panel, not the owner\'s', () => {
+    setOrgMode(true);
+    render(<ArtifactViewerHeader {...reviewer()} />);
+
+    expect(screen.getByText('Ana Ruiz')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Shared (read-only)' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Share' })).toBeNull();
+  });
+
+  it('keeps "Another member" until the name is in', () => {
+    setOrgMode(true);
+    render(<ArtifactViewerHeader {...reviewer({ authorship: artifactAuthorship({ role: 'reviewer', ownerUserId: 'u-ana' }) })} />);
+
+    expect(screen.getByText('Another member')).toBeInTheDocument();
+  });
+
+  it('offers nothing while it is not published', () => {
+    setOrgMode(true);
+    const r = reviewer();
+    render(<ArtifactViewerHeader {...r} publication={{ ...r.publication, isPublished: false }} />);
+
+    expect(screen.queryByRole('button', { name: /Shared/ })).toBeNull();
+  });
+
+  it('leaves the owner with their own Share control', () => {
+    setOrgMode(true);
+    const r = reviewer({ authorship: null });
+    render(<ArtifactViewerHeader {...r} publication={{ ...r.publication, canManage: true }} />);
+
+    expect(screen.getByRole('button', { name: 'Share' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Shared (read-only)' })).toBeNull();
+  });
+
+  it('is an org-mode control only', () => {
+    setOrgMode(false);
+    render(<ArtifactViewerHeader {...reviewer()} />);
+
+    expect(screen.queryByRole('button', { name: 'Shared (read-only)' })).toBeNull();
   });
 });

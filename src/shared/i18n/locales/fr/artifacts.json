@@ -58,7 +58,9 @@
       "orgRestricted": "Restreint. Ouvrez Partager pour voir qui peut ouvrir le lien.",
       "ownerOnly": "Partagé, mais vous seul pouvez ouvrir le lien.",
       "chosenPeople": "Partagé. Seules les personnes que vous avez choisies peuvent ouvrir le lien.",
-      "unknown": "Partagé. Impossible de confirmer qui peut ouvrir le lien : il est donc considéré comme restreint."
+      "unknown": "Partagé. Impossible de confirmer qui peut ouvrir le lien : il est donc considéré comme restreint.",
+      "sharedWith": "Partagé avec {names}",
+      "sharedWithMore": "Partagé avec {names} et {count} autres"
     },
     "sharingFailed": "Échec du partage",
     "couldNotShare": "Impossible de partager.",
@@ -96,10 +98,9 @@
     "toolbar": {
       "ariaLabel": "Barre d’outils des commentaires",
       "comment": "Commenter — cliquez sur un élément (⌥ sélectionne le conteneur)",
-      "inbox": "Boîte de réception des commentaires",
-      "hideComment": "Masquer le commentaire",
-      "showComment": "Afficher le commentaire",
-      "close": "Fermer les commentaires"
+      "navigate": "Naviguer",
+      "navigateHint": "Utilisez la page normalement, avec les commentaires épinglés",
+      "commentLabel": "Commenter"
     },
     "composer": {
       "placeholder": "Ajouter un commentaire…",
@@ -147,7 +148,12 @@
       "reopen": "Rouvrir",
       "markResolved": "Marquer comme résolu",
       "resolve": "Résoudre",
-      "more": "Plus"
+      "more": "Plus",
+      "agentQueued": "En file d'attente",
+      "edit": "Modifier",
+      "editAriaLabel": "Modifier le commentaire",
+      "pinned": "épinglé",
+      "pinnedTip": "Épinglé à une partie précise de l'artefact. Cliquez sur le commentaire pour y aller."
     },
     "errors": {
       "load": "Impossible de charger les commentaires",
@@ -157,6 +163,10 @@
       "edit": "Échec de la modification",
       "delete": "Échec de la suppression",
       "markRead": "Impossible de marquer le retour comme lu"
+    },
+    "guide": {
+      "title": "Commentaires",
+      "body": "Laissez des notes n'importe où sur la page ; les personnes avec qui vous la partagez peuvent aussi commenter. Choisissez les commentaires à corriger et demandez à l'agent de les résoudre."
     }
   },
   "export": {
@@ -229,16 +239,31 @@
     "close": "Fermer la comparaison",
     "reject": "Rejeter et restaurer",
     "accept": "Accepter et résoudre",
-    "restore": "Restaurer comme nouvelle révision"
+    "restore": "Restaurer comme nouvelle révision",
+    "changePosition": "{current} sur {count, plural, one {# modification} other {# modifications}}",
+    "previousChange": "Modification précédente",
+    "nextChange": "Modification suivante",
+    "changeNavigation": "Parcourir les modifications",
+    "publishedArtifact": "Artefact publié",
+    "reviewBeforePublishing": "Vérifiez la modification avant de la publier",
+    "reviewUnshared": "Modifications pas encore partagées",
+    "keepDraft": "Garder en brouillon",
+    "publishChange": "Publier cette modification",
+    "publishChanges": "Publier les modifications",
+    "sharedVersion": "Version partagée",
+    "draftVersion": "Brouillon",
+    "publishing": "Publication…"
   },
   "htmlEditor": {
     "blockGone": "Le bloc de texte sélectionné n’est plus disponible.",
     "updateFailed": "Impossible de mettre à jour ce texte.",
-    "advancedMode": "Mode avancé — les modifications sont toujours enregistrées comme révision",
+    "advancedMode": "Code source — les modifications sont toujours enregistrées comme révision",
     "selected": "Sélection : {label} — tapez pour modifier",
     "preparing": "Préparation du texte modifiable…",
     "noEditable": "Aucun texte directement modifiable trouvé",
-    "clickToEdit": "Cliquez sur n’importe quel texte de l’artefact pour le modifier",
+    "clickToEdit": "Cliquez sur n'importe quel texte pour le modifier, y compris les boutons et les liens.",
+    "syncingView": "Ouverture à l'endroit où vous étiez dans l'aperçu…",
+    "keepingPlace": "Retour à l'endroit où vous étiez…",
     "htmlSource": "Source HTML",
     "editing": "Modification de l’artefact",
     "back": "Retour à l’artefact",
@@ -251,7 +276,16 @@
       "buttonLabel": "Libellé du bouton",
       "caption": "Légende",
       "text": "Texte"
-    }
+    },
+    "mode": {
+      "ariaLabel": "Mode de modification en direct",
+      "navigate": "Naviguer",
+      "edit": "Modifier le texte",
+      "navigateHint": "Utilisez la page normalement : diapositives, onglets et liens",
+      "editHint": "Cliquez sur un texte pour le modifier",
+      "navigateGuidance": "Navigation. Utilisez la page normalement, puis passez à « Modifier le texte » pour changer quelque chose."
+    },
+    "sourceCode": "Code source"
   },
   "workspace": {
     "noWorkspace": "Cet artefact a été créé avant que la modification soit disponible",
@@ -335,6 +369,16 @@
     "load": {
       "sharingSettings": "paramètres de partage",
       "currentAccess": "accès actuel"
+    },
+    "editList": "Modifier la liste",
+    "sharedWith": {
+      "title": "Partagé avec",
+      "hint": "Voir avec qui c’est partagé",
+      "triggerLabel": "Partagé : voir avec qui c’est partagé",
+      "whoCanOpen": "Qui peut l’ouvrir",
+      "ownerOnlyTitle": "Seulement son propriétaire",
+      "ownerOnlyDesc": "Personne d’autre ne peut ouvrir le lien partagé",
+      "listWithheld": "Seulement les équipes et les personnes avec qui c’est partagé"
     }
   },
   "previewErrors": {
@@ -385,7 +429,9 @@
     "artifactActions": "Actions de l’artefact",
     "moreActions": "Plus d’actions",
     "reloadPreview": "Recharger l’aperçu",
-    "close": "Fermer"
+    "close": "Fermer",
+    "unsharedChangesHint": "Le lien partagé affiche une version antérieure. Utilisez Mettre à jour dans Partager pour publier les modifications.",
+    "reviewUnsharedHint": "Vérifiez et publiez les modifications que le lien partagé n'affiche pas encore"
   },
   "body": {
     "previewWatermark": "Aperçu",
@@ -453,7 +499,8 @@
     "discardFailed": "Impossible d’abandonner cette suggestion.",
     "deleteTitle": "Supprimer l’artefact ?",
     "deleteMessage": "« {title} » sera définitivement supprimé. Cette action est irréversible.",
-    "changedElsewhere": "Cet artefact a changé. Recharger"
+    "changedElsewhere": "Cet artefact a changé. Recharger",
+    "changePublished": "Publié"
   },
   "artifactsView": {
     "sort": {
@@ -487,7 +534,26 @@
     "search": "Rechercher des artefacts",
     "emptyTitle": "Aucun artefact pour l’instant",
     "emptyBody": "Les documents, tableaux de bord et résultats de code créés par {agent} apparaîtront ici.",
-    "working": "En cours…"
+    "working": "En cours…",
+    "filter": {
+      "type": "Type",
+      "allTypes": "Tous les types",
+      "owner": "Propriétaire",
+      "allOwners": "Tous les propriétaires",
+      "me": "Moi",
+      "unknownOwner": "Propriétaire inconnu",
+      "anotherMember": "Un autre membre",
+      "noMatch": "Aucun artefact ne correspond à ces filtres.",
+      "clear": "Effacer les filtres",
+      "status": "Statut",
+      "allStatuses": "Tous les statuts"
+    },
+    "owner": {
+      "you": "Vous",
+      "youHint": "À vous, partagé avec d'autres personnes."
+    },
+    "openComments": "{count, plural, one {# commentaire ouvert} other {# commentaires ouverts}}",
+    "openCommentsHint": "Ouvrir l’aperçu sur ses commentaires"
   },
   "compare": {
     "refused": "Ce côté n’avait pas terminé son dernier tour : il n’a donc pas reçu votre message. Celui-ci a été remis dans la zone ci-dessous.",
@@ -650,7 +716,8 @@
     "send": "Envoyer",
     "route": {
       "edit": "Modification directe…",
-      "agent": "Transmission à l'agent…"
+      "agent": "Transmission à l'agent…",
+      "reply": "Réponse en cours…"
     },
     "stage": {
       "routing": "Recherche de la meilleure approche…",
@@ -685,37 +752,50 @@
     "workingInChat": "En cours dans le chat…",
     "sentToChat": "Envoyé dans le chat.",
     "chatStopped": "Le tour du chat s'est arrêté avant de répondre.",
+    "resolveThread": {
+      "question": "Marquer le commentaire comme résolu ?",
+      "resolve": "Résoudre",
+      "notNow": "Pas maintenant",
+      "resolved": "Commentaire résolu.",
+      "failed": "Impossible de résoudre le commentaire. Réessayez."
+    },
     "unsavedConfirm": {
       "title": "Vous avez des modifications non enregistrées. Les enregistrer avant d'envoyer ?",
       "save": "Enregistrer et envoyer",
       "discard": "Abandonner et envoyer",
       "cancel": "Annuler",
       "saveFailed": "Vos modifications n'ont pas pu être enregistrées ; rien n'a été envoyé."
+    },
+    "queued": "En file d'attente",
+    "queueLabel": "En attente",
+    "removeQueued": "Retirer de la file d'attente",
+    "hide": "Masquer les messages",
+    "comment": {
+      "onArtifact": "Traite ce commentaire sur l'artefact :",
+      "onText": "Traite ce commentaire sur le texte « {quote} » :",
+      "onElement": "Traite ce commentaire sur l'élément `{selector}` :"
     }
   },
   "stats": {
-    "toggle": {
-      "show": "Statistiques",
-      "hide": "Masquer les statistiques"
-    },
     "title": "Statistiques",
     "close": "Fermer le panneau des statistiques",
     "loading": "Chargement des statistiques",
     "retry": "Réessayer",
-    "trackViews": "Compter les vues",
-    "trackingOff": "Le suivi est désactivé. Activez-le pour commencer à compter les vues.",
     "metrics": {
-      "viewsInPeriod": "Vues (30 jours)",
-      "uniqueViewers": "Visiteurs uniques (30 jours)",
-      "totalViews": "Vues au total",
-      "lastViewed": "Dernière vue"
+      "views": "Vues",
+      "viewers": "Visiteurs uniques",
+      "avgTime": "Durée moy.",
+      "completion": "Lecture complète",
+      "lastViewedHint": "Dernière vue {time}"
     },
     "daysInUtc": "Jours en UTC",
     "chartLabel": "Vues par jour",
     "viewers": {
       "email": "E-mail",
       "lastSeen": "Dernière visite",
-      "restrictedOnly": "Les noms des visiteurs ne sont enregistrés que lorsque le partage est restreint."
+      "restrictedOnly": "Les noms des visiteurs ne sont enregistrés que lorsque le partage est restreint.",
+      "anonymous": "Visiteur anonyme",
+      "none": "Aucun visiteur enregistré pour l’instant."
     },
     "noViews": "Aucune vue pour l’instant",
     "errors": {
@@ -724,7 +804,66 @@
       "reconnect": "Reconnectez MindsHub pour voir les statistiques.",
       "temporarilyUnavailable": "Les statistiques sont temporairement indisponibles.",
       "loadFailed": "Impossible de charger les statistiques."
-    }
+    },
+    "chartTitle": "Vues, 30 derniers jours",
+    "noViewsHint": "Les vues s’affichent ici dès que quelqu’un ouvre le lien.",
+    "off": {
+      "title": "L’analyse des visiteurs est désactivée",
+      "body": "Activez-la pour voir qui ouvre cette page, combien de temps et quelles parties sont lues.",
+      "turnOn": "Activer"
+    },
+    "pages": {
+      "title": "Temps par page",
+      "audienceChart": "Temps moyen par page, tous les visiteurs",
+      "position": "Page {number} / {total}",
+      "untitled": "Page {number}",
+      "timeSpent": "Temps passé",
+      "avgTime": "Durée moy.",
+      "reached": "Atteinte",
+      "barSpent": "Page {number} sur {total}, {name} : {time}",
+      "barAvg": "Page {number} sur {total}, {name} : {time} en moyenne",
+      "barAvgReach": "Page {number} sur {total}, {name} : {time} en moyenne, atteinte par {reach} des visites"
+    },
+    "activity": {
+      "title": "Toutes les visites",
+      "viewerCount": "{count, plural, one {# visiteur} other {# visiteurs}}",
+      "summary": "{count, plural, one {# visite} other {# visites}} · {lastSeen}",
+      "totalTime": "Temps total {time}",
+      "viewed": "Vu : {percent}",
+      "whereabouts": "Appareil, OS et lieu",
+      "loading": "Chargement des visites",
+      "noVisits": "Aucune visite enregistrée.",
+      "visit": "Visite",
+      "allVisits": "{count, plural, one {# visite} other {Les # visites}} · {time}",
+      "visitOption": "{date} · {time} · {device}",
+      "viewerChart": "Temps par page, {name}",
+      "visitChart": "Temps par page, {name}, visite du {date}"
+    },
+    "devices": {
+      "desktop": "Ordinateur",
+      "mobile": "Mobile",
+      "tablet": "Tablette",
+      "unknown": "Appareil inconnu"
+    },
+    "delete": {
+      "action": "Supprimer l’analyse",
+      "title": "Supprimer l’analyse des visiteurs ?",
+      "message": "Toutes les vues, visites et visiteurs enregistrés pour cette page seront supprimés. Cette action est irréversible.",
+      "confirm": "Supprimer",
+      "hint": "Supprime toutes les vues et visites enregistrées pour cet artefact. Cette action est irréversible."
+    },
+    "duration": {
+      "seconds": "{s} s",
+      "minutes": "{m} min",
+      "minutesSeconds": "{m} min {s} s",
+      "hours": "{h} h",
+      "hoursMinutes": "{h} h {m} min"
+    },
+    "guide": {
+      "title": "Statistiques",
+      "body": "Combien de fois votre lien partagé a été ouvert chaque jour, sur les 30 derniers jours. Vos propres visites ne sont pas comptées."
+    },
+    "advanced": "Avancé"
   },
   "refPill": {
     "open": "Ouvrir {title}"
@@ -737,18 +876,63 @@
     "showFewer": "Afficher moins"
   },
   "layers": {
-    "ariaLabel": "Calques de la visionneuse",
     "source": "Modification en direct",
     "comments": "Commentaires",
     "sourceOffPrompt": {
       "title": "Désactiver Modification en direct ?",
       "message": "Vos modifications non enregistrées dans Modification en direct seront abandonnées.",
       "confirmLabel": "Abandonner les modifications"
-    }
+    },
+    "stats": "Statistiques"
   },
   "address": {
     "draft": "Brouillon",
     "copy": "Copier l'adresse",
     "copied": "Copié"
+  },
+  "layout": {
+    "maximize": "Plein écran",
+    "restore": "Quitter le plein écran"
+  },
+  "imageAttachments": {
+    "onlyImages": "Seules les images PNG, JPEG, GIF et WebP peuvent être jointes.",
+    "tooLarge": "{name} dépasse 5 Mo.",
+    "tooMany": "Jusqu'à {count} images par message.",
+    "drop": "Déposez des images pour les joindre",
+    "uploadFailed": "L'image n'a pas pu être envoyée. Réessayez.",
+    "unavailable": "Image indisponible",
+    "enlarge": "Agrandir l'image",
+    "shrink": "Réduire l'image",
+    "image": "Image"
+  },
+  "analytics": {
+    "title": "Analyse des visiteurs",
+    "collect": "Collecter l’analyse des visiteurs",
+    "collectHint": "Voyez qui ouvre cette page, combien de temps et quelles parties sont lues.",
+    "loading": "Chargement des réglages d’analyse",
+    "loadFailed": "Impossible de charger les réglages d’analyse.",
+    "addCredits": "Ajouter des crédits",
+    "errors": {
+      "creditsRequired": "Ajoutez des crédits pour collecter l’analyse des visiteurs.",
+      "trackingOff": "Activez d’abord l’analyse des visiteurs.",
+      "saveFailed": "Impossible d’enregistrer le réglage."
+    }
+  },
+  "rail": {
+    "ariaLabel": "Panneaux de la visionneuse",
+    "sourceHint": "Modifier le texte et la mise en page",
+    "commentsHint": "Laisser et consulter des retours",
+    "statsHint": "Qui l’a consulté et combien de temps",
+    "commentsOpen": "Commentaires, {count} ouverts"
+  },
+  "liveEditPanel": {
+    "close": "Fermer le panneau de modification en direct",
+    "changes": {
+      "title": "Modifications non enregistrées",
+      "undo": "Annuler cette modification",
+      "undoNamed": "Annuler la modification de {label} : {text}",
+      "was": "Avant : {text}",
+      "emptyText": "(vide)"
+    }
   }
 }

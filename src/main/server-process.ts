@@ -64,6 +64,8 @@ const SIGKILL_GRACE_MS = 1_500;
 export const SERVER_STOP_CEILING_MS = PREPARE_SHUTDOWN_TIMEOUT_MS + SIGTERM_GRACE_MS + SIGKILL_GRACE_MS;
 const SERVER_HOST = '127.0.0.1';
 const DEV_OAUTH_ENV_FILE = path.join(os.homedir(), '.cowork-dev', '.env');
+// The staging-ring build kinds (rolling staging and per-PR preview installers).
+const SLACK_CONNECTOR_BUILD_KINDS: ReadonlySet<string> = new Set(['stable', 'preview']);
 
 // The sidecar binds a loopback port, which is machine-global, not
 // per-OS-user. With fast user switching, whichever user launches first owns
@@ -561,6 +563,8 @@ type HealthProbe = {
   /** `app_secret_protocol` and `app_secret_proof` as /health sent them. */
   appSecretProtocol?: unknown;
   appSecretProof?: unknown;
+  /** `custom_mcp` as /health sent it, beside the proof. */
+  customMcp?: unknown;
 };
 
 function probeHealthOnce(port: number, timeoutMs: number, challenge?: string): Promise<HealthProbe> {
@@ -580,16 +584,18 @@ function probeHealthOnce(port: number, timeoutMs: number, challenge?: string): P
           let clearsPendingCredentials = false;
           let appSecretProtocol: unknown;
           let appSecretProof: unknown;
+          let customMcp: unknown;
           try {
-            const payload = JSON.parse(body) as { owner?: string; capabilities?: unknown; app_secret_protocol?: unknown; app_secret_proof?: unknown } | null;
+            const payload = JSON.parse(body) as { owner?: string; capabilities?: unknown; app_secret_protocol?: unknown; app_secret_proof?: unknown; custom_mcp?: unknown } | null;
             owner = payload?.owner ?? null;
             supportsCoding = Array.isArray(payload?.capabilities) && payload.capabilities.includes('coding');
             clearsPendingCredentials = Array.isArray(payload?.capabilities)
               && payload.capabilities.includes(PENDING_CLEAR_CAPABILITY);
             appSecretProtocol = payload?.app_secret_protocol;
             appSecretProof = payload?.app_secret_proof;
+            customMcp = payload?.custom_mcp;
           } catch { /* non-JSON */ }
-          resolve({ state: supportsCoding ? 'compatible' : 'incompatible', owner, clearsPendingCredentials, appSecretProtocol, appSecretProof });
+          resolve({ state: supportsCoding ? 'compatible' : 'incompatible', owner, clearsPendingCredentials, appSecretProtocol, appSecretProof, customMcp });
         });
       },
     );
@@ -974,6 +980,12 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // build points at. Only set when the build is baked for a non-prod env
       // and the caller hasn't already pinned ENV explicitly.
       ...(MINDS_ENV_SLUG && !process.env.ENV ? { ENV: MINDS_ENV_SLUG } : {}),
+      // Slack's In-Browser Connect uses a Slack app that works only in our
+      // own workspace for now, so only staging builds offer it. A local dev
+      // run leaves it to cowork-server's .env. Prod builds leave it unset on
+      // purpose, so prod is switched on by changing cowork-server's default,
+      // without a shell release; never set it to 'false' here.
+      ...(SLACK_CONNECTOR_BUILD_KINDS.has(kind) ? { SLACK_CONNECTOR_ENABLED: 'true' } : {}),
       // A staging, preview or dev build's turns are ours, not users'.
       // The person's switch for the agent's usage events (Settings), read from
       // the account's dotenv at each start.
@@ -1114,7 +1126,7 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     let untrusted = false;
     if (step.action !== 'fail' && lastProbe) {
       const verdict = judgeServer(lastProbe, lastChallenge, await accessModesMigrated(orgStoreRootAtSpawn));
-      setServerTrust(verdict);
+      setServerTrust(verdict, lastProbe);
       untrusted = verdict === 'untrusted';
     }
 

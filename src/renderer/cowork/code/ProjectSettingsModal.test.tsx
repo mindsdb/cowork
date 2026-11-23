@@ -24,6 +24,8 @@ const { engines, models, pickCodeFolder, playbook, skillLibrary, githubRepositor
 
 const credentialListeners = vi.hoisted(() => new Set<() => void>());
 vi.mock('../../platform/host', () => ({
+  // Console links read the signed-in account (useConsoleLink).
+  getAccessToken: () => Promise.resolve(null),
   onMindsHubCredentialChanged: (listener: () => void) => {
     credentialListeners.add(listener);
     return () => credentialListeners.delete(listener);

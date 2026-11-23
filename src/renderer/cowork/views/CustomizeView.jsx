@@ -48,6 +48,8 @@ import SharePointSetupModal, { SHAREPOINT_ENGINE } from '../components/sharepoin
 import { connectionIdentity, humanLabel } from '../lib/connectionIdentity';
 import ConnectionCard, { ConnectionRow } from '../components/connector/ConnectionCard';
 import { useConfirm } from '../components/ConfirmModal';
+import CustomMcpDetailSection from '../components/connector/CustomMcpDetailSection';
+import { disconnectCustomMcp, isCustomMcp } from '../lib/customMcp';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../components/ui/Modal';
 import { useTranslation } from '../../lib/i18n';
 import { productName } from '../../lib/deploymentBrand';
@@ -108,7 +110,7 @@ function MetaRow({ label, value }) {
   );
 }
 
-function ConnectionDetailPanel({ connection, onClose, onReconnect, onEditSharePoint }) {
+function ConnectionDetailPanel({ connection, onClose, onReconnect, onEditSharePoint, onDisconnect }) {
   const { t } = useTranslation('library');
   const [confirm, confirmModal] = useConfirm();
   const [spec, setSpec] = useState(null);
@@ -440,7 +442,21 @@ function ConnectionDetailPanel({ connection, onClose, onReconnect, onEditSharePo
                   same field `handleDelete` above already reads it from. A
                   test double that leaves `_method` nested under `fields`
                   instead would pass without ever exercising the real shape. */}
-              {saved?.method === 'mcp' && !managed && (
+              {/* A custom MCP server keeps its tools and login in main;
+                  its own section replaces the access mode. */}
+              {isCustomMcp(connection.engine) && !managed && (
+                <CustomMcpDetailSection
+                  // A new panel per connection: answers meant for the last one land nowhere.
+                  key={connection.name}
+                  connection={connection}
+                  confirm={confirm}
+                  onDisconnect={async (conn) => {
+                    if (await onDisconnect?.(conn)) onClose();
+                  }}
+                />
+              )}
+
+              {saved?.method === 'mcp' && !managed && !isCustomMcp(connection.engine) && (
                 <>
                   <div className="section-label mb-2">
                     {t('connections.toolAccess.title')}
@@ -695,6 +711,11 @@ export default function CustomizeView({
         await removeDatasourceConnection(connection);
         return true;
       }
+      if (isCustomMcp(connection.engine)) {
+        await disconnectCustomMcp(connection.name, () => deleteDatasource(connection.engine, connection.name));
+        await syncAfterDelete();
+        return true;
+      }
       // A custom API connection is stored in auth, behind its own relay.
       if (isCustomConnectionRow(connection)) {
         await deleteCustomConnection(connection.connectionId);
@@ -872,6 +893,7 @@ export default function CustomizeView({
         <ConnectionDetailPanel
           connection={selectedConn}
           onClose={() => setSelectedConn(null)}
+          onDisconnect={(conn) => handleDelete(conn)}
           onEditSharePoint={(conn) => setSharePointEditing(conn.name)}
           onReconnect={async (conn, spec, { shared = false } = {}) => {
             // SharePoint is edited in place: its key is checked before it

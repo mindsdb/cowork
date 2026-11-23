@@ -95,6 +95,10 @@ export function dropNoticesFromTurn(notices, removedIds) {
 // notice replaces the earlier one, and lands at the turn it happened in. Auto
 // top up failures are a separate event and are kept.
 const isAllowanceNotice = (n) => n?.kind === 'free_low' || n?.kind === 'free_used';
+// A Plus or Pro window (ENG-4186) is one figure per window the same way: a
+// new notice for the 5-hour window replaces the earlier 5-hour one, and leaves
+// the weekly one alone.
+const isWindowNotice = (n) => n?.kind === 'window_low' || n?.kind === 'window_exhausted';
 
 // `notices` with `added` appended, each new allowance notice replacing any
 // earlier one.
@@ -102,6 +106,7 @@ export function withUsageNotices(notices, added) {
   let next = Array.isArray(notices) ? notices : [];
   for (const n of Array.isArray(added) ? added : []) {
     if (isAllowanceNotice(n)) next = next.filter((m) => !isAllowanceNotice(m));
+    if (isWindowNotice(n)) next = next.filter((m) => !(isWindowNotice(m) && m.window === n.window));
     next = [...next, n];
   }
   return next;

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent, within, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // Spies asserted on must be reachable inside the hoisted vi.mock factories.
@@ -149,11 +149,18 @@ vi.mock('./lib/analytics', () => ({
   trackAddonAdded: vi.fn(),
   trackAddonQueued: vi.fn(),
   trackAddonOverridden: vi.fn(),
+  trackNextStepsShown: vi.fn(),
+  trackNextStepClicked: vi.fn(),
+  trackOnboardingRowClicked: vi.fn(),
+  trackOnboardingStepCompleted: vi.fn(),
 }));
 
 import App, { unsavedRefusedQuestions } from './App';
 import { trackTurnFailed, classifyFirstResponse, trackNewTaskMessageSent, trackAgentSessionStarted } from './lib/analytics';
-import { OWN_WORK_PROMPT } from './components/onboarding/steps';
+import { completeStep, dismiss as dismissOnboarding, reset as resetOnboarding } from './components/onboarding/onboardingStore';
+import { composeOwnWorkMessage } from './components/taskmodes/taskModes';
+
+const OWN_WORK_SEND = composeOwnWorkMessage('Weekly ops notes');
 import { markOptimisticConversation, clearOptimisticConversation } from './CoworkRouter';
 import {
   fetchSessions,
@@ -265,6 +272,9 @@ beforeEach(() => {
   spies.cancelResponse.mockImplementation(async () => ({}));
   trackTurnFailed.mockClear();
   spies.submitAnswer.mockImplementation(async () => ({ accepted: true }));
+  // mockReset, not just a new implementation: a waitFor on its calls would
+  // otherwise pass at once on the previous test's calls.
+  spies.fetchInFlightStatus.mockReset();
   spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false }));
   spies.fetchSessionResult.mockReset();
   spies.fetchSessionResult.mockImplementation(async () => ({ status: 'unavailable', code: 0 }));
@@ -747,6 +757,85 @@ describe('interrupted stream recovery', () => {
     });
     expect(await screen.findByText(/interrupted before it finished/i)).toBeInTheDocument();
     expect(screen.getByText('Partial before restart')).toBeInTheDocument();
+  });
+
+  it('stops retrying history when a failed read returns after unmount', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.fetchSession.mockResolvedValue({ messages: [{ id: 'user-current', role: 'user', content: 'do something' }] });
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+    await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+    await act(async () => {
+      handle.opts.onError('connection lost', { code: 'stream_error', user_message_id: 'user-current' });
+    });
+    await waitFor(() => expect(spies.fetchSession).toHaveBeenCalled());
+    let resolveHistory;
+    spies.fetchInFlightStatus.mockResolvedValue({ in_flight: false });
+    spies.fetchSession.mockImplementationOnce(() => new Promise((resolve) => { resolveHistory = resolve; }));
+    await waitFor(() => expect(resolveHistory).toBeTypeOf('function'), { timeout: 4000 });
+
+    cleanup();
+    spies.fetchSession.mockClear();
+    resolveHistory(null);
+    // Give the 50 ms retry time to issue its request.
+    await new Promise((resolve) => { setTimeout(resolve, 250); });
+    expect(spies.fetchSession.mock.calls.filter(([cid]) => cid === 'conv-a')).toEqual([]);
+  });
+
+  it('does not reattach when the reconnect probe answers after unmount', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.fetchSession.mockResolvedValue({ messages: [{ id: 'user-current', role: 'user', content: 'do something' }] });
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+    await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+    await act(async () => {
+      handle.opts.onError('connection lost', { code: 'stream_error', user_message_id: 'user-current' });
+    });
+    await waitFor(() => expect(spies.fetchSession).toHaveBeenCalled());
+    let resolveProbe;
+    let recoverySeen = false;
+    spies.fetchInFlightStatus.mockImplementation((cid, opts) => {
+      if (opts?.strict) {
+        recoverySeen = true;
+        return Promise.resolve({ in_flight: true });
+      }
+      if (recoverySeen) return new Promise((resolve) => { resolveProbe = resolve; });
+      return Promise.resolve({ in_flight: false });
+    });
+    await waitFor(() => expect(resolveProbe).toBeTypeOf('function'), { timeout: 4000 });
+    // The recovery probe has handed off to reconnectInFlight, whose own
+    // status request is still pending when the app goes away.
+    const tails = streams.filter((s) => s.kind === 'tail').length;
+    cleanup();
+    await act(async () => { resolveProbe({ in_flight: true }); });
+    expect(streams.filter((s) => s.kind === 'tail')).toHaveLength(tails);
+  });
+
+  it('stops trying to reach a dropped turn once the app unmounts', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.fetchSession.mockResolvedValue({ messages: [{ id: 'user-current', role: 'user', content: 'do something' }] });
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+    await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+    await act(async () => {
+      handle.opts.onError('connection lost', { code: 'stream_error', user_message_id: 'user-current' });
+    });
+    await waitFor(() => expect(spies.fetchSession).toHaveBeenCalled());
+
+    // The first reconnect try is due a second after the drop. Its requests
+    // would land in whichever test runs next and answer that test's mocks.
+    cleanup();
+    spies.fetchSession.mockClear();
+    spies.fetchInFlightStatus.mockClear();
+    await new Promise((r) => { setTimeout(r, 1200); });
+    // Only this conversation's: under a shuffled order, another test's
+    // leftover work can still land here.
+    const forThisTurn = (fn) => fn.mock.calls.filter(([cid]) => cid === 'conv-a');
+    expect(forThisTurn(spies.fetchInFlightStatus)).toEqual([]);
+    expect(forThisTurn(spies.fetchSession)).toEqual([]);
   });
 
   it('ends the live turn when the reload shows the dropped stream actually completed', async () => {
@@ -1456,6 +1545,22 @@ describe('the first message of a new task (analytics)', () => {
     uploadAttachments.mockResolvedValue([]);
   });
 
+  it('carries what Home did with a task mode\'s instruction line into the event', async () => {
+    trackNewTaskMessageSent.mockClear();
+    const user = userEvent.setup();
+    await openTask(user);
+    await user.click(screen.getByRole('button', { name: /new task/i }));
+    await user.click(await screen.findByRole('button', { name: 'Create slides' }));
+    const composer = document.querySelector('textarea');
+    await user.click(composer);
+    await user.paste('Make a deck');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1));
+    expect(trackNewTaskMessageSent).toHaveBeenCalledWith(expect.objectContaining({
+      taskMode: { task_mode: 'slides', mode_line: 'appended', example_placed: false },
+    }));
+  });
+
   it('is described to analytics once, before the session event, as the kind of start it was', async () => {
     // This file does not clear its mocks between tests, so count from here.
     trackNewTaskMessageSent.mockClear();
@@ -1469,19 +1574,19 @@ describe('the first message of a new task (analytics)', () => {
       return ta;
     });
 
-    // Paste the long onboarding prompt instead of typing it: typing renders the
+    // Paste the long own-work message instead of typing it: typing renders the
     // whole App once per character, which can push this test past its timeout
     // on a busy CI runner.
     await user.click(composer);
-    await user.paste(OWN_WORK_PROMPT);
+    await user.paste(OWN_WORK_SEND);
     await user.keyboard('{Enter}');
     await waitFor(() => expect(streams.some((x) => x.kind === 'new')).toBe(true));
 
     expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1);
     expect(trackNewTaskMessageSent).toHaveBeenCalledWith({
-      text: OWN_WORK_PROMPT,
+      text: OWN_WORK_SEND,
       attachments: 0,
-      start: { start_kind: 'own_work', added_chars: 0 },
+      start: { start_kind: 'own_work', added_chars: 16 },
     });
     // It reads the console attribution that the session event clears, so it goes first.
     expect(trackNewTaskMessageSent.mock.invocationCallOrder[0])
@@ -1505,6 +1610,61 @@ describe('the first message of a new task (analytics)', () => {
     await waitFor(() => expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1));
 
     expect(trackNewTaskMessageSent).toHaveBeenCalledWith(expect.objectContaining({ attachments: 1 }));
+  });
+});
+
+describe('the checklist\'s own-work row', () => {
+  // App dismisses an untouched checklist once the account has tasks, as this
+  // harness's does; someone who has started the steps keeps it.
+  beforeEach(() => { resetOnboarding(); completeStep('see-it-work'); });
+  afterEach(() => {
+    dismissOnboarding();
+    // The next tests count upload calls on this shared mock.
+    uploadAttachments.mockClear();
+  });
+
+  it('opens Home in the own-work mode and sends what the mode composes, labelled as the checklist\'s', async () => {
+    trackNewTaskMessageSent.mockClear();
+    const user = userEvent.setup();
+    await openTask(user);
+    await user.click(screen.getByRole('button', { name: /Start with your own work/ }));
+    await screen.findByText('What should Cowork work on?');
+    const composer = document.querySelector('textarea');
+
+    await user.click(composer);
+    await user.paste('Weekly ops notes');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(streams.some((x) => x.kind === 'new')).toBe(true));
+
+    expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1);
+    expect(trackNewTaskMessageSent).toHaveBeenCalledWith(expect.objectContaining({
+      text: OWN_WORK_SEND,
+      start: { start_kind: 'own_work', added_chars: 16 },
+      startVia: 'checklist',
+    }));
+  });
+
+  it('keeps a file already attached on Home, which is what the mode asks for', async () => {
+    trackNewTaskMessageSent.mockClear();
+    const user = userEvent.setup();
+    await openTask(user);
+    await user.click(screen.getByRole('button', { name: /new task/i }));
+    await waitFor(() => {
+      if (!document.querySelector('textarea')) throw new Error('composer not mounted');
+    });
+    await attach(user, 'customers.csv');
+
+    await user.click(screen.getByRole('button', { name: /Start with your own work/ }));
+    await screen.findByText('What should Cowork work on?');
+
+    expect(screen.getByText('customers.csv')).toBeInTheDocument();
+    uploadAttachments.mockResolvedValueOnce([{ id: 'att-1', name: 'customers.csv' }]);
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1));
+    expect(trackNewTaskMessageSent).toHaveBeenCalledWith(expect.objectContaining({
+      attachments: 1,
+      start: expect.objectContaining({ start_kind: 'own_work' }),
+    }));
   });
 });
 
@@ -3415,10 +3575,22 @@ describe('"Run now" before the server has started the run', () => {
     await waitFor(() => expect(spies.fetchInFlightStatus).toHaveBeenCalledWith('conv-run'));
   }
 
+  it('skips the list refresh when the run ends after unmount', async () => {
+    await runNow(userEvent.setup());
+    let resolveStatus;
+    spies.fetchInFlightStatus.mockImplementationOnce(() => new Promise((resolve) => { resolveStatus = resolve; }));
+    await waitFor(() => expect(resolveStatus).toBeTypeOf('function'), { timeout: 4000 });
+
+    cleanup();
+    fetchInFlightList.mockClear();
+    await act(async () => { resolveStatus({ in_flight: false, has_buffer: true }); });
+    expect(fetchInFlightList).not.toHaveBeenCalled();
+  });
+
   it('loads the answer of a run that started and ended between asks', async () => {
     const user = userEvent.setup();
     await runNow(user);
-    expect(screen.getByText(/Running task/)).toBeInTheDocument();
+    expect(await screen.findByText(/Running task/)).toBeInTheDocument();
 
     // The next ask finds the run already over: no producer, but its buffer.
     spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false, has_buffer: true }));

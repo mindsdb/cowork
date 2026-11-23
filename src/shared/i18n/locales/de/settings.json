@@ -258,7 +258,7 @@
     "topUp": "Guthaben aufladen →",
     "addFunds": "Guthaben aufladen →",
     "slowDown": "{sentence} Das liegt nicht am Guthaben.",
-    "budgetReached": "Das Budget Ihrer Organisation ist aufgebraucht. {detail}",
+    "budgetReached": "Ein Budget ist aufgebraucht. {detail}",
     "viewBudgetsArrow": "Budgets anzeigen →"
   },
   "providers": {
@@ -335,7 +335,7 @@
     "modelNeedsCredits": "{model} benötigt Guthaben. {link}, um es zu nutzen.",
     "modelNeedsCreditsNoLink": "{model} benötigt Guthaben.",
     "topUpBalance": "Laden Sie Ihr Guthaben auf",
-    "modelBudgetReached": "{model} kann nicht ausgeführt werden, weil das Budget Ihrer Organisation aufgebraucht ist.",
+    "modelBudgetReached": "{model} kann nicht ausgeführt werden, weil ein Budget dafür aufgebraucht ist.",
     "viewBudgets": "Budgets anzeigen",
     "imageModelNeedsMindsHub": "Die Bildgenerierung läuft über MindsHub. Füge MindsHub unter LLM-Anbieter hinzu, um ein Bildmodell auszuwählen.",
     "imageModelHint": "Wähle das Modell, mit dem Bilder erzeugt werden."
@@ -389,6 +389,11 @@
     "jev": {
       "title": "Schnelle Antworten mit Jev",
       "subtitle": "Jev, das Entscheidungsmodell von MindsHub, liest jede Nachricht und den aktuellen Gesprächsverlauf, um zu entscheiden, ob Ihr gewähltes Modell direkt antworten kann, und prüft, ob {agent} seine Arbeit abgeschlossen hat. Deaktivieren Sie die Option, damit jede Nachricht von {agent} bearbeitet wird."
+    },
+    "jevClassify": {
+      "title": "Jev für die Klassifizierung verwenden",
+      "subtitle": "Lässt {agent} viele Texte in Kategorien einordnen oder zu jedem eine Ja/Nein-Frage beantworten – mit Jev, dem Entscheidungsmodell von MindsHub, statt mit Ihrem gewählten Modell. Schneller und günstiger bei großen Mengen. Deaktivieren Sie die Option, damit Texte mit Ihrem gewählten Modell eingeordnet werden.",
+      "unavailable": "Nur verfügbar, wenn das Coding-Modell über MindsHub läuft."
     }
   },
   "desktop": {

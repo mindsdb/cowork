@@ -31,6 +31,9 @@ export function trackKeyProvisioningRefused(outcome: string): void;
  */
 export function trackBillingOpened(trigger: string, workspaceMode?: 'code'): void;
 
+/** A plan upgrade was clicked (ENG-4186): where, which plan, and from which. */
+export function trackUpgradeClicked(surface: string, tier?: string | null, fromTier?: string | null): void;
+
 /** Cost properties for a comparison event, from lib/compareSides comparisonCostProps. */
 export interface ComparisonCostProps {
   cost_a_usd?: number;

@@ -137,18 +137,27 @@ export interface MobileAdapterDeps {
    */
   beforeLogout?: () => Promise<void>;
   beforeLogoutTimeoutMs?: number;
+  /**
+   * Forgets the session saved for the next launch (lib/mobileSession.ts).
+   * Awaited before leaving the page, so the next launch can't restore the
+   * account that just signed out.
+   */
+  forgetSession?: () => Promise<void>;
 }
 
-/** Wait for `task`, at most `ms`; never rejects. */
-async function settleWithin(task: () => Promise<void>, ms: number): Promise<void> {
+/** Bound cleanup; required persistence removal must reject on failure or timeout. */
+async function settleWithin(task: () => Promise<void>, ms: number, required = false): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
       Promise.resolve().then(task),
-      new Promise<void>((resolve) => { timer = globalThis.setTimeout(resolve, ms); }),
+      new Promise<void>((resolve, reject) => {
+        timer = globalThis.setTimeout(() => required ? reject(new Error('Session storage timed out')) : resolve(), ms);
+      }),
     ]);
-  } catch {
-    // Signing out anyway.
+  } catch (error) {
+    if (required) throw error;
+    // Best-effort cleanup must not prevent signing out.
   } finally {
     globalThis.clearTimeout(timer);
   }
@@ -169,7 +178,8 @@ function appRoot(): string {
  * The keycloak-js adapter for the app. Sign-in and sign-up open the system
  * browser sheet; closing the sheet resolves quietly, so the sign-in screen
  * stays put. Sign-out ends the Keycloak session with the refresh token, then
- * clears the tokens and reloads to the sign-in screen.
+ * clears the tokens, forgets the saved session and reloads to the sign-in
+ * screen.
  */
 export function createMobileShellAdapter(deps: MobileAdapterDeps): KeycloakAdapter {
   const {
@@ -183,6 +193,7 @@ export function createMobileShellAdapter(deps: MobileAdapterDeps): KeycloakAdapt
     logoutTimeoutMs = 5_000,
     beforeLogout,
     beforeLogoutTimeoutMs = 3_000,
+    forgetSession,
   } = deps;
 
   const runNativeFlow = async (createUrl: () => Promise<string>): Promise<void> => {
@@ -235,6 +246,9 @@ export function createMobileShellAdapter(deps: MobileAdapterDeps): KeycloakAdapt
           globalThis.clearTimeout(timeout);
         }
       }
+      // Do not claim local sign-out until persistence is cleared. A locked or
+      // stalled store must remain retryable instead of resurrecting a session.
+      if (forgetSession) await settleWithin(forgetSession, beforeLogoutTimeoutMs, true);
       keycloak.clearToken();
       navigate(options?.redirectUri ?? appRoot());
     },

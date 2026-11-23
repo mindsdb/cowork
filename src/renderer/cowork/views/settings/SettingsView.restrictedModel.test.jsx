@@ -89,7 +89,7 @@ describe('SettingsView: a model an admin restricted', () => {
     expect(screen.queryByRole('button', { name: 'Top up your balance' })).toBeNull();
   });
 
-  it('links a current model the org budget stops to Budgets, never to credits', async () => {
+  it('links a current model a spent budget stops to Budgets, never to credits', async () => {
     const user = userEvent.setup();
     hostMock.host.openExternal.mockClear();
     render(<Harness initialSettings={settingsWith({
@@ -98,13 +98,14 @@ describe('SettingsView: a model an admin restricted', () => {
     })} />);
 
     await waitFor(() => expect(
-      screen.getAllByText(/GPT-5.6 Sol can't run because your organization's budget is used up\./).length,
+      screen.getAllByText(/GPT-5.6 Sol can't run because a budget covering it is used up\./).length,
     ).toBeGreaterThan(0));
     expect(screen.queryByText(/needs credits/)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Top up your balance' })).toBeNull();
 
     await user.click(screen.getAllByRole('button', { name: 'View budgets' })[0]);
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('budget_notice');
+    // A warning before any call was refused, so the link stays untagged.
     expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BUDGETS_URL);
   });
 

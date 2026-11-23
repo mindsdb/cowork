@@ -32,7 +32,7 @@ import { WorkingIndicator } from '../components/thinking/WorkingIndicator';
 import { FirstTake } from '../components/thinking/FirstTake';
 import { stepDisplayLabel } from '../lib/responseStreamAdapter';
 import { OrbitProvider } from '../lib/orbitRegistry';
-import { ChatTranscriptContext } from '../lib/chatTranscriptContext';
+import { ChatTranscriptContext, useTaskTranscript } from '../lib/chatTranscriptContext';
 import CopyDiagnosticsButton from '../components/CopyDiagnosticsButton';
 import { TaskMenu } from '../components/TaskMenu';
 import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
@@ -51,7 +51,8 @@ import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth, provis
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { GeneratedImageCard } from '../components/GeneratedImageCard';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
-import { canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact } from '../lib/artifactKinds';
+import { BACKEND_ARTIFACT_TYPES, canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact, isPublishableArtifact } from '../lib/artifactKinds';
+import { useLiveApps } from '../../lib/liveApps';
 import { canPreviewDocument } from '../preview/kinds';
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import { openAuthenticatedResource } from '../lib/authenticatedResource';
@@ -81,7 +82,7 @@ import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
 import { artifactOpenTarget, noPreviewDownloadedNote } from '../lib/artifactActions';
-import { revalidate as revalidateArtifacts, setArtifactsScope, useArtifactLiveness } from '../lib/artifactsStore';
+import { revalidate as revalidateArtifacts, setArtifactsScope, useArtifactCardBySlug, useArtifactLiveness } from '../lib/artifactsStore';
 import { useOrgMode } from '../../lib/orgMode';
 import { displayModelLabel } from '../lib/settingsTransform';
 import { providerOverloadedButtons } from '../lib/turnErrorActions';
@@ -93,15 +94,22 @@ import { linkFigureSteps } from '../lib/figureSources';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { billingActions, billingCopyKey, offersBilling } from '../lib/billingLinks';
 import { useBudgetsUrl } from '../hooks/useBudgetsUrl';
+import { useConsoleLink } from '../hooks/useConsoleLink';
+import { useUpgradeOffer } from '../hooks/useUpgradeOffer';
+import { cleanRequiredTier } from '../lib/subscriptionPlan';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
-import { USAGE_ACTIONS, usageActionUrl, formatResetTime, formatPercentShort, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy, budgetExceededCopy } from '../lib/usageWarnings';
+import { budgetPeriodOf, budgetScopeOf, budgetModelName } from '../lib/budgetScope';
+import { USAGE_ACTIONS, upgradeAction, usageActionUrl, formatResetTime, formatPercentShort, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy, budgetExceededCopy } from '../lib/usageWarnings';
 import { MINDSHUB_AIR_MODEL_ID } from '../lib/modelCatalog';
 import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
 import { ChatScroller } from '../components/chat/ChatScroller';
 import { useStickToBottom } from '../components/chat/useStickToBottom';
 import { useDockInset } from '../components/chat/useDockInset';
+import { ReportContentButton } from '../components/chat/ReportContentButton';
 import { TurnActions } from '../components/chat/TurnActions';
+import { NextSteps } from '../components/chat/NextSteps';
+import { nextStepsFor, offersNextSteps, scheduledPromptFor } from '../lib/nextSteps';
 import { UserTurn } from '../components/chat/UserTurn';
 import i18n, { currentLocale, useTranslation } from '../../lib/i18n';
 import { productName } from '../../lib/deploymentBrand';
@@ -427,7 +435,8 @@ const CHAT_ORB_SIZE = 22;
 // reading column of at least 640px, its 40px gutters, and the 320px rail.
 const RAIL_DOCK_MIN_PX = 640 + 40 * 2 + 320;
 
-// Why an answer stopped early, keyed by response.completed's incomplete_details.reason.
+// Why an answer stopped early, keyed by response.completed's incomplete_details.reason,
+// or user_stopped when the turn ended on response.cancelled (someone pressed Stop).
 // Values are chat-namespace keys, translated at render.
 const INCOMPLETE_REASON_KEYS = {
   spend_ceiling: 'chatView.incomplete.spendCeiling',
@@ -438,13 +447,14 @@ const INCOMPLETE_REASON_KEYS = {
   retry_exhausted: 'chatView.incomplete.retryExhausted',
   question_unanswered: 'chatView.incomplete.questionUnanswered',
   content_filter: 'chatView.incomplete.contentFilter',
+  user_stopped: 'chatView.incomplete.userStopped',
 };
 
 // ─── Anton answer turn — content stack ────────────────────────────────────
 // No eyebrow header: while in flight the ThinkingBlock / WorkingIndicator
 // is the single indicator; once done, a hover-only footer (bottom-right)
 // names the agent that answered and when.
-function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, agentLabel, isLast, deleting = false }) {
+function AnswerTurn({ state = 'done', time, children, showActions = true, copyText, onDelete, agentLabel, isLast, conversationId, messageId, deleting = false }) {
   const { t } = useTranslation('chat');
   return (
     <div
@@ -459,6 +469,7 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
           {showActions && !deleting && (
             <TurnActions text={copyText || ''} copyLabel={t('chatView.turn.copyResponse')} onDelete={onDelete} isLast={isLast} />
           )}
+          {!deleting && <ReportContentButton conversationId={conversationId} messageId={messageId} />}
           {/* Agent always named; the timestamp joins it when the caller
               resolved one. No message row carries `createdAt` — the server
               sends `created_at` and nothing maps it. */}
@@ -635,7 +646,7 @@ export function artifactStepToCard(step, projectPath) {
 // down to the card because an artifact the agent created THIS turn cannot be in
 // an artifacts index that was loaded before it existed, and judging it against
 // one would mark a brand-new artifact "Deleted".
-function StepArtifacts({ steps, onOpen, projectPath, live = false }) {
+function StepArtifacts({ steps, onOpen, onShare, projectPath, live = false }) {
   const artifacts = steps?.filter((s) => s.badge === 'Artifact') || [];
   if (artifacts.length === 0) return null;
   return (
@@ -645,6 +656,7 @@ function StepArtifacts({ steps, onOpen, projectPath, live = false }) {
           key={s.id}
           artifact={artifactStepToCard(s, projectPath)}
           onOpen={onOpen}
+          onShare={onShare}
           live={live}
         />
       ))}
@@ -864,17 +876,22 @@ function StepConnectorDrafts({ steps, onConnect }) {
   );
 }
 
-export function ArtifactCard({ artifact, onOpen, live = false }) {
+export function ArtifactCard({ artifact, onOpen, onShare = null, live = false }) {
   // This card is an artifact surface like the panel's rows, so it answers to the
   // same deployment gate. Without it the chat offered a local preview, Export
   // and Show in Finder for content an org deployment does not serve, while the
   // panel had already stopped offering them for the very same artifact.
   const { t } = useTranslation('chat');
   const orgMode = useOrgMode();
+  const liveApps = useLiveApps();
   // Same question the artifacts panel answers by simply not listing the row:
   // is this artifact still there? The card outlives the artifact because it is
   // rendered from the turn's persisted stream events, which no delete rewrites.
   const deleted = useArtifactLiveness(artifact, { live });
+  // A chat card carries no capabilities (only the artifacts list adds them),
+  // so the listed card for the same artifact says whether the person may edit it.
+  const listedCard = useArtifactCardBySlug(artifact.capabilities ? '' : artifact.slug);
+  const capabilities = artifact.capabilities || listedCard?.capabilities || null;
   const [status, setStatus] = useState(null);
   const statusTimerRef = useRef(null);
   useLayoutEffect(() => () => {
@@ -1129,8 +1146,27 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
     ? { label: t('chatView.artifactCard.open'), onClick: openInDefaultApp, tooltip: t('chatView.artifactCard.openInDefaultApp') }
     : null;
   const secondaryAction = sharedLinkAction || downloadAction || openInAppAction;
+  /*
+   * Share offers the viewer's own Share panel, so it follows the viewer's rule
+   * for showing it: a page or document the person may edit, and not a full-stack
+   * live app without a page (those share through "Share with…"). Where nothing
+   * says whether they may edit it yet (an artifact the list hasn't loaded), the
+   * card offers Share and the viewer decides: it opens without the panel for
+   * someone who can't manage it. On Desktop the panel needs the local file,
+   * which the viewer would show disabled without.
+   */
+  const shareAction = onShare && !deleted
+    && isPublishableArtifact(artifact)
+    && !(liveApps && BACKEND_ARTIFACT_TYPES.has(artifact.type) && !published)
+    && capabilities?.canEdit !== false
+    && (orgMode || canAct)
+    ? { label: t('chatView.artifactCard.share'), onClick: () => onShare(artifact), tooltip: t('chatView.artifactCard.shareTooltip') }
+    : null;
   const primaryDisabled = needsLocalPath && !canAct;
   const primaryReason = primaryDisabled ? (disabledReason || t('chatView.artifactCard.noFilePath')) : '';
+  const openAction = !deleted && primaryAction
+    ? { ...primaryAction, disabled: primaryDisabled, tooltip: primaryDisabled ? undefined : primaryAction.tooltip }
+    : null;
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
   /*
    * Whole-card click → preview. The inner buttons (the primary action,
@@ -1202,14 +1238,25 @@ export function ArtifactCard({ artifact, onOpen, live = false }) {
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}
       >
-        <ActionBar
-          size="sm"
-          align="start"
-          className="flex-wrap"
-          primary={!deleted && primaryAction
-            ? { ...primaryAction, disabled: primaryDisabled, tooltip: primaryDisabled ? undefined : primaryAction.tooltip }
-            : null}
-        />
+        {shareAction ? (
+          /* Preview stays the filled action, with Share a full outlined
+             button after it: ActionBar would put its secondary before the
+             primary, in the quiet style. */
+          <div className="flex min-w-0 flex-wrap items-center justify-start gap-1.5">
+            {openAction && (
+              <Tooltip content={openAction.tooltip} side="top">
+                <Button size="sm" variant="primary" disabled={openAction.disabled} onClick={openAction.onClick}>
+                  {openAction.label}
+                </Button>
+              </Tooltip>
+            )}
+            <Tooltip content={shareAction.tooltip} side="top">
+              <Button size="sm" variant="default" onClick={shareAction.onClick}>{shareAction.label}</Button>
+            </Tooltip>
+          </div>
+        ) : (
+          <ActionBar size="sm" align="start" className="flex-wrap" primary={openAction} />
+        )}
       </div>
       {/* The footer is the artifact's location bar: the path at rest, and the
           result of an action for the moment it is on screen. One or the
@@ -1348,6 +1395,12 @@ export function AllowanceExhaustedCard({
   time, agentLabel, resetAt, usage, isBillingOwner, deleting = false,
 }) {
   const { t } = useTranslation('chat');
+  const consoleLink = useConsoleLink();
+  /* ENG-4186: on a Free plan the highest-intent moment offers Plus first.
+     No plan (gate off, older server) or no right to buy: no button, and the
+     card reads exactly as before. */
+  const upgrade = useUpgradeOffer();
+  const getPlus = upgrade.plan?.tier === 'free' && upgrade.canOffer('plus');
   if (!PLATFORM_UI) return <ProviderLimitCard time={time} agentLabel={agentLabel} deleting={deleting} />;
   /* A desktop or hosted turn carries the gate's reset_at. A hosted turn from a
      cowork-server that predates it arrives with none, and the hub usage read
@@ -1360,10 +1413,15 @@ export function AllowanceExhaustedCard({
       agentLabel={agentLabel}
       // The gate only issues this code when the org has no
       // balance to fall onto, so the turn ended.
-      kind={t('chatView.kinds.billing')}
+      kind={t(offersBilling() ? 'chatView.kinds.billing' : 'chatView.kinds.usage')}
       title={t('chatView.cards.taskStopped')}
       body={allowanceStopCopy({ resetAt, usage })}
       buttons={billingActions([
+        ...(getPlus ? [{
+          label: upgradeAction('plus').label,
+          onClick: () => upgrade.open('plus', 'allowance_card'),
+          primary: true,
+        }] : []),
         {
           label: t('chatView.cards.addFunds'),
           // The click, not an impression — same rule as
@@ -1373,18 +1431,67 @@ export function AllowanceExhaustedCard({
           // once and this one is not the exception.
           onClick: () => {
             trackBillingOpened('included_allowance_exhausted');
-            host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+            host.openExternal(consoleLink(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner })));
           },
-          primary: true,
+          primary: !getPlus,
         },
         // Only offer auto top up when it isn't already on.
         ...(usage?.autoTopUp?.enabled ? [] : [{
           label: USAGE_ACTIONS.setUpAutoTopUp.label,
           onClick: () => {
             trackBillingOpened('included_allowance_exhausted');
-            host.openExternal(usageActionUrl(USAGE_ACTIONS.setUpAutoTopUp, { isBillingOwner }));
+            host.openExternal(consoleLink(usageActionUrl(USAGE_ACTIONS.setUpAutoTopUp, { isBillingOwner })));
           },
         }]),
+      ])}
+    />
+  );
+}
+
+/*
+ * A Plus or Pro window is used up (`window_allowance_exhausted`, ENG-4186):
+ * the model is one the plan covers, one of its two rolling windows (5 hours
+ * or 7 days) is spent, and the wallet cannot carry the task past it. The gate
+ * sends when that window frees up (`resetAt`) and which window it was. The
+ * card says the task is paused until then, and offers the two ways to keep
+ * going now: funds, and on Plus, Pro. Never a dollar or token figure.
+ */
+export function WindowAllowanceExhaustedCard({
+  time, agentLabel, resetAt, allowanceWindow, isBillingOwner, deleting = false,
+}) {
+  const { t } = useTranslation('chat');
+  const upgrade = useUpgradeOffer();
+  const consoleLink = useConsoleLink();
+  if (!PLATFORM_UI) return <ProviderLimitCard time={time} agentLabel={agentLabel} deleting={deleting} />;
+  const until = formatResetTime(resetAt);
+  const windowKey = allowanceWindow === '7d' || allowanceWindow === '5h' ? allowanceWindow : 'other';
+  // The mobile copy names the window and when it frees up, and nothing about the balance.
+  const body = until
+    ? t(billingCopyKey('chatView.cards.windowPausedUntil'), { window: windowKey, time: until })
+    : t(billingCopyKey('chatView.cards.windowPaused'), { window: windowKey });
+  const offerPro = upgrade.plan?.tier === 'plus' && upgrade.canOffer('pro');
+  return (
+    <ActionCard
+      deleting={deleting}
+      time={time}
+      agentLabel={agentLabel}
+      kind={t(offersBilling() ? 'chatView.kinds.billing' : 'chatView.kinds.usage')}
+      title={t('chatView.cards.windowUsedUpTitle')}
+      body={body}
+      buttons={billingActions([
+        {
+          label: t('chatView.cards.addFunds'),
+          // The click only; token_cap_hit counted the impression on receipt.
+          onClick: () => {
+            trackBillingOpened('window_allowance_exhausted');
+            host.openExternal(consoleLink(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner })));
+          },
+          primary: true,
+        },
+        ...(offerPro ? [{
+          label: upgradeAction('pro').label,
+          onClick: () => upgrade.open('pro', 'window_card'),
+        }] : []),
       ])}
     />
   );
@@ -1427,8 +1534,15 @@ export function BalanceEmptyCard({
   time, agentLabel, usage, isBillingOwner, onSwitchToAir, deleting = false,
 }) {
   const { t } = useTranslation('chat');
+  const consoleLink = useConsoleLink();
   if (!PLATFORM_UI) return <ProviderLimitCard time={time} agentLabel={agentLabel} deleting={deleting} />;
   const free = freeAllowanceState(usage);
+  if (!offersBilling()) {
+    return <ActionCard time={time} agentLabel={agentLabel} deleting={deleting}
+      kind={t('chatView.kinds.usage')} title={t('chatView.cards.taskStopped')}
+      body={free.status === 'spent' ? allowanceStopCopy({ usage }) : t('chatView.cards.providerLimitBody')}
+      buttons={free.status === 'has_room' ? switchToAirButtons(onSwitchToAir) : []} />;
+  }
   const walletPaysNow = !!usage?.balance && !isBalanceEmpty(usage.balance);
   const refill = formatResetTime(free.resetsAt);
   const addFunds = {
@@ -1439,7 +1553,7 @@ export function BalanceEmptyCard({
     // every paint.
     onClick: () => {
       trackBillingOpened('token_limit');
-      host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+      host.openExternal(consoleLink(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner })));
     },
     primary: true,
   };
@@ -1483,6 +1597,7 @@ export function FreeServingPausedCard({
   time, agentLabel, resetAt, isBillingOwner, deleting = false,
 }) {
   const { t } = useTranslation('chat');
+  const consoleLink = useConsoleLink();
   if (!PLATFORM_UI) {
     return (
       <ActionCard
@@ -1512,7 +1627,7 @@ export function FreeServingPausedCard({
              trigger: a fleet-wide pause is not this user running out. */
           onClick: () => {
             trackBillingOpened('free_serving_paused');
-            host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+            host.openExternal(consoleLink(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner })));
           },
           primary: true,
         },
@@ -1522,17 +1637,24 @@ export function FreeServingPausedCard({
 }
 
 /*
- * The org's spending budget is used up (`budget_exceeded`): the gateway's 402
+ * A spending budget is used up (`budget_exceeded`): the gateway's 402
  * on a hard-capped budget, with no reset time. Credits do not lift it, so the
- * card never asks for funds; it links to Budgets, where an owner or admin
+ * card never asks for funds; it links to Budgets, where an administrator
  * raises it. Air may still run on its free allowance, so the switch is offered
  * while the hub read shows room, as on the balance card.
  */
 export function BudgetExceededCard({
-  time, agentLabel, usage, onSwitchToAir, deleting = false,
+  time, agentLabel, usage, onSwitchToAir, budgetScope = null, budgetPeriod = null, budgetModelLabel = null,
+  deleting = false,
 }) {
   const { t } = useTranslation('chat');
-  const budgetsUrl = useBudgetsUrl();
+  const budgetsUrl = useBudgetsUrl({ fromDenial: true });
+  if (!offersBilling()) {
+    return <ActionCard time={time} agentLabel={agentLabel} deleting={deleting}
+      kind={t('chatView.kinds.usage')} title={t('chatView.cards.taskStopped')}
+      body={t('chatView.cards.providerLimitBody')}
+      buttons={freeAllowanceState(usage).status === 'has_room' ? switchToAirButtons(onSwitchToAir) : []} />;
+  }
   if (!PLATFORM_UI) {
     return (
       <ActionCard
@@ -1552,8 +1674,8 @@ export function BudgetExceededCard({
       time={time}
       agentLabel={agentLabel}
       kind={t('chatView.kinds.billing')}
-      title={t('chatView.cards.budgetUsedUpTitle')}
-      body={budgetExceededCopy({ usage })}
+      title={t('chatView.cards.budgetUsedUpTitle', { scope: budgetScopeOf(budgetScope), period: budgetPeriodOf(budgetPeriod) })}
+      body={budgetExceededCopy({ usage, budgetScope, budgetModelLabel })}
       buttons={[
         ...billingActions([{
           label: t('chatView.cards.viewBudgets'),
@@ -1574,6 +1696,7 @@ export function BudgetExceededCard({
    on the home screen and its first sentence must read the same. */
 export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) {
   const { t } = useTranslation('chat');
+  const consoleLink = useConsoleLink();
   return (
     <ActionCard
       deleting={deleting}
@@ -1591,7 +1714,7 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
           // question, and is not settled here.
           onClick: () => {
             trackBillingOpened('connect_provider');
-            host.openExternal(MINDS_BILLING_URL);
+            host.openExternal(consoleLink(MINDS_BILLING_URL));
           },
           primary: true,
         }]),
@@ -1607,12 +1730,20 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
 // allowance changed, and still reads true after the bar moves on or is closed.
 // It keeps its own link: most people who reach billing from a chat notice never
 // click the bar.
-function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBillingOwner }) {
+function UsageAlertCard({
+  time, agentLabel, kind, resetsAt, fractionLeft, isBillingOwner,
+  allowanceWindow = null, percentUsed = null, onWallet = false,
+}) {
   const { t } = useTranslation('chat');
-  if (!PLATFORM_UI) return null;
+  const consoleLink = useConsoleLink();
+  // Inside the mobile app only the lines that name no wallet show: the free
+  // allowance or a plan window running low, and a plan window used up that
+  // paused the task. A window that put the task on the wallet stays hidden.
+  const namesNoWallet = kind === 'free_low' || kind === 'window_low' || (kind === 'window_exhausted' && !onWallet);
+  if (!PLATFORM_UI || (!offersBilling() && !namesNoWallet)) return null;
   const open = (action) => () => {
     trackBillingOpened('usage_alert', undefined, kind);
-    host.openExternal(usageActionUrl(action, { isBillingOwner }));
+    host.openExternal(consoleLink(usageActionUrl(action, { isBillingOwner })));
   };
   if (kind === 'auto_top_up_failed') {
     // The one notice that asks for something, so it stays a card.
@@ -1635,13 +1766,24 @@ function UsageAlertCard({ time, agentLabel, kind, resetsAt, fractionLeft, isBill
   // the router resolves per turn and can land on a paid model.
   // No usable refill time drops the clause rather than leaving "refills".
   const refillsAt = formatResetTime(resetsAt);
-  const text = kind === 'free_low'
-    ? (refillsAt
+  // A Plus or Pro window (ENG-4186): its share used, or that it filled up,
+  // and when it frees up. Never a dollar or token figure.
+  const windowVars = { window: allowanceWindow === '7d' ? '7d' : '5h', time: refillsAt || '', percent: `${Math.round(Number(percentUsed) || 0)}%` };
+  let text;
+  if (kind === 'window_low') {
+    text = refillsAt ? t('chatView.usageAlert.windowLowResets', windowVars) : t('chatView.usageAlert.windowLow', windowVars);
+  } else if (kind === 'window_exhausted') {
+    if (onWallet) text = t('chatView.usageAlert.windowOnWallet', windowVars);
+    else text = refillsAt ? t('chatView.usageAlert.windowUsedUntil', windowVars) : t('chatView.usageAlert.windowUsed', windowVars);
+  } else if (kind === 'free_low') {
+    text = refillsAt
       ? t('chatView.usageAlert.freeLowRefills', { percent: formatPercentShort(fractionLeft), time: refillsAt })
-      : t('chatView.usageAlert.freeLow', { percent: formatPercentShort(fractionLeft) }))
-    : (refillsAt
+      : t('chatView.usageAlert.freeLow', { percent: formatPercentShort(fractionLeft) });
+  } else {
+    text = refillsAt
       ? t('chatView.usageAlert.freeUsedUntil', { time: refillsAt })
-      : t('chatView.usageAlert.freeUsed'));
+      : t('chatView.usageAlert.freeUsed');
+  }
   return (
     <div className="my-3 flex flex-wrap items-center gap-x-1.5 font-body text-xs text-ink-3">
       <Icon of={CircleAlert} size={14} />
@@ -1757,6 +1899,7 @@ function RateLimitedCard({
 // Settings too.
 function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, providerLabel, deleting = false }) {
   const { t } = useTranslation('chat');
+  const consoleLink = useConsoleLink();
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [err, setErr] = useState(null);
@@ -1776,7 +1919,7 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
         // this handler did about it, and joins the paywall funnel.
         trackKeyProvisioningRefused('billing_opened');
         trackBillingOpened('key_provisioning_refused');
-        host.openExternal(MINDS_BILLING_URL);
+        host.openExternal(consoleLink(MINDS_BILLING_URL));
         return;
       }
       if (!res?.ok) {
@@ -1876,9 +2019,11 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
  */
 export function ModelUnavailableCard({
   time, agentLabel, onOpenSettings, code, failedModel, onSwitchToAir, modelLabels,
-  isBillingOwner = false, deleting = false,
+  isBillingOwner = false, requiredTier = null, deleting = false,
 }) {
   const { t } = useTranslation('chat');
+  const consoleLink = useConsoleLink();
+  const upgrade = useUpgradeOffer();
   // Same naming rule as the picker (ENG-1638): MindsHub's catalog label when we
   // hold one, else the id-derived form. This card used to call the bare
   // prettifier, so the row the user had just picked as "MindsHub Air" came back
@@ -1907,6 +2052,50 @@ export function ModelUnavailableCard({
       />
     );
   }
+  /* A model outside the plan (`model_not_in_tier`, ENG-4186): the plan's
+     allowance does not cover it and the wallet cannot pay for it. Both ways
+     out work: a plan that covers it (the tier the gate named), or funds, which
+     pay for any model at API rates on any plan. */
+  if (code === 'model_not_in_tier') {
+    const tier = cleanRequiredTier(requiredTier);
+    const offerTier = tier || upgrade.tier;
+    const canUpgrade = !!offerTier && upgrade.canOffer(offerTier);
+    // Inside the mobile app it reads like the credit denial below: the model
+    // is unavailable, with no plan to buy and no word about the balance.
+    const billing = offersBilling();
+    return (
+      <ActionCard
+        deleting={deleting}
+        time={time}
+        agentLabel={agentLabel}
+        kind={t('chatView.kinds.model')}
+        title={billing
+          ? t('chatView.model.notInTierTitle', { model: label })
+          : t('chatView.model.unavailableTitle', { model: label })}
+        body={billing
+          ? t('chatView.model.notInTierBody', { model: label, tier: tier || 'other' })
+          : t('chatView.model.askOperatorBody')}
+        buttons={[
+          ...billingActions([
+            ...(canUpgrade ? [{
+              label: upgradeAction(offerTier).label,
+              onClick: () => upgrade.open(offerTier, 'model_card'),
+              primary: true,
+            }] : []),
+            {
+              label: t('chatView.cards.addFunds'),
+              onClick: () => {
+                trackBillingOpened('model_not_in_tier');
+                host.openExternal(consoleLink(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner })));
+              },
+              primary: !canUpgrade,
+            },
+          ]),
+          ...switchToAirButtons(onSwitchToAir),
+        ]}
+      />
+    );
+  }
   const denied = code === 'model_access_denied';
   // One handler for both button rows, so the recorded trigger always matches the
   // card that was actually rendered (ENG-1533). Both rows offer Top up balance,
@@ -1918,9 +2107,9 @@ export function ModelUnavailableCard({
     trackBillingOpened(denied ? 'model_access_denied' : 'model_disabled');
     // Only a credit denial opens the add-credits dialog: credits cannot turn a
     // disabled model back on, so that row keeps the plain billing page.
-    host.openExternal(denied ? usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }) : MINDS_BILLING_URL);
+    host.openExternal(consoleLink(denied ? usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }) : MINDS_BILLING_URL));
   };
-  const title = denied
+  const title = denied && offersBilling()
     ? t('chatView.model.needsCreditsTitle', { model: label })
     : t('chatView.model.unavailableTitle', { model: label });
 
@@ -1935,7 +2124,7 @@ export function ModelUnavailableCard({
       kind={t('chatView.kinds.model')}
       title={title}
       body={denied
-        ? t(billingCopyKey('chatView.model.needsCreditsBody'))
+        ? t(offersBilling() ? 'chatView.model.needsCreditsBody' : 'chatView.model.askOperatorBody')
         : t('chatView.model.disabledBody')}
       buttons={denied
         ? [
@@ -2144,6 +2333,10 @@ export default function ChatView({
   // resurrects unanswered questions from persisted history, and a
   // click on one with no live run behind it would 404.
   inFlightSet,
+  // ({ prompt, projectId, answerKey }) — opens the new-schedule form filled
+  // in with the message a finished answer replied to; a save marks that
+  // answer scheduled (lib/scheduledAnswers). Without it, no schedule step.
+  onScheduleFromChat = null,
   // Pending composer redirects from App.jsx, keyed by conversation id:
   // {[taskId]: {text, attachments, bump}}. A question appeared while messages
   // were queued for that task, so their text and files are handed back to its
@@ -2232,9 +2425,16 @@ export default function ChatView({
   // Anything else still routes through the Electron OS handler via
   // openPath inside the card.
   const [previewArt, setPreviewArt] = useState(null);
+  // A new object per Share click, so the viewer opens its panel once per click.
+  const [previewShare, setPreviewShare] = useState(null);
   const handleArtifactOpen = (artifact) => {
     // The card already filters: it only calls onOpen for previewable
     // types (HTML / md / txt / csv). Dispatch straight to the viewer.
+    setPreviewShare(null);
+    setPreviewArt(artifact);
+  };
+  const handleArtifactShare = (artifact) => {
+    setPreviewShare({});
     setPreviewArt(artifact);
   };
   // Task settings menu (kebab in header).
@@ -2304,12 +2504,15 @@ export default function ChatView({
   const usageBuckets = usageNoticeBuckets(visibleMessages, task.usageNotices);
   const usageCard = (n) => (
     <UsageAlertCard
-      key={`usage-${n.createdAt}-${n.kind}-${n.fractionLeft ?? ''}`}
+      key={`usage-${n.createdAt}-${n.kind}-${n.fractionLeft ?? ''}-${n.window ?? ''}`}
       time={formatMetaTime(n.createdAt)}
       agentLabel={agentLabel}
       kind={n.kind}
       resetsAt={n.resetsAt}
       fractionLeft={n.fractionLeft}
+      allowanceWindow={n.window ?? null}
+      percentUsed={n.percentUsed ?? null}
+      onWallet={!!n.onWallet}
       isBillingOwner={isBillingOwner}
     />
   );
@@ -2926,10 +3129,7 @@ export default function ChatView({
   // message it sent into this chat, from these same messages.
   // Quick edits from the artifact viewer, adjacent ones merged into one card.
   const quickEditPlan = planQuickEditCards(visibleMessages);
-  const chatTranscript = useMemo(
-    () => ({ conversationId: task?.id || null, messages: task?.messages || [] }),
-    [task?.id, task?.messages],
-  );
+  const chatTranscript = useTaskTranscript(task);
 
   return (
     <ChatTranscriptContext.Provider value={chatTranscript}>
@@ -3401,7 +3601,7 @@ export default function ChatView({
                     />
                   );
                 }
-                /* The org's spending budget is used up: Budgets, not funds,
+                /* A spending budget is used up: Budgets, not funds,
                    and Air while its free allowance has room. */
                 if (m.code === 'budget_exceeded') {
                   const budgetResend = lastUserMessageBefore(visibleMessages, i);
@@ -3412,6 +3612,9 @@ export default function ChatView({
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       usage={hubUsage?.usage}
+                      budgetScope={m.budgetScope}
+                      budgetPeriod={m.budgetPeriod}
+                      budgetModelLabel={m.budgetModel ? budgetModelName(m.budgetModel, modelLabels) : null}
                       onSwitchToAir={
                         onSwitchToAirAndResend && budgetResend && taskModelId !== MINDSHUB_AIR_MODEL_ID
                           ? () => onSwitchToAirAndResend(budgetResend.text, budgetResend.attachments)
@@ -3443,7 +3646,8 @@ export default function ChatView({
                  *
                  * `model_restricted` shares the card: an org admin's model
                  * rule, which the card answers with Open Settings only. */
-                if (m.code === 'model_access_denied' || m.code === 'model_disabled' || m.code === 'model_restricted') {
+                if (m.code === 'model_access_denied' || m.code === 'model_disabled' || m.code === 'model_restricted'
+                  || m.code === 'model_not_in_tier') {
                   const deniedResend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <ModelUnavailableCard
@@ -3456,6 +3660,7 @@ export default function ChatView({
                       failedModel={m.failedModel}
                       modelLabels={modelLabels}
                       isBillingOwner={isBillingOwner}
+                      requiredTier={m.requiredTier ?? null}
                       onSwitchToAir={
                         onSwitchToAirAndResend && deniedResend
                           ? () => onSwitchToAirAndResend(deniedResend.text, deniedResend.attachments)
@@ -3741,6 +3946,22 @@ export default function ChatView({
                     />
                   );
                 }
+                // A Plus or Pro window used up with an empty wallet (gateway
+                // 429 `window_allowance_exhausted`, ENG-4186): paused until
+                // the window frees up, with funds and Pro as ways on.
+                if (m.code === 'window_allowance_exhausted') {
+                  return (
+                    <WindowAllowanceExhaustedCard
+                      key={messageKey(m, i)}
+                      deleting={deletingThisTurn}
+                      time={formatMetaTime(m.createdAt)}
+                      agentLabel={agentLabel}
+                      resetAt={m.resetAt}
+                      allowanceWindow={m.allowanceWindow ?? null}
+                      isBillingOwner={isBillingOwner}
+                    />
+                  );
+                }
                 // Velocity rate-limit (gateway 429 `rate_limited`): waiting is
                 // the fix, so the card says so and offers a time-gated Retry —
                 // never a top-up, which is what this used to show (ENG-1537).
@@ -3858,7 +4079,11 @@ export default function ChatView({
               if (quickEditGroup) {
                 return (
                   <div key={messageKey(m, i)} className={deletingThisTurn ? 'opacity-60' : undefined}>
-                    <QuickEditGroupCard group={quickEditGroup} onOpenArtifact={handleArtifactOpen} />
+                    <QuickEditGroupCard
+                      group={quickEditGroup}
+                      onOpenArtifact={handleArtifactOpen}
+                      conversationId={deletingThisTurn ? undefined : task.id}
+                    />
                   </div>
                 );
               }
@@ -3877,6 +4102,8 @@ export default function ChatView({
                   // no startedAt either, so that turn shows no time.
                   time={formatMetaTime(m.createdAt || m.startedAt)}
                   copyText={m.content}
+                  conversationId={task.id}
+                  messageId={m.id}
                   // Anchored on this assistant message's own id; hidden, not
                   // disabled, without one. A partial kept after a transport
                   // failure whose recovery also failed has none until reload.
@@ -3936,14 +4163,57 @@ export default function ChatView({
                     <ArtifactCard
                       artifact={normalizeArtifactRecord(m.artifact, artifactProjectPath)}
                       onOpen={handleArtifactOpen}
+                      onShare={handleArtifactShare}
                     />
                   )}
-                  <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} />
+                  <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} />
                   <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
                   <StepConnectorDrafts steps={m.steps} onConnect={onConnectCustomConnector} />
+                  {(() => {
+                    if (!onSend || !offersNextSteps({
+                      isLatest: i === lastTurnIdx,
+                      inFlight: isStreaming || !!inFlightSet?.has(task.id),
+                      answer: m,
+                      followedByFailure: visibleMessages.slice(i + 1)
+                        .some((row) => row.role === 'error' || row.role === 'provider_required'),
+                    })) return null;
+                    let u = i - 1;
+                    while (u >= 0 && visibleMessages[u].role !== 'user') u -= 1;
+                    const userMessage = u >= 0 ? visibleMessages[u] : null;
+                    const firstUserIdx = visibleMessages.findIndex((row) => row.role === 'user');
+                    const { resultKind, steps } = nextStepsFor({
+                      firstUserText: firstUserIdx >= 0 ? visibleMessages[firstUserIdx].content : '',
+                      userMessage,
+                      // Only when the history is loaded from its start can
+                      // the first loaded message be the conversation's first.
+                      isFirstTurn: !task.hasMoreMessages && u >= 0 && u === firstUserIdx,
+                      answer: m,
+                    }, { canSchedule: !!onScheduleFromChat && !!scheduledPromptFor(userMessage) });
+                    const answerKey = `${task.id}:${messageKey(m, i)}`;
+                    return (
+                      <NextSteps
+                        answerKey={answerKey}
+                        resultKind={resultKind}
+                        steps={steps}
+                        onSend={onSend}
+                        onSchedule={() => onScheduleFromChat?.({
+                          prompt: scheduledPromptFor(userMessage),
+                          projectId: task.projectId ?? null,
+                          answerKey,
+                        })}
+                      />
+                    );
+                  })()}
                   {m.incompleteReason && (
                     // role="note": a saved answer's notice must not be announced again on every reload.
-                    <Alert variant="warning" role="note" icon={Ico.warning(16)} className="mt-2" data-testid="incomplete-reason">
+                    // A Stop is the person's own choice, so it reads as a plain note, not a warning.
+                    <Alert
+                      variant={m.incompleteReason === 'user_stopped' ? 'info' : 'warning'}
+                      role="note"
+                      icon={m.incompleteReason === 'user_stopped' ? undefined : Ico.warning(16)}
+                      className="mt-2"
+                      data-testid="incomplete-reason"
+                    >
                       {t(INCOMPLETE_REASON_KEYS[m.incompleteReason] || 'chatView.incomplete.fallback')}
                     </Alert>
                   )}
@@ -4006,7 +4276,7 @@ export default function ChatView({
                     <StreamCursor />
                   </div>
                 )}
-                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} projectPath={artifactProjectPath} live />
+                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} live />
                 <StepSkills steps={streamingMsg.steps} latestByKey={latestSkillCardByKey} messageIndex={visibleMessages.length} projectName={project?.name} />
                 <StepConnectorDrafts steps={streamingMsg.steps} onConnect={onConnectCustomConnector} />
               </AnswerTurn>
@@ -4306,7 +4576,9 @@ export default function ChatView({
       <ArtifactViewer
         open={!!previewArt}
         artifact={previewArt}
-        onClose={() => setPreviewArt(null)}
+        shareRequest={previewShare}
+        shareEntry={previewShare ? 'chat_card' : 'viewer'}
+        onClose={() => { setPreviewArt(null); setPreviewShare(null); }}
         onChange={(updated) => setPreviewArt(updated)}
         conversationId={task?.id || null}
         onAddressWithAgent={({ prompt }) => onSend?.(prompt)}

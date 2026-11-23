@@ -198,7 +198,10 @@ vi.mock('../components/ConfirmModal', () => ({
 }));
 
 import CodeView from './CodeView';
-import { MINDS_ADD_FUNDS_URL, MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { MINDS_ADD_FUNDS_URL, MINDS_BILLING_URL, consoleUrlFor } from '../../lib/mindsUrls';
+
+// Console links name the session's organization and account (ENG-4333).
+const forOrg = (url: string) => consoleUrlFor(url, { organizationId: 'org-1', subject: 'u1' });
 import { HubUsageContext } from '../lib/hubUsageContext';
 
 const { useCodingSession: actualUseCodingSession } = await vi.importActual<typeof import('./useCodingSession')>('./useCodingSession');
@@ -356,6 +359,8 @@ describe('CodeView session-list reconciliation', () => {
     expect(opened.searchParams.get('tab')).toBe('budgets');
     expect(opened.searchParams.get('organization')).toBe('org-123');
     expect(opened.searchParams.get('subject')).toBe('user-9');
+    // The lip shows it for a spent budget, so the visit counts as a denial's.
+    expect(opened.searchParams.get('from')).toBe('budget_denial');
   });
 
   it.each([
@@ -384,11 +389,11 @@ describe('CodeView session-list reconciliation', () => {
       refresh: vi.fn(async () => {}),
       refreshReview: vi.fn(async () => {}),
     });
-    renderCode({ sessions: [failed], selectedId: failed.id }, { isBillingOwner });
+    renderCode({ sessions: [failed], selectedId: failed.id, account: { name: 'Ian', email: 'ian@example.com', orgId: 'org-1', sub: 'u1' } }, { isBillingOwner });
 
     fireEvent.click(screen.getByRole('button', { name: 'Add credits' }));
 
-    expect(mocks.openCodeExternalUrl).toHaveBeenCalledWith(url);
+    expect(mocks.openCodeExternalUrl).toHaveBeenCalledWith(forOrg(url));
   });
 
   it('opens project history instead of starting a task when a project is selected', async () => {

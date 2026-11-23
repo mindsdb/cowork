@@ -104,8 +104,8 @@ async function runLogout() {
     try {
       await host.logout();
     } catch {
-      // Desktop clears credentials before its reload. Web can reject before
-      // ending the session when preview revocation fails, so it needs retry.
+      // Desktop clears credentials before its reload. Web rejects only when
+      // Keycloak's logout itself fails, so it needs retry.
       ok = false;
     } finally {
       // Whatever happened, the dialog stops being the app's only exit. There

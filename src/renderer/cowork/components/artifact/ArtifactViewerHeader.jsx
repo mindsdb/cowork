@@ -1,10 +1,13 @@
 import Ico from '../Icons';
-import { Button, Menu, Tooltip } from '../ui';
+import { ReportContentButton } from '../chat/ReportContentButton';
+import { artifactIdentity } from '../../lib/artifactIdentity';
+import { Badge, Button, Menu, Tooltip } from '../ui';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { canDownloadArtifact, canShowInBrowserTab } from '../../lib/artifactKinds';
 import { artifactExportFormats } from '../../lib/artifactExport';
 import { PublishMenu } from './publish/PublishMenu';
+import { SharedWithMenu } from './publish/SharedWithMenu';
 import { ArtifactAddressPill } from './ArtifactAddressPill';
 import { ArtifactAuthorshipBadge } from '../artifacts/ArtifactAuthorshipBadge';
 import { IconButton } from './ArtifactViewerIconButton';
@@ -18,14 +21,15 @@ export function ArtifactViewerHeader({
   authorship = null,
   workspace,
   review,
-  // `{ open, onToggle }` for the Stats side panel; absent on surfaces without it.
-  stats = null,
   publication,
   actions,
   // `{ errors, dismissed, dismiss }` from usePreviewDiagnostics.
   diagnostics,
   // The address pill: `{ kind, url, fallback }`.
   address = null,
+  // How much room the artifact gets (useViewerLayout): `{ maximized,
+  // onToggle(name) }`. Absent on surfaces without it.
+  layout = null,
   onClose,
 }) {
   const { t } = useTranslation('artifacts');
@@ -40,8 +44,10 @@ export function ArtifactViewerHeader({
     hasActionPath,
     isPublished,
     disabledReason,
+    shareRequest = null,
+    onShareRequestClosed,
+    onReviewUnshared = null,
   } = publication;
-  const showStats = !!stats && isPublished && canManage;
   // A caller with no address to give still gets the pill, named by the
   // title, so ↗ keeps its place.
   const shownAddress = address || { kind: isPublished ? 'published' : 'draft', url: '', fallback: title };
@@ -110,7 +116,8 @@ export function ArtifactViewerHeader({
             minWidth: 0, paddingRight: 12,
           }}
         >{title}</div>
-        {/* "Another member" / "Unknown owner" (ENG-2979). Renders nothing for
+        {/* The owner's name, "Another member" or "Unknown owner" (ENG-2979,
+            ENG-4455). Renders nothing for
             the viewer's own artifact. A direct flex child of this zone
             (Tooltip renders the badge as its own trigger), so `shrink-0`
             keeps it whole while the title truncates. */}
@@ -133,16 +140,14 @@ export function ArtifactViewerHeader({
         )}
       </div>
 
-      {/* Right — preview errors, comments, stats, publishing, more actions, and close. */}
-      <div className="artifact-viewer-action-zone" style={{ minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-        {diagnostics && <PreviewErrorsButton diagnostics={diagnostics} />}
-        {showStats && (
-          <Tooltip content={stats.open ? t('stats.toggle.hide') : t('stats.toggle.show')}>
-            <IconButton aria-label={t('stats.toggle.show')} onClick={stats.onToggle} active={!!stats.open}>
-              {Ico.chartColumn(16)}
-            </IconButton>
-          </Tooltip>
+      {/* Right — preview errors, reporting, publishing, more actions, and close. Stats is
+          a layer toggle on the revision line (ENG-4455). */}
+      <div className="artifact-viewer-action-zone" style={{ display: 'flex', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+        {artifact?.projectId && artifactIdentity(artifact) && (
+          <ReportContentButton key={`${artifact.projectId}:${artifactIdentity(artifact)}:${workspace?.currentRevision?.id ?? ''}:${artifact.mtime ?? ''}`}
+            artifactTarget={{ projectId: String(artifact.projectId), artifactId: artifactIdentity(artifact) }} />
         )}
+        {diagnostics && <PreviewErrorsButton diagnostics={diagnostics} />}
         {/* Sharing is owner-side chrome on BOTH deployments now. It used to be
             desktop-only, on the grounds that org mode's window is a review
             surface and publishing "lives on the gallery card instead" — but the
@@ -150,12 +155,38 @@ export function ArtifactViewerHeader({
             way to share at all (ENG-2316). On Cloud this changes the audience of
             an already-autopublished artifact; the controller handles the
             transport difference. */}
+        {/* The draft is ahead of the published page (a change kept as a
+            draft, ENG-4409): the same warning the artifact card shows, until
+            it is published. A button opening the review of those changes when
+            the shared version is known (ENG-4595), on every deployment. */}
+        {canManage && publishable && isPublished && pub?.modified && (
+          onReviewUnshared ? (
+            <Tooltip content={t('header.reviewUnsharedHint')}>
+              <button type="button" className="artifact-unshared-button" onClick={onReviewUnshared}>
+                <Badge variant="warning" size="sm" dot>{t('status.unsharedChanges')}</Badge>
+              </button>
+            </Tooltip>
+          ) : (
+            <Tooltip content={t('header.unsharedChangesHint')}>
+              <Badge variant="warning" size="sm" dot>{t('status.unsharedChanges')}</Badge>
+            </Tooltip>
+          )
+        )}
         {canManage && publishable && (
           <PublishMenu
             controller={pub}
             disabled={!orgMode && !hasActionPath}
             disabledReason={disabledReason}
+            openRequest={shareRequest}
+            onRequestClosed={onShareRequestClosed}
           />
+        )}
+        {/* Someone else's shared artifact (ENG-4455): the same "Shared"
+            button, opening a read-only "Shared with" panel. Org mode only,
+            where artifacts have owners other than the viewer; the owner keeps
+            PublishMenu above. */}
+        {!canManage && authorship && orgMode && publishable && isPublished && artifact && (
+          <SharedWithMenu artifact={artifact} />
         )}
         {/* Download is a visible control on every web host, org mode included,
             where the ⋯ menu is hidden. Desktop opens the file in its default
@@ -245,9 +276,24 @@ export function ArtifactViewerHeader({
             ].filter((item) => canManage || item.key !== 'delete')}
           />
         )}
-        <Tooltip content={t('header.close')}>
-          <IconButton onClick={onClose} aria-label={t('header.close')}>{Ico.close(16)}</IconButton>
-        </Tooltip>
+        {/* Maximize, then close. One group that never wraps apart, so close
+            stays at the end of the line in every state. */}
+        <div className="artifact-viewer-window-controls">
+          {layout && (
+            <Tooltip content={layout.maximized ? t('layout.restore') : t('layout.maximize')}>
+              <IconButton
+                aria-label={layout.maximized ? t('layout.restore') : t('layout.maximize')}
+                aria-keyshortcuts={host.isMac() ? 'Meta+Shift+Enter' : 'Control+Shift+Enter'}
+                onClick={() => layout.onToggle('maximized')}
+              >
+                {layout.maximized ? Ico.minimize(16) : Ico.maximize(16)}
+              </IconButton>
+            </Tooltip>
+          )}
+          <Tooltip content={t('header.close')}>
+            <IconButton onClick={onClose} aria-label={t('header.close')}>{Ico.close(16)}</IconButton>
+          </Tooltip>
+        </div>
       </div>
     </div>
   );

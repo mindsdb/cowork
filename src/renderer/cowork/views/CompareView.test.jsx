@@ -12,6 +12,7 @@ const hostMock = vi.hoisted(() => ({
 const deployment = vi.hoisted(() => ({ PLATFORM_UI: true }));
 vi.mock('../../lib/deployment', () => deployment);
 
+vi.mock('../hooks/useAccountUser', () => ({ useAccountUser: () => ({ orgId: 'org-1', sub: 'u1' }) }));
 vi.mock('../../platform/host', () => ({
   host: hostMock,
   getAccessToken: vi.fn(async () => null),
@@ -92,6 +93,19 @@ const usage = (balance) => ({
   providerType: 'minds-cloud',
 });
 const EMPTY = { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' };
+// A Plus plan. Its 5-hour window has room unless a test says how full it is.
+const onPlus = (balance, percentUsed = 10) => {
+  const value = usage(balance);
+  const plan = {
+    tier: 'plus', status: 'active', renewsAt: null, cancelAtPeriodEnd: false,
+    windows: [{ window: '5h', percentUsed, resetsAt: '2099-09-11T12:00:00Z' }],
+  };
+  return { ...value, usage: { ...value.usage, plan } };
+};
+// Plus covers Kimi but not Qwen.
+const PLUS_COVERAGE = { modelEnabled: {}, modelCoveredByTier: { kimi: 'plus', qwen: 'pro' } };
+// Plus covers both picks.
+const PLUS_COVERS_BOTH = { modelEnabled: {}, modelCoveredByTier: { kimi: 'plus', qwen: 'plus' } };
 const LOW = { usd: 4.2, canConsume: true, hasToppedUp: true, alert: 'low' };
 // The history as fetchComparisons answers: one page, or null on a server
 // without comparisons.
@@ -135,12 +149,12 @@ function holdStreams() {
   });
 }
 
-async function openDetail(cmp, sessions, hubUsage = null) {
+async function openDetail(cmp, sessions, hubUsage = null, modelMeta = undefined) {
   mockHistory([cmp]);
   api.fetchComparison.mockResolvedValue(cmp);
   api.fetchSession.mockImplementation(async (id) => sessions[id]);
-  const view = render(withUsage(hubUsage, <CompareView models={models} projects={projects} />));
-  openDetail.rerender = (next) => view.rerender(withUsage(next, <CompareView models={models} projects={projects} />));
+  const view = render(withUsage(hubUsage, <CompareView models={models} modelMeta={modelMeta} projects={projects} />));
+  openDetail.rerender = (next) => view.rerender(withUsage(next, <CompareView models={models} modelMeta={modelMeta} projects={projects} />));
   fireEvent.click(await screen.findByText(cmp.title));
   await screen.findAllByRole('region');
   await waitFor(() => expect(api.fetchSession).toHaveBeenCalledTimes(2));
@@ -289,6 +303,44 @@ describe('CompareView', () => {
     // Both the card's send arrow and the button below it.
     expect(screen.getAllByRole('button', { name: 'Start comparison' }).map((b) => b.disabled)).toEqual([true, true]);
     expect(screen.getAllByRole('button', { name: /Add funds/ }).length).toBeGreaterThan(0);
+    // The notice names the session's organization, so the console tops up this one (ENG-4333).
+    fireEvent.click(screen.getAllByRole('button', { name: /Add funds/ })[0]);
+    expect(new URL(hostMock.openExternal.mock.calls[0][0]).searchParams.get('organization')).toBe('org-1');
+  });
+
+  it('on a plan, will not start a side the plan does not cover and the wallet cannot pay for', async () => {
+    mockHistory([]);
+    render(withUsage(onPlus(EMPTY), <CompareView models={models} modelMeta={PLUS_COVERAGE} projects={projects} />));
+    fireEvent.change(await screen.findByLabelText('Task for both models'), { target: { value: 'go' } });
+    const [modelA, modelB] = screen.getAllByLabelText('model');
+    fireEvent.change(modelA, { target: { value: 'kimi' } });
+    fireEvent.change(modelB, { target: { value: 'qwen' } });
+    expect(screen.getByText('Balance empty')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Start comparison' }).map((b) => b.disabled)).toEqual([true, true]);
+  });
+
+  it('on a plan, starts two covered picks on an empty wallet while the window has room', async () => {
+    mockHistory([]);
+    render(withUsage(onPlus(EMPTY), <CompareView models={models} modelMeta={PLUS_COVERS_BOTH} projects={projects} />));
+    fireEvent.change(await screen.findByLabelText('Task for both models'), { target: { value: 'go' } });
+    const [modelA, modelB] = screen.getAllByLabelText('model');
+    fireEvent.change(modelA, { target: { value: 'kimi' } });
+    fireEvent.change(modelB, { target: { value: 'qwen' } });
+    expect(screen.queryByText('Balance empty')).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Start comparison' }).map((b) => b.disabled)).toEqual([false, false]);
+  });
+
+  it('on a plan, will not start covered picks once the window is used up and the wallet is empty', async () => {
+    mockHistory([]);
+    render(withUsage(onPlus(EMPTY, 100), <CompareView models={models} modelMeta={PLUS_COVERS_BOTH} projects={projects} />));
+    fireEvent.change(await screen.findByLabelText('Task for both models'), { target: { value: 'go' } });
+    const [modelA, modelB] = screen.getAllByLabelText('model');
+    fireEvent.change(modelA, { target: { value: 'kimi' } });
+    fireEvent.change(modelB, { target: { value: 'qwen' } });
+    expect(screen.getByText(/5-hour allowance used up/)).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Start comparison' }).map((b) => b.disabled)).toEqual([true, true]);
+    // The notice is the only explanation for the disabled Start, so it has no close.
+    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
   });
 
   it('inside the mobile app, explains the blocked start without offering to add funds', async () => {
@@ -300,7 +352,8 @@ describe('CompareView', () => {
       const [modelA, modelB] = screen.getAllByLabelText('model');
       fireEvent.change(modelA, { target: { value: 'kimi' } });
       fireEvent.change(modelB, { target: { value: 'qwen' } });
-      expect(screen.getByText('Balance empty')).toBeTruthy();
+      expect(screen.queryByText('Balance empty')).toBeNull();
+      expect(screen.getByText(/provider's usage limit was reached/i)).toBeTruthy();
       expect(screen.queryByRole('button', { name: /Add funds/ })).toBeNull();
       expect(document.body.textContent).not.toMatch(/add funds/i);
     } finally {
@@ -315,7 +368,7 @@ describe('CompareView', () => {
       await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', ranOut) }, usage(EMPTY));
       const held = screen.getByRole('status', { name: 'Follow-up message' });
       expect(within(held).queryByRole('button', { name: 'Add funds' })).toBeNull();
-      expect(held).toHaveTextContent('stopped because the balance ran out');
+      expect(held).toHaveTextContent('Stopped');
       expect(held.textContent).not.toMatch(/add funds/i);
     } finally {
       hostMock.isMobileShell = false;
@@ -367,12 +420,30 @@ describe('CompareView', () => {
     expect(within(held).getByText('Qwen stopped because the balance ran out. Add funds to keep comparing.')).toBeTruthy();
     fireEvent.click(within(held).getByRole('button', { name: 'Add funds' }));
     expect(hostMock.openExternal).toHaveBeenCalledTimes(1);
+    // Names the session's organization, so the console tops up this one (ENG-4333).
+    expect(new URL(hostMock.openExternal.mock.calls[0][0]).searchParams.get('organization')).toBe('org-1');
     expect(screen.getByRole('status', { name: 'Side B status' }).textContent).toMatch(/^Out of credits/);
     expect(screen.getByText("Qwen ran out of credits before finishing, so this turn can't be judged.")).toBeTruthy();
     expect(screen.queryByRole('group', { name: 'Which answer was better?' })).toBeNull();
 
     openDetail.rerender(usage({ usd: 25, canConsume: true, hasToppedUp: true, alert: '' }));
     expect(await screen.findByRole('textbox', { name: 'Follow-up message' })).toBeTruthy();
+  });
+
+  it('on a plan, reads a side the plan does not cover as out of credits and holds it', async () => {
+    const notInTier = [{ role: 'user', content: 'p', created_at: '2026-09-23T10:00:00Z' }, { role: 'error', code: 'model_not_in_tier', content: 'not in plan' }];
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', notInTier) }, onPlus(EMPTY), PLUS_COVERAGE);
+    const held = screen.getByRole('status', { name: 'Follow-up message' });
+    expect(within(held).getByText('Qwen stopped because the balance ran out. Add funds to keep comparing.')).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'Side B status' }).textContent).toMatch(/^Out of credits/);
+  });
+
+  it('on a plan, holds a follow-up while the window is used up and the wallet is empty', async () => {
+    const windowOut = [{ role: 'user', content: 'p', created_at: '2026-09-23T10:00:00Z' }, { role: 'error', code: 'window_allowance_exhausted', content: 'window used up' }];
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', windowOut) }, onPlus(EMPTY, 100), PLUS_COVERS_BOTH);
+    const held = screen.getByRole('status', { name: 'Follow-up message' });
+    expect(within(held).getByText('Qwen stopped because the balance ran out. Add funds to keep comparing.')).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: 'Follow-up message' })).toBeNull();
   });
 
   it('says when a working side has gone quiet, without stopping it', async () => {

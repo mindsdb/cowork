@@ -142,6 +142,16 @@
     "cancel": "Abbrechen",
     "signingOut": "Wird abgemeldet…",
     "signOut": "Abmelden",
+    "delete": {
+      "title": "Konto löschen",
+      "subtitle": "Beantrage die dauerhafte Löschung deines MindsHub-Kontos.",
+      "button": "Konto löschen",
+      "confirmTitle": "Dein MindsHub-Konto löschen?",
+      "confirmBody": "Der Support prüft deinen Antrag und veranlasst innerhalb von 30 Tagen die Löschung deines Kontos und deiner persönlichen Daten. Einige Konto-, Abrechnungs- und Supportunterlagen können erhalten bleiben. Gehört dir eine Organisation mit weiteren Mitgliedern, hilft dir der Support zunächst, die Inhaberschaft zu übertragen. Die Organisation und ihre gemeinsamen Daten bleiben den übrigen Mitgliedern erhalten. Die Löschung lässt sich nicht rückgängig machen.",
+      "sending": "Wird gesendet…",
+      "requested": "Beantragt am {requestedOn}. Vorgesehener Löschtermin: {deleteBy}.",
+      "error": "Wir konnten deinen Antrag nicht bestätigen. Du kannst ihn bedenkenlos erneut senden."
+    },
     "web": {
       "title": "Über MindsHub verwaltet",
       "body": "In der Webversion wird das Konto über MindsHub verwaltet."
@@ -211,6 +221,21 @@
       "tryAgain": "Erneut versuchen",
       "bodyMobile": "MindsHub hat nicht geantwortet."
     },
-    "empty": "Für dieses Konto gibt es noch keine Nutzungsdaten."
+    "empty": "Für dieses Konto gibt es noch keine Nutzungsdaten.",
+    "plan": {
+      "title": "{tier, select, plus {Plus-Plan} pro {Pro-Plan} other {Plan}}",
+      "renewsOn": "Verlängert sich am {date}",
+      "endsOn": "Endet am {date}",
+      "ending": "Läuft aus",
+      "pastDue": "Zahlung fehlgeschlagen",
+      "pastDueBody": "Ihr Plan konnte nicht verlängert werden. Aktualisieren Sie Ihre Karte unter „Verwalten“, um ihn zu behalten.",
+      "windowName": "{window, select, 7d {Wochenkontingent} other {5-Stunden-Kontingent}}",
+      "windowUsed": "{percent} verbraucht",
+      "windowUsedResets": "{percent} verbraucht · wird um {time} zurückgesetzt",
+      "windowMeterLabel": "{window, select, 7d {Wochenkontingent verbraucht} other {5-Stunden-Kontingent verbraucht}}",
+      "afterCap": "Ist eines der Kontingente aufgebraucht, nutzen Aufgaben Ihr Guthaben zu API-Preisen oder pausieren bis zum Zurücksetzen.",
+      "upgrade": "{tier, select, plus {Plus holen} pro {Auf Pro upgraden} other {Upgraden}}",
+      "manage": "Verwalten"
+    }
   }
 }

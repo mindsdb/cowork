@@ -4,13 +4,18 @@ import userEvent from '@testing-library/user-event';
 
 const hostMock = vi.hoisted(() => ({ host: { openExternal: vi.fn() } }));
 vi.mock('../../platform/host', () => hostMock);
+const accountMock = vi.hoisted(() => ({ user: { orgId: 'org-1', sub: 'u1' } }));
+vi.mock('../hooks/useAccountUser', () => ({ useAccountUser: () => accountMock.user }));
 const analyticsMock = vi.hoisted(() => ({ trackBillingOpened: vi.fn() }));
 vi.mock('../lib/analytics', () => analyticsMock);
 
 import UsageBar from './UsageBar';
 import { USAGE_ACTIONS, deriveComposerWarning } from '../lib/usageWarnings';
 import { resetUsageBarDismissForTests } from '../lib/usageBarDismiss';
-import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL } from '../../lib/mindsUrls';
+import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL, consoleUrlFor } from '../../lib/mindsUrls';
+
+// Console links name the session's organization and account (ENG-4333).
+const forOrg = (url) => consoleUrlFor(url, { organizationId: 'org-1', subject: 'u1' });
 
 const freeLow = {
   kind: 'free_low', tone: 'warning', title: '12% of your free allowance left',
@@ -54,18 +59,7 @@ describe('UsageBar', () => {
     render(<UsageBar warning={balanceLow} isBillingOwner />);
     await user.click(screen.getByRole('button', { name: 'Add funds' }));
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('usage_notice');
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
-  });
-
-  it('inside the mobile app, keeps the copy and drops its billing actions', () => {
-    hostMock.host.isMobileShell = true;
-    try {
-      render(<UsageBar warning={balanceLow} isBillingOwner />);
-      expect(screen.getByText('You have $8.42 left.')).toBeTruthy();
-      expect(screen.queryByRole('button', { name: 'Add funds' })).toBeNull();
-    } finally {
-      hostMock.host.isMobileShell = false;
-    }
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_ADD_FUNDS_URL));
   });
 
   it('the standing figure can be closed, and stays closed as the number moves', async () => {
@@ -210,14 +204,14 @@ describe('UsageBar', () => {
     render(<UsageBar warning={atRest} usageKnown />);
     await user.click(screen.getByRole('button', { name: 'View usage' }));
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('usage_at_rest');
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
   });
 
   it('a member is sent to the billing page, not the add-credits dialog', async () => {
     const user = userEvent.setup();
     render(<UsageBar warning={balanceLow} isBillingOwner={false} />);
     await user.click(screen.getByRole('button', { name: 'Add funds' }));
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
   });
 
   it('can be closed, stays closed for the same kind, and returns for a new kind', async () => {
@@ -256,7 +250,7 @@ describe('UsageBar', () => {
     const warning = { ...balanceLow, actions: [USAGE_ACTIONS.addFunds, USAGE_ACTIONS.setUpAutoTopUp] };
     render(<UsageBar warning={warning} isBillingOwner />);
     await user.click(screen.getByRole('button', { name: 'Set up auto top up' }));
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_AUTO_TOP_UP_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_AUTO_TOP_UP_URL));
   });
 
   it('forgets dismissals once usage is known to be healthy', async () => {
@@ -298,18 +292,20 @@ describe('UsageBar', () => {
 
 describe('mobile usage copy from real account states', () => {
   it.each([
+    ['standing allowance', { balance: { usd: 0, canConsume: false }, freeTokens: { limit: 100, remaining: 50, resetsAt: '2099-09-11T12:00:00Z' } }, /50% of your free allowance left/],
     ['empty wallet', { balance: { usd: 0, canConsume: false } }, /balance is empty/i],
     ['low wallet', { balance: { usd: 8.42, canConsume: true, alert: 'low' } }, /\$8.42/],
     ['failed auto top up', { autoTopUp: { enabled: true, status: 'payment_failed' } }, /couldn't charge your card/i],
     ['capped auto top up', { balance: { usd: 8.42, canConsume: true, alert: 'low' }, autoTopUp: { enabled: true, status: 'cap_reached' } }, /monthly cap/i],
     ['exhausted allowance', { balance: { usd: 0, canConsume: false }, freeTokens: { limit: 100, remaining: 0, resetsAt: '2099-09-11T12:00:00Z' } }, /Resets at/],
-  ])('%s keeps its facts without a purchase prompt', (_name, overrides, fact) => {
+  ])('%s exposes only allowance information on mobile', (_name, overrides, fact) => {
     hostMock.host.isMobileShell = true;
     try {
       const warning = deriveComposerWarning({ reachable: true, freeTokens: null, balance: null, autoTopUp: null, ...overrides }, { model: overrides.freeTokens ? null : 'claude-sonnet-4' });
       const { container } = render(<UsageBar warning={warning} />);
-      expect(container.textContent).toMatch(fact);
-      expect(container.textContent).not.toMatch(/add funds|turn on|update your payment method|Mobile/);
+      if (overrides.freeTokens) expect(container.textContent).toMatch(fact);
+      else expect(container.textContent).toBe('');
+      expect(container.textContent).not.toMatch(/balance|top up|card|\$|credits|add funds|Mobile/i);
     } finally {
       hostMock.host.isMobileShell = false;
     }

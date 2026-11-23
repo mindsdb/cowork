@@ -5,7 +5,10 @@
     "searchAriaLabel": "モデルを検索",
     "unavailable": "利用不可",
     "addCredits": "クレジットを追加",
-    "addCreditsTooltip": "このモデルを使用するにはクレジットを追加してください"
+    "addCreditsTooltip": "このモデルを使用するにはクレジットを追加してください",
+    "upgrade": "アップグレード",
+    "upgradeTooltip": "{tier, select, plus {Plusにするとこのモデルが含まれます} pro {Proにアップグレードするとこのモデルが含まれます} other {アップグレードするとこのモデルが含まれます}}",
+    "tierTag": "{tier, select, plus {Plus} pro {Pro} other {プラン}}"
   },
   "groups": {
     "openWeight": "オープンウェイト",
