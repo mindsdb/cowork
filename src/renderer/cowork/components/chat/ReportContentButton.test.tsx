@@ -1,3 +1,4 @@
+import type React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ReportContentButton } from './ReportContentButton';
@@ -16,6 +17,16 @@ describe('report content', () => {
     shell.mobile = false;
     render(<ReportContentButton conversationId="task" messageId="answer" />);
     expect(screen.queryByRole('button', { name: 'Report content' })).toBeNull();
+  });
+  it('draws the button with the surface\'s own control when one is given', () => {
+    setOrgMode(true);
+    const Toolbar = ({ children, ...props }: { 'aria-label': string; onClick: () => void; children: React.ReactNode }) => (
+      <button type="button" data-toolbar {...props}>{children}</button>
+    );
+    render(<ReportContentButton artifactTarget={{ projectId: 'project', artifactId: 'artifact' }} trigger={Toolbar} />);
+    const button = screen.getByRole('button', { name: 'Report content' });
+    expect(button).toHaveAttribute('data-toolbar');
+    expect(button).not.toHaveClass('turn-action-btn');
   });
   it('asks for consent and shows receipt only after the server accepts', async () => {
     setOrgMode(true);

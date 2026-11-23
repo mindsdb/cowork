@@ -145,7 +145,7 @@ export function ArtifactViewerHeader({
       <div className="artifact-viewer-action-zone" style={{ display: 'flex', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
         {artifact?.projectId && artifactIdentity(artifact) && (
           <ReportContentButton key={`${artifact.projectId}:${artifactIdentity(artifact)}:${workspace?.currentRevision?.id ?? ''}:${artifact.mtime ?? ''}`}
-            artifactTarget={{ projectId: String(artifact.projectId), artifactId: artifactIdentity(artifact) }} />
+            trigger={IconButton} artifactTarget={{ projectId: String(artifact.projectId), artifactId: artifactIdentity(artifact) }} />
         )}
         {diagnostics && <PreviewErrorsButton diagnostics={diagnostics} />}
         {/* Sharing is owner-side chrome on BOTH deployments now. It used to be
