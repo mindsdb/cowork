@@ -927,7 +927,15 @@
     "sourceHint": "페이지의 텍스트와 레이아웃 변경",
     "commentsHint": "피드백 남기기 및 검토",
     "statsHint": "누가 얼마나 오래 봤는지",
-    "commentsOpen": "댓글, 열린 댓글 {count}개"
+    "commentsOpen": "댓글, 열린 댓글 {count}개",
+    "openChat": "채팅 열기",
+    "openChatHint": "미리 보기를 닫고 이 항목을 만든 채팅으로 이동합니다",
+    "openChatUnavailable": {
+      "noOrigin": "채팅에서 만들어지지 않았거나 채팅이 기록되기 전에 만들어졌습니다",
+      "deleted": "이 항목을 만든 채팅이 삭제되었습니다",
+      "colleague": "동료의 채팅에서 만들어져 해당 동료만 열 수 있습니다",
+      "unreachable": "이 항목을 만든 채팅에 지금 연결할 수 없습니다"
+    }
   },
   "liveEditPanel": {
     "close": "실시간 편집 패널 닫기",

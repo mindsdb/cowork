@@ -17,6 +17,7 @@ import DocModal from './DocModal';
 import * as api from './docApi';
 import { host } from '../../../platform/host';
 import { LAYOUT_STORAGE_KEY } from '../artifact/useViewerLayout';
+import { OriginChatContext } from '../../lib/originChat';
 
 const doc = {
   schema: 'cowork.doc/1',
@@ -248,5 +249,38 @@ describe('DocModal panel rail', () => {
     await renderModal();
     expect(screen.queryByRole('button', { name: /^Comments/ })).toBeNull();
   });
-});
 
+  describe('Open chat (ENG-4599)', () => {
+    const ORIGIN = '3f6a1c8e-6b1d-4a2f-9a1e-2c7d5b0e4a11';
+    const fromChat = { ...artifact, originConversationId: ORIGIN };
+    const renderWithChats = async ({ status = 'ok', conversationId = null } = {}) => {
+      const chats = { open: vi.fn(), check: vi.fn().mockResolvedValue(status) };
+      const onClose = vi.fn();
+      render(
+        <OriginChatContext.Provider value={chats}>
+          <DocModal artifact={fromChat} conversationId={conversationId} onClose={onClose} />
+        </OriginChatContext.Provider>,
+      );
+      await screen.findByRole('textbox', { name: 'Title' });
+      return { chats, onClose };
+    };
+    const rail = () => screen.getByRole('toolbar', { name: 'Viewer panels' });
+
+    it('closes the doc and opens the chat it was made in', async () => {
+      const { chats, onClose } = await renderWithChats();
+      const button = within(rail()).getByRole('button', { name: 'Open chat' });
+      await waitFor(() => expect(button).not.toHaveAttribute('aria-disabled'));
+
+      fireEvent.click(button);
+
+      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(chats.open).toHaveBeenCalledWith(ORIGIN);
+    });
+
+    it('is absent inside the chat the doc was made in', async () => {
+      const { chats } = await renderWithChats({ conversationId: ORIGIN });
+      expect(within(rail()).queryByRole('button', { name: 'Open chat' })).toBeNull();
+      expect(chats.check).not.toHaveBeenCalled();
+    });
+  });
+});

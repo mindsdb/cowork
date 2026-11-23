@@ -19,19 +19,25 @@ vi.mock('../../platform/host', () => ({ host: hostMock }));
 vi.mock('../lib/analytics', () => ({ trackArtifactPublished: vi.fn() }));
 vi.mock('../components/ui/Toast', () => ({ useToastManager: () => ({ add: vi.fn() }) }));
 // The doc editor itself is tested on its own; here it only has to be the thing that opens.
-vi.mock('../components/doc/DocPane', () => ({
-  default: ({ artifactId, title, onAskAgent }) => (
-    <div role="region" aria-label={`Doc editor: ${title}`} data-artifact={artifactId}>
-      {onAskAgent && (
-        <button type="button" onClick={() => onAskAgent({ blockIds: ['b_1'], quote: 'Hire  two\nengineers', request: 'Make it three', tabId: 't_1', mode: 'edit' })}>
-          Edit with agent
-        </button>
-      )}
-    </div>
-  ),
-}));
+// It draws the real rail's actions (Open chat, ENG-4599).
+vi.mock('../components/doc/DocPane', async () => {
+  const { ViewerModeRail } = await import('../components/artifact/ViewerModeRail');
+  return {
+    default: ({ artifactId, title, onAskAgent, railActions = [] }) => (
+      <div role="region" aria-label={`Doc editor: ${title}`} data-artifact={artifactId}>
+        <ViewerModeRail label="Viewer panels" tabs={[]} actions={railActions} />
+        {onAskAgent && (
+          <button type="button" onClick={() => onAskAgent({ blockIds: ['b_1'], quote: 'Hire  two\nengineers', request: 'Make it three', tabId: 't_1', mode: 'edit' })}>
+            Edit with agent
+          </button>
+        )}
+      </div>
+    ),
+  };
+});
 
 import ArtifactsView from './ArtifactsView';
+import { OriginChatContext } from '../lib/originChat';
 
 const doc = {
   id: 'a1', title: 'Q4 Hiring Plan Tracker', format: 'doc', type: 'document', mtime: 1, projectId: 'p1',
@@ -94,6 +100,43 @@ describe('Edit with agent from a doc in the library', () => {
     expect(onAddressWithAgent).not.toHaveBeenCalled();
     // The library has no chat beside the doc: it closes for the chat to take over.
     expect(screen.queryByRole('region', { name: /Doc editor/ })).toBeNull();
+  });
+});
+
+describe('Open chat from a doc in the library (ENG-4599)', () => {
+  it('closes the doc and opens the chat it was made in', async () => {
+    const user = userEvent.setup();
+    const chats = { open: vi.fn(), check: vi.fn().mockResolvedValue('ok') };
+    render(
+      <OriginChatContext.Provider value={chats}>
+        <ArtifactsView artifacts={[{ ...doc, originConversationId: 'conv-7' }]} agentLabel="Anton" />
+      </OriginChatContext.Provider>,
+    );
+    await user.click(screen.getByRole('button', { name: /Q4 Hiring Plan Tracker/ }));
+    const button = await screen.findByRole('button', { name: 'Open chat' });
+    await vi.waitFor(() => expect(button).not.toHaveAttribute('aria-disabled'));
+    expect(chats.check).toHaveBeenCalledWith('conv-7');
+
+    await user.click(button);
+
+    expect(chats.open).toHaveBeenCalledWith('conv-7');
+    expect(screen.queryByRole('region', { name: /Doc editor/ })).toBeNull();
+  });
+
+  it('is disabled for a doc made outside any chat, with no check', async () => {
+    const user = userEvent.setup();
+    const chats = { open: vi.fn(), check: vi.fn() };
+    render(
+      <OriginChatContext.Provider value={chats}>
+        <ArtifactsView artifacts={[doc]} agentLabel="Anton" />
+      </OriginChatContext.Provider>,
+    );
+    await user.click(screen.getByRole('button', { name: /Q4 Hiring Plan Tracker/ }));
+    const button = await screen.findByRole('button', { name: 'Open chat' });
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    await user.click(button);
+    expect(chats.open).not.toHaveBeenCalled();
+    expect(chats.check).not.toHaveBeenCalled();
   });
 });
 

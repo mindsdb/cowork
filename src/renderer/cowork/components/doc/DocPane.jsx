@@ -125,6 +125,8 @@ export function writeErrorText(e) {
 export default function DocPane({
   projectRef, artifactId, title: fallbackTitle, variant = 'side', expanded = false, fillsWindow = false,
   onToggleExpand, maximized = false, onToggleMaximized, onClose, onAskAgent, onViewChange,
+  // The preview rail's actions below its tabs (DocModal's Open chat, ENG-4599).
+  railActions = [],
 }) {
   const {
     doc, status, error, capabilities, card, apply: applyOps, undo, redo, flash, agentActive, saving, writeError,
@@ -707,7 +709,14 @@ export default function DocPane({
             </ViewerSidePanel>
           )}
         </div>
-        {preview && <ViewerModeRail label={tArtifacts('rail.ariaLabel')} tabs={railTabs} panelId={sidePanelId} />}
+        {preview && (
+          <ViewerModeRail
+            label={tArtifacts('rail.ariaLabel')}
+            tabs={railTabs}
+            actions={doc ? railActions : []}
+            panelId={sidePanelId}
+          />
+        )}
       </div>
       {/* The preview's "Ask for a change" bar, as the artifact viewer has. */}
       {preview && doc && askAgent && !version && (

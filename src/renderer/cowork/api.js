@@ -699,6 +699,26 @@ export async function fetchOlderMessages(id, cursor, { timeoutMs } = {}) {
 }
 
 /**
+ * Whether conversation `id` can be opened, from its metadata alone (the
+ * preview's Open chat, ENG-4599): 'ok'; 'not_found' when it is gone;
+ * 'forbidden' when it is someone else's; 'unavailable' on any other failure.
+ *
+ * @param {string} id
+ * @param {{timeoutMs?: number}} [options]
+ * @returns {Promise<'ok' | 'not_found' | 'forbidden' | 'unavailable'>}
+ */
+export async function fetchConversationStatus(id, { timeoutMs } = {}) {
+  try {
+    await req(`/conversations/${encodeURIComponent(id)}`, { timeoutMs });
+    return 'ok';
+  } catch (err) {
+    if (err?.status === 404) return 'not_found';
+    if (err?.status === 403) return 'forbidden';
+    return 'unavailable';
+  }
+}
+
+/**
  * Loader-facing conversation fetch. Unlike `fetchSession` (which collapses every
  * failure to `null`), this separates a gone conversation (`404 → 'not_found'`)
  * from an operational failure (auth / 5xx / network `→ 'unavailable'`) so the

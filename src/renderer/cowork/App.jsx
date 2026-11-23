@@ -115,7 +115,7 @@ import { stopScheduleRun } from './lib/stopScheduleRun';
 import { useAutoPauseNotifications } from './hooks/useAutoPauseNotifications';
 import { useScheduleRunNotifications } from './hooks/useScheduleRunNotifications';
 import { shouldKeepAwake } from './lib/scheduleKeepAwake';
-import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
+import { fetchSessions, fetchSession, fetchSessionResult, fetchConversationStatus, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
          allocateConversationId, uploadAttachments, openBrowserAt,
@@ -146,6 +146,7 @@ import {
 import { noteArtifactsFromSteps, onArtifactDeleted, onArtifactRenamed } from './lib/artifactsStore';
 import { createLatestLoader, withArtifactChange, withArtifactTitle, withoutArtifact, withoutProjectArtifacts } from './lib/artifactList';
 import { resolveRepairConversation } from './lib/artifactRepairChat';
+import { OriginChatContext, checkOriginChat } from './lib/originChat';
 import { originConversationId } from './lib/artifactIdentity';
 import { isOrphanUser } from './lib/turnVisibility';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
@@ -3125,6 +3126,18 @@ function AppCore() {
     setActiveTaskId(id);
     setRoute('task');
   };
+  const selectTaskRef = useRef(selectTask);
+  selectTaskRef.current = selectTask;
+  // A preview's Open chat (ENG-4599, lib/originChat): shows a chat, and says
+  // beforehand whether it can be opened.
+  const originChat = useMemo(() => ({
+    open: (id) => selectTaskRef.current(id),
+    check: (id) => checkOriginChat(id, {
+      tasks: tasksRef.current,
+      deletedIds: deletedTaskIdsRef.current,
+      fetchStatus: (chatId) => fetchConversationStatus(chatId, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS }),
+    }),
+  }), []);
 
   // Hydrate + reattach a conversation. `loaded` is the `/c/:id` loader result:
   // `{ task }`, `{ optimistic: true }` (new-chat mid-send — messages live
@@ -8319,9 +8332,11 @@ function AppCore() {
     <HubUsageContext.Provider value={hubUsageCtx}>
       <ModelPickerContext.Provider value={modelPickerCtx}>
         <LiveAppAvailabilityWatcher accountScope={codeSkillScopeKey} />
-        <CoworkProvider value={coworkValue}>
-          <CoworkRouterProvider router={routerRef.current} />
-        </CoworkProvider>
+        <OriginChatContext.Provider value={originChat}>
+          <CoworkProvider value={coworkValue}>
+            <CoworkRouterProvider router={routerRef.current} />
+          </CoworkProvider>
+        </OriginChatContext.Provider>
       </ModelPickerContext.Provider>
     </HubUsageContext.Provider>
   );

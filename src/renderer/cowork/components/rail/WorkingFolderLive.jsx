@@ -696,7 +696,7 @@ export function WorkingFolderLive({
         }}
       />
 
-      {docArt && <DocModal artifact={docArt} onClose={() => setDocArt(null)} />}
+      {docArt && <DocModal artifact={docArt} conversationId={conversationId} onClose={() => setDocArt(null)} />}
 
       <ArtifactViewer
         open={!!previewArt}
