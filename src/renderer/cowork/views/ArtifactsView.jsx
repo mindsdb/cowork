@@ -41,7 +41,7 @@ import { SharedLiveAppsSection } from '../components/artifacts/SharedLiveAppsSec
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import {
   canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, canShowInBrowserTab,
-  isHtmlArtifact, isPublishableArtifact, isBackendArtifact, isInlinePreviewable,
+  isHtmlArtifact, isImageArtifact, isPublishableArtifact, isBackendArtifact, isInlinePreviewable,
 } from '../lib/artifactKinds';
 import { canPreviewDocument } from '../preview/kinds';
 import { trackArtifactPublished } from '../lib/analytics';
@@ -912,7 +912,7 @@ export default function ArtifactsView({
     if (loading || handledShareRef.current === sharedUrl) return;
     handledShareRef.current = sharedUrl;
     const match = list.find((a) => sameUrl(a.publishedUrl, sharedUrl));
-    if (match && cardOpenTarget(match, orgMode) === 'preview') openViewer(match);
+    if (match && (cardOpenTarget(match, orgMode) === 'preview' || (match.draftUrl && isImageArtifact(match)))) openViewer(match);
     else openUrl(sharedUrl);
     onSharedUrlHandled?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps

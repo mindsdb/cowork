@@ -823,7 +823,12 @@ export function ArtifactViewer({
   // version (ArtifactViewerBody), so Reload fetches them again too.
   const contentVersion = `${artifact?.mtime ?? 0}.${reloadNonce}`;
   const isImage = isImageArtifact(artifact);
-  const imageRawUrl = isImage ? artifactServeUrl(artifact) : '';
+  // Hosted drafts are served by the authenticated drafts API. The serve
+  // route is only available on desktop.
+  const imageRawUrl = isImage && orgMode && draftPreviewUrl
+    && canFetchDraftWithCredentials(draftPreviewUrl, host.getApiOrigin())
+    ? new URL(draftPreviewUrl, host.getApiOrigin()).href
+    : isImage ? artifactServeUrl(artifact) : '';
   const imageUrl = imageRawUrl
     ? withArtifactVersion(imageRawUrl, contentVersion)
     : '';

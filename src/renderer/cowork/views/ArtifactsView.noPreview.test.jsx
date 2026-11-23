@@ -386,10 +386,10 @@ it('opens a shared artifact in the browser when it is not in the loaded list', (
   expect(screen.queryByTestId('artifact-viewer')).toBeNull();
 });
 
-it('opens the published page for a notified image that the org viewer cannot preview', () => {
+it('opens a notified image in the signed-in viewer', () => {
   enter('org web');
   const shared = card('.png', 'org web', { publishedUrl: SHARED_URL });
   render(<ArtifactsView artifacts={[shared]} sharedUrl={SHARED_URL} />);
-  expect(screen.queryByTestId('artifact-viewer')).toBeNull();
-  expect(mocks.host.openExternal).toHaveBeenCalledWith(SHARED_URL);
+  expect(screen.getByTestId('artifact-viewer')).toHaveTextContent(TITLE);
+  expect(mocks.host.openExternal).not.toHaveBeenCalled();
 });
