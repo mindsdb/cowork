@@ -405,7 +405,12 @@ function WinnerChip({ verdict, names }) {
   const { t } = useTranslation('artifacts');
   if (!verdict) return <span className="text-ink-4" aria-label={t('compare.verdictFilters.none')}>—</span>;
   if (verdict === 'a' || verdict === 'b') {
-    return <Badge variant="accent" className="max-w-full truncate" title={names[verdict]}>{names[verdict]}</Badge>;
+    // Badge is a flex box, which never draws an ellipsis itself: the name's own span does.
+    return (
+      <Badge variant="accent" className="max-w-full" title={names[verdict]}>
+        <span className="truncate">{names[verdict]}</span>
+      </Badge>
+    );
   }
   return <Badge>{verdict === 'tie' ? t('compare.tie') : t('compare.neither')}</Badge>;
 }

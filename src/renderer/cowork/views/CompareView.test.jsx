@@ -554,6 +554,20 @@ describe('CompareView', () => {
       expect(within(row).getByText('Winner')).toBeTruthy();
     });
 
+    it('shows a read cost on the card, and leaves an unread one out', async () => {
+      atWidth(334);
+      const priced = comparison({ id: 'c-priced', title: 'Priced' });
+      priced.sides = priced.sides.map((side, i) => ({ ...side, usage: { estimatedCostUsd: i ? 0.5 : 0.04, tokens: 1000, partial: false } }));
+      mockHistory([priced, comparison({ id: 'c-unread', title: 'Unread', verdict: 'a' })]);
+      render(<CompareView models={models} projects={projects} />);
+      const pricedRow = await screen.findByRole('button', { name: 'Open comparison: Priced' });
+      expect(within(pricedRow).getByLabelText('Estimated cost $0.54').textContent).toBe('$0.54');
+      const unreadRow = screen.getByRole('button', { name: 'Open comparison: Unread' });
+      // With no column above it, a bare dash would read as a separator.
+      expect(within(unreadRow).queryByLabelText('Cost not read yet')).toBeNull();
+      expect(within(unreadRow).queryByText('—')).toBeNull();
+    });
+
     it('keeps the table with its column headers when there is room', async () => {
       atWidth(1000);
       const row = await history();
