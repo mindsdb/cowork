@@ -61,7 +61,7 @@ vi.mock('./workspace/useArtifactWorkspace', () => ({
     refreshRepair: vi.fn(), releaseRepairsForComment: vi.fn(),
   }),
 }));
-vi.mock('./stats/useArtifactStats', () => ({ useArtifactStats: () => null }));
+vi.mock('./stats/useArtifactStats', () => ({ useArtifactStats: () => ({ data: null, loading: false, error: null }) }));
 vi.mock('./ArtifactViewerHeader', () => ({ ArtifactViewerHeader: () => null }));
 vi.mock('./ArtifactViewerBody', () => ({ ArtifactViewerBody: () => null }));
 vi.mock('./workspace/ArtifactRevisionBar', () => ({ ArtifactRevisionBar: () => null }));

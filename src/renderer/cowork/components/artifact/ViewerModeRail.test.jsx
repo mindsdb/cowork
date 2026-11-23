@@ -140,10 +140,11 @@ describe('ViewerModeRail', () => {
       expect(button).toHaveAttribute('aria-disabled', 'true');
       expect(button).not.toBeDisabled();
       expect(button).toHaveAccessibleDescription('The chat this was made in has been deleted');
-      await user.click(button);
-      expect(action.onSelect).not.toHaveBeenCalled();
+      await user.hover(button);
       const tip = await screen.findByText('The chat this was made in has been deleted', { selector: '.artifact-mode-rail-tip span' });
       expect(tip.closest('.artifact-mode-rail-tip')).toHaveTextContent('Open chat');
+      await user.click(button);
+      expect(action.onSelect).not.toHaveBeenCalled();
     });
 
     it('names a disabled action with no reason yet, and describes nothing', () => {
