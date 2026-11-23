@@ -105,7 +105,9 @@
       "missedLabelServer": "如果此时服务器停机",
       "missedLabelApp": "如果此时 MindsHub 已关闭",
       "missedOnceTitleServer": "服务器停机期间，此一次性任务的运行时间已过",
-      "missedOnceTitleApp": "MindsHub 关闭期间，此一次性任务的运行时间已过"
+      "missedOnceTitleApp": "MindsHub 关闭期间，此一次性任务的运行时间已过",
+      "lateRunApp": "计划时间：{when}。MindsHub 已关闭或电脑处于睡眠状态。",
+      "lateRunServer": "计划时间：{when}。服务器宕机或繁忙。"
     },
     "stopScheduleRun": {
       "unreachable": "无法连接服务器以停止运行。请重试。",
@@ -735,6 +737,7 @@
     "scheduleAriaLabel": "定时",
     "accountDefaultModel": "账户默认模型",
     "ranOnDefaultModel": "默认模型",
+    "ranLate": "延迟",
     "modelUnavailable": "{model} 不可用，因此本次运行使用了你的默认模型。",
     "succeededCount": "{total, plural, other {# 次运行中成功 {succeeded} 次}}",
     "promptAriaLabel": "提示词",

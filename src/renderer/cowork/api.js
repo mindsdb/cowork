@@ -4000,7 +4000,7 @@ export async function runScheduleNow(id, { trial = false } = {}) {
 
 export async function fetchScheduleRuns(id, { limit = 100, strict = false } = {}) {
   // Returns { runs: [{ id, scheduleId, startedAt, finishedAt, durationMs,
-  // status, error, conversationId, isManual }] }
+  // status, error, conversationId, isManual, slotAt }] }
   // Newest first. A failed read is an empty list, unless `strict`, where it
   // throws so a caller acting on the list can say so.
   try {

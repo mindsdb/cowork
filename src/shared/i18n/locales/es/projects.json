@@ -105,7 +105,9 @@
       "missedLabelServer": "Si el servidor está caído a esta hora",
       "missedLabelApp": "Si MindsHub está cerrado a esta hora",
       "missedOnceTitleServer": "La hora de esta tarea única pasó mientras el servidor estaba caído",
-      "missedOnceTitleApp": "La hora de esta tarea única pasó mientras MindsHub estaba cerrado"
+      "missedOnceTitleApp": "La hora de esta tarea única pasó mientras MindsHub estaba cerrado",
+      "lateRunApp": "Prevista {when}. MindsHub estaba cerrado o tu ordenador en reposo.",
+      "lateRunServer": "Prevista {when}. El servidor no estaba disponible o estaba ocupado."
     },
     "stopScheduleRun": {
       "unreachable": "No se pudo conectar con el servidor para detener la ejecución. Inténtalo de nuevo.",
@@ -735,6 +737,7 @@
     "scheduleAriaLabel": "Programación",
     "accountDefaultModel": "Modelo predeterminado de la cuenta",
     "ranOnDefaultModel": "Modelo predeterminado",
+    "ranLate": "Con retraso",
     "modelUnavailable": "{model} no está disponible, así que esta ejecución usó tu modelo predeterminado.",
     "succeededCount": "{total, plural, one {{succeeded} de # ejecución correcta} other {{succeeded} de # ejecuciones correctas}}",
     "promptAriaLabel": "Instrucción",

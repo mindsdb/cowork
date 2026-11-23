@@ -23,7 +23,7 @@ import { fetchScheduleRuns } from '../api';
 import ScheduleTaskModal from '../components/schedule/ScheduleTaskModal';
 import { scheduleState, scheduleStatusBadge } from '../components/schedule/ScheduleStatusBadge';
 import ScheduleRunAlert from '../components/schedule/ScheduleRunAlert';
-import { missedRunText } from '../lib/scheduleCopy';
+import { lateRunText, missedRunText, ranLate } from '../lib/scheduleCopy';
 import { dateLocale, describeWhen, timeZoneLabel, whenFromDate } from '../lib/scheduleWhen';
 import i18n, { useTranslation } from '../../lib/i18n';
 import { relativeTime } from '../lib/formatTime';
@@ -283,6 +283,11 @@ export default function ScheduleDetailView({
                 meta={(
                   <span className="inline-flex items-center gap-3">
                     {formatDuration(run.durationMs) && <span>{formatDuration(run.durationMs)}</span>}
+                    {ranLate(run) && (
+                      <Tooltip content={lateRunText(absoluteTime(run.slotAt))}>
+                        <span tabIndex={0} className="relative z-10 cursor-help">{t('scheduleDetail.ranLate')}</span>
+                      </Tooltip>
+                    )}
                     {run.unavailableModel && (
                       <Tooltip content={t('scheduleDetail.modelUnavailable', { model: modelName(run.unavailableModel) })}>
                         <span tabIndex={0} className="relative z-10 cursor-help">{t('scheduleDetail.ranOnDefaultModel')}</span>
