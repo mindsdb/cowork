@@ -109,11 +109,20 @@ jobs:
           build-for-environment: ${{ inputs.build-environment }}
 
   scan:
-    runs-on: mdb-dev
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     needs: [build]
     name: Scan Minds Image
     steps:
       - uses: actions/checkout@v4
+      - name: Assume the ECR push role
+        # The same role; it may also pull the image it pushed.
+        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5.1.1
+        with:
+          role-to-assume: ${{ vars.ECR_PUSH_ROLE_ARN }}
+          aws-region: us-east-1
       - uses: mindsdb/github-actions/snyk-docker-scan@main
         with:
           image: ${{ needs.build.outputs.image }}
