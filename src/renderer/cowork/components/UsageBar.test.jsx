@@ -4,13 +4,18 @@ import userEvent from '@testing-library/user-event';
 
 const hostMock = vi.hoisted(() => ({ host: { openExternal: vi.fn() } }));
 vi.mock('../../platform/host', () => hostMock);
+const accountMock = vi.hoisted(() => ({ user: { orgId: 'org-1', sub: 'u1' } }));
+vi.mock('../hooks/useAccountUser', () => ({ useAccountUser: () => accountMock.user }));
 const analyticsMock = vi.hoisted(() => ({ trackBillingOpened: vi.fn() }));
 vi.mock('../lib/analytics', () => analyticsMock);
 
 import UsageBar from './UsageBar';
 import { USAGE_ACTIONS, deriveComposerWarning } from '../lib/usageWarnings';
 import { resetUsageBarDismissForTests } from '../lib/usageBarDismiss';
-import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL } from '../../lib/mindsUrls';
+import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL, consoleUrlFor } from '../../lib/mindsUrls';
+
+// Console links name the session's organization and account (ENG-4333).
+const forOrg = (url) => consoleUrlFor(url, { organizationId: 'org-1', subject: 'u1' });
 
 const freeLow = {
   kind: 'free_low', tone: 'warning', title: '12% of your free allowance left',
@@ -54,7 +59,7 @@ describe('UsageBar', () => {
     render(<UsageBar warning={balanceLow} isBillingOwner />);
     await user.click(screen.getByRole('button', { name: 'Add funds' }));
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('usage_notice');
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_ADD_FUNDS_URL));
   });
 
   it('the standing figure can be closed, and stays closed as the number moves', async () => {
@@ -199,14 +204,14 @@ describe('UsageBar', () => {
     render(<UsageBar warning={atRest} usageKnown />);
     await user.click(screen.getByRole('button', { name: 'View usage' }));
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('usage_at_rest');
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
   });
 
   it('a member is sent to the billing page, not the add-credits dialog', async () => {
     const user = userEvent.setup();
     render(<UsageBar warning={balanceLow} isBillingOwner={false} />);
     await user.click(screen.getByRole('button', { name: 'Add funds' }));
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
   });
 
   it('can be closed, stays closed for the same kind, and returns for a new kind', async () => {
@@ -245,7 +250,7 @@ describe('UsageBar', () => {
     const warning = { ...balanceLow, actions: [USAGE_ACTIONS.addFunds, USAGE_ACTIONS.setUpAutoTopUp] };
     render(<UsageBar warning={warning} isBillingOwner />);
     await user.click(screen.getByRole('button', { name: 'Set up auto top up' }));
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_AUTO_TOP_UP_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_AUTO_TOP_UP_URL));
   });
 
   it('forgets dismissals once usage is known to be healthy', async () => {

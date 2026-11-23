@@ -4,6 +4,8 @@ import { render, screen, waitFor, within, fireEvent } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 
 const hostSpies = vi.hoisted(() => ({ openExternal: vi.fn() }));
+const accountMock = vi.hoisted(() => ({ user: { orgId: 'org-1', sub: 'u1' } }));
+vi.mock('../hooks/useAccountUser', () => ({ useAccountUser: () => accountMock.user }));
 vi.mock('../../platform/host', async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, host: { ...actual.host, openExternal: hostSpies.openExternal } };
@@ -17,7 +19,10 @@ vi.mock('../lib/analytics', async (importOriginal) => {
 
 import { ModelSelect } from './ModelSelect';
 import { host } from '../../platform/host';
-import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL } from '../../lib/mindsUrls';
+import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, consoleUrlFor } from '../../lib/mindsUrls';
+
+// Console links name the session's organization and account (ENG-4333).
+const forOrg = (url) => consoleUrlFor(url, { organizationId: 'org-1', subject: 'u1' });
 import { HubUsageContext } from '../lib/hubUsageContext';
 import { buildModelPickerOptions } from '../lib/modelPickerOptions';
 
@@ -262,7 +267,7 @@ describe('ModelSelect — the route to credits on a locked row', () => {
     const row = screen.getByRole('option', { name: /Claude Opus 5/ });
     await user.click(within(row).getByRole('button', { name: 'Add credits' }));
 
-    expect(hostSpies.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostSpies.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
     // Its own trigger, distinct from the no-credits notice and the top-up hint,
     // so the three are not read as one in the funnel.
     expect(analyticsSpies.trackBillingOpened).toHaveBeenCalledWith('locked_model_row');
@@ -284,7 +289,7 @@ describe('ModelSelect — the route to credits on a locked row', () => {
     const row = screen.getByRole('option', { name: /Claude Opus 5/ });
     await user.click(within(row).getByRole('button', { name: 'Add credits' }));
 
-    expect(hostSpies.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
+    expect(hostSpies.openExternal).toHaveBeenCalledWith(forOrg(MINDS_ADD_FUNDS_URL));
   });
 
   it('sends a member to the billing page, where the dialog would be one they cannot submit', async () => {
@@ -300,7 +305,7 @@ describe('ModelSelect — the route to credits on a locked row', () => {
     const row = screen.getByRole('option', { name: /Claude Opus 5/ });
     await user.click(within(row).getByRole('button', { name: 'Add credits' }));
 
-    expect(hostSpies.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostSpies.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
   });
 
   it('inside the mobile app, shows a locked model as unavailable without a billing action', async () => {
