@@ -4,8 +4,19 @@ import { ReportContentButton } from './ReportContentButton';
 import { setOrgMode } from '../../../lib/orgMode';
 import { reportContent, reportArtifactContent } from '../../api';
 vi.mock('../../api', () => ({ reportContent: vi.fn(), reportArtifactContent: vi.fn() }));
-afterEach(() => { setOrgMode(false); vi.resetAllMocks(); });
+const shell = vi.hoisted(() => ({ mobile: true }));
+vi.mock('../../../lib/mobileShell', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  get isMobileShell() { return shell.mobile; },
+}));
+afterEach(() => { setOrgMode(false); shell.mobile = true; vi.resetAllMocks(); });
 describe('report content', () => {
+  it('is offered only in the mobile app', () => {
+    setOrgMode(true);
+    shell.mobile = false;
+    render(<ReportContentButton conversationId="task" messageId="answer" />);
+    expect(screen.queryByRole('button', { name: 'Report content' })).toBeNull();
+  });
   it('asks for consent and shows receipt only after the server accepts', async () => {
     setOrgMode(true);
     let done!: (value: { id: string; status: "received" }) => void;

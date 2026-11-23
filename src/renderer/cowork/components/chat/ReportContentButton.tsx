@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from '../../../lib/i18n';
+import { isMobileShell } from '../../../lib/mobileShell';
 import { useOrgMode } from '../../../lib/orgMode';
 import { reportContent, reportArtifactContent } from '../../api';
 import { ConfirmModal } from '../ConfirmModal';
@@ -22,7 +23,8 @@ export function ReportContentButton({ conversationId, messageId, artifactTarget 
     }, Math.max(0, retryAt - Date.now()));
     return () => window.clearTimeout(timer);
   }, [retryAt]);
-  if (!hosted || (!artifactTarget && (!conversationId || !messageId))) return null;
+  // The app stores require a way to report content; web and desktop do not offer one.
+  if (!hosted || !isMobileShell || (!artifactTarget && (!conversationId || !messageId))) return null;
   const submit = async () => {
     if (busy || retryAt !== null) return;
     setBusy(true);
