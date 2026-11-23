@@ -15,7 +15,7 @@ export function SharedArtifactPreview({ target, onClose }) {
     const controller = new AbortController();
     async function load() {
       try {
-        if (!target.url && !target.artifact_id) throw new Error('Missing artifact');
+        if (!target.project_id || !target.artifact_id) throw new Error('Missing artifact');
         const result = await fetchSharedArtifactPreview(target, controller.signal);
         if (controller.signal.aborted) return;
         if (result?.draftUrl && (isImageArtifact(result) || canPreviewOrgDraft(result) || canPreviewDocument(result, host))) {

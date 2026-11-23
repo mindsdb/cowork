@@ -119,15 +119,13 @@ export function actionForNotification(data: unknown): PushTapAction {
   const record = data && typeof data === 'object' ? data as Record<string, unknown> : {};
   const path = safeInAppPath(record.path);
   if (path) return { type: 'navigate', path };
-  const url = safeExternalUrl(record.url);
   if (record.kind === 'artifact_shared') {
     const ref = record.artifact_ref;
     const params = new URLSearchParams({ shared: '' });
     if (typeof ref === 'string' && /^[a-f0-9-]{36}\/[a-f0-9]{32}$/i.test(ref)) params.set('ref', ref);
-    else if (url) params.set('shared', url);
-    const route = safeInAppPath('/artifacts#' + params);
-    return { type: 'navigate', path: route ?? '/artifacts#shared=' };
+    return { type: 'navigate', path: '/artifacts#' + params };
   }
+  const url = safeExternalUrl(record.url);
   if (url) return { type: 'open-url', url };
   return { type: 'none' };
 }

@@ -158,7 +158,7 @@ import { offeredModelId, offeredModels } from './lib/modelPickerOptions';
 import { compareAvailable } from './lib/compareSides';
 import { modelPickerMode } from '../lib/modelPicker';
 import { PLATFORM_UI } from '../lib/deployment';
-import { offerMobileTaskNotifications, safeExternalUrl, setMobilePushNavigator } from '../lib/mobilePush';
+import { offerMobileTaskNotifications, setMobilePushNavigator } from '../lib/mobilePush';
 import {
   CoworkProvider,
   CoworkRouterProvider,
@@ -2470,7 +2470,7 @@ function AppCore() {
       const params = new URLSearchParams(path.split('#')[1]);
       const ref = params.get('ref');
       const [project_id, artifact_id] = ref?.split('/') ?? [];
-      const sharedArtifact = ref ? { project_id, artifact_id } : { url: safeExternalUrl(params.get('shared')) };
+      const sharedArtifact = ref ? { project_id, artifact_id } : {};
       routerRef.current.navigate('/artifacts', { state: { sharedArtifact } });
     } else {
       routerRef.current.navigate(path);

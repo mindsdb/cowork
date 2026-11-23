@@ -124,20 +124,14 @@ describe('actionForNotification (tap routing)', () => {
       .toEqual({ type: 'navigate', path: '/c/1' });
   });
 
-  it('resolves a shared artifact in the signed-in collection', () => {
-    expect(actionForNotification({ kind: 'artifact_shared', url: 'https://view.mindshub.ai/a/xyz' }))
-      .toEqual({ type: 'navigate', path: '/artifacts#shared=https%3A%2F%2Fview.mindshub.ai%2Fa%2Fxyz' });
-  });
-
-  it('prefers the stable reference for a new shared-artifact notification', () => {
+  it('opens shared notifications by stable reference', () => {
     const ref = '22222222-2222-4222-8222-222222222222/11111111111141118111111111111111';
-    expect(actionForNotification({ kind: 'artifact_shared', artifact_ref: ref, url: 'https://view.example/a/old' }))
+    expect(actionForNotification({ kind: 'artifact_shared', artifact_ref: ref }))
       .toEqual({ type: 'navigate', path: '/artifacts#' + new URLSearchParams({ shared: '', ref }) });
   });
 
-  it('keeps an oversized shared link inside the app', () => {
-    const url = 'https://view.mindshub.ai/a/' + 'x'.repeat(2100);
-    expect(actionForNotification({ kind: 'artifact_shared', url }))
+  it('keeps a shared notification without a valid reference inside the app', () => {
+    expect(actionForNotification({ kind: 'artifact_shared', url: 'https://view.mindshub.ai/a/xyz' }))
       .toEqual({ type: 'navigate', path: '/artifacts#shared=' });
   });
 
@@ -476,10 +470,11 @@ describe('createMobilePush', () => {
     it('queues a shared artifact until the signed-in router mounts', () => {
       const { controller, plugin, openExternal } = setup();
       controller.start();
-      plugin.emit('pushNotificationActionPerformed', tap({ kind: 'artifact_shared', url: 'https://view.mindshub.ai/a/1' }));
+      const ref = '22222222-2222-4222-8222-222222222222/11111111111141118111111111111111';
+      plugin.emit('pushNotificationActionPerformed', tap({ kind: 'artifact_shared', artifact_ref: ref }));
       const navigate = vi.fn();
       controller.setNavigator(navigate);
-      expect(navigate).toHaveBeenCalledWith('/artifacts#shared=https%3A%2F%2Fview.mindshub.ai%2Fa%2F1');
+      expect(navigate).toHaveBeenCalledWith('/artifacts#' + new URLSearchParams({ shared: '', ref }));
       expect(openExternal).not.toHaveBeenCalled();
     });
 

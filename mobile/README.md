@@ -232,7 +232,7 @@ artifact's page in the system browser.
    `notification` block. Without the `notification` block, Android shows
    nothing while the app is in the background.
 4. **A tap** opens `path` with the app's router. A shared artifact opens in the signed-in viewer
-   by project and artifact ID. Earlier pushes use the published URL for lookup.
+   by project and artifact ID.
    An unavailable preview shows a message inside the app. For other
    notifications without a path it opens `url` in the system browser (a host outside `server.allowNavigation`
    always leaves the webview). A tap that launches the app arrives before

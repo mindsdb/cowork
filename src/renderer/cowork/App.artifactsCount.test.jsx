@@ -181,30 +181,28 @@ describe('shared artifact navigation', () => {
   });
   afterEach(() => window.history.replaceState(previousState, '', previousUrl));
 
-  const sharePath = (url) => '/artifacts#' + new URLSearchParams({ shared: url });
+  const project_id = '11111111-1111-4111-8111-111111111111';
+  const artifact_id = '22222222222242228222222222222222';
+  const sharePath = '/artifacts#' + new URLSearchParams({ shared: '', ref: project_id + '/' + artifact_id });
 
   it.each([
     ['a shared image', '.png'],
     ['an older artifact outside the latest 80', '.md'],
   ])('opens %s after a cold start without waiting for the listing', async (title, ext) => {
-    const url = 'https://view.example/a/old-share/';
     window.history.replaceState(null, '', '/');
-    spies.setNavigator.mockImplementationOnce((navigate) => { navigate(sharePath(url)); });
+    spies.setNavigator.mockImplementationOnce((navigate) => { navigate(sharePath); });
     spies.fetchArtifactsStrict.mockReturnValue(new Promise(() => {}));
     spies.fetchSharedArtifactPreview.mockResolvedValue({
       ...alpha, title, ext, type: 'file', path: '/old/file' + ext, draftUrl: '/api/v1/artifacts/drafts/project/old/file' + ext,
     });
     render(<App />);
     expect(await screen.findByText(title)).toBeInTheDocument();
-    expect(spies.fetchSharedArtifactPreview).toHaveBeenCalledWith({ url }, expect.any(AbortSignal));
+    expect(spies.fetchSharedArtifactPreview).toHaveBeenCalledWith({ project_id, artifact_id }, expect.any(AbortSignal));
     expect((await import('../platform/host')).host.openExternal).not.toHaveBeenCalled();
   });
 
   it('keeps a revoked share in the app and reads by stable identity', async () => {
-    const project_id = '11111111-1111-4111-8111-111111111111';
-    const artifact_id = '22222222222242228222222222222222';
-    const params = new URLSearchParams({ shared: '', ref: project_id + '/' + artifact_id });
-    spies.setNavigator.mockImplementationOnce((navigate) => navigate('/artifacts#' + params));
+    spies.setNavigator.mockImplementationOnce((navigate) => navigate(sharePath));
     spies.fetchSharedArtifactPreview.mockRejectedValue(new Error('Not found'));
     render(<App />);
     expect(await screen.findByText('Could not open this artifact for review')).toBeInTheDocument();
@@ -214,7 +212,7 @@ describe('shared artifact navigation', () => {
 
   it('treats an ordinary artifacts link as a collection visit', async () => {
     const { host } = await import('../platform/host');
-    window.history.replaceState(null, '', sharePath('https://example.org/elsewhere'));
+    window.history.replaceState(null, '', sharePath);
     render(<App />);
     await expectCount(3);
     expect(host.openExternal).not.toHaveBeenCalled();
