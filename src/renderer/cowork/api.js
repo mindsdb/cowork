@@ -2504,6 +2504,20 @@ export async function deleteSkillDraft(projectName, slug) {
   return req(`/projects/${enc(projectName)}/skill_drafts/${enc(slug)}`, { method: 'DELETE' });
 }
 
+// Microsoft Teams (Bot): the signed-in person's opt-in to asking from Teams.
+// The self-hosted recording proxy answers this route, never Cowork.
+export async function fetchTeamsBotConnection() {
+  return req('/teams-connection');
+}
+
+export async function connectTeamsBot() {
+  return req('/teams-connection', { method: 'POST' });
+}
+
+export async function disconnectTeamsBot() {
+  return req('/teams-connection', { method: 'DELETE' });
+}
+
 export async function fetchDatasources() {
   const data = await req('/connectors/connections/');
   return { connections: Array.isArray(data) ? data : [] };

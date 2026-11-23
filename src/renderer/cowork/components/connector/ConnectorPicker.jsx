@@ -158,6 +158,7 @@ const ConnectorTile = memo(function ConnectorTile({ connector, onPick }) {
         <span className="flex items-center gap-1.5 min-w-0">
           <span className="font-[family-name:var(--font-display)] font-semibold text-base text-ink tracking-[0] truncate">{connector.label || connector.id}</span>
           {connector.custom && <Badge variant="accent" size="xs" className="shrink-0">{t('connectionCard.custom')}</Badge>}
+          {connector.bot && <Badge variant="muted" size="xs" className="shrink-0">{t('connectorPicker.bot')}</Badge>}
           {/* Spec-driven, not per-connector code: any connector that sets
               `notice` in its JSON gets the badge, and one that doesn't gets
               no extra markup at all. */}

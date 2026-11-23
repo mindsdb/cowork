@@ -488,7 +488,8 @@
     "cloudAvailable": "ここで利用可能（MindsHub Cloud）",
     "available": "利用可能なコネクタ",
     "featured": "おすすめ",
-    "desktopOnly": "Coworkデスクトップアプリで利用できるコネクタ"
+    "desktopOnly": "Coworkデスクトップアプリで利用できるコネクタ",
+    "bot": "ボット"
   },
   "sharepoint": {
     "folderListFailed": "このフォルダの内容を表示できませんでした。",
@@ -535,6 +536,18 @@
       "skipped": "{count, plural, other {#件の項目}}をスキップしました：",
       "done": "完了"
     }
+  },
+  "teamsBot": {
+    "title": "Microsoft Teams（ボット）",
+    "about": "Teams のチャットやチャネルから {name} に質問できます。これはボットであり、データコネクタではありません。{name} は Teams のメッセージを読み取れません。",
+    "notConnected": "接続してから、Teams で {name} にメッセージを送ってください。Teams アカウントは Microsoft のサインイン名でこのアカウントと照合されます。サインイン名は {name} のメールアドレスと同じである必要があります。",
+    "waiting": "ここでの接続は完了しました。Teams で {name} にメッセージを送ると、Teams アカウントがこのアカウントと関連付けられます。",
+    "connected": "接続済みです。Teams で {name} に質問してください。",
+    "connectedAs": "{teamsName} として接続済み。",
+    "connect": "接続",
+    "disconnect": "接続を解除",
+    "close": "閉じる",
+    "unavailable": "Teams との接続を利用できません。しばらくしてからもう一度お試しください。"
   },
   "dataVault": {
     "howTo": "設定方法",

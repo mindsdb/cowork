@@ -488,7 +488,8 @@
     "cloudAvailable": "Disponibles aquí (MindsHub Cloud)",
     "available": "Conectores disponibles",
     "featured": "Destacados",
-    "desktopOnly": "Conectores disponibles en la app de escritorio de Cowork"
+    "desktopOnly": "Conectores disponibles en la app de escritorio de Cowork",
+    "bot": "Bot"
   },
   "sharepoint": {
     "folderListFailed": "No se pudo listar esta carpeta.",
@@ -535,6 +536,18 @@
       "skipped": "Se {count, plural, one {omitió # elemento} other {omitieron # elementos}}:",
       "done": "Listo"
     }
+  },
+  "teamsBot": {
+    "title": "Microsoft Teams (Bot)",
+    "about": "Pregunta a {name} desde los chats y canales de Teams. Es un bot, no un conector de datos: {name} no puede leer tus mensajes de Teams.",
+    "notConnected": "Conecta y luego envía un mensaje a {name} en Teams. Tu cuenta de Teams se vincula con esta por tu nombre de inicio de sesión de Microsoft, que debe ser tu correo de {name}.",
+    "waiting": "Conectado aquí. Envía un mensaje a {name} en Teams para terminar: así se vincula tu cuenta de Teams con esta.",
+    "connected": "Conectado. Pregunta a {name} en Teams.",
+    "connectedAs": "Conectado como {teamsName}.",
+    "connect": "Conectar",
+    "disconnect": "Desconectar",
+    "close": "Cerrar",
+    "unavailable": "La conexión con Teams no está disponible. Inténtalo de nuevo en breve."
   },
   "dataVault": {
     "howTo": "Cómo hacerlo",

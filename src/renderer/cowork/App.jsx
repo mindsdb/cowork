@@ -57,6 +57,7 @@ import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import ComingSoonModal from './components/ComingSoonModal';
 import SharePointSetupModal, { SHAREPOINT_ENGINE } from './components/sharepoint/SharePointSetupModal';
+import TeamsBotModal from './components/teams/TeamsBotModal';
 import CustomMcpConnectModal from './components/connector/CustomMcpConnectModal';
 import { disconnectCustomMcp, isCustomMcp } from './lib/customMcp';
 import { useSharePointImport } from './components/sharepoint/useSharePointImport';
@@ -1028,6 +1029,7 @@ function AppCore() {
   const [settingsSection, setSettingsSection] = useState(null);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
   const [sharePointSetupOpen, setSharePointSetupOpen] = useState(false);
+  const [teamsBotOpen, setTeamsBotOpen] = useState(false);
   const [customMcpOpen, setCustomMcpOpen] = useState(false);
   const [serverHelpOpen, setServerHelpOpen] = useState(false);
   // Pending delete confirm — task id whose delete is awaiting user
@@ -3587,6 +3589,12 @@ function AppCore() {
   const handleConnectorPicked = async (connector, { existingName, editingConnection = null } = {}) => {
     setConnectorPickerOpen(false);
     if (!connector?.id) return;
+    // A bot people ask from another app saves no credential: its own panel
+    // takes the person's opt-in instead of a connect chat.
+    if (connector.bot) {
+      setTeamsBotOpen(true);
+      return;
+    }
     // SharePoint saves only through its own routes, which check the key with
     // Microsoft first, so it opens its own form instead of a connect chat.
     if (connector.id === SHAREPOINT_ENGINE) {
@@ -7886,6 +7894,8 @@ function AppCore() {
       />
 
       {sharePointModals}
+
+      <TeamsBotModal open={teamsBotOpen} onClose={() => setTeamsBotOpen(false)} />
 
       <SharePointSetupModal
         open={sharePointSetupOpen}
