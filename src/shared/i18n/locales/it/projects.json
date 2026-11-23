@@ -6,7 +6,8 @@
         "addFunds": "Aggiungi fondi",
         "setUpAutoTopUp": "Configura ricarica automatica",
         "manageAutoTopUp": "Gestisci ricarica automatica",
-        "updatePaymentMethod": "Aggiorna metodo di pagamento"
+        "updatePaymentMethod": "Aggiorna metodo di pagamento",
+        "upgrade": "{tier, select, plus {Passa a Plus} pro {Passa a Pro} other {Cambia piano}}"
       },
       "noFreeGrant": "Questo account non include token gratuiti di MindsHub Air. MindsHub Air usa il tuo saldo, come tutti gli altri modelli.",
       "allowanceStop": {
@@ -68,6 +69,20 @@
       "budgetExceeded": {
         "raise": "{hasModel, select, true {{scope, select, org {{model} non può essere usato finché un proprietario o un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.} other {{model} non può essere usato finché un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.}}} other {{scope, select, org {I modelli a pagamento non possono essere usati finché un proprietario o un amministratore non aumenta il limite in «Budget».} other {I modelli a pagamento non possono essere usati finché un amministratore non aumenta il limite in «Budget».}}}}",
         "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} non può essere usato finché un proprietario o un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.} other {{model} non può essere usato finché un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.}}} other {{scope, select, org {I modelli a pagamento non possono essere usati finché un proprietario o un amministratore non aumenta il limite in «Budget». MindsHub Air funziona ancora finché dura la quota gratuita.} other {I modelli a pagamento non possono essere usati finché un amministratore non aumenta il limite in «Budget». MindsHub Air funziona ancora finché dura la quota gratuita.}}}}"
+      },
+      "window": {
+        "usedUpTitle": "{window, select, 7d {Quota settimanale esaurita} other {Quota di 5 ore esaurita}}",
+        "onWallet": "Usi il tuo saldo a tariffe API fino al rinnovo.",
+        "onWalletWithTime": "Usi il tuo saldo a tariffe API fino al rinnovo alle {time}.",
+        "paused": "Le attività del tuo piano sono in pausa fino al rinnovo. Aggiungi fondi per continuare.",
+        "pausedWithTime": "Le attività del tuo piano sono in pausa fino alle {time}. Aggiungi fondi per continuare.",
+        "pausedMobile": "Le attività del tuo piano sono in pausa fino al rinnovo.",
+        "pausedWithTimeMobile": "Le attività del tuo piano sono in pausa fino alle {time}.",
+        "lowTitle": "Hai usato il {percent} della quota {window, select, 7d {settimanale} other {di 5 ore}}",
+        "lowThenWallet": "Dopo, le attività usano il tuo saldo a tariffe API fino al rinnovo.",
+        "lowThenWalletWithTime": "Dopo, le attività usano il tuo saldo a tariffe API fino al rinnovo alle {time}.",
+        "lowThenPause": "Dopo, le attività vanno in pausa fino al rinnovo.",
+        "lowThenPauseWithTime": "Dopo, le attività vanno in pausa fino alle {time}."
       }
     },
     "scheduleWhen": {
@@ -361,6 +376,7 @@
     "artifactAuthorship": {
       "unknownOwner": "Proprietario sconosciuto",
       "otherMemberDescription": "Creato da un altro membro di questo progetto. Puoi consultarlo, ma non modificarlo.",
+      "namedOwnerDescription": "Creato da {name}, un altro membro di questo progetto. Puoi consultarlo, ma non modificarlo.",
       "unknownOwnerDescription": "Per questo artefatto non risulta alcun proprietario."
     },
     "artifactExport": {
@@ -477,6 +493,10 @@
       "budgetReached": {
         "tag": "Budget raggiunto",
         "title": "Un budget che copre questo modello è esaurito. Un amministratore può aumentarlo in «Budget»."
+      },
+      "notInTier": {
+        "tag": "{tier, select, plus {Serve Plus} pro {Serve Pro} other {Serve un upgrade}}",
+        "title": "La quota del tuo piano non copre questo modello. Cambia piano o aggiungi crediti per usarlo a tariffe API."
       }
     },
     "settingsTransform": {

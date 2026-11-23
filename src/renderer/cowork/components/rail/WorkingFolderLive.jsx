@@ -35,7 +35,7 @@ import { shareLiveAppLabel, canShareLiveApp, isLiveAppCard } from '../../lib/liv
 import { liveAppLines, liveAppOpenAddress } from '../../lib/liveAppState';
 import { useLiveAppStates } from '../../hooks/useLiveAppStates';
 import { LiveAppShareDialog } from '../artifacts/LiveAppShareDialog';
-import { artifactAuthorship } from '../../lib/artifactAuthorship';
+import { useArtifactAuthorships } from '../../hooks/useArtifactAuthorship';
 import { railArtifactRows } from '../../lib/railArtifacts';
 import { RailShowMore } from './RailShowMore';
 import { useTranslation } from '../../../lib/i18n';
@@ -147,7 +147,10 @@ export function WorkingFolderLive({
   const [expanded, setExpanded] = useState(false);
   const collapsedCount = Math.max(RAIL_COLLAPSED_ROWS, currentCount);
   const visibleRows = expanded ? rows : rows.slice(0, collapsedCount);
-  const authorships = useMemo(() => rows.map((r) => artifactAuthorship(r.capabilities)), [rows]);
+  // Each colleague's artifact names its owner, all of them in one lookup
+  // (ENG-4455).
+  const authorshipOf = useArtifactAuthorships(rows.map((r) => r.capabilities));
+  const authorships = rows.map((r) => authorshipOf(r.capabilities));
   // Sticky per project: once any row needed the authorship column, keep
   // reserving it for this project even once a later poll's rows happen to be
   // owner-only. Recomputing straight from `rows` on every 3s poll made the

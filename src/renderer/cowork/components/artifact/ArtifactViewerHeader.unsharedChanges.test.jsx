@@ -1,9 +1,10 @@
 // A change kept as a draft on a published artifact (ENG-4409): the header
 // says the draft is ahead of the published page, with the card's own
-// "Unshared changes" warning, until Update publishes it. Desktop only, as
-// Update is.
+// "Unshared changes" warning, until it is published. On every deployment, and
+// a button opening the review of those changes when the viewer can show it
+// (ENG-4595).
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 const orgMode = vi.hoisted(() => ({ on: false }));
 vi.mock('../../../lib/orgMode', async (importOriginal) => ({
@@ -25,7 +26,7 @@ vi.mock('./publish/PublishMenu', () => ({
 
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 
-function renderHeader({ isPublished = true, modified = true, canManage = true } = {}) {
+function renderHeader({ isPublished = true, modified = true, canManage = true, onReviewUnshared = null } = {}) {
   render(
     <ArtifactViewerHeader
       title="Weather Dashboard"
@@ -51,6 +52,7 @@ function renderHeader({ isPublished = true, modified = true, canManage = true } 
         hasActionPath: true,
         isPublished,
         disabledReason: '',
+        onReviewUnshared,
       }}
       actions={{
         canOpenInBrowserTab: false,
@@ -89,9 +91,25 @@ describe('Unshared changes in the viewer header', () => {
     expect(screen.queryByText('Unshared changes')).toBeNull();
   });
 
-  it('stays hidden in MindsHub mode, which publishes every change itself', () => {
+  // A quick edit leaves a change unpublished there too, and Publish changes
+  // now works there (ENG-4595).
+  it('shows in MindsHub mode too', () => {
     orgMode.on = true;
     renderHeader();
-    expect(screen.queryByText('Unshared changes')).toBeNull();
+    expect(screen.getByText('Unshared changes')).toBeInTheDocument();
+  });
+
+  it('is a plain warning when the viewer cannot show the changes', () => {
+    renderHeader();
+    expect(screen.queryByRole('button', { name: /Unshared changes/ })).toBeNull();
+  });
+
+  it('opens the review of the changes when it can', () => {
+    const onReviewUnshared = vi.fn();
+    renderHeader({ onReviewUnshared });
+
+    fireEvent.click(screen.getByRole('button', { name: /Unshared changes/ }));
+
+    expect(onReviewUnshared).toHaveBeenCalledTimes(1);
   });
 });

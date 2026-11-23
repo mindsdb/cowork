@@ -58,7 +58,9 @@
       "orgRestricted": "Restricted. Open Share to see who can open the link.",
       "ownerOnly": "Shared, but only you can open the link.",
       "chosenPeople": "Shared. Only the people you chose can open the link.",
-      "unknown": "Shared. Who can open the link could not be confirmed, so it is treated as restricted."
+      "unknown": "Shared. Who can open the link could not be confirmed, so it is treated as restricted.",
+      "sharedWith": "Shared with {names}",
+      "sharedWithMore": "Shared with {names} and {count} more"
     },
     "sharingFailed": "Sharing failed",
     "couldNotShare": "Couldn't share.",
@@ -246,8 +248,12 @@
     "changeNavigation": "Step through changes",
     "publishedArtifact": "Published artifact",
     "reviewBeforePublishing": "Review the change before publishing",
+    "reviewUnshared": "Changes not shared yet",
     "keepDraft": "Keep as draft",
     "publishChange": "Publish this change",
+    "publishChanges": "Publish changes",
+    "sharedVersion": "Shared version",
+    "draftVersion": "Draft",
     "publishing": "Publishing…"
   },
   "htmlEditor": {
@@ -368,7 +374,16 @@
       "sharingSettings": "sharing settings",
       "currentAccess": "current access"
     },
-    "editList": "Edit list"
+    "editList": "Edit list",
+    "sharedWith": {
+      "title": "Shared with",
+      "hint": "See who this is shared with",
+      "triggerLabel": "Shared: see who this is shared with",
+      "whoCanOpen": "Who can open it",
+      "ownerOnlyTitle": "Only its owner",
+      "ownerOnlyDesc": "Nobody else can open the shared link",
+      "listWithheld": "Only the teams and people it's shared with"
+    }
   },
   "previewErrors": {
     "reported": "{count, plural, one {The preview reported # error} other {The preview reported # errors}}",
@@ -419,7 +434,8 @@
     "moreActions": "More actions",
     "reloadPreview": "Reload preview",
     "close": "Close",
-    "unsharedChangesHint": "The shared link shows an earlier version. Use Update in Share to publish the changes."
+    "unsharedChangesHint": "The shared link shows an earlier version. Use Update in Share to publish the changes.",
+    "reviewUnsharedHint": "Review and publish the changes the shared link doesn't show yet"
   },
   "body": {
     "previewWatermark": "Preview",
@@ -522,7 +538,26 @@
     "search": "Search artifacts",
     "emptyTitle": "No artifacts yet",
     "emptyBody": "When {agent} creates documents, dashboards, or code outputs they'll appear here.",
-    "working": "Working…"
+    "working": "Working…",
+    "filter": {
+      "type": "Type",
+      "allTypes": "All types",
+      "owner": "Owner",
+      "allOwners": "All owners",
+      "me": "Me",
+      "unknownOwner": "Unknown owner",
+      "anotherMember": "Another member",
+      "noMatch": "No artifacts match these filters.",
+      "clear": "Clear filters",
+      "status": "Status",
+      "allStatuses": "All statuses"
+    },
+    "owner": {
+      "you": "You",
+      "youHint": "Yours, shared with others."
+    },
+    "openComments": "{count, plural, one {# open comment} other {# open comments}}",
+    "openCommentsHint": "Open the preview on its comments"
   },
   "compare": {
     "refused": "This side was still working on its last turn, so it didn't get your message. It's back in the box below.",
@@ -721,6 +756,13 @@
     "workingInChat": "Working in the chat…",
     "sentToChat": "Sent to the chat.",
     "chatStopped": "The chat turn stopped before it answered.",
+    "resolveThread": {
+      "question": "Mark the comment as resolved?",
+      "resolve": "Resolve",
+      "notNow": "Not now",
+      "resolved": "Comment resolved.",
+      "failed": "Couldn't resolve the comment. Try again."
+    },
     "unsavedConfirm": {
       "title": "You have unsaved changes. Save them before sending?",
       "save": "Save and send",
@@ -731,6 +773,7 @@
     "queued": "Queued",
     "queueLabel": "Waiting to run",
     "removeQueued": "Remove from queue",
+    "hide": "Hide messages",
     "comment": {
       "onArtifact": "Address this comment on the artifact:",
       "onText": "Address this comment on the text “{quote}”:",

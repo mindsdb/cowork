@@ -9,9 +9,12 @@
 //
 // phase: 'publishing' | 'updating' | 'unpublishing' | 'deleting' | 'failed' | undefined(idle)
 
+import { createContext, useContext } from 'react';
 import Ico from '../Icons';
 import { Badge, Tooltip } from '../ui';
-import { isOwnerOnlyAccess } from '../../lib/orgSharing';
+import { everyoneAtDesc, everyoneAtLabel, isOwnerOnlyAccess } from '../../lib/orgSharing';
+import { readArtifactAudience } from '../../lib/sharingContract';
+import { useRecipientItems } from '../RecipientRows';
 import i18n, { useTranslation } from '../../../lib/i18n';
 import { ArtifactAuthorshipBadge } from './ArtifactAuthorshipBadge';
 
@@ -47,6 +50,32 @@ function accessMode(artifact) {
 function accessBadge(artifact) {
   const mode = accessMode(artifact);
   return mode ? ACCESS_BADGE[mode] : UNKNOWN_BADGE;
+}
+
+/** The org's name for "Everyone at ‹org›", from the page around the badges:
+    one lookup for a whole list, not one per row. */
+export const ArtifactStatusOrgName = createContext(null);
+
+const EVERYONE_BADGE = { variant: 'default', icon: Ico.building(12), labelKey: null };
+// Names a hover lists before "and N more".
+const HINT_NAMES = 5;
+
+/* Who a restricted artifact reaches, named, for its badge's hover once its
+   card knows (MindsHub mode reads it: useArtifactAudiences). Mounted only
+   while the hover is open, so a list of rows asks nothing until then. */
+function AudienceHint({ audience, orgName }) {
+  const { t } = useTranslation('artifacts');
+  const items = useRecipientItems(
+    { teamIds: audience.teamIds, userIds: audience.userIds, emails: audience.emails },
+    { orgName },
+  );
+  if (audience.orgAllowed) return everyoneAtDesc();
+  if (items.length === 0) return hint('ownerOnly');
+  const names = items.slice(0, HINT_NAMES).map((item) => item.primary).join(', ');
+  const more = items.length - HINT_NAMES;
+  return more > 0
+    ? t('status.hint.sharedWithMore', { names, count: more })
+    : t('status.hint.sharedWith', { names });
 }
 
 /** A restricted artifact's line when its card doesn't say who it reaches. */
@@ -101,6 +130,7 @@ export function artifactStatusHint(artifact, publishable = true, { orgMode = fal
 // (artifactStatusHint).
 export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, inlineChanges = false, authorship = null, pageBadge = true, orgMode = false }) {
   const { t } = useTranslation('artifacts');
+  const orgName = useContext(ArtifactStatusOrgName);
   const tag = authorship ? <ArtifactAuthorshipBadge authorship={authorship} /> : null;
   const withExtra = (primary) => (tag
     ? <span className="inline-flex items-center gap-[10px] min-w-0 flex-wrap">{primary}{tag}</span>
@@ -141,16 +171,27 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
       </Tooltip>,
     );
   }
-  const badge = accessBadge(artifact);
+  // A restricted artifact whose audience is known: shared with everyone reads
+  // as such, and the hover names who it reaches. In MindsHub mode only an
+  // audience the page read from the audience route counts
+  // (useArtifactAudiences' `audienceRead`): a card's own fields there could be
+  // stale or planted, so they name nobody.
+  const read = accessMode(artifact) === 'restricted' ? readArtifactAudience(artifact) : null;
+  const known = read && (!orgMode || artifact.audienceRead === true) ? read : null;
+  const badge = known?.orgAllowed ? EVERYONE_BADGE : accessBadge(artifact);
+  const label = badge.labelKey ? t(badge.labelKey) : everyoneAtLabel(orgName);
+  const hover = known && orgMode
+    ? <AudienceHint audience={known} orgName={orgName} />
+    : artifactStatusHint(artifact, publishable, { orgMode });
   return (
     // Fills the status area: access badge on the left, the "Unpublished
     // changes" warning pushed to the right (margin-left:auto). On a tight
     // card it wraps to its own line, still right-aligned there. `tag` sits
     // between them, in the same row.
     <span className="flex items-center gap-[10px] w-full min-w-0 flex-wrap">
-      <Tooltip content={artifactStatusHint(artifact, publishable, { orgMode })}>
+      <Tooltip content={hover}>
         <Badge variant={badge.variant} size="sm" dot icon={badge.icon}>
-          {t(badge.labelKey)}
+          {label}
         </Badge>
       </Tooltip>
       {tag}

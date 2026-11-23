@@ -7,6 +7,7 @@ import { useOrgMode } from '../../../lib/orgMode';
 import { canDownloadArtifact, canShowInBrowserTab } from '../../lib/artifactKinds';
 import { artifactExportFormats } from '../../lib/artifactExport';
 import { PublishMenu } from './publish/PublishMenu';
+import { SharedWithMenu } from './publish/SharedWithMenu';
 import { ArtifactAddressPill } from './ArtifactAddressPill';
 import { ArtifactAuthorshipBadge } from '../artifacts/ArtifactAuthorshipBadge';
 import { IconButton } from './ArtifactViewerIconButton';
@@ -46,6 +47,7 @@ export function ArtifactViewerHeader({
     disabledReason,
     shareRequest = null,
     onShareRequestClosed,
+    onReviewUnshared = null,
   } = publication;
   // A caller with no address to give still gets the pill, named by the
   // title, so ↗ keeps its place.
@@ -115,7 +117,8 @@ export function ArtifactViewerHeader({
             minWidth: 0, paddingRight: 12,
           }}
         >{title}</div>
-        {/* "Another member" / "Unknown owner" (ENG-2979). Renders nothing for
+        {/* The owner's name, "Another member" or "Unknown owner" (ENG-2979,
+            ENG-4455). Renders nothing for
             the viewer's own artifact. A direct flex child of this zone
             (Tooltip renders the badge as its own trigger), so `shrink-0`
             keeps it whole while the title truncates. */}
@@ -155,11 +158,20 @@ export function ArtifactViewerHeader({
             transport difference. */}
         {/* The draft is ahead of the published page (a change kept as a
             draft, ENG-4409): the same warning the artifact card shows, until
-            Update in the Share panel publishes it. Desktop only, as Update is. */}
-        {canManage && publishable && isPublished && !orgMode && pub?.modified && (
-          <Tooltip content={t('header.unsharedChangesHint')}>
-            <Badge variant="warning" size="sm" dot>{t('status.unsharedChanges')}</Badge>
-          </Tooltip>
+            it is published. A button opening the review of those changes when
+            the shared version is known (ENG-4595), on every deployment. */}
+        {canManage && publishable && isPublished && pub?.modified && (
+          onReviewUnshared ? (
+            <Tooltip content={t('header.reviewUnsharedHint')}>
+              <button type="button" className="artifact-unshared-button" onClick={onReviewUnshared}>
+                <Badge variant="warning" size="sm" dot>{t('status.unsharedChanges')}</Badge>
+              </button>
+            </Tooltip>
+          ) : (
+            <Tooltip content={t('header.unsharedChangesHint')}>
+              <Badge variant="warning" size="sm" dot>{t('status.unsharedChanges')}</Badge>
+            </Tooltip>
+          )
         )}
         {canManage && publishable && (
           <PublishMenu
@@ -169,6 +181,13 @@ export function ArtifactViewerHeader({
             openRequest={shareRequest}
             onRequestClosed={onShareRequestClosed}
           />
+        )}
+        {/* Someone else's shared artifact (ENG-4455): the same "Shared"
+            button, opening a read-only "Shared with" panel. Org mode only,
+            where artifacts have owners other than the viewer; the owner keeps
+            PublishMenu above. */}
+        {!canManage && authorship && orgMode && publishable && isPublished && artifact && (
+          <SharedWithMenu artifact={artifact} />
         )}
         {/* Download is a visible control on every web host, org mode included,
             where the ⋯ menu is hidden. Desktop opens the file in its default

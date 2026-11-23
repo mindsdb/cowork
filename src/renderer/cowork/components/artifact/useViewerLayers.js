@@ -7,7 +7,7 @@
 // can be unavailable (private mode, blocked site data), so every read and
 // write is guarded and the defaults apply then: both off.
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 export const LAYERS_STORAGE_KEY = 'cowork.artifactViewer.layers.v1';
 export const DEFAULT_LAYERS = Object.freeze({ source: false, comments: false, stats: false });
@@ -43,23 +43,40 @@ function writeLayers(userKey, layers) {
 }
 
 /**
+ * `setLayer(name, on, { remember: false })` switches a layer for this open
+ * only (a host asking the viewer to open on Comments, say): nothing is saved,
+ * and `restoreLayers()` puts back the remembered ones once the viewer closes.
+ * A later switch the person makes is remembered as usual.
  * @param {string} [userKey]  Keeps one person's layers apart from another's on a shared device.
- * @returns {{ layers: typeof DEFAULT_LAYERS, setLayer: (name: string, on: boolean) => void }}
+ * @returns {{
+ *   layers: typeof DEFAULT_LAYERS,
+ *   setLayer: (name: string, on: boolean, options?: { remember?: boolean }) => void,
+ *   restoreLayers: () => void,
+ * }}
  */
 export function useViewerLayers(userKey = '') {
   const [layers, setLayers] = useState(() => readLayers(userKey));
-  const setLayer = useCallback((name, on) => {
+  // Whether the layers on screen differ from the saved ones for this open only.
+  const unsavedRef = useRef(false);
+  const setLayer = useCallback((name, on, { remember = true } = {}) => {
     if (!NAMES.includes(name)) return;
     setLayers((prev) => {
       if (prev[name] === !!on) return prev;
+      // A switch that changes nothing leaves this open's state as it was.
+      unsavedRef.current = !remember;
       const next = on
         ? Object.fromEntries(NAMES.map((other) => [other, other === name]))
         : { ...prev, [name]: false };
-      writeLayers(userKey, next);
+      if (remember) writeLayers(userKey, next);
       return next;
     });
   }, [userKey]);
-  return { layers, setLayer };
+  const restoreLayers = useCallback(() => {
+    if (!unsavedRef.current) return;
+    unsavedRef.current = false;
+    setLayers(readLayers(userKey));
+  }, [userKey]);
+  return { layers, setLayer, restoreLayers };
 }
 
 export default useViewerLayers;

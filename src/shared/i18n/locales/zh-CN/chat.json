@@ -114,13 +114,23 @@
       "viewBudgets": "查看预算",
       "balanceRanOutMobile": "任务完成前你的余额已用完。",
       "autoTopUpFailedBodyMobile": "无法从你的银行卡扣款。",
-      "connectProviderBodyMobile": "在“设置”中连接你自己的提供商。"
+      "connectProviderBodyMobile": "在“设置”中连接你自己的提供商。",
+      "windowUsedUpTitle": "套餐额度已用完",
+      "windowPausedUntil": "你已用完{window, select, 7d {每周} 5h {5 小时} other {套餐}}额度，且余额已用完。已暂停至 {time}。充值即可继续。",
+      "windowPaused": "你已用完{window, select, 7d {每周} 5h {5 小时} other {套餐}}额度，且余额已用完。已暂停，直到额度重置。充值即可继续。",
+      "windowPausedUntilMobile": "你已用完{window, select, 7d {每周} 5h {5 小时} other {套餐}}额度。已暂停至 {time}。",
+      "windowPausedMobile": "你已用完{window, select, 7d {每周} 5h {5 小时} other {套餐}}额度。已暂停，直到额度重置。"
     },
     "usageAlert": {
       "freeLow": "Air 免费额度剩余 {percent}",
       "freeLowRefills": "Air 免费额度剩余 {percent} · {time} 恢复",
       "freeUsed": "Air 免费额度已用完 · 正在使用你的余额",
-      "freeUsedUntil": "Air 免费额度已用完 · {time} 前将使用你的余额"
+      "freeUsedUntil": "Air 免费额度已用完 · {time} 前将使用你的余额",
+      "windowLow": "已使用 {percent} 的{window, select, 7d {每周} other {5 小时}}额度",
+      "windowLowResets": "已使用 {percent} 的{window, select, 7d {每周} other {5 小时}}额度 · {time} 重置",
+      "windowUsed": "{window, select, 7d {每周额度已用完} other {5 小时额度已用完}}",
+      "windowUsedUntil": "{window, select, 7d {每周额度已用完} other {5 小时额度已用完}} · 暂停至 {time}",
+      "windowOnWallet": "{window, select, 7d {每周额度已用完} other {5 小时额度已用完}} · 正在按 API 价格使用你的余额"
     },
     "reconnect": {
       "couldNotReconnect": "无法重新连接。请尝试退出登录后重新登录。",
@@ -149,7 +159,9 @@
       "needsCreditsBody": "你的积分不足以使用此模型。请为余额充值后再使用。",
       "disabledBody": "此模型已在你的工作区中关闭。请在“设置”中选择其他模型。",
       "topUpBalance": "为余额充值",
-      "needsCreditsBodyMobile": "你的积分不足以使用此模型。"
+      "needsCreditsBodyMobile": "你的积分不足以使用此模型。",
+      "notInTierTitle": "{model} 不在你的套餐内",
+      "notInTierBody": "{tier, select, plus {Plus 包含 {model}。} pro {Pro 包含 {model}。} other {你的套餐不包含 {model}。}}升级，或充值后按 API 价格使用。"
     },
     "overloaded": {
       "theModelProvider": "模型提供商",

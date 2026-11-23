@@ -1,6 +1,6 @@
 // A console link opens Home with an existing sample in the composer. It must
 // land editable, never send on its own, and never overwrite the user's draft.
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useState, StrictMode } from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -494,5 +494,81 @@ describe('HomeView console handoff', () => {
 
     await waitFor(() => expect(trackComposerReady).toHaveBeenCalledWith('console', null, false, null));
     expect(screen.getByRole('textbox')).toHaveValue('');
+  });
+
+  it('records the console\'s sign-in landing as that landing, with an empty composer', async () => {
+    arriveFromConsole('?from=console&placement=sign-in');
+    render(<Home onSend={vi.fn()} />);
+
+    await waitFor(() => expect(trackComposerReady).toHaveBeenCalledWith('console', null, false, 'sign-in'));
+    expect(trackComposerReady).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('textbox')).toHaveValue('');
+  });
+});
+
+// A console link that finds the connect-a-provider panel is still an arrival.
+describe('HomeView console arrival behind the provider panel', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('records the arrival as blocked once the panel has held', async () => {
+    vi.useFakeTimers();
+    arriveFromConsole('?from=console&placement=sign-in');
+    render(<Home onSend={vi.fn()} configReady={false} />);
+
+    await act(async () => { vi.advanceTimersByTime(4900); });
+    expect(trackComposerReady).not.toHaveBeenCalled();
+
+    await act(async () => { vi.advanceTimersByTime(200); });
+    expect(trackComposerReady).toHaveBeenCalledTimes(1);
+    expect(trackComposerReady).toHaveBeenCalledWith('console', null, false, 'sign-in', { blocked: true });
+    // The arrival is recorded, not applied: no attribution until a task can start.
+    expect(setEntryAttribution).not.toHaveBeenCalled();
+  });
+
+  it('still places the sample when the composer becomes usable, without a second record', async () => {
+    vi.useFakeTimers();
+    arriveFromConsole('?from=console&mode=games&sample=classic-snake-game&placement=gallery');
+    const { rerender } = render(<Home onSend={vi.fn()} configReady={false} />);
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    expect(trackComposerReady).toHaveBeenCalledWith('console', 'classic-snake-game', false, 'gallery', { blocked: true });
+    vi.useRealTimers();
+
+    rerender(<Home onSend={vi.fn()} configReady />);
+    expect(await screen.findByDisplayValue(snake.prompt)).toBeInTheDocument();
+    expect(trackComposerReady).toHaveBeenCalledTimes(1);
+    expect(setEntryAttribution).toHaveBeenCalledWith('console', 'classic-snake-game', 'gallery');
+  });
+
+  it('does not record a second blocked arrival when Home is opened again', async () => {
+    vi.useFakeTimers();
+    arriveFromConsole('?from=console&placement=sign-in');
+    const first = render(<Home onSend={vi.fn()} configReady={false} />);
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    first.unmount();
+
+    render(<Home onSend={vi.fn()} configReady={false} />);
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    expect(trackComposerReady).toHaveBeenCalledTimes(1);
+  });
+
+  it('records a usable arrival, not a blocked one, when the panel only flashes at boot', async () => {
+    vi.useFakeTimers();
+    arriveFromConsole('?from=console&placement=sign-in');
+    const { rerender } = render(<Home onSend={vi.fn()} configReady={false} />);
+    await act(async () => { vi.advanceTimersByTime(2000); });
+
+    rerender(<Home onSend={vi.fn()} configReady />);
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    expect(trackComposerReady).toHaveBeenCalledTimes(1);
+    expect(trackComposerReady).toHaveBeenCalledWith('console', null, false, 'sign-in');
+  });
+
+  it('records nothing behind the panel on an ordinary visit', async () => {
+    vi.useFakeTimers();
+    render(<Home onSend={vi.fn()} configReady={false} />);
+    await act(async () => { vi.advanceTimersByTime(10_000); });
+    expect(trackComposerReady).not.toHaveBeenCalled();
   });
 });

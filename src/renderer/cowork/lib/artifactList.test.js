@@ -84,6 +84,59 @@ describe('createLatestLoader', () => {
     expect(apply).not.toHaveBeenCalled();
   });
 
+  // The first list's "loaded" must wait for a list that was actually applied:
+  // a superseded first load ending the skeleton showed "No artifacts yet"
+  // (ENG-4585).
+  it('says what became of each reload: applied, superseded or failed', async () => {
+    const first = deferred();
+    const second = deferred();
+    const load = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const loader = createLatestLoader(load, vi.fn());
+
+    const r1 = loader.reload();
+    const r2 = loader.reload();
+    first.resolve([a]);
+    await expect(r1).resolves.toBe('superseded');
+    second.resolve([a]);
+    await expect(r2).resolves.toBe('applied');
+
+    await expect(createLatestLoader(async () => { throw new Error('offline'); }, vi.fn()).reload()).resolves.toBe('failed');
+  });
+
+  it('reports a failed load that a newer reload superseded as superseded', async () => {
+    const first = deferred();
+    const second = deferred();
+    const load = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const loader = createLatestLoader(load, vi.fn());
+    const r1 = loader.reload();
+    const r2 = loader.reload();
+    first.reject(new Error('offline'));
+    await expect(r1).resolves.toBe('superseded');
+    second.resolve([]);
+    await expect(r2).resolves.toBe('applied');
+  });
+
+  it('tells onFailed when the latest reload fails, whichever caller started it', async () => {
+    const first = deferred();
+    const second = deferred();
+    const load = vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const onFailed = vi.fn();
+    const loader = createLatestLoader(load, vi.fn(), { onFailed });
+    const r1 = loader.reload();
+    const r2 = loader.reload();
+    first.resolve([a]);
+    await r1;
+    expect(onFailed).not.toHaveBeenCalled();
+    second.reject(new Error('offline'));
+    await expect(r2).resolves.toBe('failed');
+    expect(onFailed).toHaveBeenCalledTimes(1);
+  });
+
+  it('never rejects, even when applying the list throws', async () => {
+    const loader = createLatestLoader(async () => [a], () => { throw new Error('boom'); });
+    await expect(loader.reload()).resolves.toBe('failed');
+  });
+
   it('supersedes a reload in flight when a local change runs', async () => {
     const stale = deferred();
     const fresh = deferred();

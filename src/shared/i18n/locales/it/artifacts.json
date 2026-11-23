@@ -58,7 +58,9 @@
       "orgRestricted": "Limitato. Apri Condividi per vedere chi può aprire il link.",
       "ownerOnly": "Condiviso, ma solo tu puoi aprire il link.",
       "chosenPeople": "Condiviso. Solo le persone che hai scelto possono aprire il link.",
-      "unknown": "Condiviso. Non è stato possibile verificare chi può aprire il link, quindi viene trattato come limitato."
+      "unknown": "Condiviso. Non è stato possibile verificare chi può aprire il link, quindi viene trattato come limitato.",
+      "sharedWith": "Condiviso con {names}",
+      "sharedWithMore": "Condiviso con {names} e altri {count}"
     },
     "sharingFailed": "Condivisione non riuscita",
     "couldNotShare": "Impossibile condividere.",
@@ -246,8 +248,12 @@
     "changeNavigation": "Scorri le modifiche",
     "publishedArtifact": "Artefatto pubblicato",
     "reviewBeforePublishing": "Controlla la modifica prima di pubblicarla",
+    "reviewUnshared": "Modifiche non ancora condivise",
     "keepDraft": "Mantieni come bozza",
     "publishChange": "Pubblica questa modifica",
+    "publishChanges": "Pubblica modifiche",
+    "sharedVersion": "Versione condivisa",
+    "draftVersion": "Bozza",
     "publishing": "Pubblicazione…"
   },
   "htmlEditor": {
@@ -368,7 +374,16 @@
       "sharingSettings": "impostazioni di condivisione",
       "currentAccess": "accesso attuale"
     },
-    "editList": "Modifica elenco"
+    "editList": "Modifica elenco",
+    "sharedWith": {
+      "title": "Condiviso con",
+      "hint": "Vedi con chi è condiviso",
+      "triggerLabel": "Condiviso: vedi con chi è condiviso",
+      "whoCanOpen": "Chi può aprirlo",
+      "ownerOnlyTitle": "Solo il proprietario",
+      "ownerOnlyDesc": "Nessun altro può aprire il link condiviso",
+      "listWithheld": "Solo i team e le persone con cui è condiviso"
+    }
   },
   "previewErrors": {
     "reported": "{count, plural, one {L’anteprima ha segnalato # errore} other {L’anteprima ha segnalato # errori}}",
@@ -419,7 +434,8 @@
     "moreActions": "Altre azioni",
     "reloadPreview": "Ricarica anteprima",
     "close": "Chiudi",
-    "unsharedChangesHint": "Il link condiviso mostra una versione precedente. Usa Aggiorna in Condividi per pubblicare le modifiche."
+    "unsharedChangesHint": "Il link condiviso mostra una versione precedente. Usa Aggiorna in Condividi per pubblicare le modifiche.",
+    "reviewUnsharedHint": "Rivedi e pubblica le modifiche che il link condiviso non mostra ancora"
   },
   "body": {
     "previewWatermark": "Anteprima",
@@ -522,7 +538,26 @@
     "search": "Cerca artefatti",
     "emptyTitle": "Ancora nessun artefatto",
     "emptyBody": "Quando {agent} crea documenti, dashboard o output di codice, li troverai qui.",
-    "working": "Elaborazione…"
+    "working": "Elaborazione…",
+    "filter": {
+      "type": "Tipo",
+      "allTypes": "Tutti i tipi",
+      "owner": "Proprietario",
+      "allOwners": "Tutti i proprietari",
+      "me": "Io",
+      "unknownOwner": "Proprietario sconosciuto",
+      "anotherMember": "Un altro membro",
+      "noMatch": "Nessun artefatto corrisponde a questi filtri.",
+      "clear": "Cancella filtri",
+      "status": "Stato",
+      "allStatuses": "Tutti gli stati"
+    },
+    "owner": {
+      "you": "Tu",
+      "youHint": "Tuo, condiviso con altre persone."
+    },
+    "openComments": "{count, plural, one {# commento aperto} other {# commenti aperti}}",
+    "openCommentsHint": "Apri l’anteprima sui commenti"
   },
   "compare": {
     "refused": "Questo lato stava ancora completando il turno precedente, quindi non ha ricevuto il tuo messaggio. Lo trovi di nuovo nella casella qui sotto.",
@@ -721,6 +756,13 @@
     "workingInChat": "In corso nella chat…",
     "sentToChat": "Inviato alla chat.",
     "chatStopped": "Il turno della chat si è interrotto prima di rispondere.",
+    "resolveThread": {
+      "question": "Segnare il commento come risolto?",
+      "resolve": "Risolvi",
+      "notNow": "Non ora",
+      "resolved": "Commento risolto.",
+      "failed": "Impossibile risolvere il commento. Riprova."
+    },
     "unsavedConfirm": {
       "title": "Hai modifiche non salvate. Salvarle prima di inviare?",
       "save": "Salva e invia",
@@ -731,6 +773,7 @@
     "queued": "In coda",
     "queueLabel": "In attesa",
     "removeQueued": "Rimuovi dalla coda",
+    "hide": "Nascondi messaggi",
     "comment": {
       "onArtifact": "Gestisci questo commento sull'artefatto:",
       "onText": "Gestisci questo commento sul testo «{quote}»:",

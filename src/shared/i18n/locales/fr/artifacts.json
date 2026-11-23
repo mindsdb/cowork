@@ -58,7 +58,9 @@
       "orgRestricted": "Restreint. Ouvrez Partager pour voir qui peut ouvrir le lien.",
       "ownerOnly": "Partagé, mais vous seul pouvez ouvrir le lien.",
       "chosenPeople": "Partagé. Seules les personnes que vous avez choisies peuvent ouvrir le lien.",
-      "unknown": "Partagé. Impossible de confirmer qui peut ouvrir le lien : il est donc considéré comme restreint."
+      "unknown": "Partagé. Impossible de confirmer qui peut ouvrir le lien : il est donc considéré comme restreint.",
+      "sharedWith": "Partagé avec {names}",
+      "sharedWithMore": "Partagé avec {names} et {count} autres"
     },
     "sharingFailed": "Échec du partage",
     "couldNotShare": "Impossible de partager.",
@@ -246,8 +248,12 @@
     "changeNavigation": "Parcourir les modifications",
     "publishedArtifact": "Artefact publié",
     "reviewBeforePublishing": "Vérifiez la modification avant de la publier",
+    "reviewUnshared": "Modifications pas encore partagées",
     "keepDraft": "Garder en brouillon",
     "publishChange": "Publier cette modification",
+    "publishChanges": "Publier les modifications",
+    "sharedVersion": "Version partagée",
+    "draftVersion": "Brouillon",
     "publishing": "Publication…"
   },
   "htmlEditor": {
@@ -368,7 +374,16 @@
       "sharingSettings": "paramètres de partage",
       "currentAccess": "accès actuel"
     },
-    "editList": "Modifier la liste"
+    "editList": "Modifier la liste",
+    "sharedWith": {
+      "title": "Partagé avec",
+      "hint": "Voir avec qui c’est partagé",
+      "triggerLabel": "Partagé : voir avec qui c’est partagé",
+      "whoCanOpen": "Qui peut l’ouvrir",
+      "ownerOnlyTitle": "Seulement son propriétaire",
+      "ownerOnlyDesc": "Personne d’autre ne peut ouvrir le lien partagé",
+      "listWithheld": "Seulement les équipes et les personnes avec qui c’est partagé"
+    }
   },
   "previewErrors": {
     "reported": "{count, plural, one {L’aperçu a signalé # erreur} other {L’aperçu a signalé # erreurs}}",
@@ -419,7 +434,8 @@
     "moreActions": "Plus d’actions",
     "reloadPreview": "Recharger l’aperçu",
     "close": "Fermer",
-    "unsharedChangesHint": "Le lien partagé affiche une version antérieure. Utilisez Mettre à jour dans Partager pour publier les modifications."
+    "unsharedChangesHint": "Le lien partagé affiche une version antérieure. Utilisez Mettre à jour dans Partager pour publier les modifications.",
+    "reviewUnsharedHint": "Vérifiez et publiez les modifications que le lien partagé n'affiche pas encore"
   },
   "body": {
     "previewWatermark": "Aperçu",
@@ -522,7 +538,26 @@
     "search": "Rechercher des artefacts",
     "emptyTitle": "Aucun artefact pour l’instant",
     "emptyBody": "Les documents, tableaux de bord et résultats de code créés par {agent} apparaîtront ici.",
-    "working": "En cours…"
+    "working": "En cours…",
+    "filter": {
+      "type": "Type",
+      "allTypes": "Tous les types",
+      "owner": "Propriétaire",
+      "allOwners": "Tous les propriétaires",
+      "me": "Moi",
+      "unknownOwner": "Propriétaire inconnu",
+      "anotherMember": "Un autre membre",
+      "noMatch": "Aucun artefact ne correspond à ces filtres.",
+      "clear": "Effacer les filtres",
+      "status": "Statut",
+      "allStatuses": "Tous les statuts"
+    },
+    "owner": {
+      "you": "Vous",
+      "youHint": "À vous, partagé avec d'autres personnes."
+    },
+    "openComments": "{count, plural, one {# commentaire ouvert} other {# commentaires ouverts}}",
+    "openCommentsHint": "Ouvrir l’aperçu sur ses commentaires"
   },
   "compare": {
     "refused": "Ce côté n’avait pas terminé son dernier tour : il n’a donc pas reçu votre message. Celui-ci a été remis dans la zone ci-dessous.",
@@ -721,6 +756,13 @@
     "workingInChat": "En cours dans le chat…",
     "sentToChat": "Envoyé dans le chat.",
     "chatStopped": "Le tour du chat s'est arrêté avant de répondre.",
+    "resolveThread": {
+      "question": "Marquer le commentaire comme résolu ?",
+      "resolve": "Résoudre",
+      "notNow": "Pas maintenant",
+      "resolved": "Commentaire résolu.",
+      "failed": "Impossible de résoudre le commentaire. Réessayez."
+    },
     "unsavedConfirm": {
       "title": "Vous avez des modifications non enregistrées. Les enregistrer avant d'envoyer ?",
       "save": "Enregistrer et envoyer",
@@ -731,6 +773,7 @@
     "queued": "En file d'attente",
     "queueLabel": "En attente",
     "removeQueued": "Retirer de la file d'attente",
+    "hide": "Masquer les messages",
     "comment": {
       "onArtifact": "Traite ce commentaire sur l'artefact :",
       "onText": "Traite ce commentaire sur le texte « {quote} » :",

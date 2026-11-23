@@ -114,13 +114,23 @@
       "viewBudgets": "Budgets anzeigen",
       "balanceRanOutMobile": "Ihr Guthaben war aufgebraucht, bevor diese Aufgabe abgeschlossen war.",
       "autoTopUpFailedBodyMobile": "Ihre Karte konnte nicht belastet werden.",
-      "connectProviderBodyMobile": "Verbinden Sie Ihren eigenen Anbieter in den Einstellungen."
+      "connectProviderBodyMobile": "Verbinden Sie Ihren eigenen Anbieter in den Einstellungen.",
+      "windowUsedUpTitle": "Plan-Kontingent aufgebraucht",
+      "windowPausedUntil": "Ihr {window, select, 7d {Wochenkontingent} 5h {5-Stunden-Kontingent} other {Plan-Kontingent}} ist aufgebraucht und Ihr Guthaben ist leer. Pausiert bis {time}. Laden Sie Guthaben auf, um weiterzumachen.",
+      "windowPaused": "Ihr {window, select, 7d {Wochenkontingent} 5h {5-Stunden-Kontingent} other {Plan-Kontingent}} ist aufgebraucht und Ihr Guthaben ist leer. Pausiert bis zum Zurücksetzen. Laden Sie Guthaben auf, um weiterzumachen.",
+      "windowPausedUntilMobile": "Ihr {window, select, 7d {Wochenkontingent} 5h {5-Stunden-Kontingent} other {Plan-Kontingent}} ist aufgebraucht. Pausiert bis {time}.",
+      "windowPausedMobile": "Ihr {window, select, 7d {Wochenkontingent} 5h {5-Stunden-Kontingent} other {Plan-Kontingent}} ist aufgebraucht. Pausiert bis zum Zurücksetzen."
     },
     "usageAlert": {
       "freeLow": "Air-Gratiskontingent: noch {percent}",
       "freeLowRefills": "Air-Gratiskontingent: noch {percent} · wird um {time} aufgefüllt",
       "freeUsed": "Air-Gratiskontingent aufgebraucht · Ihr Guthaben wird jetzt verwendet",
-      "freeUsedUntil": "Air-Gratiskontingent aufgebraucht · Ihr Guthaben wird bis {time} verwendet"
+      "freeUsedUntil": "Air-Gratiskontingent aufgebraucht · Ihr Guthaben wird bis {time} verwendet",
+      "windowLow": "{percent} Ihres {window, select, 7d {Wochenkontingents} other {5-Stunden-Kontingents}} verbraucht",
+      "windowLowResets": "{percent} Ihres {window, select, 7d {Wochenkontingents} other {5-Stunden-Kontingents}} verbraucht · wird um {time} zurückgesetzt",
+      "windowUsed": "{window, select, 7d {Wochenkontingent aufgebraucht} other {5-Stunden-Kontingent aufgebraucht}}",
+      "windowUsedUntil": "{window, select, 7d {Wochenkontingent aufgebraucht} other {5-Stunden-Kontingent aufgebraucht}} · pausiert bis {time}",
+      "windowOnWallet": "{window, select, 7d {Wochenkontingent aufgebraucht} other {5-Stunden-Kontingent aufgebraucht}} · Ihr Guthaben wird zu API-Preisen verwendet"
     },
     "reconnect": {
       "couldNotReconnect": "Erneute Verbindung fehlgeschlagen. Melden Sie sich ab und wieder an.",
@@ -149,7 +159,9 @@
       "needsCreditsBody": "Ihr Guthaben reicht für dieses Modell nicht aus. Laden Sie Ihr Guthaben auf, um es zu nutzen.",
       "disabledBody": "Dieses Modell ist für Ihren Arbeitsbereich deaktiviert. Wählen Sie in den Einstellungen ein anderes Modell.",
       "topUpBalance": "Guthaben aufladen",
-      "needsCreditsBodyMobile": "Ihr Guthaben reicht für dieses Modell nicht aus."
+      "needsCreditsBodyMobile": "Ihr Guthaben reicht für dieses Modell nicht aus.",
+      "notInTierTitle": "{model} ist nicht in Ihrem Plan enthalten",
+      "notInTierBody": "{tier, select, plus {{model} ist in Plus enthalten.} pro {{model} ist in Pro enthalten.} other {Ihr Plan enthält {model} nicht.}} Upgraden Sie oder laden Sie Guthaben auf, um es zu API-Preisen zu nutzen."
     },
     "overloaded": {
       "theModelProvider": "Der Modellanbieter",

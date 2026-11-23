@@ -58,7 +58,9 @@
       "orgRestricted": "제한됨. 링크를 열 수 있는 사람을 보려면 ‘공유’를 여세요.",
       "ownerOnly": "공유되었지만 나만 링크를 열 수 있습니다.",
       "chosenPeople": "공유되었습니다. 선택한 사람만 링크를 열 수 있습니다.",
-      "unknown": "공유되었습니다. 링크를 열 수 있는 사람을 확인할 수 없어 제한된 것으로 간주합니다."
+      "unknown": "공유되었습니다. 링크를 열 수 있는 사람을 확인할 수 없어 제한된 것으로 간주합니다.",
+      "sharedWith": "{names}와(과) 공유됨",
+      "sharedWithMore": "{names} 외 {count}명과 공유됨"
     },
     "sharingFailed": "공유 실패",
     "couldNotShare": "공유하지 못했습니다.",
@@ -246,8 +248,12 @@
     "changeNavigation": "변경 사항 이동",
     "publishedArtifact": "게시된 아티팩트",
     "reviewBeforePublishing": "게시하기 전에 변경 사항 검토",
+    "reviewUnshared": "아직 공유되지 않은 변경 사항",
     "keepDraft": "초안으로 유지",
     "publishChange": "이 변경 사항 게시",
+    "publishChanges": "변경 사항 게시",
+    "sharedVersion": "공유된 버전",
+    "draftVersion": "초안",
     "publishing": "게시 중…"
   },
   "htmlEditor": {
@@ -368,7 +374,16 @@
       "sharingSettings": "공유 설정",
       "currentAccess": "현재 액세스 설정"
     },
-    "editList": "목록 편집"
+    "editList": "목록 편집",
+    "sharedWith": {
+      "title": "공유 대상",
+      "hint": "공유 대상 보기",
+      "triggerLabel": "공유됨: 공유 대상 보기",
+      "whoCanOpen": "열 수 있는 사람",
+      "ownerOnlyTitle": "소유자만",
+      "ownerOnlyDesc": "다른 사람은 공유 링크를 열 수 없습니다",
+      "listWithheld": "공유된 팀과 사람만"
+    }
   },
   "previewErrors": {
     "reported": "{count, plural, other {미리 보기에서 오류 #개가 보고되었습니다}}",
@@ -419,7 +434,8 @@
     "moreActions": "추가 작업",
     "reloadPreview": "미리 보기 다시 불러오기",
     "close": "닫기",
-    "unsharedChangesHint": "공유 링크에는 이전 버전이 표시됩니다. 변경 사항을 게시하려면 공유에서 업데이트를 사용하세요."
+    "unsharedChangesHint": "공유 링크에는 이전 버전이 표시됩니다. 변경 사항을 게시하려면 공유에서 업데이트를 사용하세요.",
+    "reviewUnsharedHint": "공유 링크에 아직 반영되지 않은 변경 사항을 검토하고 게시합니다"
   },
   "body": {
     "previewWatermark": "미리 보기",
@@ -522,7 +538,26 @@
     "search": "아티팩트 검색",
     "emptyTitle": "아직 아티팩트가 없습니다",
     "emptyBody": "{agent}이(가) 만든 문서, 대시보드, 코드 결과물이 여기에 표시됩니다.",
-    "working": "작업하는 중…"
+    "working": "작업하는 중…",
+    "filter": {
+      "type": "유형",
+      "allTypes": "모든 유형",
+      "owner": "소유자",
+      "allOwners": "모든 소유자",
+      "me": "나",
+      "unknownOwner": "알 수 없는 소유자",
+      "anotherMember": "다른 멤버",
+      "noMatch": "이 필터와 일치하는 아티팩트가 없습니다.",
+      "clear": "필터 지우기",
+      "status": "상태",
+      "allStatuses": "모든 상태"
+    },
+    "owner": {
+      "you": "나",
+      "youHint": "내 것이며 다른 사람과 공유되었습니다."
+    },
+    "openComments": "{count, plural, other {열린 댓글 #개}}",
+    "openCommentsHint": "댓글이 열린 상태로 미리 보기 열기"
   },
   "compare": {
     "refused": "이쪽은 마지막 턴을 아직 처리하는 중이어서 메시지를 받지 못했습니다. 메시지는 아래 입력란에 다시 넣어 두었습니다.",
@@ -721,6 +756,13 @@
     "workingInChat": "채팅에서 작업 중…",
     "sentToChat": "채팅으로 보냈습니다.",
     "chatStopped": "채팅 턴이 답변 전에 중단되었습니다.",
+    "resolveThread": {
+      "question": "댓글을 해결됨으로 표시할까요?",
+      "resolve": "해결",
+      "notNow": "나중에",
+      "resolved": "댓글을 해결했습니다.",
+      "failed": "댓글을 해결하지 못했습니다. 다시 시도하세요."
+    },
     "unsavedConfirm": {
       "title": "저장하지 않은 변경 사항이 있습니다. 보내기 전에 저장할까요?",
       "save": "저장하고 보내기",
@@ -731,6 +773,7 @@
     "queued": "대기 중",
     "queueLabel": "실행 대기",
     "removeQueued": "대기열에서 제거",
+    "hide": "메시지 숨기기",
     "comment": {
       "onArtifact": "아티팩트에 대한 이 댓글을 처리하세요:",
       "onText": "텍스트 “{quote}”에 대한 이 댓글을 처리하세요:",

@@ -362,6 +362,17 @@ export function loadArtifactAccess(artifact) {
   return request(`${ref.base}/access`);
 }
 
+// Who a published artifact reaches, for anyone who may preview it, not only
+// its owner (ENG-4455): `{ accessMode, ownerOnly, orgAllowed, allowedTeamIds,
+// allowedUserIds, accessEmails, names }`. Never the password. `names` false
+// means the caller is outside the artifact's org and is told only how it is
+// shared: the lists come back empty.
+export function loadArtifactAudience(artifact) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/audience`);
+}
+
 // Setting an audience is a re-publish server-side: the target stores access
 // alongside the bundle and reuses the existing report_id, so the shared URL
 // survives the change and nothing has to be unpublished first. `access` goes
@@ -374,6 +385,14 @@ export function setArtifactAccess(artifact, access) {
     method: 'PUT',
     body: JSON.stringify({ access }),
   });
+}
+
+// Publish changes (ENG-4595): the draft goes live at the same link with the
+// access it already has. Owner-only; 404 when nothing is published.
+export function republishArtifact(artifact) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/republish`, { method: 'POST' });
 }
 
 // Owner-only, like loadArtifactAccess above: view counts of the published

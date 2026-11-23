@@ -65,8 +65,8 @@ vi.mock('../hooks/useOrgSharing', async (importOriginal) => ({
 import ArtifactsView from './ArtifactsView';
 import { setOrgMode } from '../../lib/orgMode';
 
-// With sharing in the org, the Artifacts page groups as the Skills page does:
-// Yours, Shared with me, My teams, Everyone at the org (ENG-4455).
+// With sharing in the org, the Artifacts page groups owner first: Yours, My
+// teams, Everyone at the org (the caller's own), then Shared with me (ENG-4455).
 const art = (id, title, extra = {}) => ({
   id, path: `/proj/.anton/artifacts/${id}/index.html`, title, type: 'html-app', mtime: 2000,
   draftUrl: `/api/v1/artifacts/drafts/project/${id}/index.html`, publishedUrl: '',
@@ -85,14 +85,14 @@ afterEach(() => { localStorage.clear(); setOrgMode(false); });
 describe.each(['grid', 'list'])('ArtifactsView sections (%s)', (view) => {
   beforeEach(() => { localStorage.setItem('anton:artifacts-view', view); });
 
-  it('groups artifacts under the sections skills use, in their order, with counts', () => {
+  it('groups the caller\'s own first and what others shared last', () => {
     render(<ArtifactsView artifacts={ARTIFACTS} />);
     const sections = screen.getAllByRole('region', { name: /Yours|Shared with me|My teams|Everyone at Acme/ });
-    expect(sections.map((s) => s.getAttribute('aria-label'))).toEqual(['Yours', 'Shared with me', 'My teams', 'Everyone at Acme']);
+    expect(sections.map((s) => s.getAttribute('aria-label'))).toEqual(['Yours', 'My teams', 'Everyone at Acme', 'Shared with me']);
     expect(sections[0]).toHaveTextContent('Sales deck');
-    expect(sections[1]).toHaveTextContent('Their report');
-    expect(sections[2]).toHaveTextContent('Team board');
-    expect(sections[3]).toHaveTextContent('Company page');
+    expect(sections[1]).toHaveTextContent('Team board');
+    expect(sections[2]).toHaveTextContent('Company page');
+    expect(sections[3]).toHaveTextContent('Their report');
   });
 
   it('keeps one ungrouped list where the org does not share', () => {

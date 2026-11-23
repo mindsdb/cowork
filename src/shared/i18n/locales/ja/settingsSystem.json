@@ -221,6 +221,21 @@
       "tryAgain": "再試行",
       "bodyMobile": "MindsHubから応答がありません。"
     },
-    "empty": "このアカウントにはまだ表示できる使用量がありません。"
+    "empty": "このアカウントにはまだ表示できる使用量がありません。",
+    "plan": {
+      "title": "{tier, select, plus {Plusプラン} pro {Proプラン} other {プラン}}",
+      "renewsOn": "{date}に更新",
+      "endsOn": "{date}に終了",
+      "ending": "終了予定",
+      "pastDue": "支払いに失敗しました",
+      "pastDueBody": "プランを更新できませんでした。プランを維持するには、「管理」でカードを更新してください。",
+      "windowName": "{window, select, 7d {週間の利用枠} other {5時間の利用枠}}",
+      "windowUsed": "{percent}を使用済み",
+      "windowUsedResets": "{percent}を使用済み · {time}にリセット",
+      "windowMeterLabel": "{window, select, 7d {週間の利用枠の使用量} other {5時間の利用枠の使用量}}",
+      "afterCap": "いずれかの利用枠を超えると、タスクは残高からAPI料金で支払うか、リセットされるまで一時停止します。",
+      "upgrade": "{tier, select, plus {Plusにする} pro {Proにアップグレード} other {アップグレード}}",
+      "manage": "管理"
+    }
   }
 }

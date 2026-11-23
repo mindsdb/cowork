@@ -58,7 +58,9 @@
       "orgRestricted": "Restrito. Abra Compartilhar para ver quem pode abrir o link.",
       "ownerOnly": "Compartilhado, mas só você pode abrir o link.",
       "chosenPeople": "Compartilhado. Só as pessoas que você escolheu podem abrir o link.",
-      "unknown": "Compartilhado. Não foi possível confirmar quem pode abrir o link, então ele é tratado como restrito."
+      "unknown": "Compartilhado. Não foi possível confirmar quem pode abrir o link, então ele é tratado como restrito.",
+      "sharedWith": "Compartilhado com {names}",
+      "sharedWithMore": "Compartilhado com {names} e mais {count}"
     },
     "sharingFailed": "Falha ao compartilhar",
     "couldNotShare": "Não foi possível compartilhar.",
@@ -246,8 +248,12 @@
     "changeNavigation": "Percorrer as alterações",
     "publishedArtifact": "Artefato publicado",
     "reviewBeforePublishing": "Revise a alteração antes de publicar",
+    "reviewUnshared": "Alterações ainda não compartilhadas",
     "keepDraft": "Manter como rascunho",
     "publishChange": "Publicar esta alteração",
+    "publishChanges": "Publicar alterações",
+    "sharedVersion": "Versão compartilhada",
+    "draftVersion": "Rascunho",
     "publishing": "Publicando…"
   },
   "htmlEditor": {
@@ -368,7 +374,16 @@
       "sharingSettings": "as configurações de compartilhamento",
       "currentAccess": "o acesso atual"
     },
-    "editList": "Editar lista"
+    "editList": "Editar lista",
+    "sharedWith": {
+      "title": "Compartilhado com",
+      "hint": "Ver com quem isto está compartilhado",
+      "triggerLabel": "Compartilhado: ver com quem isto está compartilhado",
+      "whoCanOpen": "Quem pode abrir",
+      "ownerOnlyTitle": "Somente o proprietário",
+      "ownerOnlyDesc": "Ninguém mais pode abrir o link compartilhado",
+      "listWithheld": "Somente as equipes e pessoas com quem está compartilhado"
+    }
   },
   "previewErrors": {
     "reported": "{count, plural, one {A visualização relatou # erro} other {A visualização relatou # erros}}",
@@ -419,7 +434,8 @@
     "moreActions": "Mais ações",
     "reloadPreview": "Recarregar visualização",
     "close": "Fechar",
-    "unsharedChangesHint": "O link compartilhado mostra uma versão anterior. Use Atualizar em Compartilhar para publicar as alterações."
+    "unsharedChangesHint": "O link compartilhado mostra uma versão anterior. Use Atualizar em Compartilhar para publicar as alterações.",
+    "reviewUnsharedHint": "Revise e publique as alterações que o link compartilhado ainda não mostra"
   },
   "body": {
     "previewWatermark": "Visualização",
@@ -522,7 +538,26 @@
     "search": "Buscar artefatos",
     "emptyTitle": "Nenhum artefato ainda",
     "emptyBody": "Quando {agent} criar documentos, painéis ou resultados de código, eles aparecerão aqui.",
-    "working": "Processando…"
+    "working": "Processando…",
+    "filter": {
+      "type": "Tipo",
+      "allTypes": "Todos os tipos",
+      "owner": "Proprietário",
+      "allOwners": "Todos os proprietários",
+      "me": "Eu",
+      "unknownOwner": "Proprietário desconhecido",
+      "anotherMember": "Outro membro",
+      "noMatch": "Nenhum artefato corresponde a estes filtros.",
+      "clear": "Limpar filtros",
+      "status": "Status",
+      "allStatuses": "Todos os status"
+    },
+    "owner": {
+      "you": "Você",
+      "youHint": "Seu, compartilhado com outras pessoas."
+    },
+    "openComments": "{count, plural, one {# comentário aberto} other {# comentários abertos}}",
+    "openCommentsHint": "Abrir a pré-visualização nos comentários"
   },
   "compare": {
     "refused": "Este lado ainda estava trabalhando no último turno, então não recebeu sua mensagem. Ela voltou para a caixa abaixo.",
@@ -721,6 +756,13 @@
     "workingInChat": "Trabalhando no chat…",
     "sentToChat": "Enviado para o chat.",
     "chatStopped": "O turno do chat parou antes de responder.",
+    "resolveThread": {
+      "question": "Marcar o comentário como resolvido?",
+      "resolve": "Resolver",
+      "notNow": "Agora não",
+      "resolved": "Comentário resolvido.",
+      "failed": "Não foi possível resolver o comentário. Tente novamente."
+    },
     "unsavedConfirm": {
       "title": "Você tem alterações não salvas. Salvá-las antes de enviar?",
       "save": "Salvar e enviar",
@@ -731,6 +773,7 @@
     "queued": "Na fila",
     "queueLabel": "Aguardando a vez",
     "removeQueued": "Remover da fila",
+    "hide": "Ocultar mensagens",
     "comment": {
       "onArtifact": "Resolva este comentário sobre o artefato:",
       "onText": "Resolva este comentário sobre o texto “{quote}”:",
