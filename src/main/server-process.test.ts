@@ -108,6 +108,7 @@ import {
   activeAccountDataRoot,
   isServerStarting,
   runningServerPort,
+  SERVER_STOP_CEILING_MS,
 } from './server-process';
 import { NON_PROD_POSTHOG_KEY } from './analytics-env';
 import { getServerAuthToken, resetServerAuthTokenCache } from './server-auth';
@@ -1256,6 +1257,39 @@ describe('the sidecar organization stores', () => {
     child.emit('exit', 1);
 
     expect(getRunningSidecarOrgId()).toBeNull();
+  });
+
+  it('a replaced child that exits late leaves its replacement running', async () => {
+    accountState.orgStoreRoot = '/root/orgs/org-a';
+    const old = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = spawnedOwner(); }, 0);
+      return old as never;
+    }) as never);
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    // The old child ignores both signals, so the stop gives up on it and clears the slot.
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    try {
+      const stopping = stopServer();
+      await vi.advanceTimersByTimeAsync(SERVER_STOP_CEILING_MS);
+      await stopping;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    accountState.orgStoreRoot = '/root/orgs/org-b';
+    const replacement = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = spawnedOwner(); }, 0);
+      return replacement as never;
+    }) as never);
+    await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    old.emit('exit', null, 'SIGKILL');
+
+    expect(isServerRunning()).toBe(true);
+    expect(getRunningSidecarOrgId()).toBe('org-b');
   });
 
   it('reads as foreign after an organization switch, so it is restarted', async () => {

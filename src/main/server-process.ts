@@ -1069,11 +1069,12 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       diagnostic("main.server-process", "ERROR", "cowork_server_spawn_failed", err);
     });
     child.on('exit', (code, signal) => {
-      const wasCurrent = serverProcess === child;
       childExited = true;
       childExitCode = code;
-      // A reaped child can exit after its replacement spawned; it must not clear the new one's org.
-      if (serverProcess === child || (serverProcess === null && !_adoptedExternal)) _runningOrgId = null;
+      // A replaced child can exit after its replacement spawned; it must not touch the new one's state.
+      if (serverProcess !== child && (serverProcess !== null || _adoptedExternal)) return;
+      const wasCurrent = serverProcess === child;
+      _runningOrgId = null;
       serverStarted = false;
       serverProcess = null;
       lastExitCode = code;
@@ -1104,7 +1105,8 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     });
 
     serverProcess = child;
-    // Recorded at spawn, not after /health: a hand-over can land while it starts.
+    // Also set after /health. No hand-over reads it before then: pushMindsCredentialNow
+    // returns early until isServerRunning(), which needs that /health answer.
     _runningOrgId = orgIdAtSpawn;
 
     // Wait on the child's liveness, not on a fixed timer: poll /health for as
