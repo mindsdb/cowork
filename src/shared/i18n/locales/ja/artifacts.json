@@ -927,7 +927,15 @@
     "sourceHint": "ページのテキストとレイアウトを変更",
     "commentsHint": "フィードバックを残して確認",
     "statsHint": "誰がどれだけ閲覧したか",
-    "commentsOpen": "コメント（未解決 {count} 件）"
+    "commentsOpen": "コメント（未解決 {count} 件）",
+    "openChat": "チャットを開く",
+    "openChatHint": "プレビューを閉じて、作成元のチャットに移動します",
+    "openChatUnavailable": {
+      "noOrigin": "チャットで作成されていないか、チャットが記録される前に作成されました",
+      "deleted": "作成元のチャットは削除されています",
+      "colleague": "同僚のチャットで作成されたため、その本人しか開けません",
+      "unreachable": "作成元のチャットに現在アクセスできません"
+    }
   },
   "liveEditPanel": {
     "close": "ライブ編集パネルを閉じる",

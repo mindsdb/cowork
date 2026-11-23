@@ -26247,6 +26247,210 @@
       "text": "f11f4b9b4d65"
     }
   },
+  "artifacts:rail.openChat": {
+    "de": {
+      "from": "0600175af842",
+      "text": "ab8d6d8e6a10"
+    },
+    "es": {
+      "from": "0600175af842",
+      "text": "46cfb1f2220f"
+    },
+    "fr": {
+      "from": "0600175af842",
+      "text": "513b51523bce"
+    },
+    "it": {
+      "from": "0600175af842",
+      "text": "55f615704e05"
+    },
+    "ja": {
+      "from": "0600175af842",
+      "text": "25e755e0a16f"
+    },
+    "ko": {
+      "from": "0600175af842",
+      "text": "d5f9fe3476cb"
+    },
+    "pt-BR": {
+      "from": "0600175af842",
+      "text": "46cfb1f2220f"
+    },
+    "zh-CN": {
+      "from": "0600175af842",
+      "text": "21164f32c01e"
+    }
+  },
+  "artifacts:rail.openChatHint": {
+    "de": {
+      "from": "bfa41cc59a1c",
+      "text": "66b85db8f62d"
+    },
+    "es": {
+      "from": "bfa41cc59a1c",
+      "text": "4fd37bf174c4"
+    },
+    "fr": {
+      "from": "bfa41cc59a1c",
+      "text": "19395df3e18a"
+    },
+    "it": {
+      "from": "bfa41cc59a1c",
+      "text": "cad69ae8eb89"
+    },
+    "ja": {
+      "from": "bfa41cc59a1c",
+      "text": "d51d14491c10"
+    },
+    "ko": {
+      "from": "bfa41cc59a1c",
+      "text": "03d58e9cd799"
+    },
+    "pt-BR": {
+      "from": "bfa41cc59a1c",
+      "text": "6fe3c29160bb"
+    },
+    "zh-CN": {
+      "from": "bfa41cc59a1c",
+      "text": "a3e17695c805"
+    }
+  },
+  "artifacts:rail.openChatUnavailable.colleague": {
+    "de": {
+      "from": "1305e88d794a",
+      "text": "daf16934c210"
+    },
+    "es": {
+      "from": "1305e88d794a",
+      "text": "0c328ac21596"
+    },
+    "fr": {
+      "from": "1305e88d794a",
+      "text": "605431d96ca1"
+    },
+    "it": {
+      "from": "1305e88d794a",
+      "text": "e7e7b7c2c1f8"
+    },
+    "ja": {
+      "from": "1305e88d794a",
+      "text": "8e9a96e3ae8c"
+    },
+    "ko": {
+      "from": "1305e88d794a",
+      "text": "b250e8d3f796"
+    },
+    "pt-BR": {
+      "from": "1305e88d794a",
+      "text": "623e99f97b82"
+    },
+    "zh-CN": {
+      "from": "1305e88d794a",
+      "text": "ba61235895dc"
+    }
+  },
+  "artifacts:rail.openChatUnavailable.deleted": {
+    "de": {
+      "from": "7b0152a1c305",
+      "text": "7d121070c5b5"
+    },
+    "es": {
+      "from": "7b0152a1c305",
+      "text": "d7feabe4d241"
+    },
+    "fr": {
+      "from": "7b0152a1c305",
+      "text": "48e0161d7da8"
+    },
+    "it": {
+      "from": "7b0152a1c305",
+      "text": "c0a53f64521b"
+    },
+    "ja": {
+      "from": "7b0152a1c305",
+      "text": "40ccc7bdc85d"
+    },
+    "ko": {
+      "from": "7b0152a1c305",
+      "text": "ad4ae5f79897"
+    },
+    "pt-BR": {
+      "from": "7b0152a1c305",
+      "text": "b47e08549b99"
+    },
+    "zh-CN": {
+      "from": "7b0152a1c305",
+      "text": "44f3d556b745"
+    }
+  },
+  "artifacts:rail.openChatUnavailable.noOrigin": {
+    "de": {
+      "from": "d3520da0b5ae",
+      "text": "cad09549985a"
+    },
+    "es": {
+      "from": "d3520da0b5ae",
+      "text": "52102816711a"
+    },
+    "fr": {
+      "from": "d3520da0b5ae",
+      "text": "d525e4567c77"
+    },
+    "it": {
+      "from": "d3520da0b5ae",
+      "text": "f1eff45491f6"
+    },
+    "ja": {
+      "from": "d3520da0b5ae",
+      "text": "4e6c8789b27c"
+    },
+    "ko": {
+      "from": "d3520da0b5ae",
+      "text": "0db434907063"
+    },
+    "pt-BR": {
+      "from": "d3520da0b5ae",
+      "text": "2116f2d982bc"
+    },
+    "zh-CN": {
+      "from": "d3520da0b5ae",
+      "text": "d1ca67128ef6"
+    }
+  },
+  "artifacts:rail.openChatUnavailable.unreachable": {
+    "de": {
+      "from": "45ab234683bd",
+      "text": "0f73e15aa67d"
+    },
+    "es": {
+      "from": "45ab234683bd",
+      "text": "c5059083a9ce"
+    },
+    "fr": {
+      "from": "45ab234683bd",
+      "text": "fdae54af7ad1"
+    },
+    "it": {
+      "from": "45ab234683bd",
+      "text": "e572b3cf3cf1"
+    },
+    "ja": {
+      "from": "45ab234683bd",
+      "text": "de95a1e97855"
+    },
+    "ko": {
+      "from": "45ab234683bd",
+      "text": "992e279cb91d"
+    },
+    "pt-BR": {
+      "from": "45ab234683bd",
+      "text": "6c6df761bed6"
+    },
+    "zh-CN": {
+      "from": "45ab234683bd",
+      "text": "e1d82c05f44e"
+    }
+  },
   "artifacts:rail.sourceHint": {
     "de": {
       "from": "bbf207e98c9f",

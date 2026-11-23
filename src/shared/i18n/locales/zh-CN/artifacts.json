@@ -927,7 +927,15 @@
     "sourceHint": "修改页面上的文字和布局",
     "commentsHint": "留下并查看反馈",
     "statsHint": "谁看过以及看了多久",
-    "commentsOpen": "评论，{count} 条待处理"
+    "commentsOpen": "评论，{count} 条待处理",
+    "openChat": "打开聊天",
+    "openChatHint": "关闭预览并前往创建它的聊天",
+    "openChatUnavailable": {
+      "noOrigin": "不是在聊天中创建的，或创建于聊天记录功能推出之前",
+      "deleted": "创建它的聊天已被删除",
+      "colleague": "在同事的聊天中创建，只有该同事可以打开",
+      "unreachable": "暂时无法访问创建它的聊天"
+    }
   },
   "liveEditPanel": {
     "close": "关闭实时编辑面板",

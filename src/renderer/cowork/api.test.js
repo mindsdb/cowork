@@ -1427,6 +1427,34 @@ describe('fetchInFlightList', () => {
   });
 });
 
+describe('fetchConversationStatus — whether a preview can open its chat (ENG-4599)', () => {
+  const stubMeta = (spec) => vi.stubGlobal('fetch', vi.fn(async () => {
+    if (spec === 'throw') throw new Error('offline');
+    return jsonRes({ id: 'c1' }, spec.ok ?? true, spec.status ?? 200);
+  }));
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('reads the metadata only, and says ok when it is there', async () => {
+    stubMeta({});
+    const { fetchConversationStatus } = await import('./api');
+    expect(await fetchConversationStatus('c1')).toBe('ok');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(String(fetch.mock.calls[0][0])).toMatch(/\/conversations\/c1$/);
+  });
+
+  it.each([
+    [{ ok: false, status: 404 }, 'not_found'],
+    [{ ok: false, status: 403 }, 'forbidden'],
+    [{ ok: false, status: 503 }, 'unavailable'],
+    ['throw', 'unavailable'],
+  ])('maps %j to %s', async (spec, status) => {
+    stubMeta(spec);
+    const { fetchConversationStatus } = await import('./api');
+    expect(await fetchConversationStatus('c1')).toBe(status);
+  });
+});
+
 describe('fetchSessionResult — loader failure classification (ENG-1233 Major 2)', () => {
   const meta = { id: 'c1', title: 'T', project: null };
 

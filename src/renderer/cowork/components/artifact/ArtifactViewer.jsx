@@ -83,6 +83,7 @@ import { usePreviewReloadTransition } from './usePreviewReloadTransition';
 import { useViewerLayers } from './useViewerLayers';
 import { useViewerModal } from './useViewerLayout';
 import { ViewerModeRail } from './ViewerModeRail';
+import { useOriginChatAction } from './useOriginChatAction';
 import { QuickEditBar } from './quickEdit/QuickEditBar';
 import { useQuickEdit } from './quickEdit/useQuickEdit';
 import { countUserPrompts } from '../../lib/quickEditPrompt';
@@ -1477,6 +1478,24 @@ export function ArtifactViewer({
   };
   const workspaceView = { ...workspace, mode: viewerMode, setMode: setViewerMode };
 
+  /* Closing resets the workspace, which drops Edit text that was never saved,
+     so the Close button, Esc and the backdrop ask first while there is some.
+     The text stays unsaved until a save's reply arrives, so a close during a
+     save asks too, with the prompt for a save in flight. `then` runs once the
+     viewer has closed (Open chat's way out), so not if the person stays. */
+  const closeThen = (then) => {
+    if (workspace.dirty) {
+      setClosePrompt({ key: workspace.status === 'saving' ? CLOSE_PROMPTS.saving : CLOSE_PROMPTS.unsaved, then });
+      return;
+    }
+    onClose?.();
+    then?.();
+  };
+  // Modal hands its own argument to onClose; a plain close runs nothing after.
+  const requestClose = () => closeThen(null);
+  // The rail's Open chat (ENG-4599): the chat this artifact was made in.
+  const openChatAction = useOriginChatAction({ artifact, open, conversationId, close: closeThen });
+
   if (!open || !artifact) return null;
 
   const title = artifact.title || artifact.path?.split('/').pop();
@@ -1696,18 +1715,6 @@ export function ArtifactViewer({
     } finally {
       setDeleteBusy(false);
     }
-  };
-
-  /* Closing resets the workspace, which drops Edit text that was never saved,
-     so the Close button, Esc and the backdrop ask first while there is some.
-     The text stays unsaved until a save's reply arrives, so a close during a
-     save asks too, with the prompt for a save in flight. */
-  const requestClose = () => {
-    if (workspace.dirty) {
-      setClosePrompt(workspace.status === 'saving' ? CLOSE_PROMPTS.saving : CLOSE_PROMPTS.unsaved);
-      return;
-    }
-    onClose?.();
   };
 
   // The panel rail on the viewer's right edge (ViewerModeRail, ENG-4455): one
@@ -2045,7 +2052,12 @@ export function ArtifactViewer({
           publishReview={publishReview}
           sidePanelId={sidePanelId}
         />
-        <ViewerModeRail label={t('rail.ariaLabel')} tabs={railTabs} panelId={sidePanelId} />
+        <ViewerModeRail
+          label={t('rail.ariaLabel')}
+          tabs={railTabs}
+          actions={openChatAction ? [openChatAction] : []}
+          panelId={sidePanelId}
+        />
       </div>
 
       {canQuickEdit && (
@@ -2139,15 +2151,17 @@ export function ArtifactViewer({
 
       <ConfirmModal
         open={!!closePrompt}
-        title={closePrompt ? t(`${closePrompt}.title`) : undefined}
-        message={closePrompt ? t(`${closePrompt}.message`) : undefined}
-        confirmLabel={closePrompt ? t(`${closePrompt}.confirmLabel`) : undefined}
+        title={closePrompt ? t(`${closePrompt.key}.title`) : undefined}
+        message={closePrompt ? t(`${closePrompt.key}.message`) : undefined}
+        confirmLabel={closePrompt ? t(`${closePrompt.key}.confirmLabel`) : undefined}
         cancelLabel={t('viewer.keepEditing')}
         destructive
         onClose={() => setClosePrompt(null)}
         onConfirm={() => {
+          const then = closePrompt?.then;
           setClosePrompt(null);
           onClose?.();
+          then?.();
         }}
       />
 
