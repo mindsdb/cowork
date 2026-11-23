@@ -12,7 +12,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { projectLabel } from '../../lib/projectLabel';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
-import { Alert, Button, Field, Select, Input, Textarea, Tooltip } from '../ui';
+import { Alert, Button, Checkbox, Field, Select, Input, Textarea, Tooltip } from '../ui';
+import { connectionMuteKey, normalizeComposerDisabledConnections, toggleConnectionMute } from '../../lib/connectionMutes';
 import { missedRunLabel, missedRunText } from '../../lib/scheduleCopy';
 import {
   INTERVAL_MINUTES, defaultWhen, describeWhen, deviceZone, formatRun, nextRuns, timeZoneLabel, usableZone,
@@ -83,6 +84,7 @@ export default function ScheduleTaskModal({
   projects = [],
   models = [],
   modelMeta = {},
+  connectors = [],         // the account's connections; a task can leave some out
   defaultProjectPath = '',
   busy = false,
   agentLabel,
@@ -116,6 +118,7 @@ export default function ScheduleTaskModal({
         prompt:      task.prompt || '',
         projectPath: match?.path || defaultProjectPath || NO_PROJECT,
         model:       task.model || DEFAULT_MODEL,
+        disabledConnections: normalizeComposerDisabledConnections(task.disabledConnections),
         timezone,
         ...at,
       });
@@ -186,6 +189,8 @@ export default function ScheduleTaskModal({
       project_id:   projectMatch?.id || null,
       // Sent even when it's the default, so an edit can clear a pin.
       model:        sentModel,
+      // Sent even when empty, so an edit can give a task every connection back.
+      disabled_connections: form.disabledConnections,
     };
     // A one-off that already ran stays off when only its time changes, so a
     // new time in the future turns it back on: "from the next run" is true.
@@ -349,6 +354,33 @@ export default function ScheduleTaskModal({
             )}
           </div>
 
+          {connectors.length > 0 && (
+            // A group, not a Field: Field names its one control after its
+            // label, and each box here needs its own name.
+            <div role="group" aria-labelledby="schedule-connections-label" className="flex flex-col">
+              <span id="schedule-connections-label" className="mb-1.5 text-sm font-medium text-ink-2">
+                {t('scheduleTaskModal.connections')}
+              </span>
+              <div className="flex flex-col gap-1.5">
+                {connectors.map((c) => {
+                  const key = connectionMuteKey(c.engine, c.name);
+                  const used = !form.disabledConnections.some((d) => connectionMuteKey(d.engine, d.name) === key);
+                  return (
+                    <label key={key} className="flex items-center gap-2 text-[13px] cursor-pointer">
+                      <Checkbox
+                        size="sm"
+                        checked={used}
+                        onCheckedChange={(on) => update('disabledConnections', toggleConnectionMute(form.disabledConnections, c, on))}
+                      />
+                      <span className="text-ink">{c.name}</span>
+                      <span className="text-ink-3">{c.display_name || c.engine}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {error && (
             <Alert variant="danger">{error}</Alert>
           )}
@@ -408,6 +440,7 @@ function emptyForm({ defaultProjectPath }) {
     prompt: '',
     projectPath: defaultProjectPath || NO_PROJECT,
     model: DEFAULT_MODEL,
+    disabledConnections: [],
     timezone: deviceZone(),
     ...defaultWhen(),
   };

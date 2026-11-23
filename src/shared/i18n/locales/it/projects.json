@@ -677,6 +677,7 @@
     "namePlaceholder": "Ricavato dal prompt",
     "project": "Progetto",
     "model": "Modello",
+    "connections": "Connessioni",
     "accountDefault": "Predefinito dell’account",
     "cancel": "Annulla",
     "saveAndRunOnce": "Salva ed esegui una volta",

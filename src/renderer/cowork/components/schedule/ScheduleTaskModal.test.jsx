@@ -194,6 +194,46 @@ describe('ScheduleTaskModal — model', () => {
   });
 });
 
+describe('ScheduleTaskModal — connections', () => {
+  const CONNECTORS = [
+    { engine: 'gmail', name: 'Work mail', display_name: 'Gmail' },
+    { engine: 'hubspot', name: 'CRM' },
+  ];
+  const submitted = async (onSubmit, button = /^Schedule$/) => {
+    fireEvent.click(screen.getByRole('button', { name: button }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    return onSubmit.mock.calls[0][0];
+  };
+
+  it('uses every connection unless one is left out', async () => {
+    const { onSubmit } = renderModal({ connectors: CONNECTORS });
+    prompt('send the digest');
+    expect(screen.getByRole('checkbox', { name: /Work mail/ })).toBeChecked();
+    expect((await submitted(onSubmit)).disabled_connections).toEqual([]);
+  });
+
+  it('sends the connections left out', async () => {
+    const { onSubmit } = renderModal({ connectors: CONNECTORS });
+    prompt('send the digest');
+    await userEvent.setup().click(screen.getByRole('checkbox', { name: /CRM/ }));
+    expect((await submitted(onSubmit)).disabled_connections).toEqual([{ engine: 'hubspot', name: 'CRM' }]);
+  });
+
+  it('starts an edit from the task’s left-out connections, and can give one back', async () => {
+    const task = { id: 's1', prompt: 'digest', cadence: 'daily', disabledConnections: [{ engine: 'gmail', name: 'Work mail' }] };
+    const { onSubmit } = renderModal({ connectors: CONNECTORS, task });
+    const mail = screen.getByRole('checkbox', { name: /Work mail/ });
+    expect(mail).not.toBeChecked();
+    await userEvent.setup().click(mail);
+    expect((await submitted(onSubmit, /Save changes/i)).disabled_connections).toEqual([]);
+  });
+
+  it('shows no connections field without any connections', () => {
+    renderModal();
+    expect(screen.queryByText('Connections')).not.toBeInTheDocument();
+  });
+});
+
 describe('ScheduleTaskModal — started from a chat', () => {
   it('opens with the prompt filled in and the chat’s project picked, and saves it as a new schedule', async () => {
     const { onSubmit } = renderModal({ initial: { prompt: 'Find open grants for my NGO' }, defaultProjectPath: '/work/metrics' });

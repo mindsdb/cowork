@@ -139399,6 +139399,40 @@
       "text": "2cd0f3be8738"
     }
   },
+  "projects:scheduleTaskModal.connections": {
+    "de": {
+      "from": "dc273117482b",
+      "text": "3b9577b6907e"
+    },
+    "es": {
+      "from": "dc273117482b",
+      "text": "b91b4b93c283"
+    },
+    "fr": {
+      "from": "dc273117482b",
+      "text": "689351db7e17"
+    },
+    "it": {
+      "from": "dc273117482b",
+      "text": "4033bb6a2169"
+    },
+    "ja": {
+      "from": "dc273117482b",
+      "text": "d528fb88a693"
+    },
+    "ko": {
+      "from": "dc273117482b",
+      "text": "32dd2947e742"
+    },
+    "pt-BR": {
+      "from": "dc273117482b",
+      "text": "21f857046944"
+    },
+    "zh-CN": {
+      "from": "dc273117482b",
+      "text": "a5574109f020"
+    }
+  },
   "projects:scheduleTaskModal.createSubtitleDesktop": {
     "de": {
       "from": "efcae1bf41b4",

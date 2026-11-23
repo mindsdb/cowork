@@ -677,6 +677,7 @@
     "namePlaceholder": "프롬프트에서 자동으로 지정",
     "project": "프로젝트",
     "model": "모델",
+    "connections": "연결",
     "accountDefault": "계정 기본값",
     "cancel": "취소",
     "saveAndRunOnce": "저장하고 한 번 실행",

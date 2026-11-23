@@ -7543,6 +7543,7 @@ function AppCore() {
             projects={runnableProjects}
             models={modelOptions}
             modelMeta={modelMeta}
+            connectors={composerConnectors}
             selectedProject={runnableSelectedProject}
             selectedModel={selectedModel}
             onCreate={handleCreateSchedule}
@@ -7577,6 +7578,7 @@ function AppCore() {
           models={modelOptions}
           modelMeta={modelMeta}
           defaultProjectPath={scheduleDraft?.projectPath || ''}
+          connectors={composerConnectors}
           agentLabel={agentLabel}
         />
 
@@ -7586,6 +7588,7 @@ function AppCore() {
             projects={runnableProjects}
             models={modelOptions}
             modelMeta={modelMeta}
+            connectors={composerConnectors}
             agentLabel={agentLabel}
             onBack={() => { setSelectedScheduleId(null); setRoute('scheduled'); }}
             onUpdate={handleUpdateSchedule}
