@@ -12,6 +12,8 @@ vi.mock('../api', async (importOriginal) => ({
 }));
 // The person signed in. The directory leaves them out, as MindsHub's member
 // list does.
+const hostSpies = vi.hoisted(() => ({ openExternal: vi.fn() }));
+vi.mock('../../platform/host', async (importOriginal) => ({ ...(await importOriginal()), openExternal: hostSpies.openExternal }));
 const account = vi.hoisted(() => ({ user: null }));
 vi.mock('../hooks/useAccountUser', () => ({ useAccountUser: () => account.user }));
 
@@ -38,6 +40,7 @@ const TEAMS = {
 beforeEach(() => {
   __resetOrgSharingForTests();
   account.user = { name: 'Mia Lane', email: 'Mia@Acme.com', sub: 'u-mia' };
+  hostSpies.openExternal.mockClear();
   api.directory.mockReset();
   api.directory.mockImplementation(async () => directoryAnswer());
   api.byIds.mockReset();
@@ -101,6 +104,22 @@ describe('<RecipientField>', () => {
     expect(listbox).toHaveTextContent('People in Acme');
     expect(within(listbox).getByRole('button', { name: /Invite people/ })).toBeTruthy();
     expect(screen.queryByText('Everyone you can add is already added.')).toBeNull();
+  });
+
+  it("opens the console's Members page for this session's organization from Invite people (ENG-4333)", async () => {
+    account.user = { name: 'Mia Lane', email: 'Mia@Acme.com', sub: 'u-mia', orgId: 'org-acme' };
+    api.directory.mockImplementation(async () => directoryAnswer({ people: [] }));
+    const user = userEvent.setup();
+    render(<Harness allowExternal />);
+    await user.click(input());
+
+    const listbox = await screen.findByRole('listbox');
+    await user.click(await within(listbox).findByRole('button', { name: /Invite people/ }));
+
+    const opened = new URL(hostSpies.openExternal.mock.calls.at(-1)[0]);
+    expect(opened.pathname).toBe('/settings/organization/members');
+    expect(opened.searchParams.get('organization')).toBe('org-acme');
+    expect(opened.searchParams.get('subject')).toBe('u-mia');
   });
 
   it('says everyone is already added once every person is picked', async () => {

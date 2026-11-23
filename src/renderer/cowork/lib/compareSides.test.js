@@ -259,6 +259,9 @@ describe('credit failures', () => {
   it('are told apart from other failures', () => {
     expect(isCreditFailure(turnsOf([user('p'), outOfCredits])[0])).toBe(true);
     expect(isCreditFailure(turnsOf([user('p'), { role: 'error', code: 'included_allowance_exhausted' }])[0])).toBe(true);
+    // A Plus or Pro stop with an empty wallet is the account's, not the model's.
+    expect(isCreditFailure(turnsOf([user('p'), { role: 'error', code: 'window_allowance_exhausted' }])[0])).toBe(true);
+    expect(isCreditFailure(turnsOf([user('p'), { role: 'error', code: 'model_not_in_tier' }])[0])).toBe(true);
     expect(isCreditFailure(turnsOf([user('p'), { role: 'error', code: 'provider_overloaded' }])[0])).toBe(false);
     expect(isCreditFailure(turnsOf([user('p'), reply()])[0])).toBe(false);
   });
@@ -284,7 +287,30 @@ describe('credit failures', () => {
     const b = turnsOf([user('p'), { role: 'error', code: 'budget_exceeded' }]);
     expect(judgeableTurn(a, b)).toBeNull();
     expect(unjudgeableReason(a, b, { a: 'Air', b: 'Sonnet' }))
-      .toBe("Sonnet hit your organization's budget before finishing, so this turn can't be judged.");
+      .toBe("Sonnet hit a budget before finishing, so this turn can't be judged.");
+  });
+
+  it('name whose budget stopped a side, and stay neutral when the two sides disagree', () => {
+    const ws = turnsOf([user('p'), { role: 'error', code: 'budget_exceeded', budgetScope: 'workspace' }]);
+    const key = turnsOf([user('p'), { role: 'error', code: 'budget_exceeded', budgetScope: 'api_key' }]);
+    const ok = turnsOf([user('p'), reply()]);
+    expect(unjudgeableReason(ok, ws, { a: 'Air', b: 'Sonnet' }))
+      .toBe("Sonnet hit this workspace's budget before finishing, so this turn can't be judged.");
+    expect(unjudgeableReason(ws, ws, { a: 'Air', b: 'Sonnet' }))
+      .toBe("Both models hit this workspace's budget before finishing, so this turn can't be judged.");
+    expect(unjudgeableReason(ws, key, { a: 'Air', b: 'Sonnet' }))
+      .toBe("Both models hit a budget before finishing, so this turn can't be judged.");
+  });
+
+  it('name a team or member budget, reading user and all_members as one', () => {
+    const team = turnsOf([user('p'), { role: 'error', code: 'budget_exceeded', budgetScope: 'team' }]);
+    const mine = turnsOf([user('p'), { role: 'error', code: 'budget_exceeded', budgetScope: 'user' }]);
+    const all = turnsOf([user('p'), { role: 'error', code: 'budget_exceeded', budgetScope: 'all_members' }]);
+    const ok = turnsOf([user('p'), reply()]);
+    expect(unjudgeableReason(ok, team, { a: 'Air', b: 'Sonnet' }))
+      .toBe("Sonnet hit your team's budget before finishing, so this turn can't be judged.");
+    expect(unjudgeableReason(mine, all, { a: 'Air', b: 'Sonnet' }))
+      .toBe("Both models hit your budget before finishing, so this turn can't be judged.");
   });
 
   it('do not hide an earlier turn behind a later judgeable one', () => {
@@ -327,6 +353,13 @@ describe('compareCreditNotice', () => {
   it('takes the more severe side and blocks when either could not run', () => {
     expect(compareCreditNotice([low, empty])).toMatchObject({ kind: 'balance_empty', blocks: true });
     expect(compareCreditNotice([low, null])).toMatchObject({ kind: 'balance_low', blocks: false });
+  });
+
+  it('blocks on a used-up plan window with an empty wallet, not on one the wallet carries', () => {
+    const windowOut = { kind: 'window_exhausted', tone: 'danger', title: '5-hour allowance used up', body: 'Paused.' };
+    const onWallet = { kind: 'window_on_wallet', tone: 'info', title: '5-hour allowance used up', body: 'Continuing.' };
+    expect(compareCreditNotice([windowOut, null])).toMatchObject({ kind: 'window_exhausted', blocks: true });
+    expect(compareCreditNotice([onWallet, null])).toMatchObject({ kind: 'window_on_wallet', blocks: false });
   });
 
   it('says why a low balance matters more here', () => {

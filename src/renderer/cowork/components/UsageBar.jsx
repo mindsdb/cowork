@@ -4,9 +4,11 @@ import { Icon } from './ui/Icon';
 import { host } from '../../platform/host';
 import { trackBillingOpened } from '../lib/analytics';
 import { usageActionUrl } from '../lib/usageWarnings';
+import { useConsoleLink } from '../hooks/useConsoleLink';
 import { billingActions } from '../lib/billingLinks';
 import { useUsageBarDismiss, useStandingFigureHidden } from '../lib/usageBarDismiss';
 import { useTranslation } from '../../lib/i18n';
+import { useUsageActions } from '../hooks/useUpgradeOffer';
 
 // The usage bar above the chat input (ENG-1782): a tab tucked behind the
 // composer's top edge, so it reads as part of the input rather than a system
@@ -38,6 +40,7 @@ const keyOf = (d) => d.dismissKey ?? d.kind;
 // closed warnings are forgotten.
 export default function UsageBar({ warning, isBillingOwner = false, usageKnown = false, trigger = 'usage_notice' }) {
   const { t } = useTranslation('shell');
+  const consoleLink = useConsoleLink();
   const [dismissed, dismiss] = useUsageBarDismiss({
     // Closed warnings are forgotten once the bar is back at rest: the standing
     // figure or nothing at all. Not while a warning is up, even one the person
@@ -48,6 +51,8 @@ export default function UsageBar({ warning, isBillingOwner = false, usageKnown =
   // above must never bring it back, and neither may the bar emptying for some
   // other reason (a BYOK provider, an uncapped grant, a top-up).
   const [figureHidden, hideFigure] = useStandingFigureHidden();
+  // A plan upgrade on the bar (ENG-4186) shows only where one can be bought.
+  const usageActions = useUsageActions();
   // What the bar can show, outermost first: the warning, then what it steps
   // down to when closed (a free warning steps down to the standing figure for
   // someone with no balance to fall through to; see usageWarnings.js). The
@@ -72,7 +77,7 @@ export default function UsageBar({ warning, isBillingOwner = false, usageKnown =
   // Separated from `usage_notice` so the standing figure can be graded as a
   // conversion surface on its own rather than inside the warning's number.
   const clickTrigger = shown.resting ? 'usage_at_rest' : trigger;
-  const actions = billingActions(shown.actions);
+  const actions = usageActions.visible(billingActions(shown.actions));
   return (
     <>
       {live}
@@ -91,8 +96,12 @@ export default function UsageBar({ warning, isBillingOwner = false, usageKnown =
                 key={a.key}
                 type="button"
                 onClick={() => {
+                  if (usageActions.isUpgrade(a)) {
+                    usageActions.openUpgrade(a, 'usage_bar');
+                    return;
+                  }
                   trackBillingOpened(clickTrigger);
-                  host.openExternal(usageActionUrl(a, { isBillingOwner }));
+                  host.openExternal(consoleLink(usageActionUrl(a, { isBillingOwner })));
                 }}
                 className="border-0 bg-transparent p-0 m-0 font-body text-[13px] font-semibold underline underline-offset-2 text-[color:inherit] cursor-pointer hover:opacity-80"
               >{a.label}</button>

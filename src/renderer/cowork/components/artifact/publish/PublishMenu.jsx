@@ -24,6 +24,7 @@ import i18n, { useTranslation } from '../../../../lib/i18n';
 import { copyText } from '../../../lib/clipboard';
 import { reportLinkCopied, reportShareOpened } from '../../../lib/artifactShareAnalytics';
 import {
+  ACCESS_LABELS,
   AccessChooser,
   accessDraftFromArtifact,
   addedIndividuals,
@@ -39,7 +40,9 @@ import { LOAD_STATUS } from '../../../lib/sharingContract';
 import { LoadStatus, RetryAlert } from '../../LoadStatus';
 import { useArtifactShareState } from './useArtifactShareState';
 import { shareStateIcon } from '../../ShareStateLabel';
-import { UpToDateTag } from '../../UpToDateTag';
+import { UpToDateTag, useSaveStatus } from '../../UpToDateTag';
+import { useArtifactStats } from '../stats/useArtifactStats';
+import { ViewerAnalyticsSettings } from './ViewerAnalyticsSettings';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
@@ -72,7 +75,7 @@ const SCROLL_BODY = 'min-h-0 overflow-y-auto overscroll-contain';
 // warning next to an error must not push the footer out of the popup.
 const ALERT_ROW = 'mx-4 mb-3 min-h-0 overflow-y-auto';
 
-function PanelHeader({ title }) {
+export function PanelHeader({ title }) {
   // .s-h3 already sets color:var(--ink); it does not set padding/border, so
   // those move safely to utilities. Directional border zeroes its off-axis
   // sides (preflight-off box-paint footgun).
@@ -81,7 +84,7 @@ function PanelHeader({ title }) {
   );
 }
 
-function SectionLabel({ children, action }) {
+export function SectionLabel({ children, action }) {
   return (
     <div className="flex items-baseline justify-between gap-2 mb-2">
       <span className="font-body font-semibold text-sm text-ink">{children}</span>
@@ -135,12 +138,26 @@ function UrlField({ url, onCopied }) {
   );
 }
 
-// Read-only "current access" card (summary view). Shared with specific
-// teams and people, it lists them right away (the first few, then "+N
-// more"), so seeing who has access never takes a click on Change.
-function AccessSummaryCard({ pub, sharing, orgName }) {
+// The "current access" card (summary view). Shared with specific teams and
+// people, it lists them right away (the first few, then "+N more"), so seeing
+// who has access never takes a click. `picker`, when given, takes the card's
+// place: `(desc) => the access dropdown`, which switches the access from
+// here, given the card's line (how many are on a list); the list then
+// follows it in a box of its own.
+//
+// `readOnly`: shown to someone who doesn't own the artifact (SharedWithMenu,
+// ENG-4455), so its words are about the owner's choice, not the reader's:
+// "Only its owner" for an owner-only link, and, when the lists are withheld
+// (the reader is outside the org), what kind of list it is without one.
+export function AccessSummaryCard({ pub, sharing, orgName, picker = null, readOnly = false }) {
+  const { t } = useTranslation('artifacts');
   const orgSharing = !!sharing;
-  const m = accessSummaryLabel(pub, { orgSharing, orgName });
+  const summary = accessSummaryLabel(pub, { orgSharing, orgName });
+  const m = readOnly && pub?.accessMode === 'restricted' && pub?.ownerOnly
+    ? { icon: Ico.lock, title: t('publish.sharedWith.ownerOnlyTitle'), desc: t('publish.sharedWith.ownerOnlyDesc') }
+    : readOnly && (summary === ACCESS_LABELS.specific || summary === ACCESS_LABELS.specificPeople)
+      ? { icon: summary.icon, title: summary.title, desc: t('publish.sharedWith.listWithheld') }
+      : summary;
   const draft = accessDraftFromArtifact(pub, { orgSharing, teams: sharing?.teams?.teams || [] });
   const listed = draft.mode === AUDIENCE_CHOICE.SPECIFIC;
   const emails = listed ? parseEmailList(draft.emailsText).valid : [];
@@ -150,6 +167,24 @@ function AccessSummaryCard({ pub, sharing, orgName }) {
   const desc = count > 0
     ? recipientSummary({ teamIds, userIds, emails }, { orgName, emailsOnly: !orgSharing })
     : m.desc;
+  const list = count > 0 && (
+    <SharedWithList
+      teamIds={teamIds}
+      userIds={userIds}
+      emails={emails}
+      orgName={orgName}
+      teamsState={sharing?.teams || null}
+      emailsOnly={!orgSharing}
+    />
+  );
+  if (picker) {
+    return (
+      <div className="flex flex-col gap-2" data-testid="access-summary">
+        {picker(desc)}
+        {list && <div className="rounded-card border border-solid border-line bg-surface-2 py-1 px-1">{list}</div>}
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col rounded-card bg-surface-2 border border-solid border-line" data-testid="access-summary">
       <div className="flex items-center gap-[10px] py-[10px] px-3">
@@ -285,13 +320,35 @@ function VersionList({ versions, activatingMd5, busy, onActivate }) {
 
 // ── Main control ─────────────────────────────────────────────────────────
 
-export function PublishMenu({ controller, disabled = false, disabledReason = '' }) {
+// Requests already opened. A request opens one panel: StrictMode's second
+// mount and a later remount of the menu don't open or report it again.
+const openedRequests = new WeakSet();
+
+// `openRequest` is one Share clicked outside the viewer: the menu opens its
+// panel once, when it mounts, even if it mounts after the viewer, and calls
+// `onRequestClosed` when that panel closes. That panel picks no audience for a
+// first share: the person chose to share and has not yet said with whom. Any
+// later open is the header's own.
+export function PublishMenu({ controller, disabled = false, disabledReason = '', openRequest = null, onRequestClosed }) {
   const { t } = useTranslation('artifacts');
   const pub = controller;
   const isPublished = !!pub.publishedUrl;
-  const [open, setOpen] = useState(false);
+  const entry = pub.entry || 'viewer';
+  const [fromRequest, setFromRequest] = useState(() => !!openRequest && !disabled && !openedRequests.has(openRequest));
+  const [open, setOpen] = useState(fromRequest);
+  const close = () => {
+    setOpen(false);
+    if (!fromRequest) return;
+    setFromRequest(false);
+    onRequestClosed?.();
+  };
   // summary | access | password | versions — only meaningful while published.
   const [view, setView] = useState('summary');
+  // Viewer analytics settings (ENG-4455), read with the stats while the panel
+  // is open on a published artifact.
+  const analytics = useArtifactStats(pub.artifact, { enabled: open && isPublished && !!pub.artifact });
+  // The analytics switches save as they flip; the footer says so.
+  const analyticsSave = useSaveStatus(!!analytics.trackingBusy, !!analytics.error);
   // Which reads the panel waits on, and whether it may claim "Shared"
   // (useArtifactShareState).
   const {
@@ -311,7 +368,8 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
   // The draft the live access reads as.
   const seedDraft = () => accessDraftFromArtifact(pub, draftOptions);
   // Editable access draft for the publish + change-access flows.
-  const [draft, setDraft] = useState(() => (isPublished ? seedDraft() : newAccessDraft()));
+  const firstShareDraft = () => newAccessDraft({ preselect: !fromRequest });
+  const [draft, setDraft] = useState(() => (isPublished ? seedDraft() : firstShareDraft()));
   // Has the user touched the access draft? Gates the late-arrival re-seed below
   // so we never clobber edits-in-progress when the server list lands (ENG-931).
   const [draftDirty, setDraftDirty] = useState(false);
@@ -336,7 +394,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
       pub.loadVersions();  // lazy-load history for the rollback section
     } else {
       setView('publish');
-      setDraft(newAccessDraft());
+      setDraft(firstShareDraft());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isPublished]);
@@ -417,7 +475,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
   const doUnpublish = async () => {
     const result = await pub.unpublish();
     // Stays open when the page itself is still live, so the person reads why.
-    if (result?.ok && !result.notice) setOpen(false);
+    if (result?.ok && !result.notice) close();
   };
   const doActivate = async (md5) => {
     if (pub.busy) return;
@@ -434,6 +492,22 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
       : { background: 'var(--accent)', color: '#fff', border: '1px solid var(--accent)', padding: '7px 16px' }),
   };
 
+  const reportOpened = () => reportShareOpened(pub.artifact, {
+    entry,
+    // Unknown until the artifact's access has been read, whatever the card's
+    // default mode says.
+    isShared: shareState.kind === 'unknown' || (isPublished && !pub.accessLoaded)
+      ? null
+      : isSharedWithSomeone,
+  });
+  // A panel opened by a request reports its open once, as a click does.
+  useEffect(() => {
+    if (!fromRequest || openedRequests.has(openRequest)) return;
+    openedRequests.add(openRequest);
+    reportOpened();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <>
       {/* Outside-press dismiss. Clicks inside the artifact preview <iframe>
@@ -443,7 +517,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
       {open && (
         <OutsidePressLayer
           data-testid="publish-menu-outside-dismiss"
-          onPress={() => setOpen(false)}
+          onPress={close}
           zIndex={89}
         />
       )}
@@ -456,17 +530,12 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
             if (!pub.busy) setNotifyPrompt(null);
             return;
           }
-          if (v && !open) {
-            reportShareOpened(pub.artifact, {
-              entry: 'viewer',
-              // Unknown until the artifact's access has been read, whatever the
-              // card's default mode says.
-              isShared: shareState.kind === 'unknown' || (isPublished && !pub.accessLoaded)
-                ? null
-                : isSharedWithSomeone,
-            });
+          if (!v) {
+            close();
+            return;
           }
-          setOpen(v);
+          if (!open) reportOpened();
+          setOpen(true);
         }}
       >
         {/* Who can open it, on hover, once it's shared (not over the open
@@ -549,16 +618,45 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                   <div className={SCROLL_BODY} data-testid="publish-menu-body">
                     <div className="py-3 px-4 border-b border-t-0 border-x-0 border-solid border-line">
                       <SectionLabel>{t('publish.websiteUrl')}</SectionLabel>
-                      <UrlField url={pub.publishedUrl} onCopied={() => reportLinkCopied(pub.artifact, { entry: 'viewer' })} />
+                      <UrlField url={pub.publishedUrl} onCopied={() => reportLinkCopied(pub.artifact, { entry })} />
                     </div>
 
                     <div className="py-3 px-4">
                       {view === 'summary' && (
                         <>
-                          <SectionLabel action={<LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setView('access'); }}>{t('publish.change')}</LinkButton>}>
+                          {/* The card is a dropdown: picking another access
+                              opens the change, with Update to save it. The
+                              people on a list are edited from Edit list. */}
+                          <SectionLabel action={current.mode === AUDIENCE_CHOICE.SPECIFIC && sharingReady && pub.accessLoaded && (
+                            <LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setView('access'); }}>{t('publish.editList')}</LinkButton>
+                          )}>
                             {t('publish.whoCanAccess')}
                           </SectionLabel>
-                          {accessLoadStatus || <AccessSummaryCard pub={pub} sharing={sharing} orgName={orgName} />}
+                          {accessLoadStatus || sharingSettingsStatus || (<>
+                            {permissionsNotice}
+                            <AccessSummaryCard
+                              pub={pub}
+                              sharing={sharing}
+                              orgName={orgName}
+                              // Not before the real list is in: a pick drafts
+                              // over it, and would not be re-seeded (ENG-931).
+                              picker={current.mode && pub.accessLoaded ? (desc) => (
+                                <AccessChooser
+                                  layout="dropdown"
+                                  showEditor={false}
+                                  chosenDesc={desc}
+                                  value={current}
+                                  sharing={sharing}
+                                  onChange={(d) => {
+                                    if (d.mode === current.mode) return;
+                                    editDraft(d);
+                                    setDraftDirty(true);
+                                    setView('access');
+                                  }}
+                                />
+                              ) : null}
+                            />
+                          </>)}
                           {pub.accessMode === 'password' && (
                             <div className="mt-2 flex justify-end">
                               <LinkButton onClick={() => { setPwd({ value: '', reveal: false }); setView('password'); }}>{t('publish.changePassword')}</LinkButton>
@@ -580,7 +678,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                           {sharingSettingsStatus || accessLoadStatus || (
                             <>
                               {permissionsNotice}
-                              <AccessChooser value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} />
+                              <AccessChooser layout="dropdown" value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} />
                             </>
                           )}
                         </>
@@ -627,6 +725,17 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                         </>
                       )}
                     </div>
+
+                    {/* Whatever access is picked or being changed: analytics
+                        is its own setting, saved as it flips. Not for Only
+                        me, which nobody else opens. */}
+                    {pub.artifact && view !== 'versions'
+                      && (view === 'access' ? draft.mode : current.mode) !== AUDIENCE_CHOICE.PRIVATE && (
+                      <div className="py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line">
+                        <SectionLabel>{t('analytics.title')}</SectionLabel>
+                        <ViewerAnalyticsSettings controller={analytics} />
+                      </div>
+                    )}
                   </div>
   
                   <NoticeRow message={pub.notice || (pub.linkOwnerRecorded === false ? unrecordedLinkWarning() : '')} />
@@ -671,13 +780,13 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '' 
                       ) : (
                         <UpToDateTag />
                       )
-                    ) : (pub.modified && !orgMode) ? (
+                    ) : pub.modified ? (
                       <FooterButton primary onClick={pub.update} disabled={pub.busy}
                         busy={pub.phase === 'updating'} busyLabel={t('status.updating')}>
                         {t('publish.update')}
                       </FooterButton>
                     ) : (
-                      <UpToDateTag />
+                      <UpToDateTag state={analyticsSave} />
                     )}
                     </>)}
                   </div>

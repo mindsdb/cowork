@@ -52,7 +52,7 @@ export const MINDS_API_BASE =
 // `pr-cowork-744.dev.mindshub.ai` answers 200. Dropping the prefix is the
 // derivation the chart actually implies. Permanent envs are untouched, because
 // there the console does carry its own `console.` label.
-const mindsServiceHost = (role: 'auth' | 'console' | 'cowork'): string => {
+const mindsServiceHost = (role: 'auth' | 'console' | 'cowork' | 'view'): string => {
   if (role === 'console' && MINDS_API_BASE.includes('://api-')) {
     return MINDS_API_BASE.replace('://api-', '://');
   }
@@ -111,8 +111,21 @@ export const MINDS_ADD_FUNDS_URL = `${MINDS_BILLING_URL}?exhausted=1`;
    the console's auto top up controls call owner-only wallet endpoints, and a
    member who follows this link gets a dialog they cannot submit. */
 export const MINDS_AUTO_TOP_UP_URL = `${MINDS_BILLING_URL}?autoTopUp=1`;
-// The org's spending budgets; an owner or admin raises a spent one here.
+/* The billing page told to open the plan's confirm dialog. The console
+   checks who may buy (the owner of a personal organization) before it
+   subscribes, so the link is safe to follow for anyone; callers only offer
+   it where a purchase can be made. Always opened through `mindsUpgradeUrl`,
+   which names the organization. */
+export const MINDS_UPGRADE_URL = Object.freeze({
+  plus: `${MINDS_BILLING_URL}?upgrade=plus`,
+  pro: `${MINDS_BILLING_URL}?upgrade=pro`,
+});
+export type UpgradeTier = keyof typeof MINDS_UPGRADE_URL;
+// The org's Budgets tab; an administrator raises a spent budget here.
 export const MINDS_BUDGETS_URL = `${MINDS_BILLING_URL}?tab=budgets`;
+// From a budget denial (the stopped-task card, Code's composer lip). `from` lets
+// the console's Budgets tab count the visit as a denial's; other links stay bare.
+export const MINDS_BUDGETS_DENIAL_URL = `${MINDS_BUDGETS_URL}&from=budget_denial`;
 export const MINDS_API_KEY_URL = `${MINDS_CONSOLE_URL}/apiKeys`;
 
 // Console settings pages the sidebar user menu deep-links to (ENG-1408) —
@@ -146,6 +159,16 @@ export function consoleUrlFor(
   return target.toString();
 }
 
+/** The console link that opens the plan's confirm dialog for `tier` (Plus
+ *  unless Pro is named), for the organization and account this session runs
+ *  in. */
+export function mindsUpgradeUrl(
+  tier: string | null | undefined,
+  account: { organizationId?: string | null; subject?: string | null } = {},
+): string {
+  return consoleUrlFor(MINDS_UPGRADE_URL[tier === 'pro' ? 'pro' : 'plus'], account);
+}
+
 // Environment-independent MindsHub destinations (docs site + support page).
 export const MINDS_DOCS_URL = 'https://docs.mindshub.ai';
 // The API docs the user menu links to (ENG-4288). The docs site's home is the
@@ -170,6 +193,11 @@ export const MINDS_DOWNLOAD_URL = 'https://mindshub.ai/download?os=auto&from=cow
 // On Cowork web itself this is its own origin, because MINDS_API_BASE was
 // derived from that origin in the first place.
 export const MINDS_COWORK_WEB_URL = mindsServiceHost('cowork');
+
+// The view host that serves published artifacts in this environment. The same
+// token swap as Cowork web above: a PR environment's view host is
+// view-<env>.dev.mindshub.ai.
+export const MINDS_VIEW_URL = mindsServiceHost('view');
 
 /** Where a sign-up link was clicked: the desktop app or Cowork web. */
 export type SignupSource = 'desktop' | 'web';

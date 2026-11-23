@@ -79,6 +79,7 @@ const fieldSelectStyle = {
 export default function ScheduleTaskModal({
   open, onClose, onSubmit,
   task,                    // when set → edit mode
+  initial = null,          // new schedule only: { prompt } to start from
   projects = [],
   models = [],
   modelMeta = {},
@@ -119,9 +120,10 @@ export default function ScheduleTaskModal({
         ...at,
       });
     } else {
-      setForm(emptyForm({ defaultProjectPath }));
+      const blank = emptyForm({ defaultProjectPath });
+      setForm(initial?.prompt ? { ...blank, prompt: initial.prompt } : blank);
     }
-  }, [open, task?.id, defaultProjectPath, projects]);
+  }, [open, task?.id, defaultProjectPath, projects, initial?.prompt]);
 
   const update = (key, value) => setForm((f) => ({ ...f, [key]: value }));
   // Switching zone keeps the clock time and day the user picked, so "9:00"

@@ -258,7 +258,7 @@
     "topUp": "充值余额 →",
     "addFunds": "充值 →",
     "slowDown": "{sentence}这不是积分问题。",
-    "budgetReached": "你所在组织的预算已用完。{detail}",
+    "budgetReached": "预算已用完。{detail}",
     "viewBudgetsArrow": "查看预算 →"
   },
   "providers": {
@@ -335,7 +335,7 @@
     "modelNeedsCredits": "{model} 需要积分。{link}后即可使用。",
     "modelNeedsCreditsNoLink": "{model} 需要积分。",
     "topUpBalance": "充值余额",
-    "modelBudgetReached": "你所在组织的预算已用完，无法运行 {model}。",
+    "modelBudgetReached": "适用的预算已用完，无法运行 {model}。",
     "viewBudgets": "查看预算",
     "imageModelNeedsMindsHub": "图像生成在 MindsHub 上运行。请在 LLM 服务商中添加 MindsHub 以选择图像模型。",
     "imageModelHint": "选择用于生成图像的模型。"
@@ -389,6 +389,11 @@
     "jev": {
       "title": "使用 Jev 快速回答",
       "subtitle": "Jev 是 MindsHub 的决策模型，它会读取每条消息和近期对话，判断你选择的模型能否直接回答，并检查 {agent} 是否已完成工作。关闭后，每条消息都会交由 {agent} 运行。"
+    },
+    "jevClassify": {
+      "title": "使用 Jev 进行分类",
+      "subtitle": "让 {agent} 在将大量文本归入类别、或对每条文本回答是/否问题时，使用 MindsHub 的决策模型 Jev，而不是你选择的模型。批量处理时更快、更省钱。关闭后，将使用你选择的模型为文本分类。",
+      "unavailable": "仅当编码模型在 MindsHub 上运行时可用。"
     }
   },
   "desktop": {

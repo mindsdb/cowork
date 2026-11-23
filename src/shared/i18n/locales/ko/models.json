@@ -5,7 +5,10 @@
     "searchAriaLabel": "모델 검색",
     "unavailable": "사용 불가",
     "addCredits": "크레딧 충전",
-    "addCreditsTooltip": "이 모델을 사용하려면 크레딧을 충전하세요"
+    "addCreditsTooltip": "이 모델을 사용하려면 크레딧을 충전하세요",
+    "upgrade": "업그레이드",
+    "upgradeTooltip": "{tier, select, plus {Plus를 시작하면 이 모델이 포함됩니다} pro {Pro로 업그레이드하면 이 모델이 포함됩니다} other {업그레이드하면 이 모델이 포함됩니다}}",
+    "tierTag": "{tier, select, plus {Plus} pro {Pro} other {플랜}}"
   },
   "groups": {
     "openWeight": "오픈 웨이트",

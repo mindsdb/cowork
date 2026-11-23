@@ -6,7 +6,8 @@
         "addFunds": "残高を追加",
         "setUpAutoTopUp": "自動チャージを設定",
         "manageAutoTopUp": "自動チャージを管理",
-        "updatePaymentMethod": "支払い方法を更新"
+        "updatePaymentMethod": "支払い方法を更新",
+        "upgrade": "{tier, select, plus {Plusにする} pro {Proにアップグレード} other {アップグレード}}"
       },
       "noFreeGrant": "このアカウントにはMindsHub Airの無料トークンが含まれていません。MindsHub Airも他のモデルと同様に残高を使用します。",
       "allowanceStop": {
@@ -66,8 +67,22 @@
         "balanceLowToo": "残高も少なくなっています（{usd}）。"
       },
       "budgetExceeded": {
-        "raise": "オーナーまたは管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。",
-        "airHasRoom": "オーナーまたは管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。MindsHub Airは無料枠が残っている間は引き続き利用できます。"
+        "raise": "{hasModel, select, true {{scope, select, org {オーナーまたは管理者が「予算」で上限を引き上げるまで、{model} は実行できません。ほかのモデルは引き続き使えます。} other {管理者が「予算」で上限を引き上げるまで、{model} は実行できません。ほかのモデルは引き続き使えます。}}} other {{scope, select, org {オーナーまたは管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。} other {管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。}}}}",
+        "airHasRoom": "{hasModel, select, true {{scope, select, org {オーナーまたは管理者が「予算」で上限を引き上げるまで、{model} は実行できません。ほかのモデルは引き続き使えます。} other {管理者が「予算」で上限を引き上げるまで、{model} は実行できません。ほかのモデルは引き続き使えます。}}} other {{scope, select, org {オーナーまたは管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。MindsHub Airは無料枠が残っている間は引き続き利用できます。} other {管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。MindsHub Airは無料枠が残っている間は引き続き利用できます。}}}}"
+      },
+      "window": {
+        "usedUpTitle": "{window, select, 7d {週間の利用枠を使い切りました} other {5時間の利用枠を使い切りました}}",
+        "onWallet": "リセットされるまで、残高からAPI料金で支払います。",
+        "onWalletWithTime": "{time}にリセットされるまで、残高からAPI料金で支払います。",
+        "paused": "リセットされるまで、プランでのタスクは一時停止します。続けるには残高を追加してください。",
+        "pausedWithTime": "{time}まで、プランでのタスクは一時停止します。続けるには残高を追加してください。",
+        "pausedMobile": "リセットされるまで、プランでのタスクは一時停止します。",
+        "pausedWithTimeMobile": "{time}まで、プランでのタスクは一時停止します。",
+        "lowTitle": "{window, select, 7d {週間} other {5時間}}の利用枠の{percent}を使用済み",
+        "lowThenWallet": "その後は、リセットされるまで残高からAPI料金で支払います。",
+        "lowThenWalletWithTime": "その後は、{time}にリセットされるまで残高からAPI料金で支払います。",
+        "lowThenPause": "その後は、リセットされるまでタスクが一時停止します。",
+        "lowThenPauseWithTime": "その後は、{time}までタスクが一時停止します。"
       }
     },
     "scheduleWhen": {
@@ -106,7 +121,7 @@
         "walletEmpty": "利用できるクレジットがありません。MindsHubを使用するには残高を追加してください。",
         "allowanceExhausted": "MindsHub Airの無料トークンがなく、残高もありません。",
         "freeAirPaused": "無料のMindsHub Airは現在一時停止しています。",
-        "budgetExceeded": "組織の予算を使い切りました。",
+        "budgetExceeded": "予算を使い切りました。",
         "walletEmptyMobile": "利用できるクレジットがありません。"
       },
       "missingApiKey": "右側でAPIキーを追加してください。",
@@ -204,8 +219,8 @@
       "unjudgeable": {
         "both": "両方のモデルが完了前にクレジットを使い切ったため、このターンは評価できません。",
         "one": "{name}が完了前にクレジットを使い切ったため、このターンは評価できません。",
-        "bothBudget": "両方のモデルが完了前に組織の予算上限に達したため、このターンは評価できません。",
-        "oneBudget": "{name}が完了前に組織の予算上限に達したため、このターンは評価できません。"
+        "bothBudget": "{scope, select, org {両方のモデルが完了前に組織の予算上限に達したため} workspace {両方のモデルが完了前にこのワークスペースの予算上限に達したため} api_key {両方のモデルが完了前にこのAPIキーの予算上限に達したため} team {両方のモデルが完了前にチームの予算上限に達したため} member {両方のモデルが完了前にあなたの予算上限に達したため} other {両方のモデルが完了前に予算上限に達したため}}、このターンは評価できません。",
+        "oneBudget": "{scope, select, org {{name}が完了前に組織の予算上限に達したため} workspace {{name}が完了前にこのワークスペースの予算上限に達したため} api_key {{name}が完了前にこのAPIキーの予算上限に達したため} team {{name}が完了前にチームの予算上限に達したため} member {{name}が完了前にあなたの予算上限に達したため} other {{name}が完了前に予算上限に達したため}}、このターンは評価できません。"
       },
       "verdict": {
         "tie": "ほぼ同等",
@@ -361,6 +376,7 @@
     "artifactAuthorship": {
       "unknownOwner": "不明なオーナー",
       "otherMemberDescription": "このプロジェクトの別のメンバーが作成しました。確認はできますが、変更はできません。",
+      "namedOwnerDescription": "このプロジェクトの別のメンバーである{name}が作成しました。確認はできますが、変更はできません。",
       "unknownOwnerDescription": "このアーティファクトのオーナーは記録されていません。"
     },
     "artifactExport": {
@@ -414,7 +430,8 @@
       "andMore": "{source}ほか{count}件"
     },
     "connectionIdentity": {
-      "unrecognizedConnector": "不明なコネクタ"
+      "unrecognizedConnector": "不明なコネクタ",
+      "mcpServer": "MCP サーバー"
     },
     "datasourceSubmission": {
       "errors": {
@@ -475,7 +492,11 @@
       "needsCredits": "クレジットが必要",
       "budgetReached": {
         "tag": "予算上限に到達",
-        "title": "組織の予算を使い切りました。オーナーまたは管理者が「予算」で上限を引き上げられます。"
+        "title": "このモデルを対象とする予算を使い切りました。管理者が「予算」で上限を引き上げられます。"
+      },
+      "notInTier": {
+        "tag": "{tier, select, plus {Plusが必要} pro {Proが必要} other {アップグレードが必要}}",
+        "title": "このモデルはプランの利用枠の対象外です。アップグレードするか、クレジットを追加するとAPI料金で使用できます。"
       }
     },
     "settingsTransform": {

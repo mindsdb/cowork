@@ -1,0 +1,82 @@
+{
+  "_source": "Recorded 2026-11-17 from https://api.githubcopilot.com/mcp/ (public discovery documents only, no login).",
+  "server_url": "https://api.githubcopilot.com/mcp/",
+  "steps": [
+    {
+      "headers": {
+        "content-type": "text/plain; charset=utf-8",
+        "www-authenticate": "Bearer error=\"invalid_request\", error_description=\"No access token was provided in this request\", resource_metadata=\"https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp/\""
+      },
+      "json": null,
+      "method": "POST",
+      "status": 401,
+      "step": "initialize_without_token",
+      "text": "bad request: missing required Authorization header\n",
+      "url": "https://api.githubcopilot.com/mcp/"
+    },
+    {
+      "headers": {
+        "content-type": "application/json"
+      },
+      "json": {
+        "authorization_servers": [
+          "https://github.com/login/oauth"
+        ],
+        "bearer_methods_supported": [
+          "header"
+        ],
+        "resource": "https://api.githubcopilot.com/mcp/",
+        "resource_name": "GitHub MCP Server",
+        "scopes_supported": [
+          "repo",
+          "read:org",
+          "read:user",
+          "user:email",
+          "read:packages",
+          "write:packages",
+          "read:project",
+          "project",
+          "gist",
+          "notifications"
+        ]
+      },
+      "method": "GET",
+      "status": 200,
+      "step": "protected_resource_metadata",
+      "text": null,
+      "url": "https://api.githubcopilot.com/.well-known/oauth-protected-resource/mcp/"
+    },
+    {
+      "headers": {
+        "content-type": "application/json; charset=utf-8"
+      },
+      "json": {
+        "authorization_endpoint": "https://github.com/login/oauth/authorize",
+        "authorization_response_iss_parameter_supported": true,
+        "code_challenge_methods_supported": [
+          "S256"
+        ],
+        "device_authorization_endpoint": "https://github.com/login/device/code",
+        "grant_types_supported": [
+          "authorization_code",
+          "refresh_token",
+          "urn:ietf:params:oauth:grant-type:device_code"
+        ],
+        "issuer": "https://github.com/login/oauth",
+        "response_types_supported": [
+          "code"
+        ],
+        "scopes_supported": [
+          "offline_access"
+        ],
+        "service_documentation": "https://docs.github.com/apps/creating-github-apps/registering-a-github-app/registering-a-github-app",
+        "token_endpoint": "https://github.com/login/oauth/access_token"
+      },
+      "method": "GET",
+      "status": 200,
+      "step": "authorization_server_metadata",
+      "text": null,
+      "url": "https://github.com/.well-known/oauth-authorization-server/login/oauth"
+    }
+  ]
+}

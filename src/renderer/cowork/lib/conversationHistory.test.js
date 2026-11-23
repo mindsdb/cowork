@@ -120,8 +120,35 @@ describe('reconcileTaskMessages', () => {
     const a = out.find((m) => m.role === 'assistant');
     expect(a.streamStatus).toBe('done');
     expect(a.steps[0].status).toBe('completed');
-    expect(a.steps[0].completedAt).toBeTruthy();
+    // No recorded time to end it at, so it gets none rather than "now".
+    expect(a.steps[0].completedAt).toBeNull();
     expect(a.steps[1].status).toBe('completed');
+  });
+
+  // ENG-4345: a stopped turn saves no terminal event, so its running step is
+  // collapsed here on every visit. Its end must not move with the clock.
+  it('ends a step left running at the turn\'s last recorded time, the same on every visit', () => {
+    const stopped = () => ({
+      role: 'assistant',
+      startedAt: 1_000,
+      steps: [
+        { id: 'a', status: 'completed', startedAt: 1_000, completedAt: 5_000 },
+        { id: 'b', status: 'in_progress', startedAt: 6_000, _isScratchpad: true },
+      ],
+    });
+    const first = reconcileTaskMessages([user('q'), stopped()], false).at(-1);
+    expect(first.steps[1]).toMatchObject({ status: 'completed', completedAt: 6_000 });
+    const later = reconcileTaskMessages([user('q'), stopped()], false).at(-1);
+    expect(later.steps[1].completedAt).toBe(6_000);
+  });
+
+  it('prefers the turn\'s own end when it has one', () => {
+    const out = reconcileTaskMessages([user('q'), {
+      role: 'assistant',
+      endedAt: 9_000,
+      steps: [{ id: 'a', status: 'running', startedAt: 2_000 }],
+    }], false).at(-1);
+    expect(out.steps[0].completedAt).toBe(9_000);
   });
 });
 
@@ -307,6 +334,19 @@ describe('failedEventMeta', () => {
     });
   });
 
+  it("extracts a budget stop's scope, and null when an older server sends none", () => {
+    const meta = failedEventMeta([
+      { type: 'response.failed', code: 'budget_exceeded', error: 'x', budget_scope: 'api_key', budget_period: 'month', budget_model: 'haiku-4-5' },
+    ]);
+    expect(meta.budgetScope).toBe('api_key');
+    expect(meta.budgetModel).toBe('haiku-4-5');
+    expect(meta.budgetPeriod).toBe('month');
+    const bare = failedEventMeta([{ type: 'response.failed', code: 'budget_exceeded', error: 'x' }]);
+    expect(bare.budgetScope).toBeNull();
+    expect(bare.budgetPeriod).toBeNull();
+    expect(bare.budgetModel).toBeNull();
+  });
+
   it('extracts the request id so a generic failure stays traceable', () => {
     const meta = failedEventMeta([
       { type: 'response.failed', code: 'anton_error', error: 'An unexpected error occurred.', request_id: 'corr-abc' },
@@ -365,8 +405,9 @@ describe('hydrateMessagesFromServerEvents', () => {
   });
 
   /* A stall and a Stop both keep the partial answer. The server saves a stall
-   * with a `stalled` failure event and a Stop with no terminal event, so only
-   * the stall reloads with an error row. */
+   * with a `stalled` failure event and a Stop with `response.cancelled`
+   * (older servers saved no terminal at all), so only the stall reloads with
+   * an error row. */
   it('reloads a saved stall as a stalled error row after the partial answer', () => {
     const out = hydrateMessagesFromServerEvents([
       user('q'),
@@ -399,6 +440,31 @@ describe('hydrateMessagesFromServerEvents', () => {
     ]);
     expect(out.map((m) => m.role)).toEqual(['user', 'assistant']);
     expect(out[1].content).toBe('Partial answer');
+  });
+
+  // ENG-4345: the saved Stop marks the turn stopped and ends its time there.
+  it('reloads a saved Stop as stopped, ended when it was stopped', () => {
+    const out = hydrateMessagesFromServerEvents([
+      user('q'),
+      {
+        role: 'assistant',
+        content: 'Partial answer',
+        events: [
+          { type: 'response.created', response: { id: 'r1' }, at_ms: 1000 },
+          { ...ASK, at_ms: 2000 },
+          { type: 'response.output_text.delta', delta: 'Partial answer', at_ms: 3000 },
+          { type: 'response.cancelled', at_ms: 9000 },
+        ],
+      },
+    ]);
+    expect(out.map((m) => m.role)).toEqual(['user', 'assistant']);
+    expect(out[1]).toMatchObject({
+      content: 'Partial answer',
+      incompleteReason: 'user_stopped',
+      _turnComplete: true,
+      startedAt: 1000,
+      endedAt: 9000,
+    });
   });
 });
 

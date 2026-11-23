@@ -22,6 +22,8 @@ import { host, onMindsHubCredentialChanged } from '../../platform/host';
 import { decodeJwtPayload } from './jwtClaims';
 import { startCreditsFlow } from './creditsFlow';
 import { subscribeOrganizationChanges } from './organizationChanges';
+import { subscribeUsagePlanTier, usagePlanTier } from './usagePlanTier';
+import { ANALYTICS_MERGED_SUB_KEY, isFirstVisit, firstVisitRecorded } from './accountVisit';
 import { posthogKeyForBuildKind } from '../../../shared/analytics-project';
 
 // The single register of product events, so every event and its own properties
@@ -42,7 +44,10 @@ const EVENTS = {
   // server predates the card field. acting_organization_id is the organization
   // the action ran under (actingOrganizationId); sso_organization_id is the
   // signed-in session's, which on Desktop can differ.
-  // `entry` is where the person acted: 'viewer'|'viewer_delete'|'list'|'list_delete'|'utilities'|'chat'|'rail'|'rail_delete'|'other'.
+  // `entry` is where the person acted: 'viewer'|'viewer_delete'|'list'|'list_delete'|'utilities'|'chat'|'chat_card'|'rail'|'rail_delete'|'other'.
+  // 'chat_card' is the Share panel opened by Share on the chat's artifact card,
+  // and every save, copy and pull-back made in that panel; 'chat' is the card's
+  // own Download.
   // Deleting a shared artifact reports a pull-back on both surfaces: on Desktop
   // after the client's own unpublish, on Web after the delete succeeds, since
   // the server's delete takes the page down or fails.
@@ -59,11 +64,11 @@ const EVENTS = {
   ARTIFACT_LINK_COPIED:     'artifact_link_copied',     // {} — only when the copy succeeded
   ARTIFACT_DOWNLOADED:      'artifact_downloaded',      // { kind: 'file'|'export', format? ('pdf'|'docx'|'html', exports only) } — only when the file was saved
   AGENT_SESSION_STARTED:    'agent_session_started',    // { entry_source?, example_id?, entry_placement? } — only on the first task within 30 min of a console handoff
-  COMPOSER_READY:           'composer_ready',           // { entry_source, example_id, prefilled, entry_placement? } — Home composer interactive after a console handoff
+  COMPOSER_READY:           'composer_ready',           // { entry_source, example_id, prefilled, composer_blocked, entry_placement?, first_visit? } — a console handoff reached Home; composer_blocked when the provider panel stood in for the composer
   ONBOARDING_ROW_CLICKED:   'onboarding_row_clicked',   // { step_id } — a checklist row was clicked (a finished row is inert and sends nothing)
   ONBOARDING_STEP_COMPLETED:'onboarding_step_completed',// { step_id, via: 'checklist'|'composer' } — once per step per browser
   EXAMPLE_PICKED:           'example_picked',           // { example_id, list: 'examples'|<task mode id> } — an example was picked on Home; it fills the composer and sends nothing
-  NEW_TASK_MESSAGE_SENT:    'new_task_message_sent',    // { start_kind: 'own_work'|'example'|'onboarding_step'|'free_text', example_id?, via: 'checklist'|'console_link'|'composer'|'app', attachments, has_link, chars, added_chars? } — the first message of a new task; never carries its text
+  NEW_TASK_MESSAGE_SENT:    'new_task_message_sent',    // { start_kind: 'own_work'|'example'|'onboarding_step'|'free_text', example_id?, via: 'checklist'|'console_link'|'composer'|'app', attachments, has_link, chars, added_chars?, task_mode?, mode_line?: 'appended'|'replaced_example'|'example', example_placed? } — the first message of a new task; never carries its text
   FIRST_QUERY:              'first_query',              // {}  once per user (ENG-501)
   FIRST_RESPONSE:           'first_response',           // { outcome: 'success'|'error', reason } once per user (ENG-736)
   // SERIES DISCONTINUITY, read this before trending token_cap_hit. The series
@@ -132,8 +137,14 @@ const EVENTS = {
   // Segment on them; do not count organisations-per-limit with them. The `sso_`
   // prefix exists to stop the unprefixed name reading as authoritative, and
   // ENG-2206 remains open for a subject carried on the gateway denial itself.
-  TOKEN_CAP_HIT:            'token_cap_hit',            // { reason: 'token_limit'|'included_allowance_exhausted'|'model_access_denied' } credit-block impression (ENG-385, widened ENG-1533 + ENG-1537)
-  BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'free_serving_paused'|'budget_exceeded'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'allowance_used_notice'|'free_air_paused_notice'|'budget_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_at_rest'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav', 'usage_settings', 'budget_exceeded' and 'budget_notice' are NOT upgrade intent (credits do not lift a budget). 'usage_at_rest' IS intent but is the standing allowance figure rather than a warning, so it is kept apart from 'usage_notice' to grade the two surfaces separately
+  // ENG-4186 adds two more reasons, both from paid plans and both labelled
+  // from their first event, so nothing here is unlabelled: a plan window used
+  // up with an empty wallet (`window_allowance_exhausted`) and a model outside
+  // the plan with an empty wallet (`model_not_in_tier`). The series steps up
+  // again where a build carrying them meets an org on a plan.
+  TOKEN_CAP_HIT:            'token_cap_hit',            // { reason: 'token_limit'|'included_allowance_exhausted'|'model_access_denied'|'window_allowance_exhausted'|'model_not_in_tier' } credit-block impression (ENG-385, widened ENG-1533 + ENG-1537 + ENG-4186)
+  UPGRADE_CLICKED:          'upgrade_clicked',          // { surface: 'allowance_card'|'window_card'|'model_card'|'model_picker'|'usage_bar'|'usage_alert'|'usage_settings'|'compare', tier: 'plus'|'pro', from_tier: 'free'|'plus' } a plan upgrade was clicked (ENG-4186). Opens the console billing page but is NOT also a billing_opened: the two series stay disjoint, so the funnels add up
+  BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'window_allowance_exhausted'|'model_not_in_tier'|'free_serving_paused'|'budget_exceeded'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'allowance_used_notice'|'free_air_paused_notice'|'budget_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_at_rest'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav', 'usage_settings', 'budget_exceeded' and 'budget_notice' are NOT upgrade intent (credits do not lift a budget). 'usage_at_rest' IS intent but is the standing allowance figure rather than a warning, so it is kept apart from 'usage_notice' to grade the two surfaces separately
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
   APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
   BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready, build_kind, shell_version, ui_version, server_version } desktop, per launch (ENG-921). One row per layer's running version, so adoption per layer needs no join
@@ -173,15 +184,24 @@ const EVENTS = {
   ADDON_ADDED:              'addon_added',              // { decided_by: 'jev'|'user', via: 'send'|'queue' } — joined the running task
   ADDON_QUEUED:             'addon_queued',             // { reason } — queued as the next task: the server's reason, or 'attachments'|'no_conversation'|'no_live_stream'|'turn_ending'|'not_found'|'unsupported'|'timeout'|'error'|'unknown'
   ADDON_OVERRIDDEN:         'addon_overridden',         // { direction: 'to_queue'|'to_task', outcome, decided_by? } — the person moved a message against where it landed; decided_by 'jev' on to_queue is the accuracy signal
+  // Next steps under a finished answer (lib/nextSteps). Step and result kinds
+  // only, never message text. `steps` lists what was offered, in order;
+  // `position` is the clicked step's 0-based place in that list. An
+  // artifact's card holds Preview and Share and is not part of this row: its
+  // Share is counted by artifact_share_opened with entry 'chat_card'.
+  NEXT_STEPS_SHOWN:         'next_steps_shown',         // { result_kind: 'example'|'file'|'artifact'|'table'|'research'|'other', steps: ('own_data'|'another_file'|'make_page'|'schedule')[] } — once per answer per app run
+  NEXT_STEP_CLICKED:        'next_step_clicked',        // { step, result_kind, position }
   // The account menu's developer links (ENG-4288). Sign-in lands in Cowork now,
   // so these are how a developer who came for the API still reaches it; the
   // count is the measure of whether that path is being found.
   MENU_API_KEYS_CLICKED:    'menu_api_keys_clicked',    // {}  user menu -> console API keys page
   MENU_API_DOCS_CLICKED:    'menu_api_docs_clicked',    // {}  user menu -> docs.mindshub.ai
-  SIGNUP_LANDED:            'signup_landed',            // { from: 'desktop'|'web' }  a new account reached Cowork web Home from a sign-up link
+  SIGNUP_LANDED:            'signup_landed',            // { from: 'desktop'|'web' }  a new account reached Cowork web Home from one of Cowork's sign-up links
 };
 
 const ORG_STAMPED_EVENTS = new Set([
+  EVENTS.COMPOSER_READY,
+  EVENTS.SIGNUP_LANDED,
   EVENTS.ARTIFACT_SHARE_OPENED,
   EVENTS.ARTIFACT_ACCESS_CHANGED,
   EVENTS.ARTIFACT_ACCESS_CHANGE_FAILED,
@@ -319,6 +339,10 @@ const identity = {
 // reloading the document) re-reads the token on the next event, so the
 // organization the events name is the one switched to.
 subscribeOrganizationChanges(() => { identity.cacheExpiry = 0; });
+// A plan the usage read names (a subscribe, a cancel, the first read after
+// launch) re-reads the identity on the next event too, so the plan tier it
+// stamps follows at once rather than after the cache expires.
+subscribeUsagePlanTier(() => { identity.cacheExpiry = 0; });
 
 // The organization a Desktop's MindsHub work runs under, read from the sidecar.
 // A key the person pasted wins over their sign-in, and it can belong to another
@@ -417,16 +441,20 @@ function getDeviceId() {
   return identity.deviceId;
 }
 
-// Resolve the plan tier from Keycloak realm roles, mirroring the web console's
-// useHasFullAccess (ENG-452). An account can carry several tier roles at once (a
-// paid user keeps the `free` role too), so a paid/staff role must win over
-// `free`. Precedence: staff > team > pro/pro-hub > free. Returns undefined when
-// roles are absent, so the property is omitted rather than guessed.
+// Resolve the plan tier, mirroring the web console's useHasFullAccess for the
+// Keycloak realm roles. An account can carry several tier roles at once (a paid
+// user keeps the `free` role too), so a paid/staff role must win over `free`.
+// The usage read's plan is the subscription itself, so it wins over the roles,
+// which know no Plus and read a legacy `pro-hub` holder as pro. Precedence:
+// staff > team > the usage read's plan > pro/pro-hub > free. Returns undefined
+// when roles are absent, so the property is omitted rather than guessed.
 function resolvePlanTier(roles) {
   if (!Array.isArray(roles)) return undefined;
   const set = new Set(roles.map((r) => String(r).toLowerCase()));
   if (set.has('staff')) return 'staff';
   if (set.has('team')) return 'team';
+  const planTier = usagePlanTier();
+  if (planTier) return planTier;
   if (set.has('pro') || set.has('pro-hub')) return 'pro';
   return 'free';
 }
@@ -541,9 +569,10 @@ async function getDistinctId() {
     identity.isInternal = resolveIsInternal(email, roles);
     identity.distinctId = payload.sub;
     // Account attributes for `$set`. Active org is the `activate_organization`
-    // claim; tier comes from realm roles via resolvePlanTier. is_internal rides
-    // `$set` too, so the internal/external split is a stable person property and
-    // pre-login events inherit it via the merge.
+    // claim; tier comes from resolvePlanTier (the usage read's plan, else the
+    // realm roles). is_internal rides `$set` too, so the internal/external
+    // split is a stable person property and pre-login events inherit it via
+    // the merge.
     const activeOrg = payload.activate_organization;
     const planTier = resolvePlanTier(roles);
     identity.personProps = {
@@ -609,7 +638,7 @@ function postCapture(event, distinctId, properties, envelope = {}, apiKey = POST
 // app_installed) follow the user in. PostHog's server-side merge is an
 // `$identify` event carrying `$anon_distinct_id`. Idempotent via a localStorage
 // marker so it fires once per account, not on every event.
-const IDENTITY_MERGED_KEY = 'cowork_identity_merged_sub';
+const IDENTITY_MERGED_KEY = ANALYTICS_MERGED_SUB_KEY;
 // The merge happens in the project the events go to, so its marker is kept per
 // project: an install that merged into production before it was routed
 // elsewhere still merges once where its events now land. Production keeps the
@@ -752,17 +781,24 @@ function capture(event, properties = {}, envelope = {}) {
           eventProps.sso_plan_tier = identity.personProps.plan_tier;
         }
       }
-      // The sharing events carry the session's organisation too, because a
-      // person who switches organisations would otherwise be read against the
-      // last one their profile names. The same session caveats apply, so they
-      // also carry `acting_organization_id`, the organization the action ran
-      // under (actingOrganizationId).
+      // The sharing events and the two arrivals carry the session's
+      // organisation too, because a person who switches organisations would
+      // otherwise be read against the last one their profile names. The same
+      // session caveats apply, so they also carry `acting_organization_id`,
+      // the organization the action ran under (actingOrganizationId).
       if (ORG_STAMPED_EVENTS.has(event) && identity.personProps.organization_id) {
         eventProps.sso_organization_id = identity.personProps.organization_id;
       }
       if (ORG_STAMPED_EVENTS.has(event)) {
         const acting = await actingOrganizationId();
         if (acting) eventProps.acting_organization_id = acting;
+      }
+      // Decided by web-main from the account's first token, so absent on
+      // Desktop and wherever storage could not be read.
+      if (event === EVENTS.COMPOSER_READY && distinctId) {
+        const first = isFirstVisit(distinctId);
+        if (first !== undefined) eventProps.first_visit = first;
+        if (first) firstVisitRecorded(distinctId);
       }
       // Account attributes apply only to an identified person; pre-login events
       // inherit these via the `$identify` merge on sign-in.
@@ -877,7 +913,10 @@ export function setEntryAttribution(entrySource, exampleId, placement) {
 // "not recorded", the same as before the console sent it.
 const placementProps = (placement) => (placement ? { entry_placement: placement } : {});
 
-export function trackAgentSessionStarted() {
+// `exampleId` rides with a send whose start is only known when it goes out
+// (the own-work mode a console link opened): set on arrival, it would also
+// credit an unrelated task sent after the person left the mode.
+export function trackAgentSessionStarted({ exampleId } = {}) {
   const pending = pendingEntryAttribution;
   pendingEntryAttribution = null;
   const fresh = pending && Date.now() - pending.at <= ENTRY_ATTRIBUTION_TTL_MS;
@@ -886,7 +925,7 @@ export function trackAgentSessionStarted() {
     fresh
       ? {
         entry_source: pending.entry_source,
-        example_id: pending.example_id,
+        example_id: exampleId || pending.example_id,
         ...placementProps(pending.entry_placement),
       }
       : {}
@@ -936,15 +975,19 @@ export function trackExamplePicked(exampleId, list) {
  * holds a link, and how long it is. `added_chars` is what the person added to a
  * start or example, a paste or details. Joined to the account's later turns
  * and visits, this is how a start is judged. Read before the session-start
- * event, which clears the console attribution this one uses.
+ * event, which clears the console attribution this one uses. `taskMode` is
+ * Home's note on a selected task mode and its instruction line (`modeMessage`):
+ * only Home knows whether an example was placed, so it rides with the send.
+ * `startVia` is a start label that rode with the send the same way, and wins
+ * over one set with setStartVia.
  */
-export function trackNewTaskMessageSent({ text, attachments = 0, start }) {
+export function trackNewTaskMessageSent({ text, attachments = 0, start, taskMode, startVia }) {
   const entry = pendingEntryAttribution && Date.now() - pendingEntryAttribution.at <= ENTRY_ATTRIBUTION_TTL_MS
     ? pendingEntryAttribution : null;
   const pending = pendingStartVia;
   pendingStartVia = null;
   const fresh = pending && Date.now() - pending.at <= START_VIA_TTL_MS;
-  const via = fresh ? pending.via : (entry?.entry_source === 'console' ? 'console_link' : 'composer');
+  const via = startVia || (fresh ? pending.via : (entry?.entry_source === 'console' ? 'console_link' : 'composer'));
   const body = typeof text === 'string' ? text : '';
   const props = {
     start_kind: start?.start_kind || 'free_text',
@@ -955,18 +998,27 @@ export function trackNewTaskMessageSent({ text, attachments = 0, start }) {
   };
   if (start?.example_id) props.example_id = start.example_id;
   if (start?.added_chars != null) props.added_chars = start.added_chars;
+  if (taskMode) {
+    props.task_mode = taskMode.task_mode;
+    props.mode_line = taskMode.mode_line;
+    props.example_placed = taskMode.example_placed;
+  }
   Object.assign(props, placementProps(entry?.entry_placement));
   capture(EVENTS.NEW_TASK_MESSAGE_SENT, props);
 }
 
 // The console handoff's arrival: the Home composer is on screen and usable,
 // with the sample in it (`prefilled`) or empty. Separate from the console's
-// click, which only says the user asked to come here.
-export function trackComposerReady(entrySource, exampleId, prefilled, placement) {
+// click, which only says the user asked to come here. `blocked` is the arrival
+// that found the connect-a-provider panel instead of a composer; it is still
+// recorded, once, so a person who never gets a composer is not read as never
+// having arrived.
+export function trackComposerReady(entrySource, exampleId, prefilled, placement, { blocked = false } = {}) {
   capture(EVENTS.COMPOSER_READY, {
     entry_source: entrySource,
     example_id: exampleId || null,
     prefilled: Boolean(prefilled),
+    composer_blocked: Boolean(blocked),
     ...placementProps(placement),
   });
 }
@@ -1019,10 +1071,15 @@ export function trackTurnFailed(conversationId, event) {
 //   token_limit               out of credits mid-turn; pairs with token_cap_hit
 //   included_allowance_exhausted  the free allowance is spent, not the
 //                             wallet; also pairs with token_cap_hit (ENG-1537)
+//   window_allowance_exhausted  "Add funds" on a Plus or Pro plan whose window
+//                             is used up (ENG-4186); pairs with token_cap_hit
+//   model_not_in_tier         "Add funds" on a model the plan does not cover
+//                             (ENG-4186); pairs with token_cap_hit. The
+//                             upgrade on both cards is upgrade_clicked instead
 //   free_serving_paused       free MindsHub Air is paused for everyone by the
 //                             daily spend fuse; NOT paired with token_cap_hit,
 //                             because it is not this user's cap
-//   budget_exceeded           the org's spending budget is used up; "View
+//   budget_exceeded           a spending budget is used up; "View
 //                             budgets" opens the Budgets tab. NOT paired with
 //                             token_cap_hit: credits do not lift a budget
 //   model_access_denied       legacy per-model credit denial (pre-wallet gateways)
@@ -1031,10 +1088,11 @@ export function trackTurnFailed(conversationId, event) {
 //   connect_provider          "Start for free" on the connect-a-provider card
 //                             (chat and home render the same card)
 //   no_credits_notice         Settings, after a minds-cloud provider test came
-//                             back wallet_empty, or, from a sidecar that sends
-//                             no reasons map at all, with any 402/429/credit/
-//                             quota in the detail. A sidecar that sends the map
-//                             and names no reason never records this.
+//                             back wallet_empty or window_allowance_exhausted,
+//                             or, from a sidecar that sends no reasons map at
+//                             all, with any 402/429/credit/quota in the
+//                             detail. A sidecar that sends the map and names
+//                             no reason never records this.
 //   allowance_used_notice     Settings, after a minds-cloud provider test came
 //                             back included_allowance_exhausted
 //   free_air_paused_notice    Settings, after a minds-cloud provider test hit
@@ -1067,6 +1125,21 @@ export function trackBillingOpened(trigger, workspaceMode, kind) {
     trigger: trigger || 'unknown',
     workspace_mode: workspaceMode || undefined,
     kind: kind || undefined,
+  });
+}
+
+// A plan upgrade was clicked (ENG-4186): "Get Plus", "Upgrade to Pro" or
+// "Upgrade". `surface` is where, so conversion can be graded per surface;
+// `tier` is the plan offered and `from_tier` the plan the org is on. It opens
+// the console's plan confirm dialog, so it arms the same post-payment
+// availability follow-up as a billing link: a new plan unlocks models just as
+// funds do.
+export function trackUpgradeClicked(surface, tier, fromTier) {
+  startCreditsFlow();
+  capture(EVENTS.UPGRADE_CLICKED, {
+    surface: surface || 'unknown',
+    tier: tier || undefined,
+    from_tier: fromTier || undefined,
   });
 }
 
@@ -1524,4 +1597,22 @@ export function resetDeviceIdentity() {
   } catch {
     /* localStorage unavailable: the in-memory reset above still applies */
   }
+}
+
+// Once per answer per app run: a re-render or a remount of the same answer
+// does not count as showing it again.
+const nextStepsShownFor = new Set();
+
+export function trackNextStepsShown(answerKey, { resultKind, steps } = {}) {
+  if (!answerKey || nextStepsShownFor.has(answerKey) || !steps?.length) return;
+  nextStepsShownFor.add(answerKey);
+  capture(EVENTS.NEXT_STEPS_SHOWN, { result_kind: resultKind || 'other', steps: [...steps] });
+}
+
+export function trackNextStepClicked({ step, resultKind, position } = {}) {
+  capture(EVENTS.NEXT_STEP_CLICKED, {
+    step: step || 'unknown',
+    result_kind: resultKind || 'other',
+    position: Number.isInteger(position) ? position : null,
+  });
 }

@@ -252,6 +252,27 @@ describe('sign-up lands in Cowork web (ENG-4288)', () => {
   });
 });
 
+describe('view host derivation', () => {
+  it.each([
+    ['https://api.mindshub.ai', 'https://view.mindshub.ai'],
+    ['https://api.staging.mindshub.ai', 'https://view.staging.mindshub.ai'],
+    ['https://api-pr-cowork-744.dev.mindshub.ai', 'https://view-pr-cowork-744.dev.mindshub.ai'],
+  ])('derives the view host from %s', async (api, view) => {
+    vi.stubEnv('VITE_MINDS_API_URL', api);
+    const { MINDS_VIEW_URL } = await importUrls();
+
+    expect(MINDS_VIEW_URL).toBe(view);
+  });
+
+  it('derives the view host from Cowork web itself', async () => {
+    vi.stubEnv('VITE_MINDS_API_URL', '');
+    setUrl('https://cowork.staging.mindshub.ai/');
+    const { MINDS_VIEW_URL } = await importUrls();
+
+    expect(MINDS_VIEW_URL).toBe('https://view.staging.mindshub.ai');
+  });
+});
+
 describe('consoleUrlFor (ENG-3274)', () => {
   it('names the organization and account a console link is opened for', async () => {
     const { MINDS_MEMBERS_URL, consoleUrlFor } = await importUrls();
@@ -268,5 +289,23 @@ describe('consoleUrlFor (ENG-3274)', () => {
     expect(url.searchParams.has('organization')).toBe(false);
     expect(url.searchParams.get('subject')).toBe('user-1');
     expect(consoleUrlFor(MINDS_ADD_FUNDS_URL, {})).toBe(MINDS_ADD_FUNDS_URL);
+  });
+});
+
+describe('mindsUpgradeUrl (ENG-4186)', () => {
+  it('opens the plan confirm for the named plan and organization', async () => {
+    const { MINDS_BILLING_URL, MINDS_UPGRADE_URL, mindsUpgradeUrl } = await importUrls();
+    expect(MINDS_UPGRADE_URL.plus).toBe(`${MINDS_BILLING_URL}?upgrade=plus`);
+    const url = new URL(mindsUpgradeUrl('pro', { organizationId: 'org-1', subject: 'user-1' }));
+    expect(`${url.origin}${url.pathname}`).toBe(MINDS_BILLING_URL);
+    expect(url.searchParams.get('upgrade')).toBe('pro');
+    expect(url.searchParams.get('organization')).toBe('org-1');
+    expect(url.searchParams.get('subject')).toBe('user-1');
+  });
+
+  it('offers Plus for anything that is not Pro', async () => {
+    const { MINDS_UPGRADE_URL, mindsUpgradeUrl } = await importUrls();
+    expect(mindsUpgradeUrl('plus')).toBe(MINDS_UPGRADE_URL.plus);
+    expect(mindsUpgradeUrl(null)).toBe(MINDS_UPGRADE_URL.plus);
   });
 });

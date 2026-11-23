@@ -2,11 +2,15 @@
 // search) used to only focus the search input — visually nothing happened.
 // It must open the "Start a new project" modal, and a create from that
 // modal must select the new project on the composer.
-import { afterEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within, act, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Composer from './Composer';
-import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { MINDS_BILLING_URL, consoleUrlFor } from '../../lib/mindsUrls';
+
+// Console links name the session's organization and account (ENG-4333).
+const forOrg = (url) => consoleUrlFor(url, { organizationId: 'org-1', subject: 'u1' });
+import { __resetDraftsForTests } from '../lib/draftStore';
 
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal();
@@ -27,6 +31,8 @@ vi.mock('../api', async (importOriginal) => {
 // Spread the real modules and override only what these tests assert on, so a
 // new export never has to be added here to keep the file importable.
 const hostSpies = vi.hoisted(() => ({ openExternal: vi.fn() }));
+const accountMock = vi.hoisted(() => ({ user: { orgId: 'org-1', sub: 'u1' } }));
+vi.mock('../hooks/useAccountUser', () => ({ useAccountUser: () => accountMock.user }));
 vi.mock('../../platform/host', async (importOriginal) => {
   const actual = await importOriginal();
   return {
@@ -220,7 +226,7 @@ describe('Composer — model picker (ENG-1656)', () => {
     const locked = screen.getByRole('option', { name: /Claude Sonnet 5/ });
     await user.click(within(locked).getByRole('button', { name: 'Add credits' }));
 
-    expect(hostSpies.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostSpies.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
     expect(analyticsSpies.trackBillingOpened).toHaveBeenCalledWith('locked_model_row');
     // The row is disabled, so Base UI never reaches its select handler. This
     // pins that the button did not somehow route around that, not the
@@ -850,5 +856,40 @@ describe('Composer — slash menu closing on blur', () => {
     cleanup();
 
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe('Composer — a caller\'s send rule', () => {
+  beforeEach(() => { __resetDraftsForTests(); });
+
+  it('sends only what the rule allows, by button and by Enter', async () => {
+    const user = userEvent.setup();
+    const canSend = vi.fn((value) => value.includes('ok'));
+    const { onSend } = renderComposer({ canSend });
+    const ta = screen.getByRole('textbox');
+
+    await user.type(ta, 'nope');
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+    await user.keyboard('{Enter}');
+    expect(onSend).not.toHaveBeenCalled();
+
+    await user.type(ta, ' ok');
+    expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled();
+    await user.keyboard('{Enter}');
+    expect(onSend.mock.calls).toEqual([['nope ok']]);
+  });
+
+  it('can send with nothing typed when the rule says so', async () => {
+    const user = userEvent.setup();
+    const { onSend } = renderComposer({ canSend: () => true });
+
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+
+    expect(onSend).toHaveBeenCalledWith('');
+  });
+
+  it('keeps the usual rule without one: text is needed', () => {
+    renderComposer();
+    expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
   });
 });

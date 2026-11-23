@@ -6,7 +6,8 @@
         "addFunds": "Aggiungi fondi",
         "setUpAutoTopUp": "Configura ricarica automatica",
         "manageAutoTopUp": "Gestisci ricarica automatica",
-        "updatePaymentMethod": "Aggiorna metodo di pagamento"
+        "updatePaymentMethod": "Aggiorna metodo di pagamento",
+        "upgrade": "{tier, select, plus {Passa a Plus} pro {Passa a Pro} other {Cambia piano}}"
       },
       "noFreeGrant": "Questo account non include token gratuiti di MindsHub Air. MindsHub Air usa il tuo saldo, come tutti gli altri modelli.",
       "allowanceStop": {
@@ -66,8 +67,22 @@
         "balanceLowToo": "Anche il tuo saldo è basso ({usd})."
       },
       "budgetExceeded": {
-        "raise": "I modelli a pagamento non possono essere usati finché un proprietario o un amministratore non aumenta il limite in «Budget».",
-        "airHasRoom": "I modelli a pagamento non possono essere usati finché un proprietario o un amministratore non aumenta il limite in «Budget». MindsHub Air funziona ancora finché dura la quota gratuita."
+        "raise": "{hasModel, select, true {{scope, select, org {{model} non può essere usato finché un proprietario o un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.} other {{model} non può essere usato finché un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.}}} other {{scope, select, org {I modelli a pagamento non possono essere usati finché un proprietario o un amministratore non aumenta il limite in «Budget».} other {I modelli a pagamento non possono essere usati finché un amministratore non aumenta il limite in «Budget».}}}}",
+        "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} non può essere usato finché un proprietario o un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.} other {{model} non può essere usato finché un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.}}} other {{scope, select, org {I modelli a pagamento non possono essere usati finché un proprietario o un amministratore non aumenta il limite in «Budget». MindsHub Air funziona ancora finché dura la quota gratuita.} other {I modelli a pagamento non possono essere usati finché un amministratore non aumenta il limite in «Budget». MindsHub Air funziona ancora finché dura la quota gratuita.}}}}"
+      },
+      "window": {
+        "usedUpTitle": "{window, select, 7d {Quota settimanale esaurita} other {Quota di 5 ore esaurita}}",
+        "onWallet": "Usi il tuo saldo a tariffe API fino al rinnovo.",
+        "onWalletWithTime": "Usi il tuo saldo a tariffe API fino al rinnovo alle {time}.",
+        "paused": "Le attività del tuo piano sono in pausa fino al rinnovo. Aggiungi fondi per continuare.",
+        "pausedWithTime": "Le attività del tuo piano sono in pausa fino alle {time}. Aggiungi fondi per continuare.",
+        "pausedMobile": "Le attività del tuo piano sono in pausa fino al rinnovo.",
+        "pausedWithTimeMobile": "Le attività del tuo piano sono in pausa fino alle {time}.",
+        "lowTitle": "Hai usato il {percent} della quota {window, select, 7d {settimanale} other {di 5 ore}}",
+        "lowThenWallet": "Dopo, le attività usano il tuo saldo a tariffe API fino al rinnovo.",
+        "lowThenWalletWithTime": "Dopo, le attività usano il tuo saldo a tariffe API fino al rinnovo alle {time}.",
+        "lowThenPause": "Dopo, le attività vanno in pausa fino al rinnovo.",
+        "lowThenPauseWithTime": "Dopo, le attività vanno in pausa fino alle {time}."
       }
     },
     "scheduleWhen": {
@@ -106,7 +121,7 @@
         "walletEmpty": "Nessun credito disponibile. Aggiungi fondi per usare MindsHub.",
         "allowanceExhausted": "Nessun token gratuito di MindsHub Air disponibile e il saldo è a zero.",
         "freeAirPaused": "MindsHub Air gratuito è sospeso al momento.",
-        "budgetExceeded": "Il budget della tua organizzazione è esaurito.",
+        "budgetExceeded": "Un budget è esaurito.",
         "walletEmptyMobile": "Nessun credito disponibile."
       },
       "missingApiKey": "Aggiungi una chiave API a destra.",
@@ -204,8 +219,8 @@
       "unjudgeable": {
         "both": "Entrambi i modelli hanno esaurito i crediti prima di finire, quindi questo turno non può essere valutato.",
         "one": "{name} ha esaurito i crediti prima di finire, quindi questo turno non può essere valutato.",
-        "bothBudget": "Entrambi i modelli hanno raggiunto il budget della tua organizzazione prima di finire, quindi questo turno non può essere valutato.",
-        "oneBudget": "{name} ha raggiunto il budget della tua organizzazione prima di finire, quindi questo turno non può essere valutato."
+        "bothBudget": "{scope, select, org {Entrambi i modelli hanno raggiunto il budget della tua organizzazione} workspace {Entrambi i modelli hanno raggiunto il budget di quest’area di lavoro} api_key {Entrambi i modelli hanno raggiunto il budget di questa chiave API} team {Entrambi i modelli hanno raggiunto il budget del tuo team} member {Entrambi i modelli hanno raggiunto il tuo budget} other {Entrambi i modelli hanno raggiunto un budget}} prima di finire, quindi questo turno non può essere valutato.",
+        "oneBudget": "{scope, select, org {{name} ha raggiunto il budget della tua organizzazione} workspace {{name} ha raggiunto il budget di quest’area di lavoro} api_key {{name} ha raggiunto il budget di questa chiave API} team {{name} ha raggiunto il budget del tuo team} member {{name} ha raggiunto il tuo budget} other {{name} ha raggiunto un budget}} prima di finire, quindi questo turno non può essere valutato."
       },
       "verdict": {
         "tie": "Più o meno uguali",
@@ -361,6 +376,7 @@
     "artifactAuthorship": {
       "unknownOwner": "Proprietario sconosciuto",
       "otherMemberDescription": "Creato da un altro membro di questo progetto. Puoi consultarlo, ma non modificarlo.",
+      "namedOwnerDescription": "Creato da {name}, un altro membro di questo progetto. Puoi consultarlo, ma non modificarlo.",
       "unknownOwnerDescription": "Per questo artefatto non risulta alcun proprietario."
     },
     "artifactExport": {
@@ -414,7 +430,8 @@
       "andMore": "{source} e altri {count}"
     },
     "connectionIdentity": {
-      "unrecognizedConnector": "Connettore non riconosciuto"
+      "unrecognizedConnector": "Connettore non riconosciuto",
+      "mcpServer": "Server MCP"
     },
     "datasourceSubmission": {
       "errors": {
@@ -475,7 +492,11 @@
       "needsCredits": "Servono crediti",
       "budgetReached": {
         "tag": "Budget raggiunto",
-        "title": "Il budget della tua organizzazione è esaurito. Un proprietario o un amministratore può aumentarlo in «Budget»."
+        "title": "Un budget che copre questo modello è esaurito. Un amministratore può aumentarlo in «Budget»."
+      },
+      "notInTier": {
+        "tag": "{tier, select, plus {Serve Plus} pro {Serve Pro} other {Serve un upgrade}}",
+        "title": "La quota del tuo piano non copre questo modello. Cambia piano o aggiungi crediti per usarlo a tariffe API."
       }
     },
     "settingsTransform": {

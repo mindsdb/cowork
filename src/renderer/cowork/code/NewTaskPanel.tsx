@@ -85,7 +85,7 @@ export function NewTaskPanel({
   const draft = useNewTaskDraft({
     busy: busy || sourceLoading, defaultEngineId, defaultModel, models, modelMeta,
     projects, selectedProjectId, onProjectChange, onOpenProjectSettings,
-    onCreate: input => onCreate({ ...input, ...(taskMode === 'plan' ? { taskMode } : {}) }), catalog,
+    onCreate: input => onCreate({ ...input, ...(taskMode === 'plan' ? { taskMode } : {}) }), startKey: taskMode, catalog,
   });
   const {
     prompt, setPrompt, catalogError,
@@ -219,6 +219,7 @@ export function NewTaskPanel({
                   setup={draft.repositorySetup}
                   local={localTarget}
                   disabled={busy || executionLoading}
+                  onRefresh={draft.recheckProjectFolders}
                   onApply={(ids, setup) => {
                     setResourceIds(ids);
                     draft.setRepositorySetup(setup);

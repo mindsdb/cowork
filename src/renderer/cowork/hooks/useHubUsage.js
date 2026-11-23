@@ -2,6 +2,8 @@ import { PLATFORM_UI } from '../../lib/deployment';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { fetchHubUsage } from '../api';
 import { isAppVisible, subscribeAppVisibility } from '../code/useAppVisible';
+import { planOf } from '../lib/subscriptionPlan';
+import { setUsagePlanTier } from '../lib/usagePlanTier';
 
 /* The signed-in account's usage: the free MindsHub Air allowance, paid
    balance, auto top up.
@@ -66,6 +68,9 @@ export function useHubUsage(accountUser, { pollMs = HUB_USAGE_POLL_MS } = {}) {
       if (timer) clearInterval(timer);
     };
   }, [refresh, sub, pollMs]);
+
+  // Analytics stamps the plan tier this read names over the realm roles.
+  useEffect(() => { setUsagePlanTier(planOf(usage)?.tier ?? null); }, [usage]);
 
   return { usage, refresh };
 }

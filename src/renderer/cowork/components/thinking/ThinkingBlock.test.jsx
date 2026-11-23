@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { ThinkingBlock } from './ThinkingBlock';
+import { applySessionMessages } from '../../lib/conversationHistory';
 
 describe('ThinkingBlock', () => {
   it('shows a live thought before the first tool step arrives', () => {
@@ -151,6 +152,27 @@ describe('ThinkingBlock — folding (ENG-3554)', () => {
 });
 
 describe('ThinkingBlock — finished duration', () => {
+  it('keeps a stopped scratchpad’s recorded execution time after reload', () => {
+    const [message] = applySessionMessages('stopped-turn', [{
+      role: 'assistant', id: 'stopped', content: '',
+      events: [
+        { type: 'response.created', at_ms: 1000 },
+        { type: 'response.in_progress', thought_role: 'thought.scratchpad.start', at_ms: 1000, tool_use_id: 'sleep' },
+        { type: 'response.in_progress', thought_role: 'thought.scratchpad.end', at_ms: 31000, tool_use_id: 'sleep', content: JSON.stringify({ name: 'sleep', code: 'sleep(60)' }) },
+      ],
+    }], { skipLocalSidecar: true });
+
+    // Stop leaves no terminal event. Execution began 30 seconds after
+    // the step started, so that recorded work must survive reconciliation.
+    expect(message.steps[0]).toMatchObject({
+      status: 'completed', executionStartedAt: 31000, completedAt: 31000,
+    });
+    render(<ThinkingBlock steps={message.steps} startedAt={message.startedAt} endedAt={message.endedAt} isActive={false} />);
+    expect(screen.getByRole('button')).toHaveTextContent('Worked for 30s');
+    fireEvent.click(screen.getByRole('button'));
+    expect(screen.getByTestId('step-duration')).toHaveTextContent('30s');
+  });
+
   const tool = { id: 's1', label: 'Running code', badge: 'Script', icon: 'code', status: 'completed', _isScratchpad: true, startedAt: 1000, completedAt: 73000 };
 
   it('counts up to the end of the turn, past its last step', () => {
