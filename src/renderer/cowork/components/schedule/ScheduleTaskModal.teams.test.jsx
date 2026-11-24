@@ -63,6 +63,35 @@ describe('ScheduleTaskModal — results to Teams', () => {
     expect('deliver_to_teams' in await submitted(onSubmit, /^Schedule$/)).toBe(false);
   });
 
+  it('shows nothing from the last time it was open until Teams answers again', async () => {
+    vi.mocked(fetchTeamsBotConnection).mockResolvedValue({ state: 'connected', teams_name: 'ada@contoso.com' });
+    const props = { onClose: vi.fn(), onSubmit: vi.fn(), projects: PROJECTS, agentLabel: 'Anton' };
+    const { rerender } = render(<ScheduleTaskModal open {...props} />);
+    expect(await screen.findByRole('checkbox', { name: /^Send results to my Teams chat/ })).toBeInTheDocument();
+
+    vi.mocked(fetchTeamsBotConnection).mockReturnValue(new Promise(() => {}));
+    rerender(<ScheduleTaskModal open={false} {...props} />);
+    rerender(<ScheduleTaskModal open {...props} />);
+
+    await waitFor(() => expect(option()).toBeNull());
+  });
+
+  it('asks no more this session once the install turns out to have no Teams route', async () => {
+    // A fresh copy of the module, so the session's answer doesn't carry into the other tests.
+    vi.resetModules();
+    const { default: Fresh } = await import('./ScheduleTaskModal');
+    vi.mocked(fetchTeamsBotConnection).mockRejectedValue(Object.assign(new Error('Not found'), { status: 404 }));
+    const { unmount } = render(<Fresh open onClose={vi.fn()} onSubmit={vi.fn()} projects={PROJECTS} agentLabel="Anton" />);
+    await waitFor(() => expect(fetchTeamsBotConnection).toHaveBeenCalledTimes(1));
+    unmount();
+
+    render(<Fresh open onClose={vi.fn()} onSubmit={vi.fn()} projects={PROJECTS} agentLabel="Anton" />);
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(fetchTeamsBotConnection).toHaveBeenCalledTimes(1);
+    expect(option()).toBeNull();
+  });
+
   it('keeps it on a task that sends to Teams after Teams is disconnected, so it can be turned off', async () => {
     vi.mocked(fetchTeamsBotConnection).mockResolvedValue({ state: 'not_connected', teams_name: null });
     const onSubmit = renderModal({ task: { ...TASK, deliverToTeams: true } });

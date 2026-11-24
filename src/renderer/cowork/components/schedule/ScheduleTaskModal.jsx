@@ -33,6 +33,10 @@ import { useTranslation } from '../../../lib/i18n';
 
 const FONT_BODY = 'var(--font-body)';
 
+// Set once the Teams connection route answers 404: an install without the
+// Teams bot, which then isn't asked again this session.
+let teamsRouteMissing = false;
+
 // Sentinel for the "No project" (unassigned) choice in the Project <Select>.
 // It must be a non-empty string: Base UI's <Select.Value> treats an
 // empty-string value as "nothing selected" and renders the placeholder, so an
@@ -102,11 +106,16 @@ export default function ScheduleTaskModal({
   const [teamsConnected, setTeamsConnected] = useState(false);
 
   useEffect(() => {
-    if (!open || !host.isWeb) return undefined;
+    if (!open) return undefined;
+    setTeamsConnected(false);
+    if (!host.isWeb || teamsRouteMissing) return undefined;
     let live = true;
     fetchTeamsBotConnection()
       .then((c) => { if (live) setTeamsConnected(c?.state === 'connected'); })
-      .catch(() => { if (live) setTeamsConnected(false); });
+      .catch((err) => {
+        if (err?.status === 404) teamsRouteMissing = true;
+        if (live) setTeamsConnected(false);
+      });
     return () => { live = false; };
   }, [open]);
   // A task already sending to Teams keeps the option, so it can be turned off.

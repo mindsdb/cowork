@@ -135,6 +135,26 @@ describe('ScheduleDetailView — header and summary', () => {
     expect(screen.getByText('GPT X')).toBeInTheDocument();
   });
 
+  it('re-reads the runs until a Teams delivery settles', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const sending = { ...RUNS[1], id: 'r-s', teamsDelivery: 'sending' };
+      vi.mocked(fetchScheduleRuns)
+        .mockResolvedValueOnce({ runs: [sending] })
+        .mockResolvedValue({ runs: [{ ...sending, teamsDelivery: 'delivered' }] });
+      setup({ task: { ...TASK, deliverToTeams: true } });
+      expect(await screen.findByText('Sending to Teams…')).toBeInTheDocument();
+
+      await vi.advanceTimersByTimeAsync(3500);
+
+      expect(await screen.findByText('Sent to Teams')).toBeInTheDocument();
+      const calls = vi.mocked(fetchScheduleRuns).mock.calls.length;
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(vi.mocked(fetchScheduleRuns).mock.calls.length).toBe(calls);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it("says how posting each run's result to Teams went", async () => {
     vi.mocked(fetchScheduleRuns).mockResolvedValue({ runs: [
