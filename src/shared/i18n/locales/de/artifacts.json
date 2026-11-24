@@ -306,6 +306,12 @@
   },
   "publish": {
     "ownedByOther": "Dieses Artefakt wurde von einem anderen Inhaber veröffentlicht.",
+    "datasources": {
+      "notice": "Beim Veröffentlichen werden die Zugangsdaten dieser Verbindungen hochgeladen: {list}",
+      "review": "Diese App sendet Zugangsdaten von Verbindungen, die du nicht freigegeben hast. Prüfe sie unter „Teilen“ und veröffentliche erneut.",
+      "updateApp": "Aktualisiere die App, um diese App mit ihren Verbindungen zu veröffentlichen. Du kannst den Agenten auch bitten, sie im Chat zu veröffentlichen.",
+      "unapproved": "Ohne die Zugangsdaten folgender Verbindungen veröffentlicht: {list}"
+    },
     "linkLeftLive": {
       "unrecorded": "Dieser Link wurde geteilt, bevor {product} erfasst hat, wer welche Seite teilt. Daher kann {product} ihn weder aktualisieren noch entfernen. „Aktualisieren“ teilt einen neuen Link, und „Teilen beenden“ oder das Löschen des Artefakts lässt diesen Link für alle offen, die ihn haben. Bitten Sie Ihren Administrator, ihn zu entfernen.",
       "otherArtifact": "Nichts wurde entfernt: Der Eintrag dieses Artefakts verwies auf die Seite eines anderen Artefakts, {link}.",
