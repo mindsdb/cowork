@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { AUDIENCE_CHOICE } from '../../../lib/orgSharing';
+import { setOrgMode } from '../../../../lib/orgMode';
 import {
   AccessChooser,
   accessDraftFromArtifact,
@@ -226,6 +227,17 @@ describe('an artifact that does not know who it reaches', () => {
     }
     expect(ACCESS_LABELS.restricted.title).toBe('Restricted');
     expect(ACCESS_LABELS.restricted.desc).toBe("Who can open the link isn't known yet");
+  });
+});
+
+describe('accessDraftFromArtifact in MindsHub mode', () => {
+  afterEach(() => setOrgMode(false));
+
+  it('reads the access of an artifact without a published link', () => {
+    setOrgMode(true);
+    const draft = accessDraftFromArtifact({ accessMode: 'password', accessPassword: 'pw' });
+    expect(draft.mode).toBe('password');
+    expect(draft.password).toBe('pw');
   });
 });
 

@@ -48,7 +48,7 @@ describe('publish with connection approval from main', () => {
   it("passes the server's refusal through as it was sent", async () => {
     newAppSecret();
     setServerTrust('protected');
-    const body ={ detail: { code: 'datasource_approval_required', message: 'm', pending: [] } };
+    const body = { detail: { code: 'datasource_approval_required', message: 'm', pending: [] } };
     fakeServer(409, body);
     await expect(publishWithApproval({ kind: 'publish', path: '/p/app', approvedDatasources: APPROVED }))
       .resolves.toEqual({ ok: false, status: 409, text: JSON.stringify(body), retryAfter: null });

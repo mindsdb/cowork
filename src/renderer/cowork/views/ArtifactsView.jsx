@@ -217,8 +217,8 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
   useEffect(() => {
     let live = true;
     if (artifact?.path) {
-      // Inside the promise chain, so a call that throws at once (a test's
-      // api mock without this export, say) also leaves the list empty.
+      // Inside the promise chain, so a call that throws synchronously cannot
+      // escape the effect.
       Promise.resolve()
         .then(() => fetchPendingDatasources(publishTargetPath(artifact)))
         .then((list) => { if (live) setPending(Array.isArray(list) ? list : []); })
@@ -1495,6 +1495,7 @@ export default function ArtifactsView({
 
       {publishTarget && (
         <PublishDialog
+          key={publishTarget.path}
           artifact={publishTarget}
           onCancel={() => { setPublishTarget(null); settlePublish(); }}
           onConfirm={confirmPublish}

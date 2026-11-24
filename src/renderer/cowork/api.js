@@ -3148,7 +3148,7 @@ async function publishViaMain(kind, path, access, approved) {
       status: result.status,
       text: async () => result.text,
       headers: { get: (h) => (h.toLowerCase() === 'retry-after' ? result.retryAfter : null) },
-    }, `API /publish returned ${result.status}`);
+    }, `API ${kind === 'publish' ? '/publish' : '/publish/update'} returned ${result.status}`);
   }
   const err = new Error(result.reason);
   if (result.reason === 'unsupported') err.code = PUBLISH_SHELL_TOO_OLD_CODE;

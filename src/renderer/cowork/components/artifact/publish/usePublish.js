@@ -156,19 +156,7 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
   // Connections whose credentials the next desktop full-stack publish would
   // send for the first time. Shown in the dialog; its buttons approve them.
   const [pendingDatasources, setPendingDatasources] = useState([]);
-  const loadPendingDatasources = useCallback(async () => {
-    if (orgMode || !targetPath) { setPendingDatasources([]); return; }
-    try {
-      setPendingDatasources(await fetchPendingDatasources(targetPath));
-    } catch {
-      // The server still refuses an unapproved publish with the list (409).
-      setPendingDatasources([]);
-    }
-  }, [orgMode, targetPath]);
-
-  useEffect(() => {
-    if (enabled) void loadPendingDatasources();
-  }, [enabled, loadPendingDatasources]);
+  const pendingRequestRef = useRef(0);
   // Names the artifact on screen: its path on desktop, project and id in org
   // mode. The ref is written during render so a switch is seen before any
   // refresh() response from the previous artifact lands.
@@ -177,6 +165,24 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
     : targetPath;
   const identityKeyRef = useRef(identityKey);
   identityKeyRef.current = identityKey;
+
+  // Applied only while it is the latest request for the artifact on screen, so
+  // a slow answer for the previous artifact never fills this one's list.
+  const loadPendingDatasources = useCallback(async () => {
+    const request = ++pendingRequestRef.current;
+    const identity = identityKeyRef.current;
+    const isCurrent = () => request === pendingRequestRef.current
+      && identity === identityKeyRef.current;
+    if (orgMode || !targetPath) { setPendingDatasources([]); return; }
+    let list;
+    try {
+      list = await fetchPendingDatasources(targetPath);
+    } catch {
+      // The server still refuses an unapproved publish with the list (409).
+      list = [];
+    }
+    if (isCurrent()) setPendingDatasources(list);
+  }, [orgMode, targetPath]);
 
   const seededIdentityRef = useRef(identityKey);
   // Re-sync when the artifact identity changes (opening a different one
@@ -219,6 +225,7 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
     if (!sameArtifact) {
       setNotice('');
       setLinkOwnerRecorded(artifact?.linkOwnerRecorded ?? null);
+      setPendingDatasources([]);
     }
   }, [identityKey, artifact?.path, artifact?.publishedUrl, artifact?.accessMode, artifact?.accessProtected, artifact?.modified]);
 
@@ -351,7 +358,7 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
     } catch (e) {
       reportAccessChangeFailed(artifact, { entry, reason: publishFailureReason(e) });
       if (isCurrent()) {
-        if (isDatasourceApprovalError(e)) setPendingDatasources(pendingDatasourcesFromError(e));
+        if (!orgMode && isDatasourceApprovalError(e)) setPendingDatasources(pendingDatasourcesFromError(e));
         setError(friendlyPublishError(e));
         // The save dropped the open-time read above; with the access still
         // unread, that read runs again once the phase is idle, so the panel
@@ -372,6 +379,7 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
   const update = useCallback(async (opts) => {
     const approvedDatasources = Array.isArray(opts?.approvedDatasources) ? opts.approvedDatasources : [];
     if (phase !== 'idle' || !canAct) return false;
+    const identity = identityKey;
     setPhase('updating');
     setError('');
     setNotice('');
@@ -386,7 +394,9 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
       onChange?.({ ...artifact, modified: false, publishedUrl: url });
       return true;
     } catch (e) {
-      if (isDatasourceApprovalError(e)) setPendingDatasources(pendingDatasourcesFromError(e));
+      if (!orgMode && identity === identityKeyRef.current && isDatasourceApprovalError(e)) {
+        setPendingDatasources(pendingDatasourcesFromError(e));
+      }
       setError(publishRefusalMessage(e) ?? tr('updateFailed', { message: String(e?.message || e) }));
       return false;
     } finally {

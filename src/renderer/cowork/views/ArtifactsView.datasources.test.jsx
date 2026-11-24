@@ -48,7 +48,7 @@ function openMenuItem(name) {
   fireEvent.click(screen.getByText(name));
 }
 
-// With sharing off nothing is preselected, so Share stays disabled until a choice is made.
+// Picks Public explicitly so the test does not depend on the dialog's default selection.
 function shareFrom(dialog) {
   fireEvent.click(within(dialog).getByRole('radio', { name: /Public/ }));
   fireEvent.click(within(dialog).getByRole('button', { name: 'Share' }));

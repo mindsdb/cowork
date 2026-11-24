@@ -308,8 +308,8 @@
     "ownedByOther": "Dieses Artefakt wurde von einem anderen Inhaber veröffentlicht.",
     "datasources": {
       "notice": "Beim Veröffentlichen werden die Zugangsdaten dieser Verbindungen hochgeladen: {list}",
-      "review": "Diese App sendet Zugangsdaten von Verbindungen, die du nicht freigegeben hast. Prüfe sie unter „Teilen“ und veröffentliche erneut.",
-      "updateApp": "Aktualisiere die App, um diese App mit ihren Verbindungen zu veröffentlichen. Du kannst den Agenten auch bitten, sie im Chat zu veröffentlichen.",
+      "review": "Diese App sendet Zugangsdaten von Verbindungen, die Sie nicht freigegeben haben. Prüfen Sie sie unter „Teilen“ und veröffentlichen Sie erneut.",
+      "updateApp": "Aktualisieren Sie die App, um diese App mit ihren Verbindungen zu veröffentlichen. Sie können den Agenten auch bitten, sie im Chat zu veröffentlichen.",
       "unapproved": "Ohne die Zugangsdaten folgender Verbindungen veröffentlicht: {list}"
     },
     "linkLeftLive": {
