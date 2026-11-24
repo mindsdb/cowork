@@ -306,6 +306,12 @@
   },
   "publish": {
     "ownedByOther": "Outro dono publicou este artefato.",
+    "datasources": {
+      "notice": "Publicar envia as credenciais destas conexões: {list}",
+      "review": "Este app envia credenciais de conexões que você não aprovou. Revise-as em Compartilhar e publique novamente.",
+      "updateApp": "Atualize o aplicativo para publicar este app com suas conexões. Você também pode pedir ao agente para publicá-lo pelo chat.",
+      "unapproved": "Publicado sem as credenciais de: {list}"
+    },
     "linkLeftLive": {
       "unrecorded": "Este link foi compartilhado antes de o {product} registrar quem compartilha cada página, então o {product} não pode atualizá-lo nem tirá-lo do ar. Atualizar compartilha um novo link, e parar de compartilhar ou excluir o artefato deixa este aberto para quem o tiver. Peça ao seu administrador para removê-lo.",
       "otherArtifact": "Nada foi tirado do ar: o registro deste artefato apontava para a página de outro artefato, {link}.",

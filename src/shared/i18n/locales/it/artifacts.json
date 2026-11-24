@@ -306,6 +306,12 @@
   },
   "publish": {
     "ownedByOther": "Questo artefatto è stato pubblicato da un altro proprietario.",
+    "datasources": {
+      "notice": "La pubblicazione carica le credenziali di queste connessioni: {list}",
+      "review": "Questa app invia le credenziali di connessioni che non hai approvato. Controllale in Condividi e pubblica di nuovo.",
+      "updateApp": "Aggiorna l'applicazione per pubblicare questa app con le sue connessioni. Puoi anche chiedere all'agente di pubblicarla dalla chat.",
+      "unapproved": "Pubblicata senza le credenziali di: {list}"
+    },
     "linkLeftLive": {
       "unrecorded": "Questo link è stato condiviso prima che {product} registrasse chi condivide ogni pagina, quindi {product} non può aggiornarlo né rimuoverlo. Aggiorna condivide un nuovo link, mentre Interrompi condivisione o l’eliminazione dell’artefatto lasciano questo link aperto a chiunque lo abbia. Chiedi all’amministratore di rimuoverlo.",
       "otherArtifact": "Non è stato rimosso nulla: il record di questo artefatto puntava alla pagina di un altro artefatto, {link}.",

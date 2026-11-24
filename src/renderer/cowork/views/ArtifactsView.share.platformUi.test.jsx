@@ -100,7 +100,7 @@ describe.each([
     await waitFor(() => expect(onArtifactChanged).toHaveBeenCalled());
     expect(api.publishArtifact).toHaveBeenCalledWith(unpublished.path, {
       mode: 'restricted', emails: ['ana@partner.io'], org_allowed: false, owner_only: false,
-    });
+    }, { approvedDatasources: [] });
     return onArtifactChanged.mock.calls.at(-1)[0];
   }
 

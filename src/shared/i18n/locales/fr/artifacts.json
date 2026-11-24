@@ -306,6 +306,12 @@
   },
   "publish": {
     "ownedByOther": "Cet artefact a été publié par un autre propriétaire.",
+    "datasources": {
+      "notice": "La publication envoie les identifiants de ces connexions : {list}",
+      "review": "Cette app envoie les identifiants de connexions que vous n'avez pas approuvées. Vérifiez-les dans Partager et publiez à nouveau.",
+      "updateApp": "Mettez à jour l'application pour publier cette app avec ses connexions. Vous pouvez aussi demander à l'agent de la publier depuis le chat.",
+      "unapproved": "Publiée sans les identifiants de : {list}"
+    },
     "linkLeftLive": {
       "unrecorded": "Ce lien a été partagé avant que {product} n’enregistre qui partage chaque page : {product} ne peut donc ni le mettre à jour ni le retirer. « Mettre à jour » partage un nouveau lien ; « Arrêter le partage » ou la suppression de l’artefact laissent celui-ci accessible à toute personne qui le possède. Demandez à votre administrateur de le supprimer.",
       "otherArtifact": "Rien n’a été retiré : l’enregistrement de cet artefact pointait vers la page d’un autre artefact, {link}.",
