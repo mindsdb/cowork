@@ -64,7 +64,7 @@ import {
   validateOpenAICompatible,
 } from './provider-validation';
 import { sendEvent } from './analytics';
-import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, isServingOta, rollbackUI } from './ui-updater';
+import { resolveRendererLoad, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, rollbackUI } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
 import {
   accountDataHome,
@@ -529,13 +529,14 @@ function createWindow() {
     diagnostic("main.app", "INFO", "main_dev_mode_full_using_bundled_renderer_skipping_ota_cache", '[main] DEV_MODE=full — using bundled renderer, skipping OTA cache');
     mainWindow.loadFile(getBundledPath());
   } else {
-    const rendererPath = getRendererPath();
-    diagnostic("main.app", "INFO", "main_loading_renderer_from", `[main] loading renderer from ${rendererPath}`);
+    // One decision per load: the folder check runs here, right before the load.
+    const renderer = resolveRendererLoad();
+    diagnostic("main.app", "INFO", "main_loading_renderer_from", `[main] loading renderer from ${renderer.path}`);
     // Boot self-heal: arm BEFORE the load (so the result can't be missed) when
     // serving an activated OTA bundle. A bad hot-update rolls back to the
     // app-bundled renderer instead of re-loading the broken bundle every launch.
-    if (isServingOta()) armOtaBootSelfHeal(mainWindow);
-    mainWindow.loadFile(rendererPath);
+    if (renderer.kind === 'ota') armOtaBootSelfHeal(mainWindow);
+    mainWindow.loadFile(renderer.path);
   }
 
   // DevTools no longer auto-open on launch. Still reachable on demand
