@@ -55,7 +55,7 @@ export default function DesktopOfferModal({ feature, entry = '', onClose }) {
               <ul className="m-0 p-0 list-none flex flex-col gap-2">
                 {copy.points.map((key) => (
                   <li key={key} className="flex gap-2 items-start text-[13px] text-ink-2">
-                    <span aria-hidden="true" className="text-accent inline-flex mt-[2px]">{Ico.check(13)}</span>
+                    <span aria-hidden="true" className="text-accent inline-flex mt-[2px]">{Ico.check(14)}</span>
                     <span>{t(key)}</span>
                   </li>
                 ))}
