@@ -682,7 +682,10 @@
     "saveAndRunOnce": "保存并运行一次",
     "saving": "正在保存…",
     "saveChanges": "保存更改",
-    "schedule": "创建定时"
+    "schedule": "创建定时",
+    "sendToTeams": "将结果发送到我的 Teams 聊天",
+    "sendToTeamsHint": "每次完成运行的回答都会发送到你在 Teams 中与 {agent} 的个人聊天。",
+    "sendToTeamsNotConnected": "Teams 未连接，因此不会发送结果。请在“连接应用和数据”中连接 Microsoft Teams (Bot)。"
   },
   "scheduledView": {
     "sort": {
@@ -745,7 +748,13 @@
     "statusWithReason": "{status}：{reason}",
     "openFailedRun": "打开 {when} 失败的运行：{reason}",
     "openRun": "打开 {when} 的运行",
-    "showOlder": "显示更早的运行"
+    "showOlder": "显示更早的运行",
+    "teamsDelivery": {
+      "sending": "正在发送到 Teams…",
+      "delivered": "已发送到 Teams",
+      "failed": "未发送到 Teams",
+      "unknown": "可能未送达 Teams"
+    }
   },
   "contextFileModal": {
     "download": "下载",

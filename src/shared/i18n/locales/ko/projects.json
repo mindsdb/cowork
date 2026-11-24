@@ -682,7 +682,10 @@
     "saveAndRunOnce": "저장하고 한 번 실행",
     "saving": "저장 중…",
     "saveChanges": "변경 사항 저장",
-    "schedule": "예약"
+    "schedule": "예약",
+    "sendToTeams": "결과를 내 Teams 채팅으로 보내기",
+    "sendToTeamsHint": "완료된 각 실행의 답변이 Teams의 {agent}와의 개인 채팅으로 전송됩니다.",
+    "sendToTeamsNotConnected": "Teams가 연결되어 있지 않아 결과가 전송되지 않습니다. 앱 및 데이터 연결에서 Microsoft Teams (Bot)를 연결하세요."
   },
   "scheduledView": {
     "sort": {
@@ -745,7 +748,13 @@
     "statusWithReason": "{status}: {reason}",
     "openFailedRun": "{when}의 실패한 실행 열기: {reason}",
     "openRun": "{when}의 실행 열기",
-    "showOlder": "이전 실행 내역 보기"
+    "showOlder": "이전 실행 내역 보기",
+    "teamsDelivery": {
+      "sending": "Teams로 보내는 중…",
+      "delivered": "Teams로 보냄",
+      "failed": "Teams로 보내지 못함",
+      "unknown": "Teams에 도착하지 않았을 수 있음"
+    }
   },
   "contextFileModal": {
     "download": "다운로드",

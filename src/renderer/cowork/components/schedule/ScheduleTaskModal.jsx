@@ -3,7 +3,8 @@
 //
 // Layout: the name, what to do (the prompt), then when, read back as a
 // sentence with the next few runs, then the project and model side by side.
-// Pausing lives on the task's page and row, not here.
+// Pausing lives on the task's page and row, not here. Where the person has
+// connected Microsoft Teams (Bot), it can also send each result to Teams.
 //
 // "When" is one line of compact controls sized to their values (how often,
 // the day or date when that needs one, the time, the zone), the way calendar
@@ -12,7 +13,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { projectLabel } from '../../lib/projectLabel';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
-import { Alert, Button, Field, Select, Input, Textarea, Tooltip } from '../ui';
+import { Alert, Button, Checkbox, Field, Select, Input, Textarea, Tooltip } from '../ui';
+import { fetchTeamsBotConnection } from '../../api';
 import { missedRunLabel, missedRunText } from '../../lib/scheduleCopy';
 import {
   INTERVAL_MINUTES, defaultWhen, describeWhen, deviceZone, formatRun, nextRuns, timeZoneLabel, usableZone,
@@ -30,6 +32,10 @@ import { scheduleState } from './ScheduleStatusBadge';
 import { useTranslation } from '../../../lib/i18n';
 
 const FONT_BODY = 'var(--font-body)';
+
+// Set once the Teams connection route answers 404: an install without the
+// Teams bot, which then isn't asked again this session.
+let teamsRouteMissing = false;
 
 // Sentinel for the "No project" (unassigned) choice in the Project <Select>.
 // It must be a non-empty string: Base UI's <Select.Value> treats an
@@ -95,6 +101,25 @@ export default function ScheduleTaskModal({
 
   const [form, setForm] = useState(() => emptyForm({ defaultProjectPath }));
   const [error, setError] = useState('');
+  // Whether the person has connected Microsoft Teams (Bot), which only a
+  // self-hosted web install offers; anywhere else the route isn't there.
+  const [teamsConnected, setTeamsConnected] = useState(false);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    setTeamsConnected(false);
+    if (!host.isWeb || teamsRouteMissing) return undefined;
+    let live = true;
+    fetchTeamsBotConnection()
+      .then((c) => { if (live) setTeamsConnected(c?.state === 'connected'); })
+      .catch((err) => {
+        if (err?.status === 404) teamsRouteMissing = true;
+        if (live) setTeamsConnected(false);
+      });
+    return () => { live = false; };
+  }, [open]);
+  // A task already sending to Teams keeps the option, so it can be turned off.
+  const showTeams = teamsConnected || !!task?.deliverToTeams;
 
   // Whenever the modal opens (or the editing target changes), reset
   // form state so reopening doesn't show stale fields from a previous
@@ -116,6 +141,7 @@ export default function ScheduleTaskModal({
         prompt:      task.prompt || '',
         projectPath: match?.path || defaultProjectPath || NO_PROJECT,
         model:       task.model || DEFAULT_MODEL,
+        deliverToTeams: !!task.deliverToTeams,
         timezone,
         ...at,
       });
@@ -187,6 +213,7 @@ export default function ScheduleTaskModal({
       // Sent even when it's the default, so an edit can clear a pin.
       model:        sentModel,
     };
+    if (showTeams) payload.deliver_to_teams = form.deliverToTeams;
     // A one-off that already ran stays off when only its time changes, so a
     // new time in the future turns it back on: "from the next run" is true.
     if (isEdit && form.cadence === 'once' && scheduleState(task) === 'done') {
@@ -349,6 +376,25 @@ export default function ScheduleTaskModal({
             )}
           </div>
 
+          {showTeams && (
+            <label className="flex cursor-pointer items-start gap-2.5">
+              <Checkbox
+                checked={form.deliverToTeams}
+                onCheckedChange={(v) => update('deliverToTeams', v)}
+                aria-label={t('scheduleTaskModal.sendToTeams')}
+                className="mt-0.5"
+              />
+              <span className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium text-ink-2">{t('scheduleTaskModal.sendToTeams')}</span>
+                <span className="text-[12.5px] text-ink-3">
+                  {teamsConnected
+                    ? t('scheduleTaskModal.sendToTeamsHint', { agent: displayName })
+                    : t('scheduleTaskModal.sendToTeamsNotConnected')}
+                </span>
+              </span>
+            </label>
+          )}
+
           {error && (
             <Alert variant="danger">{error}</Alert>
           )}
@@ -408,6 +454,7 @@ function emptyForm({ defaultProjectPath }) {
     prompt: '',
     projectPath: defaultProjectPath || NO_PROJECT,
     model: DEFAULT_MODEL,
+    deliverToTeams: false,
     timezone: deviceZone(),
     ...defaultWhen(),
   };

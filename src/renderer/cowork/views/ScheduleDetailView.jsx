@@ -60,6 +60,10 @@ const RUN_STATUS = {
 // A run that stopped at a limit is failed on the server, but did its work up
 // to there: it reads as a warning, and its reason names the limit.
 const STOPPED_AT_LIMIT = { tone: 'warning', key: 'stoppedAtLimit' };
+// How posting a run's result to the owner's Teams chat went (scheduleDetail.teamsDelivery.*).
+const TEAMS_DELIVERY = ['sending', 'delivered', 'failed', 'unknown'];
+const TEAMS_POLL_MS = 3000;
+const TEAMS_SETTLE_MS = 60_000;
 
 const msg = (key, vars) => i18n.t(`scheduleDetail.${key}`, { ns: 'projects', ...vars });
 
@@ -133,6 +137,24 @@ export default function ScheduleDetailView({
       .catch(() => setRuns([]))
       .finally(() => setLoadingRuns(false));
   }, [taskId, task?.lastRunAt, task?.running]);  // refresh when a run starts or reaches a terminal state
+
+  // The server posts a run's result to Teams after the run ends, so its delivery
+  // settles later: re-read quietly until it does, for a minute at most.
+  useEffect(() => {
+    if (!taskId) return undefined;
+    const newest = runs.find((r) => r.status !== 'running');
+    const ended = newest && new Date(newest.finishedAt || newest.startedAt).getTime();
+    const settling = runs.some((r) => r.teamsDelivery === 'sending')
+      || (task?.deliverToTeams && newest?.status === 'success' && !newest.trial && !newest.teamsDelivery
+        && Date.now() - ended < TEAMS_SETTLE_MS);
+    if (!settling) return undefined;
+    const timer = setTimeout(() => {
+      fetchScheduleRuns(taskId, { limit: 100 })
+        .then((data) => { if (Array.isArray(data?.runs)) setRuns(data.runs); })
+        .catch(() => {});
+    }, TEAMS_POLL_MS);
+    return () => clearTimeout(timer);
+  }, [taskId, runs, task?.deliverToTeams]);
 
   const [showAll, setShowAll] = useState(false);
   const finished = useMemo(() => runs.filter((r) => r.status !== 'running'), [runs]);
@@ -283,6 +305,9 @@ export default function ScheduleDetailView({
                 meta={(
                   <span className="inline-flex items-center gap-3">
                     {formatDuration(run.durationMs) && <span>{formatDuration(run.durationMs)}</span>}
+                    {TEAMS_DELIVERY.includes(run.teamsDelivery) && (
+                      <span>{t(`scheduleDetail.teamsDelivery.${run.teamsDelivery}`)}</span>
+                    )}
                     {run.unavailableModel && (
                       <Tooltip content={t('scheduleDetail.modelUnavailable', { model: modelName(run.unavailableModel) })}>
                         <span tabIndex={0} className="relative z-10 cursor-help">{t('scheduleDetail.ranOnDefaultModel')}</span>
