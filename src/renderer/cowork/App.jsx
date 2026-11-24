@@ -57,7 +57,7 @@ import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import ComingSoonModal from './components/ComingSoonModal';
 import SharePointSetupModal, { SHAREPOINT_ENGINE } from './components/sharepoint/SharePointSetupModal';
-import TeamsBotModal from './components/teams/TeamsBotModal';
+import TeamsBotModal, { TEAMS_BOT_ENGINE } from './components/teams/TeamsBotModal';
 import CustomMcpConnectModal from './components/connector/CustomMcpConnectModal';
 import { disconnectCustomMcp, isCustomMcp } from './lib/customMcp';
 import { useSharePointImport } from './components/sharepoint/useSharePointImport';
@@ -3589,9 +3589,9 @@ function AppCore() {
   const handleConnectorPicked = async (connector, { existingName, editingConnection = null } = {}) => {
     setConnectorPickerOpen(false);
     if (!connector?.id) return;
-    // A bot people ask from another app saves no credential: its own panel
-    // takes the person's opt-in instead of a connect chat.
-    if (connector.bot) {
+    // Microsoft Teams (Bot) saves no credential: its own panel takes the
+    // person's opt-in instead of a connect chat.
+    if (connector.id === TEAMS_BOT_ENGINE) {
       setTeamsBotOpen(true);
       return;
     }

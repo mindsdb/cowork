@@ -57,7 +57,7 @@ export default function TeamsBotModal({ open, onClose }) {
             <p className="s-body">
               {connection.teams_name
                 ? t('teamsBot.connectedAs', { teamsName: connection.teams_name })
-                : t('teamsBot.connected')}
+                : t('teamsBot.connected', { name })}
             </p>
           )}
         </div>
