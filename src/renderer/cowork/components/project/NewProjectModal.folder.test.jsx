@@ -31,13 +31,20 @@ vi.mock('../../../lib/orgMode', () => ({
 }));
 
 import NewProjectModal from './NewProjectModal';
+import { ToastProvider } from '../ui/Toast';
 
 const CHOOSE = 'Use an existing folder';
 
 function open() {
   const onClose = vi.fn();
   const onCreated = vi.fn();
-  render(<NewProjectModal open onClose={onClose} onCreated={onCreated} />);
+  /* The dialog calls useToastManager(), which throws outside a provider. The
+     real tree always has one (App wraps AppCore), so the test wraps it too. */
+  render(
+    <ToastProvider>
+      <NewProjectModal open onClose={onClose} onCreated={onCreated} />
+    </ToastProvider>,
+  );
   fireEvent.change(screen.getByPlaceholderText('acme-engineering'), {
     target: { value: 'billing' },
   });

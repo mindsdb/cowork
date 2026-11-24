@@ -797,6 +797,8 @@
     "folderUnsupported": "Dieser Server unterstützt keine Projekte, die auf einen Ordner verweisen. „{name}“ wurde als normales Projekt erstellt und Ihre Ordnerauswahl wurde zurückgesetzt. Aktualisieren Sie Cowork, um Ihren Ordner zu nutzen, oder löschen Sie das Projekt, wenn Sie es nicht möchten.",
     "couldNotCreate": "Projekt konnte nicht erstellt werden.",
     "couldNotOpenPicker": "Die Ordnerauswahl konnte nicht geöffnet werden.",
+    "filesNotUploaded": "„{name}“ wurde erstellt, aber die Dateien wurden nicht hochgeladen.",
+    "filesNotUploadedReason": "Der Upload wurde nicht abgeschlossen. Fügen Sie die Dateien erneut zum Projekt hinzu.",
     "title": "Neues Projekt starten",
     "nameLabel": "Projektname",
     "instructionsLabel": "Anweisungen",

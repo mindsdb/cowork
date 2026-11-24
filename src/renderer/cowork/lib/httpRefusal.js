@@ -31,7 +31,8 @@ function firstText(...values) {
  * permission refusals), FastAPI's validation list, RFC 9457's `title`, a
  * top-level `message`, then an OpenAI-style `error.message`. A body that isn't
  * JSON is the server's own text, unless it is markup: an HTML error page from a
- * proxy is noise to a reader, so the caller's fallback shows instead.
+ * proxy is noise to a reader, so it names no sentence and refusalMessage picks
+ * what shows instead.
  *
  * @param {string} text
  * @returns {RefusalBody}
@@ -63,6 +64,30 @@ export function readRefusalBody(text) {
     ),
     code: firstText(data.code, detailObject?.code) || null,
   };
+}
+
+/* Shown for a 413 whose body names no sentence. A proxy in front of the server
+   refuses a body over its own limit with an HTML page: Cloudflare does so past
+   100 MB on hosted Cowork. The project and attachment uploads send every picked
+   file in one request, so several small files can pass that limit together,
+   and the sentence names the upload, not one file. It names no number, since
+   the app can't tell which edge refused or what its limit is. */
+export const UPLOAD_TOO_LARGE_MESSAGE = 'This upload is over the size limit. Pick a smaller file, or fewer files at once.';
+
+/**
+ * The sentence a refused request shows: the body's own sentence, else the
+ * size sentence for a 413, else the caller's fallback.
+ *
+ * @param {object} refusal
+ * @param {number} refusal.status The response's HTTP status.
+ * @param {string} refusal.message The body's sentence (readRefusalBody), or ''.
+ * @param {string} refusal.fallback The caller's sentence for any other refusal.
+ * @returns {string}
+ */
+export function refusalMessage({ status, message, fallback }) {
+  if (message) return message;
+  if (status === 413) return UPLOAD_TOO_LARGE_MESSAGE;
+  return fallback;
 }
 
 /**

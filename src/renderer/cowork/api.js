@@ -15,7 +15,7 @@ import { reduceServerEvents, replayedAnswer } from './lib/conversationHistory';
 import { withQuickEditGroup } from './lib/quickEditGroup';
 import { isAntonConfigError } from './lib/antonErrors';
 import { ADDON_REQUEST_TIMEOUT_MS, foldAddonMessages, isValidLocalKey } from './lib/addons';
-import { readRefusalBody, readRefusalObject, readRetryAfter } from './lib/httpRefusal';
+import { readRefusalBody, readRefusalObject, readRetryAfter, refusalMessage } from './lib/httpRefusal';
 import { host } from '../platform/host';
 import { withoutNotionPageNotes, stripNotionPageNoteFromTitle } from './lib/notionPageNote';
 import { currentServerLocale } from '../lib/i18n';
@@ -259,7 +259,8 @@ function dedupe(key, factory, { forceFresh = false } = {}) {
 
 /**
  * Builds the Error a refused request throws. The message is the body's
- * sentence, else the caller's fallback. status, code, retry_after and retry_at
+ * sentence, else the size sentence for a 413, else the caller's fallback
+ * (refusalMessage in lib/httpRefusal.js). status, code, retry_after and retry_at
  * let a caller tell a busy server from a turn already running, and wait as
  * long as the server asked. The body is read once, as text, and parsed from
  * there: reading it as JSON first would consume it, and a body that isn't JSON
@@ -278,7 +279,7 @@ async function responseError(res, fallback) {
   }
   const { message, code } = readRefusalBody(text);
   const { retry_after, retry_at } = readRetryAfter(res.headers?.get?.('Retry-After'));
-  const err = /** @type {RefusalError} */ (new Error(message || fallback));
+  const err = /** @type {RefusalError} */ (new Error(refusalMessage({ status: res.status, message, fallback })));
   err.status = res.status;
   err.code = code;
   err.retry_after = retry_after;

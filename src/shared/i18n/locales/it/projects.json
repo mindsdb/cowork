@@ -797,6 +797,8 @@
     "folderUnsupported": "Questo server non consente di associare un progetto a una cartella. Ha creato «{name}» come progetto normale e ha annullato la selezione della cartella. Aggiorna Cowork per usare la tua cartella, oppure elimina quel progetto se non ti serve.",
     "couldNotCreate": "Impossibile creare il progetto.",
     "couldNotOpenPicker": "Impossibile aprire la selezione della cartella.",
+    "filesNotUploaded": "«{name}» è stato creato, ma i suoi file non sono stati caricati.",
+    "filesNotUploadedReason": "Il caricamento non è stato completato. Aggiungi di nuovo i file al progetto.",
     "title": "Avvia un nuovo progetto",
     "nameLabel": "Nome del progetto",
     "instructionsLabel": "Istruzioni",

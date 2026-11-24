@@ -797,6 +797,8 @@
     "folderUnsupported": "This server does not support pointing a project at a folder. It created \"{name}\" as a normal project and cleared your folder selection. Update Cowork to use your folder, or delete that project if you do not want it.",
     "couldNotCreate": "Could not create project.",
     "couldNotOpenPicker": "Could not open the folder picker.",
+    "filesNotUploaded": "\"{name}\" was created, but its files didn't upload.",
+    "filesNotUploadedReason": "The upload didn't finish. Add the files to the project again.",
     "title": "Start a new project",
     "nameLabel": "Project name",
     "instructionsLabel": "Instructions",

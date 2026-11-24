@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readRefusalBody, readRetryAfter } from './httpRefusal';
+import { UPLOAD_TOO_LARGE_MESSAGE, readRefusalBody, readRetryAfter, refusalMessage } from './httpRefusal';
 
 const BUSY = 'Cowork is busy. Try again in about 5 seconds.';
 const json = (body) => JSON.stringify(body);
@@ -41,11 +41,38 @@ describe('readRefusalBody', () => {
     expect(readRefusalBody('Internal Server Error\n')).toEqual({ message: 'Internal Server Error', code: null });
   });
 
-  it("names nothing for markup or a JSON body without a sentence, so the caller's fallback shows", () => {
+  it('names nothing for markup or a JSON body without a sentence, so refusalMessage picks what shows', () => {
     expect(readRefusalBody('<html><body><h1>502 Bad Gateway</h1></body></html>').message).toBe('');
     expect(readRefusalBody(json({ status: 'error' }))).toEqual({ message: '', code: null });
     expect(readRefusalBody(json(['a', 'b'])).message).toBe('');
     expect(readRefusalBody('').message).toBe('');
+  });
+});
+
+describe('refusalMessage', () => {
+  const TOO_LARGE = 'This upload is over the size limit. Pick a smaller file, or fewer files at once.';
+  const FALLBACK = 'Upload failed (413)';
+
+  it('says the upload is over the size limit for a 413 that names no sentence', () => {
+    expect(UPLOAD_TOO_LARGE_MESSAGE).toBe(TOO_LARGE);
+    const edgePage = '<html><head><title>413 Payload Too Large</title></head><body><center>cloudflare</center></body></html>';
+    const { message } = readRefusalBody(edgePage);
+
+    expect(refusalMessage({ status: 413, message, fallback: FALLBACK })).toBe(TOO_LARGE);
+    expect(refusalMessage({ status: 413, message: '', fallback: FALLBACK })).toBe(TOO_LARGE);
+  });
+
+  it("shows a 413's own sentence over the size sentence", () => {
+    const sentence = 'This upload is larger than the 500 MB limit.';
+    const { message } = readRefusalBody(json({ detail: sentence }));
+
+    expect(refusalMessage({ status: 413, message, fallback: FALLBACK })).toBe(sentence);
+  });
+
+  it("keeps the caller's fallback for any other status that names no sentence", () => {
+    for (const status of [400, 403, 500, 502, 503]) {
+      expect(refusalMessage({ status, message: '', fallback: `Upload failed (${status})` })).toBe(`Upload failed (${status})`);
+    }
   });
 });
 

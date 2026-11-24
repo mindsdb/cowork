@@ -409,6 +409,8 @@ assets/
 
 - **OTA updates**: The React UI and the Python backend update over-the-air (coupled, auto-applied at boot) without a new installer; the Electron shell auto-updates on stable/prod via `electron-updater`, installing on relaunch. See [Over-the-Air Updates](#over-the-air-updates).
 
+- **A refused request shows the server's sentence**: The error a refused request throws carries the sentence its body names, read by `readRefusalBody` in `src/renderer/cowork/lib/httpRefusal.js`. A proxy's HTML error page names no sentence. A 413 with no sentence, such as Cloudflare's page for a body over 100 MB on hosted Cowork, shows "This upload is over the size limit. Pick a smaller file, or fewer files at once." The project and attachment uploads send every picked file in one request, so the sentence names the upload, not one file. Any other refusal with no sentence shows the caller's own fallback, such as "Upload failed (502)". When the new-project dialog's files are refused, the project is still created, and a toast gives the refusal's sentence.
+
 ---
 
 ## IPC Reference

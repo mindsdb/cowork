@@ -797,6 +797,8 @@
     "folderUnsupported": "此服务器不支持将项目指向文件夹。它已将“{name}”创建为普通项目，并清除了你选择的文件夹。请更新 Cowork 以使用你的文件夹；如果不需要该项目，也可以将其删除。",
     "couldNotCreate": "无法创建项目。",
     "couldNotOpenPicker": "无法打开文件夹选择器。",
+    "filesNotUploaded": "已创建“{name}”，但其文件未能上传。",
+    "filesNotUploadedReason": "上传未完成。请重新将文件添加到项目中。",
     "title": "新建项目",
     "nameLabel": "项目名称",
     "instructionsLabel": "说明",

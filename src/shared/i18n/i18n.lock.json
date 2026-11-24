@@ -133517,6 +133517,74 @@
       "text": "39932f24fe11"
     }
   },
+  "projects:newProjectModal.filesNotUploaded": {
+    "de": {
+      "from": "569780499471",
+      "text": "032bbd486f18"
+    },
+    "es": {
+      "from": "569780499471",
+      "text": "7e853fd04c62"
+    },
+    "fr": {
+      "from": "569780499471",
+      "text": "7a5187c967f3"
+    },
+    "it": {
+      "from": "569780499471",
+      "text": "06cd9d399239"
+    },
+    "ja": {
+      "from": "569780499471",
+      "text": "63f339c4c94e"
+    },
+    "ko": {
+      "from": "569780499471",
+      "text": "7b1b240ea2c2"
+    },
+    "pt-BR": {
+      "from": "569780499471",
+      "text": "ef250e44ac44"
+    },
+    "zh-CN": {
+      "from": "569780499471",
+      "text": "6d9c3da86a08"
+    }
+  },
+  "projects:newProjectModal.filesNotUploadedReason": {
+    "de": {
+      "from": "0b337e313643",
+      "text": "056c80e898f7"
+    },
+    "es": {
+      "from": "0b337e313643",
+      "text": "fb2fb080dcfb"
+    },
+    "fr": {
+      "from": "0b337e313643",
+      "text": "b1772b21c410"
+    },
+    "it": {
+      "from": "0b337e313643",
+      "text": "9bc084b3d563"
+    },
+    "ja": {
+      "from": "0b337e313643",
+      "text": "8980122ed360"
+    },
+    "ko": {
+      "from": "0b337e313643",
+      "text": "c959f94fe271"
+    },
+    "pt-BR": {
+      "from": "0b337e313643",
+      "text": "462c18df4131"
+    },
+    "zh-CN": {
+      "from": "0b337e313643",
+      "text": "4ca00282e1f7"
+    }
+  },
   "projects:newProjectModal.folderUnsupported": {
     "de": {
       "from": "f5230f5cc4bf",

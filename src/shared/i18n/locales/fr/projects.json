@@ -797,6 +797,8 @@
     "folderUnsupported": "Ce serveur ne permet pas d’associer un projet à un dossier. « {name} » a été créé comme projet standard et votre sélection de dossier a été effacée. Mettez à jour Cowork pour utiliser votre dossier, ou supprimez ce projet si vous n’en voulez pas.",
     "couldNotCreate": "Impossible de créer le projet.",
     "couldNotOpenPicker": "Impossible d’ouvrir le sélecteur de dossier.",
+    "filesNotUploaded": "« {name} » a été créé, mais ses fichiers n’ont pas été importés.",
+    "filesNotUploadedReason": "L’importation n’a pas abouti. Ajoutez de nouveau les fichiers au projet.",
     "title": "Créer un projet",
     "nameLabel": "Nom du projet",
     "instructionsLabel": "Instructions",

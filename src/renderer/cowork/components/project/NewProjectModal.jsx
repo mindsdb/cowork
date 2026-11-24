@@ -18,6 +18,8 @@ import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
 import { Alert, Button, Field, Input, Textarea, Tooltip } from '../ui';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
+import { useToastManager } from '../ui/Toast';
+import { projectLabel } from '../../lib/projectLabel';
 import {
   createProject,
   uploadProjectFiles,
@@ -64,6 +66,7 @@ function FileList({ files, onRemove }) {
 
 export default function NewProjectModal({ open, onClose, onCreated }) {
   const { t } = useTranslation('projects');
+  const toastManager = useToastManager();
   const [name, setName] = useState('');
   const [instructions, setInstructions] = useState('');
   const [files, setFiles] = useState([]);
@@ -165,15 +168,25 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
         }
       }
 
-      // 3) Upload files in one multipart request. All-or-nothing per
-      //    file — server returns a per-file result list we ignore for
-      //    now (could surface partial failures in a toast later).
+      /* 3) Upload files in one multipart request. The per-file result list
+         in a successful response is ignored. A refused request (a 413 from
+         the server or the hosted edge, for one) still ends with the project
+         created and the dialog closed, since a second Create would make a
+         duplicate project. The toast is then the only place the person
+         learns the files are missing, so it stays until they dismiss it. Its
+         text is the sentence uploadProjectFiles puts in the error. */
       if (files.length) {
         try {
           await uploadProjectFiles(finalName, files);
         } catch (e) {
           // eslint-disable-next-line no-console
           diagnostic("renderer.cowork.components.project.NewProjectModal", "WARNING", "new_project_uploads_failed", '[new-project] uploads failed', e);
+          toastManager.add({
+            type: 'danger',
+            timeout: 0,
+            title: t('newProjectModal.filesNotUploaded', { name: projectLabel(result) || finalName }),
+            description: e?.message || t('newProjectModal.filesNotUploadedReason'),
+          });
         }
       }
 

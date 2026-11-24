@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within, act, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Composer from './Composer';
+import { ToastProvider } from './ui/Toast';
 import { MINDS_BILLING_URL, consoleUrlFor } from '../../lib/mindsUrls';
 
 // Console links name the session's organization and account (ENG-4333).
@@ -62,7 +63,10 @@ const renderComposer = (overrides = {}) => {
     models: [],
     ...overrides,
   };
-  render(<Composer {...props} />);
+  /* The "+ New project" modal calls useToastManager(), which throws outside a
+     provider. The real tree always has one (App wraps AppCore), so the
+     composer renders inside one here too. */
+  render(<Composer {...props} />, { wrapper: ToastProvider });
   return props;
 };
 
