@@ -493,3 +493,20 @@ describe('artifactSection and groupArtifactsBySection', () => {
   });
 });
 
+
+describe('a public website', () => {
+  const site = {
+    publishedUrl: 'https://k3x9-staging.mindshub.co/', accessMode: 'website', accessProtected: false,
+    accessEmails: [], orgAllowed: false, ownerOnly: false, allowedTeamIds: [], allowedUserIds: [],
+  };
+
+  it('reads as shared publicly, whatever its empty audience says', () => {
+    expect(artifactShareState(site)).toEqual({
+      shared: true, kind: 'public', hint: 'Public link: anyone with the URL can open it',
+    });
+  });
+
+  it('needs no audience read to say so', () => {
+    expect(artifactShareState(site, { orgSharing: true, audienceKnown: false })).toMatchObject({ shared: true, kind: 'public' });
+  });
+});

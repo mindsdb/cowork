@@ -19,7 +19,7 @@ import i18n, { useTranslation } from '../../../lib/i18n';
 import { ArtifactAuthorshipBadge } from './ArtifactAuthorshipBadge';
 
 // One mode-aware badge per published artifact (ENG-1212). ONLY a genuinely
-// public artifact gets the green "success" treatment — password/restricted
+// public artifact (a public link or a public website) gets the green "success" treatment — password/restricted
 // are neutral so a protected artifact can never read as "Shared / available
 // to all". Every badge carries a `dot` (the "this is live" affordance that the
 // old green "Shared" pill provided — draft/"Not shared" has none) plus an icon,
@@ -28,6 +28,7 @@ import { ArtifactAuthorshipBadge } from './ArtifactAuthorshipBadge';
 // the "Unshared changes" badge the two wrap to a second line.
 const ACCESS_BADGE = {
   public: { variant: 'success', icon: Ico.globe(12), labelKey: 'status.badge.public' },
+  website: { variant: 'success', icon: Ico.globe(12), labelKey: 'status.badge.website' },
   password: { variant: 'default', icon: Ico.lock(12), labelKey: 'status.badge.password' },
   restricted: { variant: 'default', icon: Ico.people(12), labelKey: 'status.badge.restricted' },
 };

@@ -577,7 +577,8 @@ export const ARTIFACT_SHARE_UNKNOWN = Object.freeze({ shared: false, kind: 'unkn
 
 /**
  * The same for a published artifact (its publish controller or artifact):
- * `kind` 'private' | 'public' | 'password' | 'org' | 'specific'. A restricted
+ * `kind` 'private' | 'public' | 'password' | 'org' | 'specific'; a public
+ * website is 'public'. A restricted
  * artifact is ARTIFACT_SHARE_UNKNOWN with `audienceKnown` false (MindsHub
  * mode before the access route answers) and when the artifact itself doesn't
  * know who it reaches (a MindsHub mode card, whose audience fields are null).
@@ -587,7 +588,7 @@ export function artifactShareState(artifact, {
 } = {}) {
   if (!artifact?.publishedUrl) return { shared: false, kind: 'private', hint: tr('share.notYet') };
   const mode = artifact.accessMode || (artifact.accessProtected ? 'password' : 'public');
-  if (mode === 'public') return { shared: true, kind: 'public', hint: tr('share.public') };
+  if (mode === 'public' || mode === AUDIENCE_CHOICE.WEBSITE) return { shared: true, kind: 'public', hint: tr('share.public') };
   if (mode === 'password') return { shared: true, kind: 'password', hint: tr('share.password') };
   const audience = audienceKnown ? readArtifactAudience(artifact) : null;
   if (!audience) return ARTIFACT_SHARE_UNKNOWN;
