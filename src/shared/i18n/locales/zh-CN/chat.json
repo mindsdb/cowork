@@ -818,6 +818,22 @@
     "alt": "生成的图像 {name}",
     "notShown": "无法显示 {name}。它可能已被移动或删除。"
   },
+  "drivePicker": {
+    "title": "从 Google 云端硬盘添加文件",
+    "subtitle": "来自 {account}",
+    "searchPlaceholder": "按文件名搜索云端硬盘",
+    "searchAriaLabel": "搜索 Google 云端硬盘",
+    "matching": "匹配的文件",
+    "recent": "最近打开",
+    "listAriaLabel": "Google 云端硬盘文件",
+    "searching": "正在搜索 Google 云端硬盘…",
+    "noMatches": "没有与该名称匹配的文件。",
+    "empty": "此云端硬盘中还没有文件。",
+    "loadMore": "加载更多",
+    "cancel": "取消",
+    "add": "{count, plural, =0 {添加文件} other {添加 # 个文件}}",
+    "searchFailed": "无法搜索 Google 云端硬盘。"
+  },
   "ownWork": {
     "needsMaterial": "现在添加要处理的内容：附加一个文件，或在任务后粘贴文本或链接。",
     "waysLabel": "带入你的工作的方式",

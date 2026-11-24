@@ -818,6 +818,22 @@
     "alt": "Generated image {name}",
     "notShown": "{name} could not be shown. It may have been moved or deleted."
   },
+  "drivePicker": {
+    "title": "Add files from Google Drive",
+    "subtitle": "From {account}",
+    "searchPlaceholder": "Search your Drive by file name",
+    "searchAriaLabel": "Search Google Drive",
+    "matching": "Matching files",
+    "recent": "Recently opened",
+    "listAriaLabel": "Google Drive files",
+    "searching": "Searching Google Drive…",
+    "noMatches": "No files match that name.",
+    "empty": "No files in this Drive yet.",
+    "loadMore": "Load more",
+    "cancel": "Cancel",
+    "add": "{count, plural, =0 {Add file} one {Add file} other {Add # files}}",
+    "searchFailed": "Could not search Google Drive."
+  },
   "ownWork": {
     "needsMaterial": "Now add what it should work on: attach a file, or paste text or a link after the job.",
     "waysLabel": "Ways to bring your work",

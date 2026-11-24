@@ -818,6 +818,22 @@
     "alt": "Image générée {name}",
     "notShown": "Impossible d'afficher {name}. Le fichier a peut-être été déplacé ou supprimé."
   },
+  "drivePicker": {
+    "title": "Ajouter des fichiers depuis Google Drive",
+    "subtitle": "De {account}",
+    "searchPlaceholder": "Rechercher dans votre Drive par nom de fichier",
+    "searchAriaLabel": "Rechercher dans Google Drive",
+    "matching": "Fichiers correspondants",
+    "recent": "Ouverts récemment",
+    "listAriaLabel": "Fichiers Google Drive",
+    "searching": "Recherche dans Google Drive…",
+    "noMatches": "Aucun fichier ne correspond à ce nom.",
+    "empty": "Aucun fichier dans ce Drive pour l'instant.",
+    "loadMore": "Charger plus",
+    "cancel": "Annuler",
+    "add": "{count, plural, =0 {Ajouter le fichier} one {Ajouter le fichier} other {Ajouter # fichiers}}",
+    "searchFailed": "Impossible de rechercher dans Google Drive."
+  },
   "ownWork": {
     "needsMaterial": "Ajoutez maintenant ce sur quoi il doit travailler : joignez un fichier, ou collez du texte ou un lien après la tâche.",
     "waysLabel": "Façons d'apporter votre travail",

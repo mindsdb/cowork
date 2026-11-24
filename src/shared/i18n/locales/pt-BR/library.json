@@ -255,15 +255,8 @@
     "countFiltered": "{shown} de {total} conexões",
     "count": "{count, plural, one {# conexão} other {# conexões}}",
     "drive": {
-      "noAccountEmail": "Não há e-mail de conta registrado para esta conexão — tente reconectar.",
-      "pickerFailed": "Não foi possível abrir o seletor do Drive.",
-      "title": "Arquivos do Drive",
-      "intro": "Esta conexão só pode ler os arquivos que ela mesma criou. Selecione arquivos abaixo — inclusive vários de uma vez ou drives compartilhados inteiros — para conceder acesso a eles também.",
-      "waiting": "Aberto no seu navegador — escolha seus arquivos lá e depois volte. Confirmar o acesso pode levar alguns segundos depois que você voltar.",
-      "select": "Selecionar arquivos do Google Drive",
-      "failed": "O Google não concedeu acesso a {count, plural, one {este arquivo} other {estes arquivos}} — tente {count, plural, one {escolhê-lo} other {escolhê-los}} novamente:",
-      "noFiles": "Nenhum arquivo selecionado.",
-      "granted": "Acesso concedido a {count, plural, one {# arquivo} other {# arquivos}}:"
+      "limitedTitle": "Acesso limitado ao Google Drive",
+      "limitedBody": "O Anton só consegue ler os arquivos que criou ou que você adiciona em um chat. Reconecte e marque \"Ver e baixar todos os seus arquivos do Google Drive\" para que ele possa ler todo o seu Drive."
     },
     "reconnectRequired": "Reconexão necessária",
     "expired": {
@@ -551,7 +544,6 @@
       "note": "Isso pode levar um momento. O resultado aparece em Conectar apps e dados, onde você pode tentar novamente se a verificação não tiver êxito."
     },
     "viewConnections": "Ver conexões",
-    "driveNote": "Esta conexão pode acessar os arquivos que criou e os que você escolher — use \"Adicionar arquivos do Google Drive\" no menu + de um chat ou \"Selecionar arquivos do Google Drive\" nas configurações desta conexão.",
     "viewConnectors": "Ver conectores →",
     "required": "{field} é obrigatório.",
     "labelPlaceholder": "ex.: prod-db",

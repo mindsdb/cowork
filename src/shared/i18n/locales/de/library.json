@@ -255,15 +255,8 @@
     "countFiltered": "{shown} von {total} Verbindungen",
     "count": "{count, plural, one {# Verbindung} other {# Verbindungen}}",
     "drive": {
-      "noAccountEmail": "Für diese Verbindung ist keine Konto-E-Mail hinterlegt. Verbinden Sie sie erneut.",
-      "pickerFailed": "Die Drive-Dateiauswahl konnte nicht geöffnet werden.",
-      "title": "Drive-Dateien",
-      "intro": "Diese Verbindung kann nur Dateien lesen, die sie selbst erstellt hat. Wählen Sie unten weitere Dateien aus, auch mehrere auf einmal oder ganze geteilte Ablagen, um auch darauf Zugriff zu gewähren.",
-      "waiting": "In Ihrem Browser geöffnet: Wählen Sie dort Ihre Dateien aus und kehren Sie dann zurück. Die Bestätigung des Zugriffs kann nach Ihrer Rückkehr einige Sekunden dauern.",
-      "select": "Dateien aus Google Drive auswählen",
-      "failed": "Google hat den Zugriff auf {count, plural, one {diese Datei} other {diese Dateien}} nicht gewährt. Versuchen Sie, {count, plural, one {sie} other {sie}} erneut auszuwählen:",
-      "noFiles": "Keine Dateien ausgewählt.",
-      "granted": "Zugriff gewährt auf {count, plural, one {# Datei} other {# Dateien}}:"
+      "limitedTitle": "Eingeschränkter Google Drive-Zugriff",
+      "limitedBody": "Anton kann nur Dateien lesen, die es selbst erstellt hat oder die du in einem Chat hinzufügst. Verbinde dich erneut und setze das Häkchen bei „Alle Ihre Google Drive-Dateien ansehen und herunterladen“, damit es dein ganzes Drive lesen kann."
     },
     "reconnectRequired": "Erneute Verbindung erforderlich",
     "expired": {
@@ -551,7 +544,6 @@
       "note": "Das kann einen Moment dauern. Das Ergebnis erscheint unter „Apps und Daten verbinden“, wo Sie es erneut versuchen können, falls die Prüfung fehlschlägt."
     },
     "viewConnections": "Verbindungen anzeigen",
-    "driveNote": "Diese Verbindung kann auf Dateien zugreifen, die sie erstellt hat, sowie auf alle, die Sie selbst auswählen: über „Dateien aus Google Drive hinzufügen“ im +-Menü eines Chats oder über „Dateien aus Google Drive auswählen“ in den Einstellungen dieser Verbindung.",
     "viewConnectors": "Connectors anzeigen →",
     "required": "{field} ist erforderlich.",
     "labelPlaceholder": "z. B. prod-db",

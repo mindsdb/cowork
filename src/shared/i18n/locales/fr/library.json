@@ -255,15 +255,8 @@
     "countFiltered": "{shown} connexions sur {total}",
     "count": "{count, plural, one {# connexion} other {# connexions}}",
     "drive": {
-      "noAccountEmail": "Aucune adresse e-mail de compte n’est enregistrée pour cette connexion. Essayez de la reconnecter.",
-      "pickerFailed": "Impossible d’ouvrir le sélecteur Drive.",
-      "title": "Fichiers Drive",
-      "intro": "Cette connexion peut uniquement lire les fichiers qu’elle a créés. Sélectionnez des fichiers ci-dessous (plusieurs à la fois ou des Drive partagés entiers) pour lui en donner aussi l’accès.",
-      "waiting": "Ouvert dans votre navigateur : choisissez-y vos fichiers, puis revenez. La confirmation de l’accès peut prendre quelques secondes après votre retour.",
-      "select": "Sélectionner des fichiers dans Google Drive",
-      "failed": "Google n’a pas réellement accordé l’accès à {count, plural, one {ce fichier} other {ces fichiers}}. Essayez de {count, plural, one {le} other {les}} sélectionner à nouveau :",
-      "noFiles": "Aucun fichier sélectionné.",
-      "granted": "Accès accordé à {count, plural, one {# fichier} other {# fichiers}} :"
+      "limitedTitle": "Accès limité à Google Drive",
+      "limitedBody": "Anton ne peut lire que les fichiers qu'il a créés ou que vous ajoutez dans une discussion. Reconnectez-vous et cochez « Afficher et télécharger tous vos fichiers Google Drive » pour qu'il puisse lire tout votre Drive."
     },
     "reconnectRequired": "Reconnexion requise",
     "expired": {
@@ -551,7 +544,6 @@
       "note": "Cela peut prendre un moment. Le résultat s’affiche dans Connecter des applications et des données, où vous pourrez réessayer si la vérification échoue."
     },
     "viewConnections": "Voir les connexions",
-    "driveNote": "Cette connexion peut accéder aux fichiers qu’elle a créés, ainsi qu’à ceux que vous choisissez : utilisez « Ajouter des fichiers depuis Google Drive » dans le menu + d’un chat, ou « Sélectionner des fichiers dans Google Drive » dans les paramètres de cette connexion.",
     "viewConnectors": "Voir les connecteurs →",
     "required": "{field} est obligatoire.",
     "labelPlaceholder": "ex. prod-db",
