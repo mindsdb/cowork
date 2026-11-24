@@ -1028,7 +1028,7 @@ const liveCodingApi = {
   claimDeliveryAutomation: (id: string, fingerprint: string) => requestJson<{ claimed: boolean; attempts: number; limit: number }>(`/sessions/${encodeURIComponent(id)}/delivery-automation/claim`, {
     method: 'POST', body: JSON.stringify({ fingerprint }),
   }),
-  draftPullRequests: (id: string, body: { title: string; body: string; drafts?: Array<{ folder_id: string; title: string; body: string; head_revision?: string | null; task_branch?: string | null; remote_url?: string | null }>; connection_name?: string | null; confirmed: boolean }) => requestJson<{ items: DeliveryRecord[] }>(`/sessions/${encodeURIComponent(id)}/draft-pull-requests`, {
+  draftPullRequests: (id: string, body: { title: string; body: string; drafts?: Array<{ folder_id: string; title: string; body: string; head_revision?: string | null; base_branch?: string | null; task_branch?: string | null; remote_url?: string | null }>; connection_name?: string | null; confirmed: boolean }) => requestJson<{ items: DeliveryRecord[] }>(`/sessions/${encodeURIComponent(id)}/draft-pull-requests`, {
     method: 'POST', body: JSON.stringify(body),
   }),
   pullRequestAction: (id: string, body: { action: 'ready' | 'merge' | 'resolve_thread'; target_url: string; connection_name?: string | null; thread_id?: string | null; confirmed: boolean }) => requestJson<PullRequestStatus>(`/sessions/${encodeURIComponent(id)}/pull-request-action`, {

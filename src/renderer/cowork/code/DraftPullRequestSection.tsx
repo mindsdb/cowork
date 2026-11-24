@@ -32,6 +32,7 @@ export interface DraftPullRequestInput {
   // What the person confirmed. The server refuses a folder that has moved on
   // since, rather than publishing a commit or destination nobody reviewed.
   head_revision?: string | null;
+  base_branch?: string | null;
   task_branch?: string | null;
   remote_url?: string | null;
 }
@@ -300,6 +301,7 @@ export function DraftPullRequestSection({
         title: overrides[item.folder_id]?.title || title.trim(),
         body: overrides[item.folder_id]?.body ?? body.trim(),
         head_revision: item.head_revision,
+        base_branch: item.base_branch,
         task_branch: item.task_branch,
         remote_url: item.remote_url,
       })),

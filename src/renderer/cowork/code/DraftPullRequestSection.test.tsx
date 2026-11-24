@@ -76,6 +76,7 @@ describe('DraftPullRequestSection', () => {
         title: 'Improve project delivery',
         body: '',
         head_revision: 'a'.repeat(40),
+        base_branch: 'staging',
         task_branch: 'cowork/task/server',
         remote_url: 'https://github.com/mindsdb/server.git',
       }],
@@ -84,6 +85,7 @@ describe('DraftPullRequestSection', () => {
 
   it.each([
     ['its commit and destination change', { ...readyItems[1], head_revision: 'b'.repeat(40), task_branch: 'other', remote_url: 'https://github.com/mindsdb/other.git' }],
+    ['only its base branch changes', { ...readyItems[1], base_branch: 'release' }],
     ['the selected folder disappears', readyItems[0]],
   ] as const)('preserves the open confirmation when %s during refresh', async (_case, refreshedItem) => {
     const user = userEvent.setup();
@@ -103,7 +105,7 @@ describe('DraftPullRequestSection', () => {
 
     expect(onCreate).toHaveBeenCalledWith(defaults.taskTitle, '', 'work', [{
       folder_id: 'server', title: defaults.taskTitle, body: '', head_revision: 'a'.repeat(40),
-      task_branch: 'cowork/task/server', remote_url: 'https://github.com/mindsdb/server.git',
+      base_branch: 'staging', task_branch: 'cowork/task/server', remote_url: 'https://github.com/mindsdb/server.git',
     }]);
   });
 
