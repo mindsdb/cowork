@@ -749,5 +749,17 @@
       "done": "Signed in. You can close this window.",
       "close": "Close window"
     }
+  },
+  "connectorSignIn": {
+    "finish": {
+      "title": "Connector sign-in",
+      "working": "Finishing the sign-in…",
+      "done": "Connected. You can close this window.",
+      "notYours": "This sign-in link was started by someone else, so nothing was connected. Only use sign-in links you started yourself in Cowork.",
+      "expired": "This sign-in link has expired or was already used. Connect again from Cowork.",
+      "wrongOrganization": "This sign-in was started in another organization. Switch to it in Cowork and connect again.",
+      "failed": "Couldn't finish the sign-in. Connect again from Cowork.",
+      "close": "Close window"
+    }
   }
 }

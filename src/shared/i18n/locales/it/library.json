@@ -749,5 +749,17 @@
       "done": "Accesso eseguito. Puoi chiudere questa finestra.",
       "close": "Chiudi finestra"
     }
+  },
+  "connectorSignIn": {
+    "finish": {
+      "title": "Accesso del connettore",
+      "working": "Completamento dell'accesso…",
+      "done": "Connesso. Puoi chiudere questa finestra.",
+      "notYours": "Questo link di accesso è stato avviato da qualcun altro, quindi non è stato connesso nulla. Usa solo link di accesso che hai avviato tu in Cowork.",
+      "expired": "Questo link di accesso è scaduto o è già stato usato. Connettiti di nuovo da Cowork.",
+      "wrongOrganization": "Questo accesso è stato avviato in un'altra organizzazione. Passa a quella organizzazione in Cowork e connettiti di nuovo.",
+      "failed": "Impossibile completare l'accesso. Connettiti di nuovo da Cowork.",
+      "close": "Chiudi finestra"
+    }
   }
 }

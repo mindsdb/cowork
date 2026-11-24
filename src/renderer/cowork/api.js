@@ -2910,9 +2910,12 @@ export async function validateAndSaveConnector(connectorId, payload) {
 // so it drives the server-side redirect flow instead:
 //   1. startConnectorOAuth → server mints PKCE + state, returns authUrl.
 //   2. open authUrl (new tab); the user consents; the provider redirects
-//      to the server callback, which exchanges the code + saves the vault
-//      record itself.
-//   3. pollConnectorOAuth(state) until status is 'success' | 'error'.
+//      to the server callback, which holds the code and sends the pop-up to
+//      /oauth/finish with a one-time completion id.
+//   3. the finish page posts finishConnectorOAuth in the member's own
+//      session; the server exchanges the code + saves the vault record only
+//      for the member who started the sign-in.
+//   4. pollConnectorOAuth(state) until status is 'success' | 'error'.
 // The SPA never handles the code or tokens directly.
 
 export async function startConnectorOAuth(connectorId, { method, name, clientId, clientSecret, extraFields } = {}) {
@@ -2926,6 +2929,11 @@ export async function startConnectorOAuth(connectorId, { method, name, clientId,
       extra_fields: extraFields || {},
     }),
   });
+}
+
+/** Rejects with err.code `login_not_yours`, `wrong_organization`, `expired` or `failed`. */
+export async function finishConnectorOAuth(completion) {
+  return req('/connectors/oauth/finish', { method: 'POST', body: JSON.stringify({ completion }) });
 }
 
 export async function pollConnectorOAuth(state) {

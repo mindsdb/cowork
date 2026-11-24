@@ -749,5 +749,17 @@
       "done": "Connecté. Vous pouvez fermer cette fenêtre.",
       "close": "Fermer la fenêtre"
     }
+  },
+  "connectorSignIn": {
+    "finish": {
+      "title": "Connexion du connecteur",
+      "working": "Finalisation de la connexion…",
+      "done": "Connecté. Vous pouvez fermer cette fenêtre.",
+      "notYours": "Ce lien de connexion a été lancé par quelqu'un d'autre, rien n'a donc été connecté. N'utilisez que les liens de connexion que vous avez lancés vous-même dans Cowork.",
+      "expired": "Ce lien de connexion a expiré ou a déjà été utilisé. Reconnectez-vous depuis Cowork.",
+      "wrongOrganization": "Cette connexion a été lancée dans une autre organisation. Passez-y dans Cowork et reconnectez-vous.",
+      "failed": "Impossible de finaliser la connexion. Reconnectez-vous depuis Cowork.",
+      "close": "Fermer la fenêtre"
+    }
   }
 }

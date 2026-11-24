@@ -53,6 +53,8 @@ import { captureSettingsDeepLink } from './cowork/lib/settingsDeepLink';
 import { captureSignupWelcome } from './cowork/lib/signupWelcome';
 import { captureCustomMcpCompletion, isCustomMcpFinishPage } from './cowork/lib/customMcpFinish';
 import CustomMcpFinishPage from './cowork/components/connector/CustomMcpFinishPage';
+import { captureOAuthCompletion, isOAuthFinishPage } from './cowork/lib/oauthFinish';
+import OAuthFinishPage from './cowork/components/connector/OAuthFinishPage';
 import { keycloak, mobileSession, mobileShellAdapter } from './lib/keycloak';
 import { keycloakInitOptions } from './lib/mobileAuth';
 import { applyMobileShellDocument, mobileShell } from './lib/mobileShell';
@@ -94,10 +96,12 @@ captureConsoleHandoff();
 captureSettingsDeepLink();
 // And a brand-new account's landing (?welcome=1&from=desktop, ENG-4288).
 captureSignupWelcome();
-// And a custom MCP sign-in's one-time id, carried in the fragment.
+// And a sign-in's one-time id, carried in the fragment.
 captureCustomMcpCompletion();
-// The sign-in pop-up shows only its completion page, never the app.
-const page = isCustomMcpFinishPage() ? <CustomMcpFinishPage /> : <App />;
+captureOAuthCompletion();
+// A sign-in pop-up shows only its completion page, never the app.
+const page = isCustomMcpFinishPage() ? <CustomMcpFinishPage />
+  : isOAuthFinishPage() ? <OAuthFinishPage /> : <App />;
 
 // Base URL without query params. Keycloak validates redirect URIs strictly.
 const cleanRedirectUri = `${window.location.protocol}//${window.location.host}${window.location.pathname}`;
