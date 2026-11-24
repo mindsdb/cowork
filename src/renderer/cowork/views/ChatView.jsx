@@ -467,9 +467,10 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
       {state !== 'thinking' && (
         <div className="flex items-center gap-2">
           {showActions && !deleting && (
-            <TurnActions text={copyText || ''} copyLabel={t('chatView.turn.copyResponse')} onDelete={onDelete} isLast={isLast} />
+            <TurnActions text={copyText || ''} copyLabel={t('chatView.turn.copyResponse')} onDelete={onDelete} isLast={isLast}>
+              <ReportContentButton conversationId={conversationId} messageId={messageId} />
+            </TurnActions>
           )}
-          {!deleting && <ReportContentButton conversationId={conversationId} messageId={messageId} />}
           {/* Agent always named; the timestamp joins it when the caller
               resolved one. No message row carries `createdAt` — the server
               sends `created_at` and nothing maps it. */}
