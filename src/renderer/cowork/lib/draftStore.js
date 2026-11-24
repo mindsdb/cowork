@@ -19,6 +19,7 @@ import {
   DOCUMENT_ORGANIZATION_EPOCH,
 } from './organizationTransitionState';
 import { storageKeyForOrganizationIdentity } from './organizationCacheIdentity';
+import { markWorkStarted } from './documentWork';
 
 const BASE_KEY = 'anton.composerDrafts';
 const CACHE_VERSION = 1;
@@ -118,6 +119,7 @@ export function setDraft(key, text) {
   if (!text) { clearDraft(key); return; }
   const values = currentDrafts();
   if (values.get(key) === text) return;
+  markWorkStarted();
   values.delete(key); // re-insert so iteration order stays recency-ordered
   values.set(key, text);
   while (values.size > MAX_KEYS) values.delete(values.keys().next().value);
