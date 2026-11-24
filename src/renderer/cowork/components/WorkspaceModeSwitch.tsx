@@ -24,7 +24,7 @@ export function WorkspaceModeSwitch({
           if (next === 'cowork' || next === 'code') onChange(next);
         }}
         aria-label={t('workspace.label')}
-        className="workspace-mode-switch"
+        className={codeTag ? 'workspace-mode-switch workspace-mode-switch--tagged' : 'workspace-mode-switch'}
         options={[
           { value: 'cowork', label: 'Cowork', icon: Ico.mindsdb(14) },
           {

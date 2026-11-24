@@ -159,6 +159,10 @@ describe('Sidebar — persistent Cowork / Code workspace switch', () => {
     expect(screen.getByRole('button', { name: 'Cowork' })).toHaveAttribute('aria-pressed', 'true');
     const code = screen.getByRole('button', { name: /^Code/ });
     expect(code).toHaveTextContent('Desktop');
+    // The tag makes Code too wide for an equal half of a 240px sidebar, so
+    // this switch sizes its halves to their content (layout is not measurable
+    // here; checked in the full app at 240px in every locale).
+    expect(code.parentElement).toHaveClass('workspace-mode-switch--tagged');
     expect(screen.queryByRole('dialog')).toBeNull();
 
     fireEvent.click(code);
@@ -184,6 +188,8 @@ describe('Sidebar — persistent Cowork / Code workspace switch', () => {
     render(<Sidebar {...baseProps} />);
     expect(screen.getByRole('button', { name: 'Code' })).not.toHaveTextContent('Desktop');
     expect(screen.getAllByRole('button', { name: /^Code/ })).toHaveLength(1);
+    // Desktop keeps its equal halves.
+    expect(screen.getByRole('button', { name: 'Code' }).parentElement).not.toHaveClass('workspace-mode-switch--tagged');
   });
 });
 
