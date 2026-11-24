@@ -21,7 +21,7 @@ import { badgeVariants } from '../components/ui/Badge';
 import { cn } from '../lib/cn';
 import {
   revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
-  publishTargetPath, artifactServeUrl, openArtifactFile,
+  publishTargetPath, artifactServeUrl, openArtifactFile, fetchPendingDatasources,
 } from '../api';
 import { copyText } from '../lib/clipboard';
 import { projectNameOf } from '../lib/artifactProject';
@@ -58,7 +58,10 @@ import { useArtifactAudiencesState } from '../hooks/useArtifactAudiences';
 import { useKnownPeople, useMindsHubTeams, useSharingCapabilities, useSharingOrgName } from '../hooks/useOrgSharing';
 import { artifactOwnerUserId } from '../lib/artifactAuthorship';
 import { LOAD_STATUS, readAudienceAnswer, readAudienceRequest } from '../lib/sharingContract';
-import { publishFailureReason, publishRefusalMessage } from '../components/artifact/publish/publishErrors';
+import {
+  isDatasourceApprovalError, publishFailureReason, publishRefusalMessage, unapprovedDatasourcesNotice,
+} from '../components/artifact/publish/publishErrors';
+import { DatasourceApprovalNotice } from '../components/artifact/publish/DatasourceApprovalNotice';
 import {
   publishedPageId, reportAccessChangeFailed, reportAccessChanged, reportLinkCopied, reportShareOpened, reportWithdrawal,
   shareSnapshot,
@@ -210,9 +213,22 @@ export function titleCompare(a, b) {
 function PublishDialog({ artifact, onCancel, onConfirm }) {
   const { t } = useTranslation('artifacts');
   const [draft, setDraft] = useState(() => accessDraftFromArtifact(artifact));
+  const [pending, setPending] = useState([]);
+  useEffect(() => {
+    let live = true;
+    if (artifact?.path) {
+      // Inside the promise chain, so a call that throws at once (a test's
+      // api mock without this export, say) also leaves the list empty.
+      Promise.resolve()
+        .then(() => fetchPendingDatasources(publishTargetPath(artifact)))
+        .then((list) => { if (live) setPending(Array.isArray(list) ? list : []); })
+        .catch(() => { if (live) setPending([]); });
+    }
+    return () => { live = false; };
+  }, [artifact]);
   if (!artifact) return null;
   const canConfirm = isAccessDraftValid(draft);
-  const submit = () => { if (canConfirm) onConfirm(buildAccessPayload(draft)); };
+  const submit = () => { if (canConfirm) onConfirm(buildAccessPayload(draft), pending); };
 
   return (
     <Modal open onClose={onCancel} size="sm" width="min(440px, 94vw)" maxHeight="min(600px, 90vh)" labelledBy="publish-dialog-title">
@@ -227,6 +243,7 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
           {t('publish.whoCanAccess')}
         </div>
         <AccessChooser value={draft} onChange={setDraft} onSubmit={submit} />
+        <DatasourceApprovalNotice pending={pending} className="mt-3" />
       </ModalBody>
       <ModalFooter cancel={<Button variant="subtle" onClick={onCancel}>{t('common.cancel')}</Button>}>
         <Button variant="primary" onClick={submit} disabled={!canConfirm}>
@@ -983,14 +1000,14 @@ export default function ArtifactsView({
     return new Promise((resolve) => { publishResolveRef.current = resolve; });
   };
 
-  const confirmPublish = async (access) => {
+  const confirmPublish = async (access, approvedDatasources = []) => {
     const artifact = publishTarget;
     setPublishTarget(null);
     if (!artifact?.path || busyPaths.has(artifact.path)) { settlePublish(); return; }
     setBusy(artifact.path, true);
     setPhase(artifact.path, 'publishing');
     try {
-      const r = await publishArtifact(publishTargetPath(artifact), access);
+      const r = await publishArtifact(publishTargetPath(artifact), access, { approvedDatasources });
       if (r?.url) {
         // Server is authoritative (it degrades an empty restricted/password
         // selection back to public); fall back to the requested access.
@@ -1024,11 +1041,14 @@ export default function ArtifactsView({
           kind: 'ok',
           message: t('artifactsView.sharedToast', { mode: m === 'password' || m === 'restricted' ? m : 'other', url: r.url }),
         });
+        const unapproved = unapprovedDatasourcesNotice(r);
+        if (unapproved) showToast({ kind: 'warning', message: unapproved });
       } else {
         setPhase(artifact.path, 'failed');
         showToast({ kind: 'error', message: t('publish.errors.noUrl') });
       }
     } catch (e) {
+      if (isDatasourceApprovalError(e)) setPublishTarget(artifact);
       reportAccessChangeFailed(artifact, { entry: 'list', reason: publishFailureReason(e) });
       const msg = e?.message || String(e);
       // Map the failures a user can act on to a clearer message.
