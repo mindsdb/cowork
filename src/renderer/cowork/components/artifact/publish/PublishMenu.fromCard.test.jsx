@@ -44,7 +44,7 @@ describe('a first share opened from the chat card', () => {
     fireEvent.click(screen.getByRole('radio', { name: /Only me/ }));
     expect(footerShare()).toBeEnabled();
     fireEvent.click(footerShare());
-    expect(ctrl.publish).toHaveBeenCalledWith(expect.objectContaining({ mode: 'restricted' }));
+    expect(ctrl.publish).toHaveBeenCalledWith(expect.objectContaining({ mode: 'restricted' }), expect.anything());
   });
 
   it('hands back to the header once that panel closes: a reopen starts on Only me, as the header does', () => {

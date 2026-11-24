@@ -289,7 +289,7 @@ describe('PublishMenu — password share', () => {
     await userEvent.type(screen.getByPlaceholderText('Add a password'), 'hunter2');
     const buttons = screen.getAllByRole('button').filter((b) => /publish|share|save/i.test(b.textContent) && !b.disabled);
     fireEvent.click(buttons.at(-1));
-    expect(ctrl.publish).toHaveBeenCalledWith(expect.objectContaining({ mode: 'password', password: 'hunter2' }));
+    expect(ctrl.publish).toHaveBeenCalledWith(expect.objectContaining({ mode: 'password', password: 'hunter2' }), expect.anything());
   });
 
   it('changes a public share to a password one', async () => {
@@ -303,6 +303,6 @@ describe('PublishMenu — password share', () => {
     const editor = screen.getByTestId('access-editor');
     await user.type(within(editor).getByPlaceholderText('Add a password'), 'hunter2');
     await user.click(screen.getByRole('button', { name: 'Update' }));
-    expect(ctrl.publish).toHaveBeenCalledWith(expect.objectContaining({ mode: 'password', password: 'hunter2' }));
+    expect(ctrl.publish).toHaveBeenCalledWith(expect.objectContaining({ mode: 'password', password: 'hunter2' }), expect.anything());
   });
 });
