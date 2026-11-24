@@ -315,8 +315,27 @@ async function isFile(file: string): Promise<boolean> {
   }
 }
 
-/** The file inside a folder that says its access list is already owner-only. */
+/** The file inside a folder that says its access list is already owner-only.
+ *  It holds the folder's volume serial number and file index, which a copy of
+ *  the folder does not share, so a copy that carries the marker gets the list
+ *  again. anton's project `.anton` marker works the same way. */
 export const OWNER_ONLY_ACCESS_MARKER = '.owner-only-access';
+
+/* bigint, because Windows file indexes are 64-bit and a number loses the low
+ * bits of a large one. */
+function folderIdentity(dir: string): string {
+  const seen = fs.statSync(dir, { bigint: true });
+  return `${seen.dev}:${seen.ino}`;
+}
+
+function markerNames(marker: string, identity: string): boolean {
+  try {
+    return fs.readFileSync(marker, 'utf8').trim() === identity;
+  } catch {
+    // Missing or unreadable: applying the list again is safe.
+    return false;
+  }
+}
 
 /* The access list CPython gives a folder made with mode 0o700 on Windows:
  * full control for SYSTEM, Administrators and OWNER RIGHTS, and nothing
@@ -335,9 +354,10 @@ const OWNER_ONLY_ICACLS_ARGS = [
  * A folder Cowork creates inside a repository inherits the repository's access
  * list, and a repository outside the profile, such as `C:\src\app`, grants
  * every local account read access. The marker is written only after icacls
- * succeeds, so a failure retries the next time. A failure logs a warning and
- * never stops the caller; the returned promise never rejects. Nothing on
- * other platforms.
+ * succeeds, so a failure retries the next time, and a marker that names
+ * another folder, as in a copy of the repository, counts as missing. A failure
+ * logs a warning and never stops the caller; the returned promise never
+ * rejects. Nothing on other platforms.
  *
  * icacls runs as a child process the caller awaits, not a synchronous one: on
  * a folder that already holds task checkouts, Windows applies the new
@@ -347,12 +367,13 @@ const OWNER_ONLY_ICACLS_ARGS = [
 export async function restrictToOwnerOnWindows(dir: string, { platform = process.platform }: PlatformOption = {}): Promise<void> {
   if (platform !== 'win32') return;
   const marker = path.join(dir, OWNER_ONLY_ACCESS_MARKER);
-  if (fs.existsSync(marker)) return;
   try {
+    const identity = folderIdentity(dir);
+    if (markerNames(marker, identity)) return;
     await new Promise<void>((resolve, reject) => {
       execFile('icacls', [dir, ...OWNER_ONLY_ICACLS_ARGS], { windowsHide: true }, (err) => (err ? reject(err) : resolve()));
     });
-    fs.writeFileSync(marker, '');
+    fs.writeFileSync(marker, `${identity}\n`);
   } catch (err) {
     diagnostic(LOGGER, 'WARNING', 'private_files_could_not_restrict_a_folder_to_its_owner', '[private-files] could not restrict a folder to its owner', err);
   }

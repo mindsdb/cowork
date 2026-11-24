@@ -492,6 +492,19 @@ describe('restrictToOwnerOnWindows', () => {
     expect(execFile).toHaveBeenCalledTimes(2);
   });
 
+  it('gives a copy that carries the marker the list again', async () => {
+    const dir = folder(path.join(root, 'repo', '.claude-mindshub'), 0o755);
+    await restrictToOwnerOnWindows(dir, WINDOWS);
+    const copy = folder(path.join(root, 'copy-of-repo', '.claude-mindshub'), 0o755);
+    fs.copyFileSync(path.join(dir, OWNER_ONLY_ACCESS_MARKER), path.join(copy, OWNER_ONLY_ACCESS_MARKER));
+
+    await restrictToOwnerOnWindows(copy, WINDOWS);
+    await restrictToOwnerOnWindows(copy, WINDOWS);
+
+    expect(execFile).toHaveBeenCalledTimes(2);
+    expect(execFile).toHaveBeenLastCalledWith('icacls', [copy, ...ICACLS_ARGS], expect.anything(), expect.any(Function));
+  });
+
   it('never runs on linux', async () => {
     const dir = folder(path.join(root, 'repo', '.claude-mindshub'), 0o755);
     await restrictToOwnerOnWindows(dir, LINUX);
