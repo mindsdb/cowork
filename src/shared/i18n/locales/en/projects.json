@@ -682,7 +682,10 @@
     "saveAndRunOnce": "Save and run once",
     "saving": "Saving…",
     "saveChanges": "Save changes",
-    "schedule": "Schedule"
+    "schedule": "Schedule",
+    "sendToTeams": "Send results to my Teams chat",
+    "sendToTeamsHint": "Each completed run's answer goes to your personal chat with {agent} in Teams.",
+    "sendToTeamsNotConnected": "Teams isn't connected, so results aren't sent. Connect Microsoft Teams (Bot) in Connect Apps and Data."
   },
   "scheduledView": {
     "sort": {
@@ -745,7 +748,13 @@
     "statusWithReason": "{status}: {reason}",
     "openFailedRun": "Open the failed run from {when}: {reason}",
     "openRun": "Open the run from {when}",
-    "showOlder": "Show older runs"
+    "showOlder": "Show older runs",
+    "teamsDelivery": {
+      "sending": "Sending to Teams…",
+      "delivered": "Sent to Teams",
+      "failed": "Not sent to Teams",
+      "unknown": "May not have reached Teams"
+    }
   },
   "contextFileModal": {
     "download": "Download",

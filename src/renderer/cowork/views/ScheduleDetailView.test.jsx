@@ -11,6 +11,7 @@ import userEvent from '@testing-library/user-event';
 
 vi.mock('../api', () => ({
   fetchScheduleRuns: vi.fn(),
+  fetchTeamsBotConnection: vi.fn().mockRejectedValue(new Error('Not found')),
 }));
 
 import { fetchScheduleRuns } from '../api';
@@ -134,6 +135,21 @@ describe('ScheduleDetailView — header and summary', () => {
     expect(screen.getByText('GPT X')).toBeInTheDocument();
   });
 
+
+  it("says how posting each run's result to Teams went", async () => {
+    vi.mocked(fetchScheduleRuns).mockResolvedValue({ runs: [
+      { ...RUNS[0], id: 'r-a', teamsDelivery: 'delivered' },
+      { ...RUNS[1], id: 'r-b', teamsDelivery: 'failed' },
+      { ...RUNS[2], id: 'r-c', teamsDelivery: 'unknown' },
+      { ...RUNS[2], id: 'r-d', startedAt: '2026-09-28T09:00:00Z', teamsDelivery: null },
+    ] });
+    setup();
+
+    expect(await screen.findByText('Sent to Teams')).toBeInTheDocument();
+    expect(screen.getByText('Not sent to Teams')).toBeInTheDocument();
+    expect(screen.getByText('May not have reached Teams')).toBeInTheDocument();
+    expect(screen.getAllByText(/Teams/)).toHaveLength(3);
+  });
   it('says when a run used the default because its model was unavailable', async () => {
     vi.mocked(fetchScheduleRuns).mockResolvedValue({ runs: [{ ...RUNS[1], unavailableModel: 'gpt-x' }] });
     const { user } = setup({ models: [{ id: 'gpt-x', name: 'GPT X' }] });

@@ -137665,6 +137665,142 @@
       "text": "0d2cf9b364c4"
     }
   },
+  "projects:scheduleDetail.teamsDelivery.delivered": {
+    "de": {
+      "from": "4942312035ac",
+      "text": "5262a8395b52"
+    },
+    "es": {
+      "from": "4942312035ac",
+      "text": "9a005e9dfb05"
+    },
+    "fr": {
+      "from": "4942312035ac",
+      "text": "24b05fb6cb42"
+    },
+    "it": {
+      "from": "4942312035ac",
+      "text": "5302c203eacf"
+    },
+    "ja": {
+      "from": "4942312035ac",
+      "text": "7f07aca66df7"
+    },
+    "ko": {
+      "from": "4942312035ac",
+      "text": "b409b46dce5d"
+    },
+    "pt-BR": {
+      "from": "4942312035ac",
+      "text": "01df86e6d2b3"
+    },
+    "zh-CN": {
+      "from": "4942312035ac",
+      "text": "cd04c1a00911"
+    }
+  },
+  "projects:scheduleDetail.teamsDelivery.failed": {
+    "de": {
+      "from": "067b4ae4ecc5",
+      "text": "d3de29fa4c4a"
+    },
+    "es": {
+      "from": "067b4ae4ecc5",
+      "text": "206168704ef1"
+    },
+    "fr": {
+      "from": "067b4ae4ecc5",
+      "text": "0c010141c60a"
+    },
+    "it": {
+      "from": "067b4ae4ecc5",
+      "text": "252c8dc9b259"
+    },
+    "ja": {
+      "from": "067b4ae4ecc5",
+      "text": "5ba1fe2e9177"
+    },
+    "ko": {
+      "from": "067b4ae4ecc5",
+      "text": "383bbd959348"
+    },
+    "pt-BR": {
+      "from": "067b4ae4ecc5",
+      "text": "7e91d489256d"
+    },
+    "zh-CN": {
+      "from": "067b4ae4ecc5",
+      "text": "0a4479fa3edb"
+    }
+  },
+  "projects:scheduleDetail.teamsDelivery.sending": {
+    "de": {
+      "from": "9fb208829a76",
+      "text": "fa53aefe1547"
+    },
+    "es": {
+      "from": "9fb208829a76",
+      "text": "20f6c76dfd6d"
+    },
+    "fr": {
+      "from": "9fb208829a76",
+      "text": "c8de79fc5fda"
+    },
+    "it": {
+      "from": "9fb208829a76",
+      "text": "c98d34096821"
+    },
+    "ja": {
+      "from": "9fb208829a76",
+      "text": "356ac7ddf426"
+    },
+    "ko": {
+      "from": "9fb208829a76",
+      "text": "18126c51452d"
+    },
+    "pt-BR": {
+      "from": "9fb208829a76",
+      "text": "d11f891aef48"
+    },
+    "zh-CN": {
+      "from": "9fb208829a76",
+      "text": "4e04159f3872"
+    }
+  },
+  "projects:scheduleDetail.teamsDelivery.unknown": {
+    "de": {
+      "from": "e9483bd8e3b8",
+      "text": "811af1b5a849"
+    },
+    "es": {
+      "from": "e9483bd8e3b8",
+      "text": "674b1cd150cb"
+    },
+    "fr": {
+      "from": "e9483bd8e3b8",
+      "text": "7a10b97bdb2f"
+    },
+    "it": {
+      "from": "e9483bd8e3b8",
+      "text": "dd035e6da129"
+    },
+    "ja": {
+      "from": "e9483bd8e3b8",
+      "text": "dafefb569543"
+    },
+    "ko": {
+      "from": "e9483bd8e3b8",
+      "text": "eb7464365765"
+    },
+    "pt-BR": {
+      "from": "e9483bd8e3b8",
+      "text": "6166c340b791"
+    },
+    "zh-CN": {
+      "from": "e9483bd8e3b8",
+      "text": "7b7a21d2e7b0"
+    }
+  },
   "projects:scheduleNotifyMenu.failed": {
     "de": {
       "from": "24afc952b6cc",
@@ -140553,6 +140689,108 @@
     "zh-CN": {
       "from": "f4830a1dae29",
       "text": "fc9d08366e09"
+    }
+  },
+  "projects:scheduleTaskModal.sendToTeams": {
+    "de": {
+      "from": "dd124ecd3ecf",
+      "text": "c17decbadf77"
+    },
+    "es": {
+      "from": "dd124ecd3ecf",
+      "text": "0bf6c68ccfa4"
+    },
+    "fr": {
+      "from": "dd124ecd3ecf",
+      "text": "a82907619c33"
+    },
+    "it": {
+      "from": "dd124ecd3ecf",
+      "text": "83ee78016fef"
+    },
+    "ja": {
+      "from": "dd124ecd3ecf",
+      "text": "136e2d6ad679"
+    },
+    "ko": {
+      "from": "dd124ecd3ecf",
+      "text": "edd1140358cb"
+    },
+    "pt-BR": {
+      "from": "dd124ecd3ecf",
+      "text": "051207562ac7"
+    },
+    "zh-CN": {
+      "from": "dd124ecd3ecf",
+      "text": "c8f2fe7b001d"
+    }
+  },
+  "projects:scheduleTaskModal.sendToTeamsHint": {
+    "de": {
+      "from": "f0d0decf146b",
+      "text": "508c7a8a5176"
+    },
+    "es": {
+      "from": "f0d0decf146b",
+      "text": "f669d2824aea"
+    },
+    "fr": {
+      "from": "f0d0decf146b",
+      "text": "6cb1f25f613d"
+    },
+    "it": {
+      "from": "f0d0decf146b",
+      "text": "5030510b494c"
+    },
+    "ja": {
+      "from": "f0d0decf146b",
+      "text": "8c0e99b54a21"
+    },
+    "ko": {
+      "from": "f0d0decf146b",
+      "text": "16141167cd87"
+    },
+    "pt-BR": {
+      "from": "f0d0decf146b",
+      "text": "1e6830bde70c"
+    },
+    "zh-CN": {
+      "from": "f0d0decf146b",
+      "text": "71469ef22b06"
+    }
+  },
+  "projects:scheduleTaskModal.sendToTeamsNotConnected": {
+    "de": {
+      "from": "7671f00df776",
+      "text": "be2c8621fe95"
+    },
+    "es": {
+      "from": "7671f00df776",
+      "text": "af2554bc7c35"
+    },
+    "fr": {
+      "from": "7671f00df776",
+      "text": "93f0f1b512c1"
+    },
+    "it": {
+      "from": "7671f00df776",
+      "text": "47857b2cdab2"
+    },
+    "ja": {
+      "from": "7671f00df776",
+      "text": "32a3417d7cce"
+    },
+    "ko": {
+      "from": "7671f00df776",
+      "text": "3c850cbac70b"
+    },
+    "pt-BR": {
+      "from": "7671f00df776",
+      "text": "15e30bc0a0bb"
+    },
+    "zh-CN": {
+      "from": "7671f00df776",
+      "text": "f4453501de13"
     }
   },
   "projects:scheduleTaskModal.time": {

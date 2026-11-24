@@ -682,7 +682,10 @@
     "saveAndRunOnce": "保存して1回実行",
     "saving": "保存中…",
     "saveChanges": "変更を保存",
-    "schedule": "スケジュール"
+    "schedule": "スケジュール",
+    "sendToTeams": "結果を自分の Teams チャットに送信",
+    "sendToTeamsHint": "完了した各実行の回答が、Teams の {agent} との個人チャットに届きます。",
+    "sendToTeamsNotConnected": "Teams が接続されていないため、結果は送信されません。「アプリとデータを接続」で Microsoft Teams (Bot) を接続してください。"
   },
   "scheduledView": {
     "sort": {
@@ -745,7 +748,13 @@
     "statusWithReason": "{status}：{reason}",
     "openFailedRun": "{when}の失敗した実行を開く：{reason}",
     "openRun": "{when}の実行を開く",
-    "showOlder": "以前の実行を表示"
+    "showOlder": "以前の実行を表示",
+    "teamsDelivery": {
+      "sending": "Teams に送信中…",
+      "delivered": "Teams に送信済み",
+      "failed": "Teams に送信されませんでした",
+      "unknown": "Teams に届いていない可能性があります"
+    }
   },
   "contextFileModal": {
     "download": "ダウンロード",

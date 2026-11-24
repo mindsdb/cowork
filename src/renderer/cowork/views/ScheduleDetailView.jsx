@@ -60,6 +60,8 @@ const RUN_STATUS = {
 // A run that stopped at a limit is failed on the server, but did its work up
 // to there: it reads as a warning, and its reason names the limit.
 const STOPPED_AT_LIMIT = { tone: 'warning', key: 'stoppedAtLimit' };
+// How posting a run's result to the owner's Teams chat went (scheduleDetail.teamsDelivery.*).
+const TEAMS_DELIVERY = ['sending', 'delivered', 'failed', 'unknown'];
 
 const msg = (key, vars) => i18n.t(`scheduleDetail.${key}`, { ns: 'projects', ...vars });
 
@@ -283,6 +285,9 @@ export default function ScheduleDetailView({
                 meta={(
                   <span className="inline-flex items-center gap-3">
                     {formatDuration(run.durationMs) && <span>{formatDuration(run.durationMs)}</span>}
+                    {TEAMS_DELIVERY.includes(run.teamsDelivery) && (
+                      <span>{t(`scheduleDetail.teamsDelivery.${run.teamsDelivery}`)}</span>
+                    )}
                     {run.unavailableModel && (
                       <Tooltip content={t('scheduleDetail.modelUnavailable', { model: modelName(run.unavailableModel) })}>
                         <span tabIndex={0} className="relative z-10 cursor-help">{t('scheduleDetail.ranOnDefaultModel')}</span>

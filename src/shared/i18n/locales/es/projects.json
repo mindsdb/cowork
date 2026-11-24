@@ -682,7 +682,10 @@
     "saveAndRunOnce": "Guardar y ejecutar una vez",
     "saving": "Guardando…",
     "saveChanges": "Guardar cambios",
-    "schedule": "Programar"
+    "schedule": "Programar",
+    "sendToTeams": "Enviar resultados a mi chat de Teams",
+    "sendToTeamsHint": "La respuesta de cada ejecución completada llega a tu chat personal con {agent} en Teams.",
+    "sendToTeamsNotConnected": "Teams no está conectado, así que no se envían resultados. Conecta Microsoft Teams (Bot) en Conectar apps y datos."
   },
   "scheduledView": {
     "sort": {
@@ -745,7 +748,13 @@
     "statusWithReason": "{status}: {reason}",
     "openFailedRun": "Abrir la ejecución fallida del {when}: {reason}",
     "openRun": "Abrir la ejecución del {when}",
-    "showOlder": "Mostrar ejecuciones anteriores"
+    "showOlder": "Mostrar ejecuciones anteriores",
+    "teamsDelivery": {
+      "sending": "Enviando a Teams…",
+      "delivered": "Enviado a Teams",
+      "failed": "No enviado a Teams",
+      "unknown": "Puede que no haya llegado a Teams"
+    }
   },
   "contextFileModal": {
     "download": "Descargar",
