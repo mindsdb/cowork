@@ -101,6 +101,12 @@ function seededAudience(a) {
   return { ...audience, ownerOnly: audience.ownerOnly === true };
 }
 
+// What a save's answer warns about: a link left live, connections published
+// without credentials.
+function savedNotice(r) {
+  return [republishNotice(r), unapprovedDatasourcesNotice(r)].filter(Boolean).join(' ');
+}
+
 // `entry` is where the person opened sharing from, for the sharing events.
 export function usePublish(artifact, { onChange, enabled = false, entry = 'viewer' } = {}) {
   const orgMode = useOrgMode();
@@ -348,7 +354,7 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
       setAccessLoaded(true);  // publish response is authoritative for the list
       setArtifactKey(next.artifactKey);
       setModified(false);
-      setNotice([republishNotice(r), unapprovedDatasourcesNotice(r)].filter(Boolean).join(' '));
+      setNotice(savedNotice(r));
       setPendingDatasources([]);
       // The server records the owner before it answers, so every link a
       // publish answers with is on record as this person's.
@@ -386,7 +392,7 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
     try {
       const r = orgMode ? await republishArtifact(artifact) : await updateArtifact(targetPath, { approvedDatasources });
       setModified(false);
-      setNotice([republishNotice(r), unapprovedDatasourcesNotice(r)].filter(Boolean).join(' '));
+      setNotice(savedNotice(r));
       setPendingDatasources([]);
       setLinkOwnerRecorded(true);
       const url = r?.url || publishedUrl;

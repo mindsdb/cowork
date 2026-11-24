@@ -216,7 +216,8 @@ function PublishDialog({ artifact, initialDraft, initialPending, onCancel, onCon
   const [pending, setPending] = useState(() => initialPending || []);
   useEffect(() => {
     let live = true;
-    if (artifact?.path) {
+    // A dialog reopened after a 409 already holds the server's newest list.
+    if (artifact?.path && !initialPending) {
       // Inside the promise chain, so a call that throws synchronously cannot
       // escape the effect.
       Promise.resolve()
@@ -225,7 +226,7 @@ function PublishDialog({ artifact, initialDraft, initialPending, onCancel, onCon
         .catch(() => { if (live) setPending([]); });
     }
     return () => { live = false; };
-  }, [artifact]);
+  }, [artifact, initialPending]);
   if (!artifact) return null;
   const canConfirm = isAccessDraftValid(draft);
   const submit = () => { if (canConfirm) onConfirm(buildAccessPayload(draft), pending, draft); };

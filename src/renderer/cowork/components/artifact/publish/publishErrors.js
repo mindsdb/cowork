@@ -39,7 +39,8 @@ export function pendingDatasourcesFromError(e) {
   return Array.isArray(pending) ? pending : [];
 }
 
-function datasourceList(items) {
+/** Connections as the server labels them, for a sentence. */
+export function datasourceList(items) {
   return items.map((d) => d.label || `${d.engine}/${d.name}`).join(', ');
 }
 

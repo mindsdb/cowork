@@ -2567,10 +2567,14 @@ async function notionViaMain(path, call, signal) {
     signal?.addEventListener('abort', onAbort, { once: true });
     call().then(resolve, reject).finally(() => signal?.removeEventListener('abort', onAbort));
   });
-  if (!result) return null;
+  return result ? mainBridgeResult(result, path) : null;
+}
+
+// A main-process bridge's answer for the route at `path`: `{ data }` with the
+// server's JSON, else the same error a direct request raises.
+async function mainBridgeResult(result, path) {
   if (result.ok) return { data: result.data };
   if ('status' in result) {
-    // The same error a direct request raises for this response.
     throw await responseError({
       status: result.status,
       text: async () => result.text,
@@ -3132,52 +3136,31 @@ export async function submitDataVaultForm({ formId, conversationId, values, skip
 // `approvedDatasources` lists the connections the person just approved sending
 // credentials for; on the desktop such a request goes through main, which
 // holds the app secret it needs.
-function approvedBody(approvedDatasources) {
-  return (approvedDatasources || []).map(({ engine, name }) => ({ engine, name }));
-}
-
-async function publishViaMain(kind, path, access, approved) {
-  if (!host.isElectron) return null;
-  const result = await host.publishWithApproval(
-    kind === 'publish' ? { kind, path, access, approvedDatasources: approved } : { kind, path, approvedDatasources: approved },
-  );
-  if (!result) return null;
-  if (result.ok) return { data: result.data };
-  if ('status' in result) {
-    throw await responseError({
-      status: result.status,
-      text: async () => result.text,
-      headers: { get: (h) => (h.toLowerCase() === 'retry-after' ? result.retryAfter : null) },
-    }, `API ${kind === 'publish' ? '/publish' : '/publish/update'} returned ${result.status}`);
+async function sendPublish(kind, route, body, approvedDatasources) {
+  const approved = (approvedDatasources || []).map(({ engine, name }) => ({ engine, name }));
+  if (!approved.length) return req(route, { method: 'POST', body: JSON.stringify(body) });
+  const result = host.isElectron
+    ? await host.publishWithApproval({ kind, path: body.path, access: body.access, approvedDatasources: approved })
+    : null;
+  if (result?.reason === 'unsupported') {
+    const err = new Error(result.reason);
+    err.code = PUBLISH_SHELL_TOO_OLD_CODE;
+    throw err;
   }
-  const err = new Error(result.reason);
-  if (result.reason === 'unsupported') err.code = PUBLISH_SHELL_TOO_OLD_CODE;
-  throw err;
+  if (result) return (await mainBridgeResult(result, route)).data;
+  return req(route, { method: 'POST', body: JSON.stringify({ ...body, approved_datasources: approved }) });
 }
 
 export async function publishArtifact(path, access, { approvedDatasources = [] } = {}) {
   const body = { path, access: access && access.mode ? access : { mode: 'public' } };
-  const approved = approvedBody(approvedDatasources);
-  if (approved.length) {
-    const viaMain = await publishViaMain('publish', path, body.access, approved);
-    if (viaMain) return viaMain.data;
-    body.approved_datasources = approved;
-  }
-  return req('/publish', { method: 'POST', body: JSON.stringify(body) });
+  return sendPublish('publish', '/publish', body, approvedDatasources);
 }
 
 // Re-publish an already-published artifact: pushes current files to the same
 // URL with the same access settings (server reuses report_id). Clears the
 // "Modified" badge on success.
 export async function updateArtifact(path, { approvedDatasources = [] } = {}) {
-  const body = { path };
-  const approved = approvedBody(approvedDatasources);
-  if (approved.length) {
-    const viaMain = await publishViaMain('update', path, null, approved);
-    if (viaMain) return viaMain.data;
-    body.approved_datasources = approved;
-  }
-  return req('/publish/update', { method: 'POST', body: JSON.stringify(body) });
+  return sendPublish('update', '/publish/update', { path }, approvedDatasources);
 }
 
 // The connections a full-stack publish would newly send credentials for.
