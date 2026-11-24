@@ -214,13 +214,13 @@ describe('CompareView', () => {
     __resetWorkStartedForTests();
     mockHistory([]);
     const start = render(<CompareView models={models} projects={projects} />);
-    fireEvent.change(await screen.findByLabelText('Task for both models'), { target: { value: 'Compare costs' } });
+    fireEvent.input(await screen.findByLabelText('Task for both models'), { target: { value: 'Compare costs' } });
     expect(hasWorkStarted()).toBe(true);
     start.unmount();
 
     __resetWorkStartedForTests();
     await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
-    fireEvent.change(await screen.findByLabelText('Follow-up message'), { target: { value: 'Include shipping' } });
+    fireEvent.input(await screen.findByLabelText('Follow-up message'), { target: { value: 'Include shipping' } });
     expect(hasWorkStarted()).toBe(true);
   });
 

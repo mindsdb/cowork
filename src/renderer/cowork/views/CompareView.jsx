@@ -676,10 +676,7 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
           <ComposerFrame className="composer-wrap w-full">
             <textarea
               value={prompt}
-              onChange={(e) => {
-                markWorkStarted();
-                setPrompt(e.target.value);
-              }}
+              onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); start(); }
               }}
@@ -1259,10 +1256,7 @@ function ComparisonDetail({ comparisonId, models, modelMeta, projects, agentLabe
             <>
               <textarea
                 value={draft}
-                onChange={(e) => {
-                  markWorkStarted();
-                  setDraft(e.target.value);
-                }}
+                onChange={(e) => setDraft(e.target.value)}
                 rows={2}
                 placeholder={target === 'both' ? t('compare.followUpBoth') : t('compare.followUpOne', { name: names[target] })}
                 aria-label={t('compare.followUp')}
