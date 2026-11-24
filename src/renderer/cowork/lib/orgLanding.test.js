@@ -94,6 +94,26 @@ describe('useOrgLanding', () => {
     expect(switchOrg).toHaveBeenCalledWith(ACME.id);
   });
 
+  it.each([[false, false], [true, true], [true, false]])('blocks input through landing (required %s, queued %s)', async (reloadRequired, reloadQueued) => {
+    let settle;
+    const pending = new Promise((resolve) => { settle = resolve; });
+    const switchOrg = vi.fn(() => {
+      expect(document.querySelector('dialog')?.open).toBe(true);
+      return pending;
+    });
+    const menu = run({ sub: 'user-1', orgs: [ACME, PERSONAL], activeOrg: PERSONAL, switchOrg });
+    expect(switchOrg).toHaveBeenCalledOnce();
+    menu.unmount();
+    const dialog = document.querySelector('dialog');
+    expect(dialog.open).toBe(true);
+    expect(dialog.dispatchEvent(new Event('cancel', { cancelable: true }))).toBe(false);
+    settle({ ok: reloadRequired, reloadRequired, reloadQueued });
+    await pending;
+    expect(dialog.isConnected).toBe(reloadQueued);
+    window.dispatchEvent(new Event('pagehide'));
+    expect(dialog.isConnected).toBe(false);
+  });
+
   it('remembers the company organization in use and returns to it', () => {
     const switchOrg = vi.fn();
     run({ sub: 'user-1', orgs: [ACME, GLOBEX, PERSONAL], activeOrg: GLOBEX, switchOrg });

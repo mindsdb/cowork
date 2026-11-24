@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
+import { hasWorkStarted, __resetWorkStartedForTests } from '../lib/documentWork';
+
 const hostMock = vi.hoisted(() => ({
   isElectron: true,
   isWeb: false,
@@ -206,6 +208,20 @@ describe('CompareView', () => {
     render(<CompareView models={models} projects={projects} />);
     expect(await screen.findByRole('heading', { name: 'Compare two models' })).toBeTruthy();
     expect(screen.queryByText('Comparisons')).toBeNull();
+  });
+
+  it('protects work typed in either Compare composer from organization landing', async () => {
+    __resetWorkStartedForTests();
+    mockHistory([]);
+    const start = render(<CompareView models={models} projects={projects} />);
+    fireEvent.change(await screen.findByLabelText('Task for both models'), { target: { value: 'Compare costs' } });
+    expect(hasWorkStarted()).toBe(true);
+    start.unmount();
+
+    __resetWorkStartedForTests();
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    fireEvent.change(await screen.findByLabelText('Follow-up message'), { target: { value: 'Include shipping' } });
+    expect(hasWorkStarted()).toBe(true);
   });
 
   // The card around a composer (border, radius, shadow, focus) is the shared

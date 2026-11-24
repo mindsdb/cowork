@@ -13,6 +13,7 @@
 
 import { useEffect } from 'react';
 import { PLATFORM_UI } from '../../lib/deployment';
+import { sharedTranslator } from '../../lib/i18n';
 import { hasWorkStarted } from './documentWork';
 
 /**
@@ -83,6 +84,32 @@ function claimLandingAttempt(sub) {
   return true;
 }
 
+// A native modal makes the whole document inert synchronously, including the
+// currently focused composer. Keep it across menu remounts and queued reloads.
+async function landInOrganization(targetId, switchOrg) {
+  const dialog = document.createElement('dialog');
+  const label = sharedTranslator('shell')('userMenu.changingOrg');
+  dialog.textContent = label;
+  dialog.setAttribute('aria-label', label);
+  dialog.className = 'm-auto rounded-lg p-4';
+  dialog.addEventListener('cancel', (event) => event.preventDefault());
+  document.body.append(dialog);
+  const release = () => {
+    dialog.close();
+    dialog.remove();
+    window.removeEventListener('pagehide', release);
+  };
+  let reloading = false;
+  try {
+    dialog.showModal();
+    window.addEventListener('pagehide', release);
+    const result = await switchOrg(targetId);
+    reloading = result?.reloadRequired === true && result.reloadQueued !== false;
+  } finally {
+    if (!reloading) release();
+  }
+}
+
 /**
  * Remembers the company organization in use and, once the list is in, moves
  * a person who sits in their personal organization to a company one.
@@ -103,7 +130,7 @@ export function useOrgLanding({ sub, orgs, activeOrg, switchOrg }) {
     // would vanish from view and a draft would be cleared. Stay put, without
     // claiming the attempt, so the next load lands instead.
     if (!target || hasWorkStarted() || !claimLandingAttempt(sub)) return;
-    switchOrg(target.id);
+    void landInOrganization(target.id, switchOrg);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sub, orgs, activeOrgId]);
 }

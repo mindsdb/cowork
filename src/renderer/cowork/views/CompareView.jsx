@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, X } from 'lucide-react';
 import { host } from '../../platform/host';
+import { markWorkStarted } from '../lib/documentWork';
 import ChatView from './ChatView';
 import ModelSelect from '../components/ModelSelect.jsx';
 import TaskModePills from '../components/taskmodes/TaskModePills';
@@ -675,7 +676,10 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
           <ComposerFrame className="composer-wrap w-full">
             <textarea
               value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
+              onChange={(e) => {
+                markWorkStarted();
+                setPrompt(e.target.value);
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); start(); }
               }}
@@ -744,7 +748,10 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
           </p>
 
           {!prompt.trim() && (
-            <TaskModePills modes={EXAMPLES} label={t('compare.examplesLabel')} onPick={(example) => setPrompt(example.prompt)} />
+            <TaskModePills modes={EXAMPLES} label={t('compare.examplesLabel')} onPick={(example) => {
+              markWorkStarted();
+              setPrompt(example.prompt);
+            }} />
           )}
         </div>
       </div>
@@ -1252,7 +1259,10 @@ function ComparisonDetail({ comparisonId, models, modelMeta, projects, agentLabe
             <>
               <textarea
                 value={draft}
-                onChange={(e) => setDraft(e.target.value)}
+                onChange={(e) => {
+                  markWorkStarted();
+                  setDraft(e.target.value);
+                }}
                 rows={2}
                 placeholder={target === 'both' ? t('compare.followUpBoth') : t('compare.followUpOne', { name: names[target] })}
                 aria-label={t('compare.followUp')}
