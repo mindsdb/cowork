@@ -11,6 +11,12 @@ import { describe, expect, it } from 'vitest';
  * (server-token-listener.ts) and the rules inside it. This counts the
  * registrations in the main-process sources and fails on a second one of any
  * kind.
+ *
+ * The lint runner (html-lint-runner.ts) is counted on its own. Its listeners
+ * sit on a session only its window uses (LINT_PARTITION), in a process that
+ * took index.ts's lint branch and so never loads app.ts. That holds while only
+ * the lint host imports the runner and only index.ts loads the host, which
+ * this checks too.
  */
 
 const REPO = path.resolve(__dirname, '../..');
@@ -39,14 +45,29 @@ function registrationsIn(label: string, text: string, event: string): string[] {
   return [...text.matchAll(named)].map((match) => `${label}:${text.slice(0, match.index).split('\n').length}`);
 }
 
-function registrations(event: string): string[] {
-  return SOURCE_DIRS.flatMap(sourceFiles).flatMap((file) =>
-    registrationsIn(file.split(path.sep).join('/'), readFileSync(path.join(REPO, file), 'utf-8'), event));
+const LINT_RUNNER = 'src/main/html-lint-runner.ts';
+
+function mainSources(): string[] {
+  return SOURCE_DIRS.flatMap(sourceFiles).map((file) => file.split(path.sep).join('/'));
+}
+
+function appSources(): string[] {
+  return mainSources().filter((file) => file !== LINT_RUNNER);
+}
+
+function registrations(event: string, files: string[]): string[] {
+  return files.flatMap((file) => registrationsIn(file, readFileSync(path.join(REPO, file), 'utf-8'), event));
+}
+
+/* The sources that name `./<module>` in an import, a require or a type import. */
+function importersOf(module: string): string[] {
+  const named = new RegExp(`['"\`]\\./${module}['"\`]`);
+  return mainSources().filter((file) => named.test(readFileSync(path.join(REPO, file), 'utf-8')));
 }
 
 describe('webRequest listeners', () => {
   it('finds the server token listener in app.ts', () => {
-    expect(registrations('onBeforeSendHeaders')).toEqual([expect.stringMatching(/^src\/main\/app\.ts:\d+$/)]);
+    expect(registrations('onBeforeSendHeaders', appSources())).toEqual([expect.stringMatching(/^src\/main\/app\.ts:\d+$/)]);
   });
 
   it('sees a second registration, however it is reached', () => {
@@ -59,7 +80,17 @@ describe('webRequest listeners', () => {
     expect(registrationsIn('sample.ts', forms, 'onBeforeSendHeaders')).toEqual(['sample.ts:1', 'sample.ts:2', 'sample.ts:3', 'sample.ts:4']);
   });
 
-  it.each(WEB_REQUEST_EVENTS)('registers at most one %s listener', (event) => {
-    expect(registrations(event).slice(1)).toEqual([]);
+  it.each(WEB_REQUEST_EVENTS)('registers at most one %s listener on the app\'s sessions', (event) => {
+    expect(registrations(event, appSources()).slice(1)).toEqual([]);
+  });
+
+  it.each(WEB_REQUEST_EVENTS)('registers at most one %s listener in the lint runner', (event) => {
+    expect(registrations(event, [LINT_RUNNER]).slice(1)).toEqual([]);
+  });
+
+  it('loads the lint runner only in lint mode, on a session of its own', () => {
+    expect(importersOf('html-lint-runner')).toEqual(['src/main/html-lint-host.ts']);
+    expect(importersOf('html-lint-host')).toEqual(['src/main/index.ts']);
+    expect(readFileSync(path.join(REPO, LINT_RUNNER), 'utf-8')).toContain('partition: LINT_PARTITION');
   });
 });

@@ -1,0 +1,415 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+
+type Listener = (...args: unknown[]) => void;
+type BeforeRequestCallback = (response: { redirectURL?: string; cancel?: boolean }) => void;
+type BeforeRequestListener = (details: { url: string; method: string }, callback: BeforeRequestCallback) => void;
+type PermissionRequestHandler = (webContents: unknown, permission: string, callback: (granted: boolean) => void) => void;
+type SchemeHandler = (request: Request) => Promise<Response>;
+
+/* A hidden BrowserWindow whose page events the test fires by hand. */
+const electron = vi.hoisted(() => {
+  const state = {
+    load: Promise.resolve() as Promise<void>,
+    emptyPage: false as unknown,
+    last: null as null | { options: unknown; webContents: FakeWebContents; loadURL: ReturnType<typeof vi.fn> },
+  };
+  class FakeWebRequest {
+    errorOccurred: Listener | null = null;
+    completed: Listener | null = null;
+    beforeRequest: BeforeRequestListener | null = null;
+    onErrorOccurred(listener: Listener) { this.errorOccurred = listener; }
+    onCompleted(listener: Listener) { this.completed = listener; }
+    onBeforeRequest(listener: BeforeRequestListener) { this.beforeRequest = listener; }
+  }
+  class FakeSession {
+    webRequest = new FakeWebRequest();
+    schemes = new Map<string, SchemeHandler>();
+    protocol = { handle: (scheme: string, handler: SchemeHandler) => { this.schemes.set(scheme, handler); } };
+    permissionRequest: PermissionRequestHandler | null = null;
+    permissionCheck: ((...args: unknown[]) => boolean) | null = null;
+    setPermissionRequestHandler(handler: PermissionRequestHandler) { this.permissionRequest = handler; }
+    setPermissionCheckHandler(handler: (...args: unknown[]) => boolean) { this.permissionCheck = handler; }
+  }
+  class FakeWebContents {
+    listeners: Record<string, Listener[]> = {};
+    session = new FakeSession();
+    executeJavaScript = vi.fn(async () => state.emptyPage);
+    on(name: string, listener: Listener) {
+      (this.listeners[name] ??= []).push(listener);
+      return this;
+    }
+    emit(name: string, ...args: unknown[]) {
+      for (const listener of this.listeners[name] ?? []) listener(...args);
+    }
+  }
+  class BrowserWindow {
+    options: unknown;
+    webContents = new FakeWebContents();
+    loadURL = vi.fn(() => state.load);
+    constructor(options: unknown) {
+      this.options = options;
+      state.last = this;
+    }
+  }
+  const app = {
+    disableHardwareAcceleration: vi.fn(),
+    whenReady: vi.fn(() => Promise.resolve()),
+    on: vi.fn(),
+    exit: vi.fn(),
+  };
+  const protocol = { registerSchemesAsPrivileged: vi.fn() };
+  return { app, BrowserWindow, protocol, state };
+});
+vi.mock('electron', () => ({ app: electron.app, BrowserWindow: electron.BrowserWindow, protocol: electron.protocol }));
+
+import {
+  HARD_TIMEOUT_MS,
+  LINT_PARTITION,
+  LINT_SCHEME,
+  SETTLE_MS,
+  lookUpLintFile,
+  serveLintFile,
+  startHtmlLintRunner,
+} from './html-lint-runner';
+
+/* What reads this output: anton/core/artifacts/html_lint.py, which is Python
+ * in another repository, so this mirrors its `_extract_result` and
+ * `_findings_from_result` rather than importing them (`scrub_output` left
+ * out: these test messages hold nothing it redacts). */
+interface AntonFinding {
+  kind: 'console_error' | 'failed_request' | 'crashed' | 'empty_page';
+  detail: string;
+}
+type JsonObject = Record<string, unknown>;
+
+const RESULT_START = 'RESULT_JSON_START';
+const RESULT_END = 'RESULT_JSON_END';
+const EMPTY_PAGE_DETAIL = 'page rendered with no visible text or elements — could be intentional (content added later) or a sign the markup/script is broken; worth opening to confirm';
+
+function extractResult(stdout: string): JsonObject | null {
+  const start = stdout.indexOf(RESULT_START);
+  const end = stdout.indexOf(RESULT_END);
+  if (start === -1 || end === -1 || end <= start) return null;
+  const blob = stdout.slice(start + RESULT_START.length, end).trim();
+  let data: unknown;
+  try {
+    data = JSON.parse(blob);
+  } catch {
+    return null;
+  }
+  return typeof data === 'object' && data !== null && !Array.isArray(data) ? (data as JsonObject) : null;
+}
+
+function findingsFromResult(result: JsonObject): AntonFinding[] {
+  const findings: AntonFinding[] = [];
+  for (const err of (result.consoleErrors as JsonObject[] | null) ?? []) {
+    const message = (err.message as string | undefined) ?? '';
+    const line = err.line;
+    findings.push({ kind: 'console_error', detail: line ? `${message} (line ${String(line)})` : message });
+  }
+  for (const req of (result.failedRequests as JsonObject[] | null) ?? []) {
+    /* html_lint.py joins the two with an em dash. */
+    findings.push({ kind: 'failed_request', detail: `${String(req.url ?? '?')} — ${String(req.error ?? 'unknown error')}` });
+  }
+  if (result.crashed) findings.push({ kind: 'crashed', detail: 'renderer process crashed while loading the page' });
+  if (result.emptyPage) findings.push({ kind: 'empty_page', detail: EMPTY_PAGE_DETAIL });
+  return findings;
+}
+
+/* A file target is served from its folder as this origin. */
+const PAGE_DIR_URL = `${LINT_SCHEME}://artifact/`;
+
+let folder: string;
+let page: string;
+let stdout: string[];
+let finishLoad: () => void;
+let failLoad: (error: Error) => void;
+
+function printed(): string {
+  return stdout.join('');
+}
+
+function window() {
+  const win = electron.state.last;
+  if (!win) throw new Error('no BrowserWindow was created');
+  return win;
+}
+
+async function settle(): Promise<void> {
+  finishLoad();
+  await vi.advanceTimersByTimeAsync(SETTLE_MS);
+}
+
+beforeEach(() => {
+  folder = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'html-lint-runner-test-')));
+  page = path.join(folder, 'page.html');
+  fs.writeFileSync(page, '<!DOCTYPE html><html><body><h1>ok</h1></body></html>');
+  vi.useFakeTimers();
+  vi.clearAllMocks();
+  electron.state.last = null;
+  electron.state.emptyPage = false;
+  electron.state.load = new Promise<void>((resolve, reject) => {
+    finishLoad = resolve;
+    failLoad = reject;
+  });
+  stdout = [];
+  vi.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => {
+    stdout.push(String(chunk));
+    return true;
+  });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  fs.rmSync(folder, { recursive: true, force: true });
+});
+
+describe('startHtmlLintRunner: the window', () => {
+  it('turns off hardware acceleration and registers its scheme before ready, and opens a hidden, sandboxed, offscreen window with no preload', async () => {
+    await startHtmlLintRunner(page);
+
+    const ready = electron.app.whenReady.mock.invocationCallOrder[0];
+    expect(electron.app.disableHardwareAcceleration.mock.invocationCallOrder[0]).toBeLessThan(ready);
+    expect(electron.protocol.registerSchemesAsPrivileged.mock.invocationCallOrder[0]).toBeLessThan(ready);
+    expect(electron.protocol.registerSchemesAsPrivileged).toHaveBeenCalledExactlyOnceWith([
+      { scheme: LINT_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+    ]);
+    expect(window().options).toEqual({
+      show: false,
+      webPreferences: {
+        offscreen: true, sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, partition: LINT_PARTITION,
+      },
+    });
+    expect(electron.app.on).toHaveBeenCalledWith('window-all-closed', expect.any(Function));
+  });
+
+  it("loads a file target through its scheme, served from the target's folder", async () => {
+    fs.writeFileSync(path.join(folder, 'my page.html'), '<p>x</p>');
+    await startHtmlLintRunner(path.join(folder, 'my page.html'));
+
+    expect(window().loadURL).toHaveBeenCalledExactlyOnceWith(`${PAGE_DIR_URL}my%20page.html`);
+    const handler = window().webContents.session.schemes.get(LINT_SCHEME);
+    const response = await handler!(new Request(`${PAGE_DIR_URL}my%20page.html`));
+    expect(await response.text()).toBe('<p>x</p>');
+  });
+
+  it('loads an http(s) target as it is, with no scheme handler', async () => {
+    await startHtmlLintRunner('http://127.0.0.1:8123/index.html');
+
+    expect(window().loadURL).toHaveBeenCalledExactlyOnceWith('http://127.0.0.1:8123/index.html');
+    expect(window().webContents.session.schemes.size).toBe(0);
+  });
+
+  it('grants the page no permission', async () => {
+    await startHtmlLintRunner(page);
+    const session = window().webContents.session;
+    const granted = vi.fn();
+
+    session.permissionRequest?.(window().webContents, 'media', granted);
+
+    expect(granted).toHaveBeenCalledExactlyOnceWith(false);
+    expect(session.permissionCheck?.(window().webContents, 'media', PAGE_DIR_URL, {})).toBe(false);
+  });
+});
+
+describe('startHtmlLintRunner: the output html_lint.py parses', () => {
+  it('reports a clean page as no findings and exits 0', async () => {
+    await startHtmlLintRunner(page);
+    await settle();
+
+    expect(printed()).toMatch(/^RESULT_JSON_START\n.*\nRESULT_JSON_END\n$/);
+    const result = extractResult(printed());
+    expect(result).toEqual({ consoleErrors: [], failedRequests: [], crashed: false, crashDetails: null, emptyPage: false });
+    expect(findingsFromResult(result!)).toEqual([]);
+    expect(electron.app.exit).toHaveBeenCalledExactlyOnceWith(0);
+  });
+
+  it("reports the page's own console errors and drops the rest", async () => {
+    await startHtmlLintRunner(page);
+    const contents = window().webContents;
+    contents.emit('console-message', { level: 'error', message: 'boom', lineNumber: 7, sourceId: `${PAGE_DIR_URL}page.html` });
+    contents.emit('console-message', { level: 'error', message: 'elsewhere', lineNumber: 1, sourceId: 'https://cdn.example.test/x.js' });
+    contents.emit('console-message', { level: 'warning', message: 'just a warning', lineNumber: 2, sourceId: `${PAGE_DIR_URL}page.html` });
+    contents.emit('console-message', { level: 'error', message: 'Electron security warning', lineNumber: 0, sourceId: '' });
+    await settle();
+
+    expect(findingsFromResult(extractResult(printed())!)).toEqual([
+      { kind: 'console_error', detail: 'boom (line 7)' },
+    ]);
+  });
+
+  it("reports the page's own missing files and failed requests", async () => {
+    await startHtmlLintRunner(page);
+    const webRequest = window().webContents.session.webRequest;
+    webRequest.completed?.({ url: `${PAGE_DIR_URL}missing.js`, statusCode: 404 });
+    webRequest.completed?.({ url: `${PAGE_DIR_URL}app.js`, statusCode: 200 });
+    webRequest.errorOccurred?.({ url: `${PAGE_DIR_URL}data.json`, error: 'net::ERR_FAILED' });
+    webRequest.errorOccurred?.({ url: 'https://cdn.example.test/lib.js', error: 'net::ERR_NAME_NOT_RESOLVED' });
+    await settle();
+
+    expect(findingsFromResult(extractResult(printed())!)).toEqual([
+      { kind: 'failed_request', detail: `${PAGE_DIR_URL}missing.js — HTTP 404` },
+      { kind: 'failed_request', detail: `${PAGE_DIR_URL}data.json — net::ERR_FAILED` },
+    ]);
+  });
+
+  it("reports a 4xx/5xx response from the page's own origin as a failed request", async () => {
+    await startHtmlLintRunner('http://127.0.0.1:8123/index.html');
+    const webRequest = window().webContents.session.webRequest;
+    webRequest.completed?.({ url: 'http://127.0.0.1:8123/api/items', statusCode: 404 });
+    webRequest.completed?.({ url: 'http://127.0.0.1:8123/app.js', statusCode: 200 });
+    webRequest.completed?.({ url: 'https://api.example.test/x', statusCode: 500 });
+    await settle();
+
+    expect(findingsFromResult(extractResult(printed())!)).toEqual([
+      { kind: 'failed_request', detail: 'http://127.0.0.1:8123/api/items — HTTP 404' },
+    ]);
+  });
+
+  it('reports an empty body', async () => {
+    electron.state.emptyPage = true;
+    await startHtmlLintRunner(page);
+    await settle();
+
+    expect(window().webContents.executeJavaScript).toHaveBeenCalledOnce();
+    expect(findingsFromResult(extractResult(printed())!)).toEqual([{ kind: 'empty_page', detail: EMPTY_PAGE_DETAIL }]);
+  });
+
+  it('reports a renderer crash at once', async () => {
+    await startHtmlLintRunner(page);
+    window().webContents.emit('render-process-gone', {}, { reason: 'crashed', exitCode: 133 });
+
+    const result = extractResult(printed());
+    expect(result).toMatchObject({ crashed: true, crashDetails: { reason: 'crashed', exitCode: 133 } });
+    expect(findingsFromResult(result!)).toEqual([{ kind: 'crashed', detail: 'renderer process crashed while loading the page' }]);
+    expect(electron.app.exit).toHaveBeenCalledWith(0);
+  });
+
+  it('still reports after a failed load', async () => {
+    await startHtmlLintRunner(page);
+    window().webContents.session.webRequest.completed?.({ url: `${PAGE_DIR_URL}page.html`, statusCode: 404 });
+    failLoad(new Error('ERR_HTTP_RESPONSE_CODE_FAILURE'));
+    await vi.advanceTimersByTimeAsync(SETTLE_MS);
+
+    expect(findingsFromResult(extractResult(printed())!)).toEqual([
+      { kind: 'failed_request', detail: `${PAGE_DIR_URL}page.html — HTTP 404` },
+    ]);
+  });
+
+  it('reports what it has when the page never finishes loading', async () => {
+    await startHtmlLintRunner(page);
+    await vi.advanceTimersByTimeAsync(HARD_TIMEOUT_MS - 1);
+    expect(printed()).toBe('');
+
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(extractResult(printed())).toEqual({ consoleErrors: [], failedRequests: [], crashed: false, crashDetails: null, emptyPage: false });
+    expect(electron.app.exit).toHaveBeenCalledExactlyOnceWith(0);
+  });
+});
+
+describe('startHtmlLintRunner: network policy', () => {
+  it.each([
+    { name: 'a file of the page, by its scheme', url: `${PAGE_DIR_URL}data.json`, method: 'POST', expected: {} },
+    { name: 'a file:// URL', url: 'file:///tmp/data.json', method: 'POST', expected: {} },
+    { name: 'a loopback POST', url: 'http://127.0.0.1:8123/api/items', method: 'POST', expected: {} },
+    { name: 'a localhost PUT', url: 'http://localhost:8123/api/items/1', method: 'PUT', expected: {} },
+    { name: 'an external GET', url: 'https://api.example.test/items', method: 'GET', expected: {} },
+    { name: 'an external POST, answered as an empty success', url: 'https://api.example.test/items', method: 'POST', expected: { redirectURL: 'data:text/plain,' } },
+    { name: 'a URL that does not parse', url: 'not a url', method: 'POST', expected: {} },
+  ])('$name', async ({ url, method, expected }) => {
+    await startHtmlLintRunner(page);
+    const callback = vi.fn();
+
+    window().webContents.session.webRequest.beforeRequest?.({ url, method }, callback);
+
+    expect(callback).toHaveBeenCalledExactlyOnceWith(expected);
+  });
+});
+
+describe('the lint scheme: files from the target folder only', () => {
+  let outside: string;
+
+  beforeEach(() => {
+    outside = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'html-lint-outside-')));
+    fs.writeFileSync(path.join(outside, 'secret.txt'), 'outside the folder');
+    fs.mkdirSync(path.join(folder, 'assets'));
+    fs.writeFileSync(path.join(folder, 'assets', 'app.js'), 'export const x = 1;');
+    fs.writeFileSync(path.join(folder, 'data.json'), '{"name":"lint"}');
+    fs.writeFileSync(path.join(folder, 'lib.mjs'), 'export {};');
+    fs.writeFileSync(path.join(folder, 'blob.bin'), 'x');
+  });
+
+  afterEach(() => {
+    fs.rmSync(outside, { recursive: true, force: true });
+  });
+
+  async function serve(url: string): Promise<Response> {
+    return serveLintFile(folder, new Request(url));
+  }
+
+  it.each([
+    { file: 'page.html', type: 'text/html' },
+    { file: 'assets/app.js', type: 'text/javascript' },
+    { file: 'lib.mjs', type: 'text/javascript' },
+    { file: 'data.json', type: 'application/json' },
+    { file: 'blob.bin', type: 'application/octet-stream' },
+  ])('serves $file as $type', async ({ file, type }) => {
+    const response = await serve(`${PAGE_DIR_URL}${file}`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe(type);
+    expect(await response.text()).toBe(fs.readFileSync(path.join(folder, file), 'utf-8'));
+  });
+
+  it('serves a link that stays inside the folder', async () => {
+    fs.symlinkSync(path.join(folder, 'data.json'), path.join(folder, 'alias.json'));
+
+    expect(await lookUpLintFile(folder, `${PAGE_DIR_URL}alias.json`)).toEqual({ file: path.join(folder, 'data.json') });
+  });
+
+  it('answers 404 for a missing file and for the folder itself', async () => {
+    expect((await serve(`${PAGE_DIR_URL}missing.js`)).status).toBe(404);
+    expect((await serve(`${PAGE_DIR_URL}assets`)).status).toBe(404);
+    expect((await serve(PAGE_DIR_URL)).status).toBe(404);
+  });
+
+  it('refuses a link that resolves outside the folder', async () => {
+    fs.symlinkSync(path.join(outside, 'secret.txt'), path.join(folder, 'leak.txt'));
+    fs.symlinkSync(outside, path.join(folder, 'linked-dir'));
+
+    expect(await lookUpLintFile(folder, `${PAGE_DIR_URL}leak.txt`)).toEqual({ refused: 'outside-folder' });
+    expect(await lookUpLintFile(folder, `${PAGE_DIR_URL}linked-dir/secret.txt`)).toEqual({ refused: 'outside-folder' });
+    expect((await serve(`${PAGE_DIR_URL}leak.txt`)).status).toBe(403);
+  });
+
+  it('refuses an encoded path that climbs out of the folder', async () => {
+    const climb = path.relative(folder, path.join(outside, 'secret.txt')).split(path.sep).join('%2F');
+
+    expect(await lookUpLintFile(folder, `${PAGE_DIR_URL}${climb}`)).toEqual({ refused: 'outside-folder' });
+    expect((await serve(`${PAGE_DIR_URL}${climb}`)).status).toBe(403);
+  });
+
+  it('keeps a dot-dot path inside the folder, as URL parsing clamps it at the root', async () => {
+    expect(await lookUpLintFile(folder, `${PAGE_DIR_URL}../../data.json`)).toEqual({ file: path.join(folder, 'data.json') });
+  });
+
+  it('refuses another host on the scheme', async () => {
+    expect(await lookUpLintFile(folder, `${LINT_SCHEME}://elsewhere/data.json`)).toEqual({ refused: 'outside-folder' });
+  });
+
+  it('answers 404 for a path that does not decode', async () => {
+    expect(await lookUpLintFile(folder, `${PAGE_DIR_URL}%E0%A4%A.json`)).toEqual({ refused: 'not-found' });
+  });
+
+  it('throws a disk failure other than a missing path instead of answering 404', async () => {
+    const failure = Object.assign(new Error('too many open files'), { code: 'EMFILE' });
+    vi.spyOn(fs.promises, 'realpath').mockRejectedValueOnce(failure);
+
+    await expect(lookUpLintFile(folder, `${PAGE_DIR_URL}data.json`)).rejects.toBe(failure);
+  });
+});
