@@ -17,6 +17,8 @@ import { Card } from '../components/ui/Card';
 import OverflowMenu from '../components/OverflowMenu';
 import { useToastManager } from '../components/ui/Toast';
 import { Button, Tooltip } from '../components/ui';
+import { badgeVariants } from '../components/ui/Badge';
+import { cn } from '../lib/cn';
 import {
   revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
   publishTargetPath, artifactServeUrl, openArtifactFile,
@@ -51,8 +53,11 @@ import {
   isAccessDraftValid,
   buildAccessPayload,
 } from '../components/artifact/publish/AccessChooser';
-import { AUDIENCE_CHOICE } from '../lib/orgSharing';
-import { readAudienceAnswer, readAudienceRequest } from '../lib/sharingContract';
+import { AUDIENCE_CHOICE, groupArtifactsBySection, isOrgSharingOn } from '../lib/orgSharing';
+import { useArtifactAudiencesState } from '../hooks/useArtifactAudiences';
+import { useKnownPeople, useMindsHubTeams, useSharingCapabilities, useSharingOrgName } from '../hooks/useOrgSharing';
+import { artifactOwnerUserId } from '../lib/artifactAuthorship';
+import { LOAD_STATUS, readAudienceAnswer, readAudienceRequest } from '../lib/sharingContract';
 import { publishFailureReason, publishRefusalMessage } from '../components/artifact/publish/publishErrors';
 import {
   publishedPageId, reportAccessChangeFailed, reportAccessChanged, reportLinkCopied, reportShareOpened, reportWithdrawal,
@@ -60,11 +65,13 @@ import {
 } from '../lib/artifactShareAnalytics';
 import { republishNotice, stopSharingNotice } from '../components/artifact/publish/linkLeftLive';
 import { ArtifactIcon, splitArtifactName, displayTitle, fileNameOf, isWebAppArtifact } from '../components/artifacts/ArtifactIcon';
-import { ArtifactStatus } from '../components/artifacts/ArtifactStatus';
-import { artifactAuthorship } from '../lib/artifactAuthorship';
+import { ArtifactStatus, ArtifactStatusOrgName } from '../components/artifacts/ArtifactStatus';
+import { ArtifactOwnerNamesProvider, useArtifactAuthorship } from '../hooks/useArtifactAuthorship';
 import {
   PageHeader,
   FilterRow,
+  FilterMenu,
+  FilterChips,
   SearchInput,
   SortPill,
   HoverMenu,
@@ -80,6 +87,7 @@ import { host } from '../../platform/host';
 import { surfaceCopy } from '../lib/surface';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
+import { forgetOpenCommentCount, useOpenCommentCounts } from '../hooks/useOpenCommentCounts';
 import i18n, { useTranslation } from '../../lib/i18n';
 
 const tr = (key, vars) => i18n.t(key, { ns: 'artifacts', ...vars });
@@ -89,6 +97,29 @@ const EMPTY_ARTIFACTS = [];
 // Page padding of the row group, shared with its loading skeleton so loading
 // does not shift the layout.
 const LIST_CLASS = 'mx-8 mb-[60px]';
+
+// How long the page waits for what decides its sections (sharing, teams, who
+// restricted artifacts reach) before showing anyway, so a slow or failing read
+// never leaves it loading (ENG-4585).
+export const GROUPING_WAIT_MS = 4000;
+
+// With sharing in the org, artifacts are grouped as skills are (Mine, Shared
+// with me, a team, everyone at the org), with the Skills page's icons.
+const SECTION_ICONS = {
+  mine: Ico.lock,
+  shared_with_me: Ico.user,
+  team: Ico.people,
+  org: Ico.building,
+};
+
+function SectionTitle({ section }) {
+  return (
+    <h2 className="flex items-center gap-2">
+      <span className="inline-flex text-ink-4" aria-hidden="true">{SECTION_ICONS[section.id](14)}</span>
+      {section.title}
+    </h2>
+  );
+}
 
 // Sort options for the artifacts collection. Per-page (publishing
 // state isn't relevant to other collections).
@@ -125,6 +156,23 @@ export function timestampOf(a) {
 
 // Kind pill — short uppercase tag for the file type. Pulls from
 // `artifact.kind` or falls back to the file extension.
+// Who an artifact belongs to, for the Owner filter: the caller's own, a
+// colleague by user id, or someone the server could not name.
+const OWNER_ME = 'me';
+const OWNER_UNKNOWN = 'unknown';
+function ownerKeyOf(a) {
+  const caps = a?.capabilities;
+  if (!caps || caps.role !== 'reviewer') return OWNER_ME;
+  return artifactOwnerUserId(caps) || OWNER_UNKNOWN;
+}
+
+// The status a row shows, for the Status filter: shared, not shared yet (a
+// kind that can be), or a draft (one that can't).
+function statusOf(a) {
+  if (a?.publishedUrl) return 'shared';
+  return isPublishableArtifact(a) ? 'not_shared' : 'draft';
+}
+
 function kindOf(a) {
   if (a.kind) return String(a.kind).toLowerCase();
   const ext = (a.ext || '').replace(/^\./, '').toLowerCase();
@@ -235,10 +283,54 @@ async function downloadWithFeedback(artifact, toastManager, { note } = {}) {
   if (note) toastManager.add({ title: note });
 }
 
-function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject, liveLines = null, liveAppCard = false, liveAppAddress = '' }) {
+// The owner tag of the viewer's own artifact where a section shares it with
+// others (My teams, Everyone at the org): there, whose it is isn't a given.
+function useOwnTag(markOwn) {
+  const { t } = useTranslation('artifacts');
+  return markOwn ? { label: t('artifactsView.owner.you'), description: t('artifactsView.owner.youHint') } : null;
+}
+
+// Open comments on one of the caller's own artifacts (ENG-4560): an accent
+// pill with the count, drawn only when there is at least one. A click opens
+// the preview on its Comments panel, and only that: the row or card under it
+// does not open as well.
+function OpenCommentsCounter({ count, onOpen }) {
+  const { t } = useTranslation('artifacts');
+  if (!count || !onOpen) return null;
+  const label = t('artifactsView.openComments', { count });
+  return (
+    <Tooltip
+      content={(
+        <span className="flex flex-col gap-0.5">
+          <span className="font-semibold">{label}</span>
+          <span className="opacity-80">{t('artifactsView.openCommentsHint')}</span>
+        </span>
+      )}
+    >
+      <button
+        type="button"
+        aria-label={label}
+        data-testid="open-comments"
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => { e.stopPropagation(); onOpen(); }}
+        className={cn(
+          badgeVariants({ variant: 'accent', size: 'sm' }),
+          'm-0 shrink-0 cursor-pointer font-semibold tabular-nums transition-colors',
+          'hover:bg-[color-mix(in_srgb,var(--accent)_18%,transparent)]',
+          'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent',
+        )}
+      >
+        <span className="inline-flex shrink-0" aria-hidden="true">{Ico.chats(12)}</span>
+        {count > 99 ? '99+' : count}
+      </button>
+    </Tooltip>
+  );
+}
+
+function ArtifactBubble({ artifact, projects = [], onOpenViewer, onOpenComments, openComments = null, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject, liveLines = null, liveAppCard = false, liveAppAddress = '', markOwn = false }) {
   /* Same open rules as the list row: the body opens the best destination, and
      ↗ opens the artifact outside the app. */
-  const { openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer, { liveAppCard, liveAppAddress });
+  const { target, openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer, { liveAppCard, liveAppAddress });
   const orgMode = useOrgMode();
   const { t } = useTranslation('artifacts');
 
@@ -273,9 +365,11 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
   // is a "file" (shows its extension) yet still publishable. The name renders
   // base-truncated with the extension always visible.
   const publishable = isPublishableArtifact(artifact);
-  // "Another member" / "Unknown owner" tag (ENG-2979). Null for the viewer's
-  // own artifact, so ArtifactStatus renders exactly what it did before.
-  const authorship = artifactAuthorship(artifact.capabilities);
+  // The owner's name, "Another member" or "Unknown owner" (ENG-2979,
+  // ENG-4455). Null for the viewer's own artifact, so ArtifactStatus renders
+  // exactly what it did before.
+  const ownTag = useOwnTag(markOwn);
+  const authorship = useArtifactAuthorship(artifact.capabilities) || ownTag;
   const { base, secondary } = splitArtifactName(artifact);
   // A duplicated live app says whose it was, in the line a web app leaves empty.
   const received = liveLines?.received ?? null;
@@ -340,7 +434,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
           </div>
         </div>
 
-        <div className="flex min-w-0">
+        <div className="flex min-w-0 items-center gap-2">
           <ArtifactStatus
             artifact={artifact}
             phase={phase}
@@ -350,6 +444,10 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
             orgMode={orgMode}
             // A live app has no page link to report; its state line says what matters.
             pageBadge={!liveAppCard}
+          />
+          <OpenCommentsCounter
+            count={openComments}
+            onOpen={target === 'preview' && onOpenComments ? () => onOpenComments(artifact) : null}
           />
         </div>
         {liveLines?.state && (
@@ -514,8 +612,10 @@ function ArtifactProject({ artifact, projects, onOpenProject }) {
 
 // Status badges carry tooltips and a Try again link, so they sit above the
 // stretched open button.
-function ArtifactStatusSlot({ artifact, phase, onRetry, inlineChanges = false, pageBadge = true }) {
+function ArtifactStatusSlot({ artifact, phase, onRetry, inlineChanges = false, pageBadge = true, markOwn = false }) {
   const orgMode = useOrgMode();
+  const ownTag = useOwnTag(markOwn);
+  const authorship = useArtifactAuthorship(artifact.capabilities) || ownTag;
   return (
     <ItemActions className="min-w-0 shrink">
       <ArtifactStatus
@@ -529,9 +629,9 @@ function ArtifactStatusSlot({ artifact, phase, onRetry, inlineChanges = false, p
         onRetry={onRetry}
         inlineChanges={inlineChanges}
         pageBadge={pageBadge}
-        // "Another member" / "Unknown owner" tag (ENG-2979). Null for the
-        // viewer's own artifact.
-        authorship={artifactAuthorship(artifact.capabilities)}
+        // The owner's name, "Another member" or "Unknown owner" (ENG-2979,
+        // ENG-4455). Null for the viewer's own artifact.
+        authorship={authorship}
       />
     </ItemActions>
   );
@@ -667,7 +767,7 @@ function rowMenuItems({ artifact, orgMode, liveApps = false, onOpen, onOpenShare
     }));
 }
 
-function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onShareLiveApp: doShareLiveApp, onLaunchLiveApp: doLaunchLiveApp, onDelete: doDelete, onOpenProject, phase, onRetry, isMacPlatform, liveLines = null, liveAppCard = false, liveAppAddress = '' }) {
+function ArtifactRow({ artifact, projects, onOpenViewer, onOpenComments, openComments = null, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onShareLiveApp: doShareLiveApp, onLaunchLiveApp: doLaunchLiveApp, onDelete: doDelete, onOpenProject, phase, onRetry, isMacPlatform, liveLines = null, liveAppCard = false, liveAppAddress = '', markOwn = false }) {
   const { orgMode, toastManager, published, target, openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer, { liveAppCard, liveAppAddress });
   const liveApps = useLiveApps();
   const menuItems = rowMenuItems({
@@ -712,7 +812,13 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
             onRetry={onRetry}
             inlineChanges
             pageBadge={!liveAppCard}
+            markOwn={markOwn}
           />
+          {openComments > 0 && target === 'preview' && onOpenComments && (
+            <ItemActions>
+              <OpenCommentsCounter count={openComments} onOpen={() => onOpenComments(artifact)} />
+            </ItemActions>
+          )}
           <ArtifactProject artifact={artifact} projects={projects} onOpenProject={onOpenProject} />
           <span className="shrink-0 whitespace-nowrap">{artifact.updated || '—'}</span>
         </>
@@ -724,7 +830,7 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
 // ─── Composed view ───────────────────────────────────────────────────────
 
 export default function ArtifactsView({
-  artifacts: list = EMPTY_ARTIFACTS,
+  artifacts: cards = EMPTY_ARTIFACTS,
   // App owns the list (it also feeds the sidebar count), so publish-state
   // changes go up rather than into a local copy that the next prop would reset.
   // Deletes reach App on their own through artifactsStore.onArtifactDeleted.
@@ -735,6 +841,7 @@ export default function ArtifactsView({
   onOpenProject,
   onAddressWithAgent,
   resolveRepairConversation,
+  onOpenConversation,
   agentLabel = 'the agent',
   // True until the app's first artifacts fetch settles; shows skeletons.
   loading = false,
@@ -743,6 +850,9 @@ export default function ArtifactsView({
   // this for itself; the grid's is built here, so the gate has to be applied at
   // both sites or one view silently keeps the desktop-only actions.
   const orgMode = useOrgMode();
+  // In MindsHub mode a restricted card doesn't say who it reaches; read it,
+  // so its section, badge and hover say (useArtifactAudiences).
+  const { list, settled: audiencesSettled } = useArtifactAudiencesState(cards, { enabled: orgMode });
   const liveApps = useLiveApps();
   // App hands down a new list after each turn, so the states re-read with it.
   const liveAppStates = useLiveAppStates(liveApps, list);
@@ -763,7 +873,24 @@ export default function ArtifactsView({
   // card leaves the list (e.g. after a delete).
   const [viewerPath, setViewerPath] = useState(null);
   const viewer = viewerPath ? list.find((a) => a.path === viewerPath) || null : null;
-  const openViewer = (artifact) => setViewerPath(artifact?.path || null);
+  // A new object each time a comments counter opens the viewer: it opens on
+  // its Comments panel then (ArtifactViewer's commentsRequest), and as it
+  // remembers otherwise.
+  const [commentsRequest, setCommentsRequest] = useState(null);
+  const openViewer = (artifact, { comments = false } = {}) => {
+    setCommentsRequest(comments ? {} : null);
+    setViewerPath(artifact?.path || null);
+  };
+  const openComments = (artifact) => openViewer(artifact, { comments: true });
+  // Read again after the viewer closes: its comments may have been resolved
+  // or added while it was open.
+  const [commentsRefresh, setCommentsRefresh] = useState(0);
+  const closeViewer = () => {
+    if (viewer) forgetOpenCommentCount(viewer);
+    setViewerPath(null);
+    setCommentsRequest(null);
+    setCommentsRefresh((n) => n + 1);
+  };
   // Phones always get the grid (list rows are 5 columns); see ViewToggle.
   const { view, setView, effectiveView } = useCollectionView('anton:artifacts-view');
   const [search, setSearch] = useState('');
@@ -1003,9 +1130,82 @@ export default function ArtifactsView({
   };
 
   // Filter + sort.
+  // Type, Status and Owner filters (ENG-4560): a facet only where it would
+  // narrow anything, with one way to clear them all.
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const statuses = useMemo(
+    () => ['shared', 'not_shared', 'draft'].filter((s) => (list || []).some((a) => statusOf(a) === s)),
+    [list],
+  );
+  const [ownerFilter, setOwnerFilter] = useState('all');
+  const kinds = useMemo(() => [...new Set((list || []).map(kindOf))].sort(), [list]);
+  const ownerKeys = useMemo(() => [...new Set((list || []).map(ownerKeyOf))], [list]);
+  const colleagueIds = useMemo(
+    () => ownerKeys.filter((key) => key !== OWNER_ME && key !== OWNER_UNKNOWN),
+    [ownerKeys],
+  );
+  const { people: owners } = useKnownPeople(colleagueIds);
+  const ownerName = (id) => {
+    const person = owners.find((p) => p.id === id);
+    return (person && !person.pending && !person.failed && (person.name || person.email)) || t('artifactsView.filter.anotherMember');
+  };
+  // A filter on a value the list no longer has would hide everything.
+  useEffect(() => { if (typeFilter !== 'all' && !kinds.includes(typeFilter)) setTypeFilter('all'); }, [kinds, typeFilter]);
+  useEffect(() => { if (ownerFilter !== 'all' && !ownerKeys.includes(ownerFilter)) setOwnerFilter('all'); }, [ownerKeys, ownerFilter]);
+  useEffect(() => { if (statusFilter !== 'all' && !statuses.includes(statusFilter)) setStatusFilter('all'); }, [statuses, statusFilter]);
+  const STATUS_LABELS = {
+    shared: t('publish.shared'),
+    not_shared: t('status.notShared'),
+    draft: t('status.draft'),
+  };
+  const filters = [
+    kinds.length > 1 && {
+      id: 'type',
+      label: t('artifactsView.filter.type'),
+      value: typeFilter,
+      allValue: 'all',
+      onChange: setTypeFilter,
+      options: [
+        { value: 'all', label: t('artifactsView.filter.allTypes') },
+        ...kinds.map((kind) => ({ value: kind, label: kind.toUpperCase() })),
+      ],
+    },
+    statuses.length > 1 && {
+      id: 'status',
+      label: t('artifactsView.filter.status'),
+      value: statusFilter,
+      allValue: 'all',
+      onChange: setStatusFilter,
+      options: [
+        { value: 'all', label: t('artifactsView.filter.allStatuses') },
+        ...statuses.map((s) => ({ value: s, label: STATUS_LABELS[s] })),
+      ],
+    },
+    ownerKeys.length > 1 && {
+      id: 'owner',
+      label: t('artifactsView.filter.owner'),
+      value: ownerFilter,
+      allValue: 'all',
+      onChange: setOwnerFilter,
+      options: [
+        { value: 'all', label: t('artifactsView.filter.allOwners') },
+        ...(ownerKeys.includes(OWNER_ME) ? [{ value: OWNER_ME, label: t('artifactsView.filter.me') }] : []),
+        ...colleagueIds
+          .map((id) => ({ value: id, label: ownerName(id) }))
+          .sort((a, b) => a.label.localeCompare(b.label)),
+        ...(ownerKeys.includes(OWNER_UNKNOWN) ? [{ value: OWNER_UNKNOWN, label: t('artifactsView.filter.unknownOwner') }] : []),
+      ],
+    },
+  ].filter(Boolean);
+  const clearFilters = () => { setTypeFilter('all'); setStatusFilter('all'); setOwnerFilter('all'); };
+
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     let out = (list || []).slice();
+    if (typeFilter !== 'all') out = out.filter((a) => kindOf(a) === typeFilter);
+    if (statusFilter !== 'all') out = out.filter((a) => statusOf(a) === statusFilter);
+    if (ownerFilter !== 'all') out = out.filter((a) => ownerKeyOf(a) === ownerFilter);
     if (q) out = out.filter((a) =>
       (a.title || '').toLowerCase().includes(q)
       || (a.path || '').toLowerCase().includes(q)
@@ -1029,10 +1229,92 @@ export default function ArtifactsView({
       }
     });
     return out;
-  }, [list, search, sort]);
+  }, [list, search, sort, typeFilter, statusFilter, ownerFilter]);
+
+  // Open comments on the caller's own artifacts the page shows, read after it
+  // paints (useOpenCommentCounts).
+  const openCommentsOf = useOpenCommentCounts(visible, { refresh: commentsRefresh });
 
   const total = (list || []).length;
   const { artifactsNote } = surfaceCopy(host.isWeb);
+
+  // Sections, where the org shares (as on the Skills page); one list elsewhere.
+  const sharingState = useSharingCapabilities();
+  const sharingCapabilities = sharingState.capabilities;
+  const sectionsOn = isOrgSharingOn(sharingCapabilities);
+  const orgName = useSharingOrgName(sectionsOn);
+  const teamsState = useMindsHubTeams(sectionsOn);
+  // The page shows once, in its final sections (ENG-4585): the skeleton stays
+  // until, in MindsHub mode, sharing is known (off draws one list, on draws
+  // sections) and restricted artifacts' audiences are read (unknown files
+  // under Yours), and, wherever sections are on, the teams are in (a default
+  // team counts as the org). Once shown it never goes back to the skeleton,
+  // so a list that changes after a turn just updates in place.
+  const groupingSettled = (!orgMode || sharingState.status !== LOAD_STATUS.LOADING)
+    && (!sectionsOn || teamsState.status === LOAD_STATUS.READY)
+    && audiencesSettled;
+  const [shownOnce, setShownOnce] = useState(false);
+  const bodyReady = !loading && (shownOnce || groupingSettled);
+  useEffect(() => {
+    if (bodyReady && !shownOnce) setShownOnce(true);
+  }, [bodyReady, shownOnce]);
+  useEffect(() => {
+    if (loading || shownOnce) return undefined;
+    const timer = setTimeout(() => setShownOnce(true), GROUPING_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [loading, shownOnce]);
+  const sections = useMemo(
+    () => (sectionsOn ? groupArtifactsBySection(visible, { orgName, teams: teamsState?.teams || [] }) : null),
+    [sectionsOn, visible, orgName, teamsState?.teams],
+  );
+
+  // `section`: the section the item sits in, when the page is grouped.
+  const sharedSection = (section) => section === 'team' || section === 'org';
+  const renderCard = (a, section) => (
+    <ArtifactBubble
+      key={a.id || a.path}
+      markOwn={sharedSection(section)}
+      artifact={a}
+      projects={projects}
+      onOpenViewer={openViewer}
+      onOpenComments={openComments}
+      openComments={openCommentsOf(a)}
+      onMenuOpen={(art, rect) => setMenuFor((prev) =>
+        prev?.artifact?.path === art.path ? null : { artifact: art, rect },
+      )}
+      isMenuOpen={menuFor?.artifact?.path === a.path}
+      phase={statusByPath[a.path]}
+      onRetry={() => handlePublish(a)}
+      onOpenProject={onOpenProject}
+      liveLines={linesOf(a)}
+      liveAppCard={isLiveAppCard(a, liveApps)}
+      liveAppAddress={liveAddressOf(a)}
+    />
+  );
+  const renderRow = (a, section) => (
+    <ArtifactRow
+      key={a.id || a.path}
+      markOwn={sharedSection(section)}
+      artifact={a}
+      projects={projects}
+      onOpenViewer={openViewer}
+      onOpenComments={openComments}
+      openComments={openCommentsOf(a)}
+      onPublish={handlePublish}
+      onUnpublish={handleUnpublish}
+      onUpdate={handleUpdate}
+      onShareLiveApp={setShareTarget}
+      onLaunchLiveApp={launchOf(a)}
+      onDelete={handleTrash}
+      onOpenProject={onOpenProject}
+      phase={statusByPath[a.path]}
+      onRetry={() => handlePublish(a)}
+      isMacPlatform={isMacPlatform}
+      liveLines={linesOf(a)}
+      liveAppCard={isLiveAppCard(a, liveApps)}
+      liveAppAddress={liveAddressOf(a)}
+    />
+  );
 
   return (
     // Background intentionally omitted so the gravity-field canvas
@@ -1083,17 +1365,27 @@ export default function ArtifactsView({
               placeholder={t('artifactsView.search')}
             />
           }
+          filter={filters.length > 0 ? <FilterMenu filters={filters} /> : undefined}
+          chips={filters.length > 0 ? <FilterChips filters={filters} onClear={clearFilters} /> : undefined}
           sort={<SortPill value={sort} onChange={setSort} options={sortOptions} />}
           view={<ViewToggle value={view} onValueChange={setView} />}
         />
       )}
 
+      {/* Every card's owner named in one lookup (ENG-4455), and the org's
+          name for "Everyone at ‹org›" badges once for the list. */}
+      <ArtifactStatusOrgName.Provider value={orgName}>
+      <ArtifactOwnerNamesProvider capabilitiesList={visible.map((a) => a.capabilities)}>
       <CollectionState
-        loading={loading}
+        loading={!bodyReady}
         total={total}
         shown={visible.length}
         query={search}
-        onClear={() => setSearch('')}
+        // Search and the Type and Owner filters all narrow the list, so the
+        // copy and the action cover them all.
+        onClear={() => { setSearch(''); clearFilters(); }}
+        noMatchTitle={filters.length > 0 ? t('artifactsView.filter.noMatch') : undefined}
+        clearLabel={filters.length > 0 ? t('artifactsView.filter.clear') : undefined}
         // Each skeleton takes its loaded layout's own wrapper classes.
         skeleton={effectiveView === 'grid' ? 'cards' : 'group'}
         skeletonClassName={effectiveView === 'grid' ? 'px-8 pb-[60px]' : LIST_CLASS}
@@ -1113,60 +1405,57 @@ export default function ArtifactsView({
         }}
       >
         {effectiveView === 'grid' ? (
-          <div className="artifacts-grid px-8 pb-[60px]">
-            {/* Grid layout (display + responsive columns + gap) lives in CSS
-                (.artifacts-grid in globals.css): 2 cols, 3 when wide, 1 on
-                mobile — pure CSS media queries, no JS resize listener. */}
-            {visible.map((a) => (
-              <ArtifactBubble
-                key={a.id || a.path}
-                artifact={a}
-                projects={projects}
-                onOpenViewer={openViewer}
-                onMenuOpen={(art, rect) => setMenuFor((prev) =>
-                  prev?.artifact?.path === art.path ? null : { artifact: art, rect },
-                )}
-                isMenuOpen={menuFor?.artifact?.path === a.path}
-                phase={statusByPath[a.path]}
-                onRetry={() => handlePublish(a)}
-                onOpenProject={onOpenProject}
-                liveLines={linesOf(a)}
-                liveAppCard={isLiveAppCard(a, liveApps)}
-                liveAppAddress={liveAddressOf(a)}
-              />
-            ))}
-          </div>
+          sections ? (
+            <div className="px-8 pb-[60px] flex flex-col gap-6">
+              {sections.map((section) => (
+                <section key={section.id} aria-label={section.title} className="flex flex-col gap-3">
+                  <div className="flex items-center gap-2 font-body text-[13px] font-semibold text-ink">
+                    <SectionTitle section={section} />
+                    <span className="font-normal text-ink-4" data-testid="section-count">{section.artifacts.length}</span>
+                  </div>
+                  <div className="artifacts-grid">
+                    {section.artifacts.map((a) => renderCard(a, section.id))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          ) : (
+            <div className="artifacts-grid px-8 pb-[60px]">
+              {/* Grid layout (display + responsive columns + gap) lives in CSS
+                  (.artifacts-grid in globals.css): 2 cols, 3 when wide, 1 on
+                  mobile — pure CSS media queries, no JS resize listener. */}
+              {visible.map(renderCard)}
+            </div>
+          )
         ) : (
-          <ListGroup className={LIST_CLASS}>
-            {visible.map((a) => (
-              <ArtifactRow
-                key={a.id || a.path}
-                artifact={a}
-                projects={projects}
-                onOpenViewer={openViewer}
-                onPublish={handlePublish}
-                onUnpublish={handleUnpublish}
-                onUpdate={handleUpdate}
-                onShareLiveApp={setShareTarget}
-                onLaunchLiveApp={launchOf(a)}
-                onDelete={handleTrash}
-                onOpenProject={onOpenProject}
-                phase={statusByPath[a.path]}
-                onRetry={() => handlePublish(a)}
-                isMacPlatform={isMacPlatform}
-                liveLines={linesOf(a)}
-                liveAppCard={isLiveAppCard(a, liveApps)}
-                liveAppAddress={liveAddressOf(a)}
-              />
-            ))}
-          </ListGroup>
+          sections ? (
+            <div className={`${LIST_CLASS} flex flex-col gap-6`}>
+              {sections.map((section) => (
+                <ListGroup
+                  key={section.id}
+                  aria-label={section.title}
+                  title={<SectionTitle section={section} />}
+                  description={<span data-testid="section-count">{section.artifacts.length}</span>}
+                >
+                  {section.artifacts.map((a) => renderRow(a, section.id))}
+                </ListGroup>
+              ))}
+            </div>
+          ) : (
+            <ListGroup className={LIST_CLASS}>
+              {visible.map(renderRow)}
+            </ListGroup>
+          )
         )}
       </CollectionState>
+      </ArtifactOwnerNamesProvider>
+      </ArtifactStatusOrgName.Provider>
 
       <ArtifactViewer
         open={!!viewer}
         artifact={viewer}
-        onClose={() => setViewerPath(null)}
+        onClose={closeViewer}
+        commentsRequest={commentsRequest}
         onChange={updateOne}
         // The viewer closes once its card leaves the list, so a link the
         // delete left live is told here instead.
@@ -1175,6 +1464,9 @@ export default function ArtifactsView({
         onAddressWithAgent={onAddressWithAgent}
         // No host chat here — the viewer asks which one a repair belongs to.
         resolveRepairConversation={resolveRepairConversation}
+        // The viewer stays open while the agent works in the artifact's chat;
+        // "Open in chat" goes there.
+        onOpenConversation={onOpenConversation}
       />
 
       {shareTarget && (

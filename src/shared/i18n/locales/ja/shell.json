@@ -135,6 +135,27 @@
       "haveCopyTitle": "コピーがすでにあります。もう一度複製するには、コピーを削除してください。",
       "duplicateAriaLabel": "{name}を複製",
       "duplicatedToast": "このプロジェクトに複製しました。"
+    },
+    "workingFolders": {
+      "title": "作業フォルダ",
+      "add": "このチャットにフォルダを追加",
+      "adding": "追加中…",
+      "emptyHint": "エージェントが作業するフォルダを追加してください。",
+      "loadingFiles": "ファイルを読み込み中…",
+      "emptyFolder": "このフォルダにファイルはありません。",
+      "showFiles": "{name}のファイルを表示",
+      "hideFiles": "{name}のファイルを非表示",
+      "unavailable": "フォルダを利用できません",
+      "removeTooltip": "このチャットから削除",
+      "removeAriaLabel": "{name}をこのチャットから削除",
+      "removeTitle": "「{name}」をこのチャットから削除しますか？",
+      "fallbackName": "フォルダ",
+      "removeMessage": "エージェントはこのフォルダで作業しなくなります。フォルダとそのファイルはコンピュータに残ります。",
+      "loadFailed": "作業フォルダを読み込めませんでした。",
+      "listFailed": "このフォルダの内容を一覧表示できませんでした。",
+      "pickerFailed": "フォルダ選択画面を開けませんでした。",
+      "addFailed": "このフォルダを追加できませんでした。",
+      "removeFailed": "このフォルダを削除できませんでした。"
     }
   },
   "confirm": {
@@ -173,10 +194,13 @@
     "unavailableTitle": "この機能は利用できません",
     "cloudBodyNamed": "{feature}はまだCloudではご利用いただけません。それまではデスクトップアプリでご利用ください。",
     "cloudBody": "この機能はまだCloudではご利用いただけません。それまではデスクトップアプリでご利用ください。",
+    "cloudBodyCustom": "{feature}はまだCloudではご利用いただけません。今すぐカスタムコネクタとして接続できます。",
     "unavailableBodyNamed": "{feature}はこの環境ではご利用いただけません。",
     "unavailableBody": "この機能はこの環境ではご利用いただけません。",
     "notNow": "後で",
-    "download": "アプリをダウンロード"
+    "download": "アプリをダウンロード",
+    "connectCustom": "カスタム{feature}コネクタを接続",
+    "buildCustom": "カスタムコネクタを作成"
   },
   "loadStatus": {
     "retry": "再試行",
@@ -184,6 +208,8 @@
     "loading": "{what}を読み込み中…"
   },
   "upToDate": "最新の状態です",
+  "upToDateSaving": "保存中…",
+  "upToDateSaved": "保存済み",
   "usageBar": {
     "hideAllowance": "無料枠を非表示",
     "hide": "非表示"
@@ -411,7 +437,8 @@
     "signupWelcome": {
       "fromDesktop": "アカウントの準備ができました。ここからすぐに始めるか、{product} アプリに戻ってサインインしてください。",
       "dismiss": "閉じる"
-    }
+    },
+    "ownWorkHeading": "{product}に何をしてもらいますか？"
   },
   "logout": {
     "title": "{product}からサインアウトしますか？",

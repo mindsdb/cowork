@@ -31,6 +31,7 @@
       "retryExhausted": "Se detuvo antes: la tarea siguió fallando.",
       "questionUnanswered": "Se detuvo antes: una pregunta quedó sin respuesta.",
       "contentFilter": "Se detuvo antes: el filtro de contenido del modelo bloqueó una respuesta.",
+      "userStopped": "Se detuvo.",
       "fallback": "Se detuvo antes de terminar."
     },
     "figureFile": {
@@ -71,7 +72,9 @@
       "thumbnailAlt": "Miniatura del artefacto",
       "deletedTitle": "Este artefacto se eliminó",
       "liveArtifact": "artefacto en vivo",
-      "deletedBadge": "Eliminado"
+      "deletedBadge": "Eliminado",
+      "share": "Compartir",
+      "shareTooltip": "Elige quién puede abrirlo"
     },
     "kinds": {
       "provider": "Proveedor",
@@ -107,17 +110,27 @@
       "tryAgainIn": "Reintentar en {seconds} s",
       "tryAgain": "Reintentar",
       "adminSpendingLimitBody": "Se alcanzó el límite de gasto que fijó tu administrador. Comunícate con tu administrador.",
-      "budgetUsedUpTitle": "Se agotó el presupuesto de tu organización",
+      "budgetUsedUpTitle": "{scope, select, org {{period, select, day {Se agotó el presupuesto diario de tu organización} month {Se agotó el presupuesto mensual de tu organización} year {Se agotó el presupuesto anual de tu organización} other {Se agotó el presupuesto de tu organización}}} workspace {{period, select, day {Se agotó el presupuesto diario de este espacio de trabajo} month {Se agotó el presupuesto mensual de este espacio de trabajo} year {Se agotó el presupuesto anual de este espacio de trabajo} other {Se agotó el presupuesto de este espacio de trabajo}}} api_key {{period, select, day {Se agotó el presupuesto diario de esta clave de API} month {Se agotó el presupuesto mensual de esta clave de API} year {Se agotó el presupuesto anual de esta clave de API} other {Se agotó el presupuesto de esta clave de API}}} team {{period, select, day {Se agotó el presupuesto diario de tu equipo} month {Se agotó el presupuesto mensual de tu equipo} year {Se agotó el presupuesto anual de tu equipo} other {Se agotó el presupuesto de tu equipo}}} member {{period, select, day {Se agotó tu presupuesto diario} month {Se agotó tu presupuesto mensual} year {Se agotó tu presupuesto anual} other {Se agotó tu presupuesto}}} other {{period, select, day {Se agotó un presupuesto diario} month {Se agotó un presupuesto mensual} year {Se agotó un presupuesto anual} other {Se agotó un presupuesto}}}}",
       "viewBudgets": "Ver presupuestos",
       "balanceRanOutMobile": "Tu saldo se agotó antes de que terminara esta tarea.",
       "autoTopUpFailedBodyMobile": "No pudimos cobrar a tu tarjeta.",
-      "connectProviderBodyMobile": "Conecta tu propio proveedor en Configuración."
+      "connectProviderBodyMobile": "Conecta tu propio proveedor en Configuración.",
+      "windowUsedUpTitle": "Cupo del plan agotado",
+      "windowPausedUntil": "Usaste tu cupo {window, select, 7d {semanal} 5h {de 5 horas} other {del plan}} y tu saldo está vacío. En pausa hasta las {time}. Agrega fondos para seguir.",
+      "windowPaused": "Usaste tu cupo {window, select, 7d {semanal} 5h {de 5 horas} other {del plan}} y tu saldo está vacío. En pausa hasta que se renueve. Agrega fondos para seguir.",
+      "windowPausedUntilMobile": "Usaste tu cupo {window, select, 7d {semanal} 5h {de 5 horas} other {del plan}}. En pausa hasta las {time}.",
+      "windowPausedMobile": "Usaste tu cupo {window, select, 7d {semanal} 5h {de 5 horas} other {del plan}}. En pausa hasta que se renueve."
     },
     "usageAlert": {
       "freeLow": "Queda {percent} de la asignación gratuita de Air",
       "freeLowRefills": "Queda {percent} de la asignación gratuita de Air · se renueva a las {time}",
       "freeUsed": "Asignación gratuita de Air agotada · ahora se usa tu saldo",
-      "freeUsedUntil": "Asignación gratuita de Air agotada · se usa tu saldo hasta las {time}"
+      "freeUsedUntil": "Asignación gratuita de Air agotada · se usa tu saldo hasta las {time}",
+      "windowLow": "{percent} de tu cupo {window, select, 7d {semanal} other {de 5 horas}} usado",
+      "windowLowResets": "{percent} de tu cupo {window, select, 7d {semanal} other {de 5 horas}} usado · se renueva a las {time}",
+      "windowUsed": "{window, select, 7d {Cupo semanal agotado} other {Cupo de 5 horas agotado}}",
+      "windowUsedUntil": "{window, select, 7d {Cupo semanal agotado} other {Cupo de 5 horas agotado}} · en pausa hasta las {time}",
+      "windowOnWallet": "{window, select, 7d {Cupo semanal agotado} other {Cupo de 5 horas agotado}} · ahora se usa tu saldo a tarifas de API"
     },
     "reconnect": {
       "couldNotReconnect": "No se pudo reconectar. Prueba cerrar sesión y volver a iniciarla.",
@@ -146,7 +159,9 @@
       "needsCreditsBody": "No tienes suficientes créditos para este modelo. Recarga tu saldo para usarlo.",
       "disabledBody": "Este modelo está desactivado en tu espacio de trabajo. Elige otro modelo en Configuración.",
       "topUpBalance": "Recargar saldo",
-      "needsCreditsBodyMobile": "No tienes suficientes créditos para este modelo."
+      "needsCreditsBodyMobile": "No tienes suficientes créditos para este modelo.",
+      "notInTierTitle": "{model} no está en tu plan",
+      "notInTierBody": "{tier, select, plus {{model} está incluido en Plus.} pro {{model} está incluido en Pro.} other {Tu plan no incluye {model}.}} Mejora tu plan o agrega fondos para usarlo a tarifas de API."
     },
     "overloaded": {
       "theModelProvider": "El proveedor del modelo",
@@ -226,7 +241,16 @@
         "notRead": "En cola: la tarea terminó antes de poder leerlo."
       }
     },
-    "reconnecting": "Intentando reconectar"
+    "reconnecting": "Intentando reconectar",
+    "nextSteps": {
+      "groupLabel": "Próximos pasos",
+      "ownData": "Hacer esto con mis propios datos",
+      "anotherFile": "Hacer lo mismo con otro archivo",
+      "makePage": "Convertirlo en una página",
+      "schedule": "Ejecutar esto de forma programada",
+      "scheduled": "Se programó «{title}»",
+      "scheduledDone": "Programado ✓"
+    }
   },
   "composer": {
     "placeholder": "Hola, jefe. ¿En qué te puedo ayudar hoy?",
@@ -485,7 +509,8 @@
         "1": "Analizar competidores y posicionamiento",
         "2": "Automatizar el informe semanal del equipo",
         "3": "Investigar la oportunidad de mercado para un lanzamiento",
-        "4": "Redactar la actualización de esta semana a partir de la anterior"
+        "4": "Redactar la actualización de esta semana a partir de la anterior",
+        "5": "Convertir un informe en una presentación"
       }
     },
     "website": {
@@ -530,7 +555,8 @@
         "3": "Comparar los mejores modelos VLM con datos de Hugging Face",
         "4": "Calcular la TIR de flujos de caja de inversión",
         "5": "Limpiar mi hoja de cálculo y graficarla",
-        "6": "Extraer los términos clave de un contrato"
+        "6": "Extraer los términos clave de un contrato",
+        "7": "Convertir un extracto bancario en una hoja de cálculo"
       }
     },
     "visualization": {
@@ -561,7 +587,10 @@
         "7": "Revisar mis pendientes de esta semana",
         "8": "Investigar un prospecto y redactar el primer contacto",
         "9": "Asesorarme sobre una venta a partir de la transcripción de una llamada",
-        "10": "Convertir notas de reunión en tareas pendientes"
+        "10": "Convertir notas de reunión en tareas pendientes",
+        "11": "Mapear la estrategia comercial de un competidor",
+        "12": "Crear una guía de estudio a partir del material del curso",
+        "13": "Crear una lista priorizada de clientes potenciales"
       }
     },
     "games": {
@@ -582,7 +611,11 @@
       "placeholder": "Elige un ejemplo o describe tu propia tarea"
     },
     "samplePrompts": "Ejemplos de instrucciones",
-    "pillsAriaLabel": "Tipos de tarea"
+    "pillsAriaLabel": "Tipos de tarea",
+    "own-work": {
+      "chipLabel": "Tu trabajo",
+      "placeholder": "Pega texto o un enlace, o adjunta un archivo"
+    }
   },
   "taskRows": {
     "openProject": "Abrir {project}",
@@ -744,6 +777,31 @@
     "couldNotStart": "No se pudo iniciar la llamada de voz.",
     "endedReason": "La llamada terminó ({reason})."
   },
+  "connectorDraft": {
+    "notSaved": "Plantilla de conector · sin guardar",
+    "kept": "Ya tienes un conector con este id. Guardar de nuevo lo reemplaza.",
+    "saved": "Guardado. Agrega tus credenciales en Conectar apps y datos.",
+    "savedConnect": "Guardado. Conéctalo para agregar tus credenciales.",
+    "saveFailed": "No se pudo guardar el conector.",
+    "button": {
+      "save": "Guardar conector",
+      "saveAgain": "Guardar de nuevo",
+      "saving": "Guardando…",
+      "done": "Guardado",
+      "connect": "Conectar"
+    },
+    "modal": {
+      "fieldsTitle": "Lo que vas a ingresar",
+      "usageTitle": "Cómo lo usará Anton",
+      "helpUrl": "Dónde encontrarlos: {url}"
+    },
+    "field": {
+      "secret": "secreto",
+      "required": "obligatorio",
+      "optional": "opcional",
+      "example": "Ejemplo: {value}"
+    }
+  },
   "notionPicker": {
     "title": "Añadir páginas de Notion",
     "subtitle": "Busca en tu Notion y elige páginas para este mensaje.",
@@ -775,5 +833,50 @@
     "cancel": "Cancelar",
     "add": "{count, plural, =0 {Añadir archivo} one {Añadir archivo} other {Añadir # archivos}}",
     "searchFailed": "No se pudo buscar en Google Drive."
+  },
+  "ownWork": {
+    "needsMaterial": "Ahora agrega con qué debe trabajar: adjunta un archivo, o pega texto o un enlace después de la tarea.",
+    "waysLabel": "Formas de traer tu trabajo",
+    "attach": "Adjuntar un archivo",
+    "orPaste": "o pega texto o un enlace en el cuadro de arriba",
+    "jobsHeading": "Elige una tarea si quieres",
+    "kindsLabel": "Tipo de trabajo",
+    "groups": {
+      "finance": "Finanzas y administración",
+      "sales": "Ventas y marketing",
+      "operations": "Operaciones",
+      "legal": "Contratos e investigación"
+    },
+    "jobs": {
+      "finance": {
+        "0": "Convertir estos extractos bancarios o facturas en una sola hoja de cálculo.",
+        "1": "Preparar el próximo informe mensual con estas cifras.",
+        "2": "Revisar estos extractos en busca de errores o partidas inusuales."
+      },
+      "sales": {
+        "0": "Limpiar esta lista de clientes y marcar los duplicados.",
+        "1": "Comparar estas dos listas de precios y mostrar qué cambió.",
+        "2": "Redactar correos de seguimiento a partir de estas notas de llamadas."
+      },
+      "operations": {
+        "0": "Convertir estas notas de reunión en decisiones y pendientes.",
+        "1": "Convertir estas notas en un resumen de una página.",
+        "2": "Convertir este documento de proceso en una lista de verificación paso a paso."
+      },
+      "legal": {
+        "0": "Resumir los términos clave y los riesgos de este contrato.",
+        "1": "Resumir este informe y destacar las cifras importantes.",
+        "2": "Leer esta página y explicar qué nos importa."
+      }
+    }
+  },
+  "reportContent": {
+    "title": "Denunciar contenido",
+    "message": "¿Denunciar este contenido como peligroso u ofensivo? Se enviará su texto o referencia y los identificadores de tu cuenta al equipo de MindsHub para su revisión.",
+    "submit": "Enviar denuncia",
+    "sent": "Denuncia recibida.",
+    "failed": "No se pudo enviar la denuncia. Inténtalo de nuevo.",
+    "rateLimited": "Has alcanzado el límite diario de denuncias. Inténtalo más tarde.",
+    "retryAt": "Has alcanzado el límite diario de denuncias. Inténtalo el {when, date, short} a las {when, time, short}."
   }
 }

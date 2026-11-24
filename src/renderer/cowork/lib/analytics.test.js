@@ -150,6 +150,213 @@ describe('app_version on captured events', () => {
   });
 });
 
+describe('which PostHog project a desktop build reports to', () => {
+  const NON_PROD_KEY = 'phc_zBzpZzh8kCPVpKeVyRRLNSfyTisRfLCq8SPhtiTHZway';
+  const bodies = (fetchMock) => fetchMock.mock.calls.map((c) => JSON.parse(c[1].body));
+
+  it.each(['stable', 'preview', 'dev'])('sends a %s build to the non-production project, labelled', async (kind) => {
+    getVersionInfo.mockResolvedValue({ app: '2.26.11.9.1-819-gcdb170c9', ui: null, source: 'bundled', buildKind: kind });
+    const fetchMock = mockFetch();
+    const { trackAppInstalled } = await importAnalytics();
+
+    await trackAppInstalled();
+
+    const [body] = bodies(fetchMock);
+    expect(body.api_key).toBe(NON_PROD_KEY);
+    expect(body.properties.build_kind).toBe(kind);
+  });
+
+  it('keeps a prod build on the baked production token, labelled', async () => {
+    getVersionInfo.mockResolvedValue({ app: '2.26.11.9.1', ui: null, source: 'bundled', buildKind: 'prod' });
+    const fetchMock = mockFetch();
+    const { trackAppInstalled } = await importAnalytics();
+
+    await trackAppInstalled();
+
+    const [body] = bodies(fetchMock);
+    expect(body.api_key).toBe('phc_test');
+    expect(body.properties.build_kind).toBe('prod');
+  });
+
+  it('keeps the production token and omits the label when the shell reports no kind', async () => {
+    const fetchMock = mockFetch(); // beforeEach: buildKind null, a shell older than the field
+    const { trackAppInstalled } = await importAnalytics();
+
+    await trackAppInstalled();
+
+    const [body] = bodies(fetchMock);
+    expect(body.api_key).toBe('phc_test');
+    expect(body.properties).not.toHaveProperty('build_kind');
+  });
+
+  it('leaves web on the baked token without asking the shell', async () => {
+    hostState.isElectron = false;
+    const fetchMock = mockFetch();
+    const { trackDataSourceConnected } = await importAnalytics();
+
+    trackDataSourceConnected('postgres');
+    const body = await sentEvent(fetchMock, 'data_source_connected');
+
+    expect(body.api_key).toBe('phc_test');
+    expect(body.properties).not.toHaveProperty('build_kind');
+    expect(getVersionInfo).not.toHaveBeenCalled();
+  });
+
+  it('holds an event through a failed read and sends it where the shell then says', async () => {
+    getVersionInfo
+      .mockRejectedValueOnce(new Error('bridge not ready'))
+      .mockResolvedValue({ app: '', ui: null, source: 'bundled', buildKind: 'stable' });
+    const fetchMock = mockFetch();
+    const { trackAppInstalled } = await importAnalytics();
+
+    await trackAppInstalled();
+
+    const sent = bodies(fetchMock);
+    expect(sent.map((b) => b.event)).toEqual(['app_installed']);
+    expect(sent[0].api_key).toBe(NON_PROD_KEY);
+  });
+
+  it('merges in the non-production project when the first read fails', async () => {
+    getVersionInfo
+      .mockRejectedValueOnce(new Error('bridge not ready'))
+      .mockResolvedValue({ app: '', ui: null, source: 'bundled', buildKind: 'stable' });
+    getAccessToken.mockResolvedValue(fakeJwt({ sub: 'user-123', email: 'a@example.com' }));
+    const fetchMock = mockFetch();
+    const { trackAppInstalled } = await importAnalytics();
+
+    await trackAppInstalled();
+    await sentEvent(fetchMock, '$identify');
+
+    const merges = bodies(fetchMock).filter((b) => b.event === '$identify');
+    expect(merges.map((b) => b.api_key)).toEqual([NON_PROD_KEY]);
+  });
+
+  it('merges once when two events resolve the account at the same time', async () => {
+    getVersionInfo.mockResolvedValue({ app: '', ui: null, source: 'bundled', buildKind: 'stable' });
+    getAccessToken.mockResolvedValue(fakeJwt({ sub: 'user-123', email: 'a@example.com' }));
+    // Sends stay pending, so neither merge has written its marker yet.
+    const pending = [];
+    const fetchMock = mockFetch();
+    fetchMock.mockImplementation(() => new Promise((resolve) => pending.push(resolve)));
+    const { trackDataSourceConnected, trackArtifactBuilt } = await importAnalytics();
+
+    trackDataSourceConnected('postgres');
+    trackArtifactBuilt('report', 'a1');
+    await sentEvent(fetchMock, 'artifact_built');
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(bodies(fetchMock).filter((b) => b.event === '$identify')).toHaveLength(1);
+    pending.forEach((resolve) => resolve({ ok: true, status: 200 }));
+  });
+
+  describe('when the shell never answers', () => {
+    beforeEach(() => vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] }));
+    afterEach(() => vi.useRealTimers());
+
+    const settle = async (promise) => {
+      await vi.advanceTimersByTimeAsync(10_000);
+      return promise;
+    };
+
+    it('still delivers the event, to production, so a production install loses nothing', async () => {
+      getVersionInfo.mockRejectedValue(new Error('bridge gone'));
+      const fetchMock = mockFetch();
+      const { trackAppInstalled } = await importAnalytics();
+
+      await settle(trackAppInstalled());
+
+      const [body] = bodies(fetchMock);
+      expect(body.event).toBe('app_installed');
+      expect(body.api_key).toBe('phc_test');
+      expect(body.properties).not.toHaveProperty('build_kind');
+    });
+
+    it('merges again in the non-production project once the shell answers stable', async () => {
+      getVersionInfo
+        .mockRejectedValueOnce(new Error('bridge gone'))
+        .mockRejectedValueOnce(new Error('bridge gone'))
+        .mockRejectedValueOnce(new Error('bridge gone'))
+        .mockRejectedValueOnce(new Error('bridge gone'))
+        .mockResolvedValue({ app: '', ui: null, source: 'bundled', buildKind: 'stable' });
+      getAccessToken.mockResolvedValue(fakeJwt({ sub: 'user-123', email: 'a@example.com' }));
+      const fetchMock = mockFetch();
+      const { trackAppInstalled, trackFirstQuery } = await importAnalytics();
+
+      await settle(trackAppInstalled());
+      // Identity is cached for five minutes; the merge runs again when it
+      // re-resolves, and by then the shell answers.
+      await vi.advanceTimersByTimeAsync(6 * 60 * 1000);
+      await settle(trackFirstQuery());
+      await vi.advanceTimersByTimeAsync(0);
+
+      const merges = bodies(fetchMock).filter((b) => b.event === '$identify');
+      expect(merges.map((b) => b.api_key)).toEqual(['phc_test', NON_PROD_KEY]);
+    });
+  });
+
+  it('merges a staging install into the account in the non-production project', async () => {
+    getVersionInfo.mockResolvedValue({ app: '', ui: null, source: 'bundled', buildKind: 'stable' });
+    getAccessToken.mockResolvedValue(fakeJwt({ sub: 'user-123', email: 'a@example.com' }));
+    const fetchMock = mockFetch();
+    const { trackAppInstalled } = await importAnalytics();
+
+    await trackAppInstalled();
+    const merge = await sentEvent(fetchMock, '$identify');
+
+    expect(merge.api_key).toBe(NON_PROD_KEY);
+  });
+
+  it('merges once in the non-production project even after merging in production', async () => {
+    window.localStorage.setItem('cowork_identity_merged_sub', 'user-123'); // merged before the routing
+    getVersionInfo.mockResolvedValue({ app: '', ui: null, source: 'bundled', buildKind: 'stable' });
+    getAccessToken.mockResolvedValue(fakeJwt({ sub: 'user-123', email: 'a@example.com' }));
+    const fetchMock = mockFetch();
+    const { trackAppInstalled } = await importAnalytics();
+
+    await trackAppInstalled();
+    const merge = await sentEvent(fetchMock, '$identify');
+
+    expect(merge.api_key).toBe(NON_PROD_KEY);
+    expect(window.localStorage.getItem('cowork_identity_merged_sub')).toBe('user-123');
+  });
+
+  it('does not merge a production install again', async () => {
+    window.localStorage.setItem('cowork_identity_merged_sub', 'user-123');
+    getVersionInfo.mockResolvedValue({ app: '', ui: null, source: 'bundled', buildKind: 'prod' });
+    getAccessToken.mockResolvedValue(fakeJwt({ sub: 'user-123', email: 'a@example.com' }));
+    const fetchMock = mockFetch();
+    const { trackAppInstalled } = await importAnalytics();
+
+    await trackAppInstalled();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(bodies(fetchMock).map((b) => b.event)).not.toContain('$identify');
+  });
+
+  it('asks a shell that reports no kind only once', async () => {
+    const fetchMock = mockFetch(); // beforeEach: buildKind null
+    const { trackDataSourceConnected, trackArtifactBuilt } = await importAnalytics();
+
+    trackDataSourceConnected('postgres');
+    await sentEvent(fetchMock, 'data_source_connected');
+    trackArtifactBuilt('report', 'a1');
+    await sentEvent(fetchMock, 'artifact_built');
+
+    expect(getVersionInfo).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the build kind an update outcome journaled over the running one', async () => {
+    getVersionInfo.mockResolvedValue({ app: '', ui: null, source: 'bundled', buildKind: 'prod' });
+    const fetchMock = mockFetch();
+    const { trackUpdatePhase } = await importAnalytics();
+
+    await trackUpdatePhase({ id: 'j1', channel: 'server', phase: 'applied', buildKind: 'stable' });
+
+    const [body] = bodies(fetchMock);
+    expect(body.properties.build_kind).toBe('stable');
+  });
+});
+
 describe('trackFirstQuery delivery gating (ENG-501)', () => {
   const FIRST_QUERY_KEY = 'mdb_first_query_sent';
 
@@ -1279,6 +1486,48 @@ describe('the bound subject on the event, not only the person (ENG-2206)', () =>
     expect(event.properties.sso_plan_tier).toBe('free');
   });
 
+  it('stamps the plan the usage read names over the realm roles', async () => {
+    // Realm roles know no Plus, and a legacy `pro-hub` role outlives the
+    // subscription it came with, so the usage read's plan is the tier.
+    getAccessToken.mockResolvedValue(
+      fakeJwt({
+        sub: 'user-plan',
+        email: 'a@example.com',
+        activate_organization: { id: 'org-abc', name: 'Acme' },
+        realm_access: { roles: ['free', 'pro-hub'] },
+      })
+    );
+    const fetchMock = mockFetch();
+    const { trackTokenCapHit } = await importAnalytics();
+    const { setUsagePlanTier } = await import('./usagePlanTier');
+
+    setUsagePlanTier('plus');
+    await trackTokenCapHit('window_allowance_exhausted');
+    const event = await sentEvent(fetchMock, 'token_cap_hit');
+    expect(event.properties.sso_plan_tier).toBe('plus');
+    expect(event.properties.$set.plan_tier).toBe('plus');
+    expect(event.properties.$set.is_free_tier).toBe(false);
+
+    // No plan on the read (gate off, older server): the roles decide, as before.
+    setUsagePlanTier(null);
+    fetchMock.mockClear();
+    await trackTokenCapHit('token_limit');
+    expect((await sentEvent(fetchMock, 'token_cap_hit')).properties.sso_plan_tier).toBe('pro');
+  });
+
+  it('keeps staff and team over the usage read\'s plan', async () => {
+    getAccessToken.mockResolvedValue(
+      fakeJwt({ sub: 'user-staff', email: 'a@example.com', realm_access: { roles: ['staff'] } })
+    );
+    const fetchMock = mockFetch();
+    const { trackTokenCapHit } = await importAnalytics();
+    const { setUsagePlanTier } = await import('./usagePlanTier');
+
+    setUsagePlanTier('free');
+    await trackTokenCapHit('token_limit');
+    expect((await sentEvent(fetchMock, 'token_cap_hit')).properties.sso_plan_tier).toBe('staff');
+  });
+
   it('does not widen the session segments onto unrelated events', async () => {
     getAccessToken.mockResolvedValue(
       fakeJwt({
@@ -1612,13 +1861,17 @@ describe('console handoff attribution', () => {
     trackComposerReady('console', 'classic-snake-game', true);
     const body = await sentEvent(fetchMock, 'composer_ready');
 
-    expect(body.properties).toMatchObject({ entry_source: 'console', example_id: 'classic-snake-game', prefilled: true });
+    expect(body.properties).toMatchObject({
+      entry_source: 'console', example_id: 'classic-snake-game', prefilled: true, composer_blocked: false,
+    });
     expect(body.properties).not.toHaveProperty('entry_placement');
     // No prompt text rides on the event under any key.
     expect(JSON.stringify(body)).not.toMatch(/koi|snake moves/i);
   });
 
   it('credits a Gallery handoff to the Gallery on every event the handoff leads to', async () => {
+    // A console handoff only ever arrives on the web build.
+    hostState.isElectron = false;
     const fetchMock = mockFetch();
     const {
       setEntryAttribution, trackComposerReady, trackNewTaskMessageSent, trackAgentSessionStarted,
@@ -1630,7 +1883,11 @@ describe('console handoff attribution', () => {
     trackAgentSessionStarted();
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
 
-    const [ready, sent, session] = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body));
+    const bodies = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body));
+    const byEvent = (name) => bodies.find((b) => b.event === name);
+    const [ready, sent, session] = [
+      byEvent('composer_ready'), byEvent('new_task_message_sent'), byEvent('agent_session_started'),
+    ];
     expect(ready.properties.entry_placement).toBe('gallery');
     expect(sent.event).toBe('new_task_message_sent');
     expect(sent.properties).toMatchObject({ via: 'console_link', entry_placement: 'gallery' });
@@ -1994,6 +2251,24 @@ describe('onboarding and start events', () => {
     expect(links).toEqual([true, false, false]);
   });
 
+  it('says which task mode the message went under and what became of its instruction', async () => {
+    const fetchMock = mockFetch();
+    const { trackNewTaskMessageSent } = await importAnalytics();
+
+    trackNewTaskMessageSent({
+      text: 'plan a birthday party',
+      start: { start_kind: 'free_text' },
+      taskMode: { task_mode: 'visualization', mode_line: 'replaced_example', example_placed: true },
+    });
+    trackNewTaskMessageSent({ text: 'next task', start: { start_kind: 'free_text' } });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const [first, second] = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties);
+    expect(first).toMatchObject({ task_mode: 'visualization', mode_line: 'replaced_example', example_placed: true });
+    expect(second).not.toHaveProperty('task_mode');
+    expect(second).not.toHaveProperty('mode_line');
+  });
+
   it('labels a send that goes out, and says so for one the app starts itself', async () => {
     const fetchMock = mockFetch();
     const { sendWithStartVia, trackNewTaskMessageSent } = await importAnalytics();
@@ -2018,6 +2293,36 @@ describe('onboarding and start events', () => {
 
     const vias = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties.via);
     expect(vias).toEqual(['composer', 'composer']);
+  });
+
+  it('credits a console handoff\'s session to the example id its send carries', async () => {
+    const fetchMock = mockFetch();
+    const { setEntryAttribution, trackAgentSessionStarted } = await importAnalytics();
+
+    setEntryAttribution('console', null, null);
+    trackAgentSessionStarted({ exampleId: 'own-work' });
+    setEntryAttribution('console', null, null);
+    trackAgentSessionStarted();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const props = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties);
+    expect(props[0]).toMatchObject({ entry_source: 'console', example_id: 'own-work' });
+    expect(props[1]).toMatchObject({ entry_source: 'console', example_id: null });
+  });
+
+  it('keeps a start label that rides with the send, even after a refused second send cleared the pending one', async () => {
+    const fetchMock = mockFetch();
+    const { sendWithStartVia, setStartVia, trackNewTaskMessageSent } = await importAnalytics();
+
+    // A second Enter mid-send is refused, which clears the pending label.
+    await sendWithStartVia('checklist', async () => false);
+    trackNewTaskMessageSent({ text: 'own work', start: { start_kind: 'own_work' }, startVia: 'checklist' });
+    setStartVia('app');
+    trackNewTaskMessageSent({ text: 'from the row', start: undefined, startVia: 'checklist' });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    const vias = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body).properties.via);
+    expect(vias).toEqual(['checklist', 'checklist']);
   });
 
   it('uses a checklist start once, so the next message is from the composer', async () => {
@@ -2161,5 +2466,142 @@ describe('signup_landed (ENG-4288)', () => {
     const event = await sentEvent(fetchMock, 'signup_landed');
     expect(event.properties.from).toBe(expected);
     expect(JSON.stringify(event.properties)).not.toContain('example.com');
+  });
+});
+
+// The console's sign-in landing is graded from Cowork's arrival, so
+// the arrival has to say which organization it was in, whether the account has
+// been here before, and whether it found a composer at all.
+describe('the console arrival and the sign-up landing carry what grading needs', () => {
+  const ORG = { id: 'org-landing', name: 'Landing Co' };
+  const signedInWeb = (sub = 'user-landing') => {
+    hostState.isElectron = false;
+    getAccessToken.mockResolvedValue(fakeJwt({ sub, email: 'p@example.com', activate_organization: ORG }));
+  };
+  // A first visit is kept in the tab (sessionStorage) for a reload; each case is a new tab.
+  beforeEach(() => { window.sessionStorage.clear(); });
+  afterEach(() => { hostState.isElectron = true; });
+
+  it('composer_ready carries the session organization as both the SSO and the acting organization', async () => {
+    signedInWeb();
+    const fetchMock = mockFetch();
+    const { trackComposerReady } = await importAnalytics();
+
+    trackComposerReady('console', null, false, 'sign-in');
+    const event = await sentEvent(fetchMock, 'composer_ready');
+    expect(event.properties).toMatchObject({
+      entry_placement: 'sign-in',
+      sso_organization_id: 'org-landing',
+      acting_organization_id: 'org-landing',
+    });
+  });
+
+  it('composer_ready says when the provider panel stood in for the composer', async () => {
+    signedInWeb();
+    const fetchMock = mockFetch();
+    const { trackComposerReady } = await importAnalytics();
+
+    trackComposerReady('console', null, false, 'sign-in', { blocked: true });
+    const event = await sentEvent(fetchMock, 'composer_ready');
+    expect(event.properties.composer_blocked).toBe(true);
+  });
+
+  it.each([
+    ['nothing of the account is in the browser', () => {}, true],
+    ['the account used Cowork web here before', () => {
+      window.localStorage.setItem('anton.settingsCache:subject:user-landing:organization:org-landing', '{}');
+    }, false],
+  ])('composer_ready says first_visit when %s', async (_label, arrange, expected) => {
+    signedInWeb();
+    arrange();
+    const fetchMock = mockFetch();
+    const { trackComposerReady } = await importAnalytics();
+    const { noteAccountVisit } = await import('./accountVisit');
+    noteAccountVisit(fakeJwt({ sub: 'user-landing', activate_organization: ORG }));
+
+    trackComposerReady('console', null, false, 'sign-in');
+    const event = await sentEvent(fetchMock, 'composer_ready');
+    expect(event.properties.first_visit).toBe(expected);
+  });
+
+  it('composer_ready says first_visit once: a later arrival in the same tab is not a first again', async () => {
+    signedInWeb();
+    let fetchMock = mockFetch();
+    let analytics = await importAnalytics();
+    let visit = await import('./accountVisit');
+    visit.noteAccountVisit(fakeJwt({ sub: 'user-landing', activate_organization: ORG }));
+    analytics.trackComposerReady('console', null, false, 'sign-in');
+    expect((await sentEvent(fetchMock, 'composer_ready')).properties.first_visit).toBe(true);
+
+    // The next console link opens a new page in the same tab.
+    fetchMock = mockFetch();
+    analytics = await importAnalytics();
+    visit = await import('./accountVisit');
+    visit.noteAccountVisit(fakeJwt({ sub: 'user-landing', activate_organization: ORG }));
+    analytics.trackComposerReady('console', 'celestial-merge-2048', true, 'gallery');
+    expect((await sentEvent(fetchMock, 'composer_ready')).properties.first_visit).toBe(false);
+  });
+
+  it('composer_ready leaves first_visit off when it was never decided for the account', async () => {
+    signedInWeb();
+    const fetchMock = mockFetch();
+    const { trackComposerReady } = await importAnalytics();
+    const { noteAccountVisit } = await import('./accountVisit');
+    noteAccountVisit(fakeJwt({ sub: 'someone-else', activate_organization: ORG }));
+
+    trackComposerReady('console', null, false, 'sign-in');
+    const event = await sentEvent(fetchMock, 'composer_ready');
+    expect(event.properties).not.toHaveProperty('first_visit');
+  });
+
+  it('signup_landed carries the organization and no first_visit', async () => {
+    signedInWeb();
+    const fetchMock = mockFetch();
+    const { trackSignupLanded } = await importAnalytics();
+    const { noteAccountVisit } = await import('./accountVisit');
+    noteAccountVisit(fakeJwt({ sub: 'user-landing', activate_organization: ORG }));
+
+    trackSignupLanded('web');
+    const event = await sentEvent(fetchMock, 'signup_landed');
+    expect(event.properties).toMatchObject({
+      from: 'web', sso_organization_id: 'org-landing', acting_organization_id: 'org-landing',
+    });
+    expect(event.properties).not.toHaveProperty('first_visit');
+  });
+});
+
+describe('next steps under an answer', () => {
+  const count = (fetchMock, eventName) => fetchMock.mock.calls
+    .filter((c) => c[1]?.body)
+    .map((c) => JSON.parse(c[1].body).event)
+    .filter((event) => event === eventName).length;
+
+  it('next_steps_shown names the result kind and the steps, once per answer', async () => {
+    const fetchMock = mockFetch();
+    const analytics = await importAnalytics();
+    analytics.trackNextStepsShown('t1:m:a1', { resultKind: 'research', steps: ['make_page', 'schedule'] });
+    const event = await sentEvent(fetchMock, 'next_steps_shown');
+    expect(event.properties).toMatchObject({ result_kind: 'research', steps: ['make_page', 'schedule'] });
+
+    analytics.trackNextStepsShown('t1:m:a1', { resultKind: 'research', steps: ['make_page', 'schedule'] });
+    analytics.trackNextStepsShown('t1:m:a2', { resultKind: 'file', steps: ['another_file'] });
+    await vi.waitFor(() => expect(count(fetchMock, 'next_steps_shown')).toBe(2));
+  });
+
+  it('sends nothing for an answer with no steps', async () => {
+    const fetchMock = mockFetch();
+    const analytics = await importAnalytics();
+    analytics.trackNextStepsShown('t1:m:empty', { resultKind: 'other', steps: [] });
+    analytics.trackNextStepClicked({ step: 'make_page', resultKind: 'table', position: 0 });
+    await sentEvent(fetchMock, 'next_step_clicked');
+    expect(count(fetchMock, 'next_steps_shown')).toBe(0);
+  });
+
+  it('next_step_clicked carries the step, the result kind and its place in the row', async () => {
+    const fetchMock = mockFetch();
+    const analytics = await importAnalytics();
+    analytics.trackNextStepClicked({ step: 'schedule', resultKind: 'research', position: 1 });
+    const event = await sentEvent(fetchMock, 'next_step_clicked');
+    expect(event.properties).toMatchObject({ step: 'schedule', result_kind: 'research', position: 1 });
   });
 });

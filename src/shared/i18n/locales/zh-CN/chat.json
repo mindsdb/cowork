@@ -31,6 +31,7 @@
       "retryExhausted": "已提前停止：任务反复失败。",
       "questionUnanswered": "已提前停止：有问题未得到回答。",
       "contentFilter": "已提前停止：模型的内容过滤器拦截了一条回复。",
+      "userStopped": "已停止。",
       "fallback": "未完成即已停止。"
     },
     "figureFile": {
@@ -71,7 +72,9 @@
       "thumbnailAlt": "产物缩略图",
       "deletedTitle": "此产物已删除",
       "liveArtifact": "实时产物",
-      "deletedBadge": "已删除"
+      "deletedBadge": "已删除",
+      "share": "分享",
+      "shareTooltip": "选择谁可以打开"
     },
     "kinds": {
       "provider": "提供商",
@@ -107,17 +110,27 @@
       "tryAgainIn": "{seconds} 秒后重试",
       "tryAgain": "重试",
       "adminSpendingLimitBody": "已达到管理员设置的支出上限。请联系管理员。",
-      "budgetUsedUpTitle": "你所在组织的预算已用完",
+      "budgetUsedUpTitle": "{scope, select, org {{period, select, day {你所在组织的每日预算已用完} month {你所在组织的每月预算已用完} year {你所在组织的每年预算已用完} other {你所在组织的预算已用完}}} workspace {{period, select, day {此工作区的每日预算已用完} month {此工作区的每月预算已用完} year {此工作区的每年预算已用完} other {此工作区的预算已用完}}} api_key {{period, select, day {此 API 密钥的每日预算已用完} month {此 API 密钥的每月预算已用完} year {此 API 密钥的每年预算已用完} other {此 API 密钥的预算已用完}}} team {{period, select, day {你所在团队的每日预算已用完} month {你所在团队的每月预算已用完} year {你所在团队的每年预算已用完} other {你所在团队的预算已用完}}} member {{period, select, day {你的每日预算已用完} month {你的每月预算已用完} year {你的每年预算已用完} other {你的预算已用完}}} other {{period, select, day {每日预算已用完} month {每月预算已用完} year {每年预算已用完} other {预算已用完}}}}",
       "viewBudgets": "查看预算",
       "balanceRanOutMobile": "任务完成前你的余额已用完。",
       "autoTopUpFailedBodyMobile": "无法从你的银行卡扣款。",
-      "connectProviderBodyMobile": "在“设置”中连接你自己的提供商。"
+      "connectProviderBodyMobile": "在“设置”中连接你自己的提供商。",
+      "windowUsedUpTitle": "套餐额度已用完",
+      "windowPausedUntil": "你已用完{window, select, 7d {每周} 5h {5 小时} other {套餐}}额度，且余额已用完。已暂停至 {time}。充值即可继续。",
+      "windowPaused": "你已用完{window, select, 7d {每周} 5h {5 小时} other {套餐}}额度，且余额已用完。已暂停，直到额度重置。充值即可继续。",
+      "windowPausedUntilMobile": "你已用完{window, select, 7d {每周} 5h {5 小时} other {套餐}}额度。已暂停至 {time}。",
+      "windowPausedMobile": "你已用完{window, select, 7d {每周} 5h {5 小时} other {套餐}}额度。已暂停，直到额度重置。"
     },
     "usageAlert": {
       "freeLow": "Air 免费额度剩余 {percent}",
       "freeLowRefills": "Air 免费额度剩余 {percent} · {time} 恢复",
       "freeUsed": "Air 免费额度已用完 · 正在使用你的余额",
-      "freeUsedUntil": "Air 免费额度已用完 · {time} 前将使用你的余额"
+      "freeUsedUntil": "Air 免费额度已用完 · {time} 前将使用你的余额",
+      "windowLow": "已使用 {percent} 的{window, select, 7d {每周} other {5 小时}}额度",
+      "windowLowResets": "已使用 {percent} 的{window, select, 7d {每周} other {5 小时}}额度 · {time} 重置",
+      "windowUsed": "{window, select, 7d {每周额度已用完} other {5 小时额度已用完}}",
+      "windowUsedUntil": "{window, select, 7d {每周额度已用完} other {5 小时额度已用完}} · 暂停至 {time}",
+      "windowOnWallet": "{window, select, 7d {每周额度已用完} other {5 小时额度已用完}} · 正在按 API 价格使用你的余额"
     },
     "reconnect": {
       "couldNotReconnect": "无法重新连接。请尝试退出登录后重新登录。",
@@ -146,7 +159,9 @@
       "needsCreditsBody": "你的积分不足以使用此模型。请为余额充值后再使用。",
       "disabledBody": "此模型已在你的工作区中关闭。请在“设置”中选择其他模型。",
       "topUpBalance": "为余额充值",
-      "needsCreditsBodyMobile": "你的积分不足以使用此模型。"
+      "needsCreditsBodyMobile": "你的积分不足以使用此模型。",
+      "notInTierTitle": "{model} 不在你的套餐内",
+      "notInTierBody": "{tier, select, plus {Plus 包含 {model}。} pro {Pro 包含 {model}。} other {你的套餐不包含 {model}。}}升级，或充值后按 API 价格使用。"
     },
     "overloaded": {
       "theModelProvider": "模型提供商",
@@ -226,7 +241,16 @@
         "notRead": "已加入队列：任务在读取之前就已结束。"
       }
     },
-    "reconnecting": "正在尝试重新连接"
+    "reconnecting": "正在尝试重新连接",
+    "nextSteps": {
+      "groupLabel": "后续步骤",
+      "ownData": "用我自己的数据做同样的事",
+      "anotherFile": "对另一个文件做同样的事",
+      "makePage": "做成一个页面",
+      "schedule": "按计划运行",
+      "scheduled": "已安排“{title}”",
+      "scheduledDone": "已安排 ✓"
+    }
   },
   "composer": {
     "placeholder": "老板好，今天有什么可以帮你？",
@@ -485,7 +509,8 @@
         "1": "分析竞争格局与市场定位",
         "2": "自动生成每周团队状态报告",
         "3": "调研新产品上市的市场机会",
-        "4": "根据上周的更新起草本周更新"
+        "4": "根据上周的更新起草本周更新",
+        "5": "把报告做成演示文稿"
       }
     },
     "website": {
@@ -530,7 +555,8 @@
         "3": "用 Hugging Face 数据对比主流 VLM 模型",
         "4": "计算投资现金流的 IRR",
         "5": "整理我的电子表格并生成图表",
-        "6": "提取合同中的关键条款"
+        "6": "提取合同中的关键条款",
+        "7": "把银行对账单转成电子表格"
       }
     },
     "visualization": {
@@ -561,7 +587,10 @@
         "7": "看看我这周有哪些待办事项",
         "8": "调研潜在客户并起草首次联系邮件",
         "9": "根据通话记录为我辅导一笔交易",
-        "10": "把会议记录整理成待办事项"
+        "10": "把会议记录整理成待办事项",
+        "11": "梳理竞争对手的市场进入策略",
+        "12": "根据课程资料制作学习指南",
+        "13": "整理一份排好序的潜在客户名单"
       }
     },
     "games": {
@@ -582,7 +611,11 @@
       "placeholder": "选择一个示例，或描述你自己的任务"
     },
     "samplePrompts": "示例提示词",
-    "pillsAriaLabel": "任务类型"
+    "pillsAriaLabel": "任务类型",
+    "own-work": {
+      "chipLabel": "你的工作",
+      "placeholder": "粘贴文本或链接，或附加文件"
+    }
   },
   "taskRows": {
     "openProject": "打开 {project}",
@@ -744,6 +777,31 @@
     "couldNotStart": "无法开始语音通话。",
     "endedReason": "通话已结束（{reason}）。"
   },
+  "connectorDraft": {
+    "notSaved": "连接器模板 · 未保存",
+    "kept": "你已经有一个使用此 ID 的连接器。再次保存会替换它。",
+    "saved": "已保存。请在“连接应用和数据”中添加你的凭据。",
+    "savedConnect": "已保存。连接它以添加你的凭据。",
+    "saveFailed": "无法保存连接器。",
+    "button": {
+      "save": "保存连接器",
+      "saveAgain": "再次保存",
+      "saving": "正在保存…",
+      "done": "已保存",
+      "connect": "连接"
+    },
+    "modal": {
+      "fieldsTitle": "你需要输入的内容",
+      "usageTitle": "Anton 将如何使用",
+      "helpUrl": "获取位置：{url}"
+    },
+    "field": {
+      "secret": "机密",
+      "required": "必填",
+      "optional": "可选",
+      "example": "示例：{value}"
+    }
+  },
   "notionPicker": {
     "title": "从 Notion 添加页面",
     "subtitle": "搜索你的 Notion 并为这条消息选择页面。",
@@ -775,5 +833,50 @@
     "cancel": "取消",
     "add": "{count, plural, =0 {添加文件} other {添加 # 个文件}}",
     "searchFailed": "无法搜索 Google 云端硬盘。"
+  },
+  "ownWork": {
+    "needsMaterial": "现在添加要处理的内容：附加一个文件，或在任务后粘贴文本或链接。",
+    "waysLabel": "带入你的工作的方式",
+    "attach": "附加文件",
+    "orPaste": "或在上方输入框中粘贴文本或链接",
+    "jobsHeading": "如果需要，选择一个任务",
+    "kindsLabel": "工作类型",
+    "groups": {
+      "finance": "财务与行政",
+      "sales": "销售与营销",
+      "operations": "运营",
+      "legal": "合同与研究"
+    },
+    "jobs": {
+      "finance": {
+        "0": "把这些银行对账单或发票整理成一个电子表格。",
+        "1": "用这些数据制作下一份月度报告。",
+        "2": "检查这些对账单中的错误或异常项目。"
+      },
+      "sales": {
+        "0": "整理这份客户名单并标出重复项。",
+        "1": "比较这两份价目表，列出变化。",
+        "2": "根据这些通话记录起草跟进邮件。"
+      },
+      "operations": {
+        "0": "把这些会议记录整理成决定和待办事项。",
+        "1": "把这些笔记整理成一页摘要。",
+        "2": "把这份流程文档变成分步检查清单。"
+      },
+      "legal": {
+        "0": "总结这份合同的关键条款和风险。",
+        "1": "总结这份报告，并找出重要的数字。",
+        "2": "阅读这个页面，告诉我哪些内容对我们重要。"
+      }
+    }
+  },
+  "reportContent": {
+    "title": "举报内容",
+    "message": "要将此内容举报为不安全或冒犯性内容吗？其文本或引用信息及您的账号标识信息将发送给 MindsHub 团队审核。",
+    "submit": "提交举报",
+    "sent": "举报已收到。",
+    "failed": "无法提交举报，请重试。",
+    "rateLimited": "已达到每日举报上限。请稍后重试。",
+    "retryAt": "已达到每日举报上限。请在 {when, date, short} {when, time, short} 后重试。"
   }
 }

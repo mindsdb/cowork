@@ -240,6 +240,32 @@ describe('tick — refresh outcomes', () => {
     await vi.waitFor(() => expect(patches).toEqual([{ status: 'needs_reconnect' }]));
     expect(tokenCalls).toHaveLength(1);
   });
+
+  it('marks needs_reconnect when Slack answers 200 with ok: false, invalid_refresh_token', async () => {
+    vi.mocked(getRefreshToken).mockResolvedValue('xoxe-1');
+    const { tokenCalls, patches } = mockServer([
+      () => new Response(JSON.stringify({ ok: false, error: 'invalid_refresh_token' }), { status: 200 }),
+    ]);
+
+    startRefreshLoop('slack', 'my-slack', 'ann@acme.com:T1', new Date().toISOString(), TOKEN_URL);
+
+    await vi.waitFor(() => expect(patches).toEqual([{ status: 'needs_reconnect' }]));
+    expect(tokenCalls).toHaveLength(1);
+    expect(vi.mocked(setRefreshToken)).not.toHaveBeenCalledWith('slack', expect.anything(), expect.anything());
+  });
+
+  it('keeps the connection on a transient Slack ok: false and stores nothing', async () => {
+    vi.mocked(getRefreshToken).mockResolvedValue('xoxe-1');
+    const { tokenCalls, patches } = mockServer([
+      () => new Response(JSON.stringify({ ok: false, error: 'ratelimited' }), { status: 200 }),
+    ]);
+
+    startRefreshLoop('slack', 'my-slack', 'ann@acme.com:T1', new Date().toISOString(), TOKEN_URL);
+
+    await vi.waitFor(() => expect(tokenCalls).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(patches).toEqual([]);
+  });
 });
 
 describe('app-held secrets on the refresh path', () => {

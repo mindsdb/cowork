@@ -4,6 +4,8 @@ import { render, screen, waitFor, within, fireEvent } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 
 const hostSpies = vi.hoisted(() => ({ openExternal: vi.fn() }));
+const accountMock = vi.hoisted(() => ({ user: { orgId: 'org-1', sub: 'u1' } }));
+vi.mock('../hooks/useAccountUser', () => ({ useAccountUser: () => accountMock.user }));
 vi.mock('../../platform/host', async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, host: { ...actual.host, openExternal: hostSpies.openExternal } };
@@ -17,7 +19,10 @@ vi.mock('../lib/analytics', async (importOriginal) => {
 
 import { ModelSelect } from './ModelSelect';
 import { host } from '../../platform/host';
-import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL } from '../../lib/mindsUrls';
+import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, consoleUrlFor } from '../../lib/mindsUrls';
+
+// Console links name the session's organization and account (ENG-4333).
+const forOrg = (url) => consoleUrlFor(url, { organizationId: 'org-1', subject: 'u1' });
 import { HubUsageContext } from '../lib/hubUsageContext';
 import { buildModelPickerOptions } from '../lib/modelPickerOptions';
 
@@ -262,7 +267,7 @@ describe('ModelSelect — the route to credits on a locked row', () => {
     const row = screen.getByRole('option', { name: /Claude Opus 5/ });
     await user.click(within(row).getByRole('button', { name: 'Add credits' }));
 
-    expect(hostSpies.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostSpies.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
     // Its own trigger, distinct from the no-credits notice and the top-up hint,
     // so the three are not read as one in the funnel.
     expect(analyticsSpies.trackBillingOpened).toHaveBeenCalledWith('locked_model_row');
@@ -284,7 +289,7 @@ describe('ModelSelect — the route to credits on a locked row', () => {
     const row = screen.getByRole('option', { name: /Claude Opus 5/ });
     await user.click(within(row).getByRole('button', { name: 'Add credits' }));
 
-    expect(hostSpies.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
+    expect(hostSpies.openExternal).toHaveBeenCalledWith(forOrg(MINDS_ADD_FUNDS_URL));
   });
 
   it('sends a member to the billing page, where the dialog would be one they cannot submit', async () => {
@@ -300,10 +305,10 @@ describe('ModelSelect — the route to credits on a locked row', () => {
     const row = screen.getByRole('option', { name: /Claude Opus 5/ });
     await user.click(within(row).getByRole('button', { name: 'Add credits' }));
 
-    expect(hostSpies.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostSpies.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
   });
 
-  it('inside the mobile app, keeps the Needs credits tag and attaches no Add credits button', async () => {
+  it('inside the mobile app, shows a locked model as unavailable without a billing action', async () => {
     const user = userEvent.setup();
     host.isMobileShell = true;
     try {
@@ -311,7 +316,7 @@ describe('ModelSelect — the route to credits on a locked row', () => {
 
       await user.click(screen.getByRole('combobox'));
       const row = screen.getByRole('option', { name: /Claude Opus 5/ });
-      expect(within(row).getByText('Needs credits')).toBeInTheDocument();
+      expect(within(row).getByText('Unavailable')).toBeInTheDocument();
       expect(within(row).queryByRole('button', { name: 'Add credits' })).toBeNull();
     } finally {
       host.isMobileShell = false;
@@ -344,7 +349,7 @@ describe('ModelSelect — the route to credits on a locked row', () => {
 });
 
 /* A budget-stopped row is closed off too, and credits do not lift a budget. */
-describe('ModelSelect: a row the org budget stops offers no credits', () => {
+describe('ModelSelect: a row a spent budget stops offers no credits', () => {
   const OPTIONS = buildModelPickerOptions([
     { id: 'mindshub_air', name: 'MindsHub Air' },
     { id: 'opus', name: 'Claude Opus 5' },
@@ -361,7 +366,7 @@ describe('ModelSelect: a row the org budget stops offers no credits', () => {
     const row = screen.getByRole('option', { name: /Claude Opus 5/ });
     expect(row).toHaveTextContent('Budget reached');
     expect(row).not.toHaveTextContent('Needs credits');
-    expect(row).toHaveAttribute('title', "Your organization's budget is used up. An owner or admin can raise it in Budgets.");
+    expect(row).toHaveAttribute('title', "A budget covering this model is used up. An administrator can raise it in Budgets.");
     expect(row).toHaveAttribute('aria-disabled', 'true');
     expect(within(row).queryByRole('button', { name: 'Add credits' })).toBeNull();
   });

@@ -142,6 +142,16 @@
     "cancel": "キャンセル",
     "signingOut": "サインアウト中…",
     "signOut": "サインアウト",
+    "delete": {
+      "title": "アカウントを削除",
+      "subtitle": "MindsHub アカウントの完全な削除を申請します。",
+      "button": "アカウントを削除",
+      "confirmTitle": "MindsHub アカウントを削除しますか？",
+      "confirmBody": "サポートが申請内容を確認し、30 日以内にアカウントと個人データの削除を手配します。アカウント、請求、サポートに関する一部の記録は保持される場合があります。他のメンバーがいる組織の所有者である場合は、まずサポートが所有権の移譲をお手伝いします。他のメンバーは引き続き組織とその共有データを利用できます。削除は取り消せません。",
+      "sending": "送信中…",
+      "requested": "申請日：{requestedOn}。削除予定日：{deleteBy}。",
+      "error": "申請を確認できませんでした。もう一度送信しても問題ありません。"
+    },
     "web": {
       "title": "MindsHubで管理されています",
       "body": "Web版では、アカウントの管理はMindsHubで行います。"
@@ -211,6 +221,21 @@
       "tryAgain": "再試行",
       "bodyMobile": "MindsHubから応答がありません。"
     },
-    "empty": "このアカウントにはまだ表示できる使用量がありません。"
+    "empty": "このアカウントにはまだ表示できる使用量がありません。",
+    "plan": {
+      "title": "{tier, select, plus {Plusプラン} pro {Proプラン} other {プラン}}",
+      "renewsOn": "{date}に更新",
+      "endsOn": "{date}に終了",
+      "ending": "終了予定",
+      "pastDue": "支払いに失敗しました",
+      "pastDueBody": "プランを更新できませんでした。プランを維持するには、「管理」でカードを更新してください。",
+      "windowName": "{window, select, 7d {週間の利用枠} other {5時間の利用枠}}",
+      "windowUsed": "{percent}を使用済み",
+      "windowUsedResets": "{percent}を使用済み · {time}にリセット",
+      "windowMeterLabel": "{window, select, 7d {週間の利用枠の使用量} other {5時間の利用枠の使用量}}",
+      "afterCap": "いずれかの利用枠を超えると、タスクは残高からAPI料金で支払うか、リセットされるまで一時停止します。",
+      "upgrade": "{tier, select, plus {Plusにする} pro {Proにアップグレード} other {アップグレード}}",
+      "manage": "管理"
+    }
   }
 }

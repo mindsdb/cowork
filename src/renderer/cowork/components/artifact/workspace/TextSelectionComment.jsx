@@ -1,25 +1,32 @@
 import { useState } from 'react';
 import Ico from '../../Icons';
 import { Button } from '../../ui';
+import { AttachmentStrip } from '../../AttachmentChip';
+import { useImageAttachments } from '../../../lib/imageAttachments';
+import { FileDropOverlay } from '../../../lib/useFileDrop';
 import { useTranslation } from '../../../../lib/i18n';
 
 export function TextSelectionComment({ selection, onCancel, onCreate }) {
   const { t } = useTranslation('artifacts');
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  // Pasted or dropped images, stored with the comment (ENG-4410).
+  const attachments = useImageAttachments({ disabled: busy });
   if (!selection) return null;
+  const hasContent = !!text.trim() || attachments.images.length > 0;
 
   // `finally`, because the composer is disabled while busy: a rejecting
   // `onCreate` would otherwise leave the button dead for good, with the typed
   // comment unsent and no way back but reselecting the text.
   const submit = async () => {
-    if (!text.trim() || busy) return;
+    if (!hasContent || busy) return;
     setBusy(true);
     try {
       const ok = await onCreate?.({
         selector: JSON.stringify(selection),
         text: text.trim(),
         kind: 'review',
+        images: attachments.images.map((image) => image.pendingFile),
       });
       if (ok) onCancel?.();
     } catch {
@@ -33,7 +40,7 @@ export function TextSelectionComment({ selection, onCancel, onCreate }) {
   };
 
   return (
-    <aside className="artifact-selection-comment" aria-label={t('selectionComment.ariaLabel')}>
+    <aside className="artifact-selection-comment" aria-label={t('selectionComment.ariaLabel')} {...attachments.dropHandlers}>
       <div className="artifact-selection-quote">“{selection.quote}”</div>
       <textarea
         autoFocus
@@ -42,17 +49,21 @@ export function TextSelectionComment({ selection, onCancel, onCreate }) {
         placeholder={t('selectionComment.placeholder')}
         aria-label={t('selectionComment.ariaLabel')}
         onChange={(event) => setText(event.target.value)}
+        onPaste={attachments.onPaste}
         onKeyDown={(event) => {
           if (event.key === 'Escape') onCancel?.();
           if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) submit();
         }}
       />
+      <AttachmentStrip attachments={attachments.images} onRemove={attachments.remove} className="artifact-image-strip" />
+      {attachments.error && <div className="artifact-image-error" role="alert">{attachments.error}</div>}
       <div>
         <Button variant="subtle" onClick={onCancel}>{t('common.cancel')}</Button>
-        <Button disabled={!text.trim() || busy} onClick={submit}>
+        <Button disabled={!hasContent || busy} onClick={submit}>
           {Ico.send(14)} {t('selectionComment.comment')}
         </Button>
       </div>
+      <FileDropOverlay active={attachments.isDragging} label={t('imageAttachments.drop')} />
     </aside>
   );
 }

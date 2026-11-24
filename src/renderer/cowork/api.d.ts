@@ -31,6 +31,12 @@ export interface RecommendedModels {
    * known reason, an unknown one, or no entry renders "Needs credits".
    */
   modelDisabledReasons?: Record<string, string>;
+  /**
+   * The cheapest plan (`free` | `plus` | `pro`) whose allowance covers each
+   * MindsHub model, from the listing's `covered_by_tier` (ENG-4186). Absent
+   * from older servers and while the plans gate is off.
+   */
+  modelCoveredByTier?: Record<string, string>;
   /** MindsHub's display label per model id. Absent ⇒ derive from the id. */
   modelLabels?: Record<string, string>;
   /** Refresh scopes the server honors ('all', 'minds'); absent on servers that predate them. */
@@ -133,6 +139,49 @@ export interface SavedConnectorResult {
 
 export function fetchDatasources(): Promise<{ connections: ConnectorConnection[] }>;
 export function fetchConnector(id: string): Promise<ConnectorSpec>;
+export interface ConnectorDraftField {
+  name: string;
+  label: string;
+  secret: boolean;
+  required: boolean;
+  placeholder?: string;
+  help?: string;
+}
+export interface ConnectorDraft {
+  connector_id: string;
+  label: string;
+  description?: string;
+  category?: string;
+  help_url?: string;
+  usage_notes?: string;
+  fields: ConnectorDraftField[];
+  auth:
+    | { type: 'header'; headers: Record<string, string> }
+    | { type: 'basic'; username: string; password: string }
+    | { type: 'query'; params: Record<string, string> };
+  check?: { path: string };
+}
+export function saveConnectorDraft(draft: ConnectorDraft): Promise<unknown>;
+export function fetchConnectorDraftSaved(id: string): Promise<boolean | null>;
+export interface CustomConnectPayload {
+  name: string;
+  address: string;
+  values: Record<string, string>;
+}
+export interface CustomConnection {
+  id: number;
+  connector_id: string;
+  name: string;
+  secure_keys: string[];
+  status: string;
+  credential_version: number;
+  created_at?: string | null;
+  updated_at?: string | null;
+  template_missing: boolean;
+}
+export function connectCustomConnector(connectorId: string, payload: CustomConnectPayload): Promise<CustomConnection>;
+export function listCustomConnections(): Promise<CustomConnection[]>;
+export function deleteCustomConnection(connectionId: number): Promise<unknown>;
 export function fetchSavedConnection(engine: string, name: string): Promise<SavedConnectorConnection>;
 export function deleteDatasource(engine: string, name: string): Promise<unknown>;
 export function validateAndSaveConnector(
@@ -222,3 +271,7 @@ export function registerPushDevice(body: {
 }): Promise<{ ok: true } | Record<string, unknown>>;
 /** Mobile app push: remove this device's token from the signed-in user. */
 export function unregisterPushDevice(token: string, options?: { timeoutMs?: number }): Promise<{ ok: true } | Record<string, unknown>>;
+
+export function reportContent(conversationId: string, messageId: string): Promise<{ id: string; status: "received" }>;
+
+export function reportArtifactContent(projectId: string, artifactId: string): Promise<{ id: string; status: "received" }>;

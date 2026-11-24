@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const hostMock = vi.hoisted(() => ({
   host: {
@@ -201,14 +201,25 @@ describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
   });
 
   it('asks for confirmation before logging out, then runs the logout flow', async () => {
-    renderMenu(<UserMenu user={user} />);
-    openMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: /Logout/ }));
-    // Confirm modal — nothing signed out yet.
-    expect(screen.getByText(LOGOUT_CONFIRM_COPY.title)).toBeInTheDocument();
-    expect(hostMock.host.logout).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: LOGOUT_CONFIRM_COPY.confirmLabel }));
-    expect(hostMock.host.logout).toHaveBeenCalled();
+    // A desktop sign-out arms a 2.5-second reload watchdog. On a real clock it
+    // outlives this file and fires once `window` is gone, which fails the run
+    // with an unhandled error. Hold it on a fake clock and drop it.
+    vi.useFakeTimers();
+    try {
+      renderMenu(<UserMenu user={user} />);
+      openMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: /Logout/ }));
+      // Confirm modal — nothing signed out yet.
+      expect(screen.getByText(LOGOUT_CONFIRM_COPY.title)).toBeInTheDocument();
+      expect(hostMock.host.logout).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: LOGOUT_CONFIRM_COPY.confirmLabel }));
+      expect(hostMock.host.logout).toHaveBeenCalled();
+      // Let the sign-out settle, so the watchdog is armed while the fake clock holds it.
+      await act(async () => { await Promise.resolve(); });
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
 });
 

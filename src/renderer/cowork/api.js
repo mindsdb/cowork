@@ -1,4 +1,5 @@
 import { diagnostic } from '../../shared/diagnostics';
+import { planFailureFields } from './lib/subscriptionPlan';
 import { PLATFORM_UI } from '../lib/deployment';
 import { modelPickerMode, operatorEffortLevels } from '../lib/modelPicker';
 import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
@@ -24,6 +25,7 @@ import { cacheSettings } from './lib/settingsCache';
 import { approvalsOffAtOf } from './lib/browserPrefs';
 import { setAntonInstallId } from './lib/analytics';
 import { artifactIdentity } from './lib/artifactIdentity';
+import { trackingSettingsBody } from './lib/trackingSettings';
 import { liveAppSharesFrom, sharedLiveAppsFrom } from './lib/liveAppSharing';
 import { liveAppStatesFrom } from './lib/liveAppState';
 import { liveAppAvailabilityFrom } from './lib/liveAppAvailability';
@@ -245,6 +247,9 @@ function dedupe(key, factory, { forceFresh = false } = {}) {
  * @property {string|null} [retry_at] When that wait ends, as an offset-bearing
  *   ISO 8601 instant.
  * @property {string} [reset_at] When a spent allowance refills.
+ * @property {string} [budget_scope] Whose budget a budget_exceeded stop spent.
+ * @property {string} [budget_period] That budget's period: day, month or year.
+ * @property {string} [budget_model] The model a per-model budget caps (its alias).
  * @property {string} [request_id] The server's id for the failed request.
  * @property {boolean} [reconnectable] The credential is MindsHub's, so
  *   signing in again fixes it.
@@ -346,6 +351,13 @@ function _failedEventMeta(events) {
        render time: the server deliberately doesn't parse it, since only the
        client knows the viewer's timezone (ENG-1537). */
     resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
+    // window_allowance_exhausted / model_not_in_tier (ENG-4186): which plan
+    // window filled, and which tier covers the model.
+    ...planFailureFields(ev),
+    // budget_exceeded: whose budget is spent (org, workspace, api_key); absent from an older server.
+    budgetScope: typeof ev.budget_scope === 'string' ? ev.budget_scope : null,
+    budgetPeriod: typeof ev.budget_period === 'string' ? ev.budget_period : null,
+    budgetModel: typeof ev.budget_model === 'string' && ev.budget_model ? ev.budget_model : null,
     // Absolute instant to gate Retry against. The message's own created_at
     // is NOT a substitute: the server serialises it offset-less, so JS reads
     // it as local time — the gate would last hours west of UTC and no-op east
@@ -414,6 +426,9 @@ function _hydrateAssistantEvents(messages) {
           providerLabel: failed?.providerLabel ?? null,
           retryAfter: failed?.retryAfter ?? null,
           resetAt: failed?.resetAt ?? null,
+          budgetScope: failed?.budgetScope ?? null,
+          budgetPeriod: failed?.budgetPeriod ?? null,
+          budgetModel: failed?.budgetModel ?? null,
           retryAt: failed?.retryAt ?? null,
           failedModel: failed?.failedModel ?? null,
           requestId: failed?.requestId ?? null,
@@ -1670,6 +1685,10 @@ export async function fetchArtifactsStrict({ projectId, projectPath } = {}) {
   return Array.isArray(data) ? data : [];
 }
 
+export function fetchSharedArtifactPreview(target, signal) {
+  return req('/artifacts/shared-preview', { method: 'POST', body: JSON.stringify(target), signal });
+}
+
 export async function previewArtifact(path) {
   return req(`/artifacts/preview?path=${encodeURIComponent(path)}`);
 }
@@ -1930,6 +1949,33 @@ export async function updateOrgAppearance(payload) {
     headers: await hubHeaders(),
     body: JSON.stringify(payload),
   });
+}
+
+/**
+ * The signed-in account's open deletion request, `{ requestedAt, deleteBy }`,
+ * or null. The server answers 404 both when there is no open request and when
+ * there is no MindsHub account behind it (a desktop on its local server), so
+ * callers only ask where a MindsHub account is certain: the mobile app. Anything
+ * else rejects, so a failed read is never mistaken for "no request".
+ */
+export async function getDeletionRequest() {
+  try {
+    // Bounded: the Delete account button stays disabled until this settles.
+    return await req('/hub/deletion-request/', { timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+  } catch (err) {
+    if (err?.status === 404) return null;
+    throw err;
+  }
+}
+
+/**
+ * Ask MindsHub to delete the signed-in account. Idempotent: a second call
+ * answers the open request rather than opening another. Resolves to the same
+ * shape as getDeletionRequest; rejects with `err.status` on failure (404 when
+ * there is no MindsHub account behind the server).
+ */
+export async function requestAccountDeletion() {
+  return req('/hub/deletion-request/', { method: 'POST', timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
 }
 
 // The lock-owning wrappers decide how to handle failure. A save must never
@@ -2749,6 +2795,32 @@ export async function retryDatasourceValidation(connectionId) {
   return req(`${DATASOURCES}${encodeURIComponent(connectionId)}/validation-retry`, { method: 'POST' });
 }
 
+// ── Custom API connections ───────────────────────────────────────────────
+//
+// A member's own custom connector, connected in the cloud only: the server
+// checks the credentials at the address the member typed, then auth stores
+// them. List and delete relay to auth on the member's own credential.
+
+const CUSTOM_CONNECTIONS = '/connectors/custom-connections/';
+
+export async function connectCustomConnector(connectorId, payload) {
+  requireOrgMode('Connecting a custom connector');
+  return req(`/connectors/custom/${encodeURIComponent(connectorId)}/connect`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listCustomConnections() {
+  requireOrgMode('Custom connections');
+  return req(CUSTOM_CONNECTIONS);
+}
+
+export async function deleteCustomConnection(connectionId) {
+  requireOrgMode('Removing a custom connection');
+  return req(`${CUSTOM_CONNECTIONS}${encodeURIComponent(connectionId)}`, { method: 'DELETE' });
+}
+
 // Predefined JSON specs in server/connectors/. Three calls:
 //   list()         → lightweight summaries for the picker UI
 //   get(id)        → the full spec (literal-retrieval, no LLM)
@@ -2787,6 +2859,24 @@ export async function fetchCanBuildCustomConnector() {
     return data?.can_build !== false;
   } catch (err) {
     return err?.status === 404;
+  }
+}
+
+// Save a connector template from its chat card as the caller's own custom
+// connector. The server checks the template again; only org mode has the route.
+export async function saveConnectorDraft(draft) {
+  return req('/connectors/custom', { method: 'POST', body: JSON.stringify(draft) });
+}
+
+// Whether the caller already keeps a custom connector under `id`, which may be
+// an earlier template: true when the spec lookup returns a custom one, false
+// on a 404, null when it can't tell.
+export async function fetchConnectorDraftSaved(id) {
+  try {
+    const spec = await req(`/connectors/specs/${encodeURIComponent(id)}`);
+    return spec?.custom === true;
+  } catch (err) {
+    return err?.status === 404 ? false : null;
   }
 }
 
@@ -3011,9 +3101,12 @@ export function confirmConnectorTest(confirmId) {
   });
 }
 
-export function cancelConnectorTest({ approvalId, confirmId } = {}) {
+// The reason rides in the query string: a server that predates it ignores an
+// unknown query parameter but refuses an unknown body field.
+export function cancelConnectorTest({ approvalId, confirmId, reason } = {}) {
   const body = approvalId ? { approval_id: approvalId } : { confirm_id: confirmId };
-  return req('/connectors/submissions/cancel', { method: 'POST', body: JSON.stringify(body) });
+  const query = reason ? `?reason=${encodeURIComponent(reason)}` : '';
+  return req(`/connectors/submissions/cancel${query}`, { method: 'POST', body: JSON.stringify(body) });
 }
 
 // Backwards-compatible non-streaming wrapper — kept so callers that
@@ -3082,12 +3175,25 @@ export async function fetchPublishStats(path) {
   return req(`/publish/stats?path=${encodeURIComponent(path)}`);
 }
 
-export async function setPublishTracking(path, enabled) {
+export async function setPublishTracking(path, settings) {
   if (!path) throw new Error('Artifact has no path');
   return req('/publish/stats/tracking', {
     method: 'PUT',
-    body: JSON.stringify({ path, enabled }),
+    body: JSON.stringify({ path, ...trackingSettingsBody(settings) }),
   });
+}
+
+// One viewer's visits, each with its time per section.
+export async function fetchPublishStatsViewer(path, viewerId) {
+  if (!path) throw new Error('Artifact has no path');
+  if (!viewerId) throw new Error('No viewer');
+  return req(`/publish/stats/viewers/${encodeURIComponent(viewerId)}?path=${encodeURIComponent(path)}`);
+}
+
+// Deletes every view, visit and viewer recorded for the published artifact.
+export async function deletePublishStats(path) {
+  if (!path) throw new Error('Artifact has no path');
+  return req(`/publish/stats?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
 }
 
 // The path to send to publish/unpublish for an artifact. Prefer the
@@ -3685,6 +3791,29 @@ export async function patchConversation(id, body) {
   });
 }
 
+/** GET /conversations/{id}/folders: `{ folders: [{ id, path, name, available }] }`, oldest first. */
+export async function listConversationFolders(conversationId) {
+  return req(`/conversations/${enc(conversationId)}/folders`);
+}
+
+/** POST /conversations/{id}/folders. A refusal throws with the server's user-facing reason. */
+export async function addConversationFolder(conversationId, path) {
+  return req(`/conversations/${enc(conversationId)}/folders`, {
+    method: 'POST',
+    body: JSON.stringify({ path }),
+  });
+}
+
+/** DELETE /conversations/{id}/folders/{folderId}. Detaches only; nothing on disk changes. */
+export async function removeConversationFolder(conversationId, folderId) {
+  return req(`/conversations/${enc(conversationId)}/folders/${enc(folderId)}`, { method: 'DELETE' });
+}
+
+/** GET /conversations/{id}/folders/{folderId}/files: `{ files, truncated? }`, like the project listing. */
+export async function listConversationFolderFiles(conversationId, folderId) {
+  return req(`/conversations/${enc(conversationId)}/folders/${enc(folderId)}/files`);
+}
+
 const DELETE_TURN_TIMEOUT_MS = 30000;
 
 // Delete one user→answer cycle (the question + the assistant
@@ -4121,4 +4250,19 @@ export async function unregisterPushDevice(token, { timeoutMs = 3_000 } = {}) {
     body: JSON.stringify({ token }),
     timeoutMs,
   });
+}
+
+// A durable in-app receipt, never a mailto link or an optimistic success.
+export function reportContent(conversationId, messageId) {
+  return req('/content-reports/', {
+    method: 'POST',
+    body: JSON.stringify({ conversation_id: conversationId, message_id: messageId }),
+    timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+  });
+}
+
+export function reportArtifactContent(projectId, artifactId) {
+  return req('/content-reports/artifact', { method: 'POST',
+    body: JSON.stringify({ project_id: projectId, artifact_id: artifactId }),
+    timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
 }

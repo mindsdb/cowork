@@ -80,8 +80,24 @@ vi.mock('./views/ChatView', () => ({
   ),
 }));
 
-// Mirrors the viewer: settle the chat first, then hand the prompt over.
-vi.mock('./views/ArtifactsView', () => {
+// Mirrors the viewer: settle the chat first, then hand the prompt over. The
+// "… in place" buttons hand it over as the open viewer's chat bar does
+// (ENG-4560): in the background, following the chat's transcript, which the
+// page lists as the bar would mirror it.
+vi.mock('./views/ArtifactsView', async () => {
+  const { useState } = await import('react');
+  const { useConversationTranscript } = await import('./lib/chatTranscriptContext');
+  function Followed({ conversationId }) {
+    const transcript = useConversationTranscript(conversationId);
+    if (!transcript) return null;
+    return (
+      <ul data-testid="followed">
+        {transcript.messages.map((m, i) => (
+          <li key={i}>{`${m.role}:${typeof m.content === 'string' ? m.content : ''}`}</li>
+        ))}
+      </ul>
+    );
+  }
   const artifact = (originConversationId, projectId = 'proj-general') => ({
     id: `art-${originConversationId}`,
     slug: `art-${originConversationId}`,
@@ -94,8 +110,9 @@ vi.mock('./views/ArtifactsView', () => {
     'repair Y': artifact('conv-y'),
     'repair Z': artifact('conv-z'),
   };
-  return {
-    default: ({ resolveRepairConversation, onAddressWithAgent }) => (
+  function Page({ resolveRepairConversation, onAddressWithAgent, onOpenConversation }) {
+    const [followed, setFollowed] = useState(null);
+    return (
       <div>
         {Object.entries(targets).map(([label, art]) => (
           <button
@@ -110,9 +127,29 @@ vi.mock('./views/ArtifactsView', () => {
             {label}
           </button>
         ))}
+        {Object.entries(targets).map(([label, art]) => (
+          <button
+            key={`${label} in place`}
+            type="button"
+            onClick={async () => {
+              // The viewer's last resort: a chat id of its own.
+              const conversationId = (await resolveRepairConversation(art)) || 'conv-fresh';
+              setFollowed(conversationId);
+              const started = await onAddressWithAgent({
+                artifact: art, prompt: 'fix it', conversationId, inBackground: true,
+              });
+              spies.repairResults.push(started);
+            }}
+          >
+            {`${label} in place`}
+          </button>
+        ))}
+        <button type="button" onClick={() => onOpenConversation(followed)}>open followed chat</button>
+        <Followed conversationId={followed} />
       </div>
-    ),
-  };
+    );
+  }
+  return { default: Page };
 });
 
 vi.mock('../platform/host', async (importOriginal) => {
@@ -467,5 +504,106 @@ describe('addressing an artifact from Live Artifacts', () => {
     await waitFor(() => expect(spies.streamNewSession).toHaveBeenCalled());
     expect(spies.streamMessage.mock.calls.some(([id]) => id === 'conv-z')).toBe(false);
     expect(spies.streamNewSession.mock.calls.at(-1).at(-1).disabledConnections).toEqual([]);
+  });
+});
+
+// The viewer's chat bar hands a message to the agent from Live Artifacts
+// (ENG-4560): the turn runs in the artifact's chat while the page, and the
+// viewer on it, stay on screen.
+describe('handing a message to the agent from the open viewer', () => {
+  const stillOnArtifacts = () => {
+    expect(screen.getByRole('button', { name: 'repair A' })).toBeInTheDocument();
+    expect(screen.queryByTestId('chat-id')).toBeNull();
+  };
+
+  it('runs the turn in the artifact chat without leaving the page, and the page follows it', async () => {
+    spies.fetchSessionResult.mockImplementation(async (id) => loadedTask(id, TITLES[id] || 'Alpha task', [
+      { id: 'u1', role: 'user', content: 'old question' },
+      { id: 'a1', role: 'assistant', content: 'old answer' },
+    ]));
+    const user = userEvent.setup();
+    render(<App />);
+    await openLiveArtifacts(user);
+    await user.click(screen.getByRole('button', { name: 'repair A in place' }));
+
+    await waitFor(() => expect(spies.repairResults).toEqual([true]));
+    expect(spies.streamMessage.mock.calls.at(-1).slice(0, 2)).toEqual(['conv-a', 'fix it']);
+    stillOnArtifacts();
+    // The chat was loaded first, so it holds its history under the new turn.
+    const followed = await screen.findByTestId('followed');
+    await waitFor(() => expect(followed).toHaveTextContent('user:old question'));
+    expect(followed).toHaveTextContent('user:fix it');
+    expect(followed).toHaveTextContent('_streaming:');
+
+    await act(async () => {
+      const { opts } = streams.at(-1);
+      opts.onEvent({ type: 'response.output_text.delta', delta: 'Fixed the chart.' });
+      opts.onEvent({
+        type: 'response.completed',
+        assistant_message_id: 'a2',
+        response: { id: 'r1', status: 'completed', output: [{ id: 'msg-1', status: 'completed', content: [{ type: 'output_text', text: 'Fixed the chart.' }] }] },
+      });
+      opts.onDone('conv-a');
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(followed).toHaveTextContent('assistant:Fixed the chart.'));
+    expect(followed).not.toHaveTextContent('_streaming');
+    stillOnArtifacts();
+    expect(spies.fetchSessionResult.mock.calls.filter(([id]) => id === 'conv-a')).toHaveLength(1);
+  });
+
+  it('opens the chat when asked, with its history and the turn', async () => {
+    spies.fetchSessionResult.mockImplementation(async (id) => loadedTask(id, 'Alpha task', [
+      { id: 'u1', role: 'user', content: 'old question' },
+    ]));
+    const user = userEvent.setup();
+    render(<App />);
+    await openLiveArtifacts(user);
+    await user.click(screen.getByRole('button', { name: 'repair A in place' }));
+    await waitFor(() => expect(spies.repairResults).toEqual([true]));
+
+    await user.click(screen.getByRole('button', { name: 'open followed chat' }));
+    await waitFor(() => expect(screen.getByTestId('chat-id')).toHaveTextContent('conv-a'));
+    const list = screen.getByTestId('chat-messages');
+    expect(list).toHaveTextContent('user:old question');
+    expect(list).toHaveTextContent('user:fix it');
+  });
+
+  it('starts a new chat in the background when the artifact has none to resume', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openLiveArtifacts(user);
+    await user.click(screen.getByRole('button', { name: 'repair Z in place' }));
+
+    await waitFor(() => expect(spies.streamNewSession).toHaveBeenCalled());
+    expect(spies.streamNewSession.mock.calls.at(-1).at(-1).conversationId).toBe('conv-fresh');
+    expect(spies.repairResults).toEqual([true]);
+    stillOnArtifacts();
+    const followed = await screen.findByTestId('followed');
+    await waitFor(() => expect(followed).toHaveTextContent('user:fix it'));
+  });
+
+  it("refuses a chat in a project the user can't run, staying put", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openLiveArtifacts(user);
+    await user.click(screen.getByRole('button', { name: 'repair C in place' }));
+
+    await waitFor(() => expect(spies.repairResults).toEqual([false]));
+    expect(spies.streamMessage).not.toHaveBeenCalled();
+    stillOnArtifacts();
+    expect(isOptimisticConversation('conv-c')).toBe(false);
+  });
+
+  it('refuses a chat deleted since the resolver found it, staying put', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openLiveArtifacts(user);
+    spies.fetchSessionResult.mockImplementation(async () => ({ status: 'not_found' }));
+    await user.click(screen.getByRole('button', { name: 'repair A in place' }));
+
+    await waitFor(() => expect(spies.repairResults).toEqual([false]));
+    expect(spies.streamMessage).not.toHaveBeenCalled();
+    stillOnArtifacts();
   });
 });

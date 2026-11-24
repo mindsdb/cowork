@@ -1,16 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import { stepsCompletedBySend, classifyStart } from './completion';
-import { OWN_WORK_PROMPT, HABIT_TRACKER_PROMPT } from './steps';
-import { TASK_MODES, composeModeMessage } from '../taskmodes/taskModes';
+import { HABIT_TRACKER_PROMPT } from './steps';
+import { TASK_MODES, composeModeMessage, composeOwnWorkMessage, OWN_WORK_LEAD } from '../taskmodes/taskModes';
+
+const JOB = 'Clean up this customer list and flag duplicates.';
 import { sampleId } from '../../lib/consoleHandoff';
 
 describe('stepsCompletedBySend', () => {
-  it('completes the own-work step, and only it, for its prompt', () => {
-    expect(stepsCompletedBySend(OWN_WORK_PROMPT)).toEqual(['bring-your-work']);
+  it('completes the own-work step, and only it, for a message the own-work mode sent', () => {
+    expect(stepsCompletedBySend(composeOwnWorkMessage(`${JOB} `))).toEqual(['bring-your-work']);
+    expect(stepsCompletedBySend(composeOwnWorkMessage('Weekly ops sync notes...'))).toEqual(['bring-your-work']);
   });
 
-  it('still recognizes the own-work prompt after the person edits or pads it', () => {
-    expect(stepsCompletedBySend(`  ${OWN_WORK_PROMPT} It is about my quarterly report.  `)).toEqual(['bring-your-work']);
+  it('does not count a job typed by hand without the mode, or the generic lead alone', () => {
+    expect(stepsCompletedBySend(JOB)).toEqual([]);
+    expect(stepsCompletedBySend(OWN_WORK_LEAD)).toEqual([]);
   });
 
   it('completes the example step for the habit tracker, as before', () => {
@@ -43,14 +47,22 @@ describe('stepsCompletedBySend', () => {
     expect(stepsCompletedBySend('what is on my calendar')).toEqual([]);
     expect(stepsCompletedBySend('   ')).toEqual([]);
     expect(stepsCompletedBySend(undefined)).toEqual([]);
-    expect(stepsCompletedBySend({ text: OWN_WORK_PROMPT })).toEqual([]);
+    expect(stepsCompletedBySend({ text: composeOwnWorkMessage(JOB) })).toEqual([]);
   });
 });
 
 describe('classifyStart', () => {
-  it('knows the first onboarding step, and how much was added to it', () => {
-    expect(classifyStart(OWN_WORK_PROMPT)).toEqual({ start_kind: 'own_work', added_chars: 0 });
-    expect(classifyStart(`${OWN_WORK_PROMPT} About my Q3 report.`)).toEqual({ start_kind: 'own_work', added_chars: 20 });
+  it('knows an own-work start, its job, and how much material the person gave', () => {
+    expect(classifyStart(composeOwnWorkMessage(`${JOB} `)))
+      .toEqual({ start_kind: 'own_work', example_id: sampleId(JOB), added_chars: 0 });
+    expect(classifyStart(composeOwnWorkMessage(`${JOB} name,email`)))
+      .toEqual({ start_kind: 'own_work', example_id: sampleId(JOB), added_chars: 10 });
+  });
+
+  it('knows an own-work start with no job, and names no example for it', () => {
+    expect(classifyStart(composeOwnWorkMessage('https://example.com/post')))
+      .toEqual({ start_kind: 'own_work', added_chars: 24 });
+    expect(classifyStart(composeOwnWorkMessage(''))).toEqual({ start_kind: 'own_work', added_chars: 0 });
   });
 
   it('names an example by its id, with nothing added when sent as placed', () => {
@@ -75,15 +87,9 @@ describe('classifyStart', () => {
     expect(classifyStart(sent)).toEqual({ start_kind: 'example', example_id: sampleId(sample.label), added_chars: edit.length });
   });
 
-  it('does not count the instruction a mode pill adds as what the person added', () => {
-    const mode = TASK_MODES.find((m) => m.instruction);
-    expect(classifyStart(composeModeMessage(mode, `${OWN_WORK_PROMPT} About my Q3 report.`)))
-      .toEqual({ start_kind: 'own_work', added_chars: 20 });
-  });
-
   it('knows the other onboarding steps and the habit tracker', () => {
-    expect(classifyStart('I want to set you up for the work I actually do. Ask me a couple of quick questions about my role, remember what matters to me, then suggest and set up a few tools or workflows that would help.'))
-      .toEqual({ start_kind: 'onboarding_step', example_id: 'customize-role' });
+    expect(classifyStart("I want to connect my Google Drive so you can work with my real files. Walk me through linking it, then once it's connected, help me pick a file with \"Add files from Google Drive\", do something useful with it, and show me what you found."))
+      .toEqual({ start_kind: 'onboarding_step', example_id: 'connect-app' });
     expect(classifyStart(HABIT_TRACKER_PROMPT)).toMatchObject({ start_kind: 'example', example_id: 'build-a-habit-tracker' });
     // A lightly edited habit tracker no longer matches the catalog entry, so it takes the prefix route.
     expect(classifyStart('Build me a habit tracker with five habits.'))

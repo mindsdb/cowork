@@ -27,6 +27,7 @@ import { useOrgMode } from '../../../../lib/orgMode';
 import {
   canUseArtifactWorkspace,
   loadArtifactAccess,
+  republishArtifact,
   setArtifactAccess,
 } from '../../../lib/artifactWorkspaceApi';
 import { publishFailureReason, publishRefusalMessage } from './publishErrors';
@@ -93,7 +94,8 @@ function seededAudience(a) {
   return { ...audience, ownerOnly: audience.ownerOnly === true };
 }
 
-export function usePublish(artifact, { onChange, enabled = false } = {}) {
+// `entry` is where the person opened sharing from, for the sharing events.
+export function usePublish(artifact, { onChange, enabled = false, entry = 'viewer' } = {}) {
   const orgMode = useOrgMode();
   const [publishedUrl, setPublishedUrl] = useState(artifact?.publishedUrl || '');
   const [accessMode, setAccessMode] = useState(modeFromArtifact(artifact));
@@ -296,7 +298,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
         modified: false,
       };
       reportAccessChanged(artifact, {
-        entry: 'viewer',
+        entry,
         before,
         after: shareSnapshot(next, { teams: teamListRef.current }),
         reportId: publishedPageId(r),
@@ -322,7 +324,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
       onChange?.({ ...artifact, ...next });
       return true;
     } catch (e) {
-      reportAccessChangeFailed(artifact, { entry: 'viewer', reason: publishFailureReason(e) });
+      reportAccessChangeFailed(artifact, { entry, reason: publishFailureReason(e) });
       if (isCurrent()) {
         setError(friendlyPublishError(e));
         // The save dropped the open-time read above; with the access still
@@ -337,15 +339,17 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     } finally {
       setPhase('idle');
     }
-  }, [phase, canAct, orgMode, targetPath, identityKey, publishedUrl, artifact, onChange]);
+  }, [phase, canAct, orgMode, targetPath, identityKey, publishedUrl, artifact, onChange, entry]);
 
+  // Publish changes: the draft goes live at the same link, with the access it
+  // has. In MindsHub mode too (ENG-4595), through the workspace route.
   const update = useCallback(async () => {
-    if (phase !== 'idle' || orgMode || !targetPath) return false;
+    if (phase !== 'idle' || !canAct) return false;
     setPhase('updating');
     setError('');
     setNotice('');
     try {
-      const r = await updateArtifact(targetPath);
+      const r = orgMode ? await republishArtifact(artifact) : await updateArtifact(targetPath);
       setModified(false);
       setNotice(republishNotice(r));
       setLinkOwnerRecorded(true);
@@ -359,7 +363,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     } finally {
       setPhase('idle');
     }
-  }, [phase, orgMode, targetPath, publishedUrl, artifact, onChange]);
+  }, [phase, canAct, orgMode, targetPath, publishedUrl, artifact, onChange]);
 
   /* Resolves to { ok, notice }: whether the artifact stopped pointing at its
      page, and what to tell the person when the page itself stays live. The
@@ -374,7 +378,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     try {
       const r = await unpublishArtifact(targetPath);
       const left = stopSharingNotice(r);
-      reportWithdrawal(artifact, { entry: 'viewer', before, leftLive: !!left });
+      reportWithdrawal(artifact, { entry, before, leftLive: !!left });
       setNotice(left);
       setLinkOwnerRecorded(null);
       setPublishedUrl('');
@@ -386,7 +390,7 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     } finally {
       setPhase('idle');
     }
-  }, [phase, orgMode, targetPath, artifact, onChange]);
+  }, [phase, orgMode, targetPath, artifact, onChange, entry]);
 
   // Cheap re-check of the server's published/modified status — lights up
   // "Update" when the artifact changes underneath an open preview, without a
@@ -620,8 +624,9 @@ export function usePublish(artifact, { onChange, enabled = false } = {}) {
     phase, busy, error, setError, notice, linkOwnerRecorded,
     versions, versionsLoading,
     orgMode,
-    // The artifact this controller acts on, for the Share panel's analytics.
-    artifact,
+    // The artifact this controller acts on, and where sharing was opened
+    // from, for the Share panel's analytics.
+    artifact, entry,
     publish, update, unpublish, refresh, loadVersions, activate,
   };
 }

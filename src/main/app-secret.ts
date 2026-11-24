@@ -28,6 +28,7 @@ export type ServerTrust = 'none' | 'protected' | 'legacy' | 'untrusted';
 
 let secret: string | null = null;
 let trust: ServerTrust = 'none';
+let customMcp = false;
 
 /** A fresh secret for the server about to be spawned. Nothing is trusted
  *  until that server's /health proves it holds it. */
@@ -68,8 +69,18 @@ export function judgeServer(
   return migrated ? 'untrusted' : 'legacy';
 }
 
-export function setServerTrust(value: ServerTrust): void {
+/** Records the server's trust, and whether the /health answer that earned
+ *  it said the server keeps custom MCP settings (`custom_mcp: 1`, sent only
+ *  beside the proof). */
+export function setServerTrust(value: ServerTrust, health?: { customMcp?: unknown }): void {
   trust = value === 'protected' && !secret ? 'untrusted' : value;
+  customMcp = health?.customMcp === 1;
+}
+
+/** Whether custom MCP connections may be made and handed over: only to a
+ *  protected server that reported it keeps their settings in memory. */
+export function isCustomMcpAvailable(): boolean {
+  return trust === 'protected' && customMcp;
 }
 
 export function serverTrust(): ServerTrust {

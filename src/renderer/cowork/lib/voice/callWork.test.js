@@ -58,6 +58,20 @@ describe("the call's work", () => {
   });
 });
 
+describe("the call's work in several tasks at once (ENG-4631)", () => {
+  it('lists every entry, and tells one task\'s work from another\'s', () => {
+    const works = createCallWork();
+    const churn = works.add({ request: 'Look up churn', taskId: 't1' });
+    const pricing = works.add({ request: 'Compare pricing', taskId: 't2' });
+    expect(works.all()).toEqual([churn, pricing]);
+    // ask_anton refuses only in a task the call is busy in: t3 starts at once.
+    expect(works.inTask('t1')).toEqual([churn]);
+    expect(works.inTask('t3')).toEqual([]);
+    churn.settle();
+    expect(works.all()).toEqual([pricing]);
+  });
+});
+
 describe('a request sent for its own turn', () => {
   it('sent at once, ends with the next turn in its task', async () => {
     const watch = createQueueWatch();

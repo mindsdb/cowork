@@ -6,7 +6,12 @@ import {
 } from '../lib/creditsFlow';
 
 // Reasons a top-up can lift; a missing reason is read as one (older sidecars send none).
-const CREDIT_REASONS = new Set([undefined, null, 'wallet_empty', 'included_allowance_exhausted']);
+// A plan upgrade lifts the two plan locks (ENG-4186) as funds do, so they
+// re-check availability the same way.
+const CREDIT_REASONS = new Set([
+  undefined, null, 'wallet_empty', 'included_allowance_exhausted',
+  'model_not_in_tier', 'window_allowance_exhausted',
+]);
 // Unarmed focus fallback for builds without hub usage; usage's own focus refresh covers the rest.
 export const UNARMED_FOCUS_EVERY_MS = 5 * 60_000;
 

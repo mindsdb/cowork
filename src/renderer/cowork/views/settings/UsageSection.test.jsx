@@ -4,13 +4,16 @@ import userEvent from '@testing-library/user-event';
 
 const hostMock = vi.hoisted(() => ({ host: { isElectron: true, isWeb: false, openExternal: vi.fn() } }));
 vi.mock('../../../platform/host', () => hostMock);
-vi.mock('../../lib/analytics', () => ({ trackBillingOpened: vi.fn() }));
-const accountMock = vi.hoisted(() => ({ user: { sub: 'u1', name: 'Hazem' } }));
+vi.mock('../../lib/analytics', () => ({ trackBillingOpened: vi.fn(), trackUpgradeClicked: vi.fn() }));
+const accountMock = vi.hoisted(() => ({ user: { orgId: 'org-1', sub: 'u1', name: 'Hazem' } }));
 vi.mock('../../hooks/useAccountUser', () => ({ useAccountUser: () => accountMock.user }));
 
 import UsageSection from './UsageSection';
 import { HubUsageContext } from '../../lib/hubUsageContext';
-import { MINDS_ADD_FUNDS_URL, MINDS_BILLING_URL } from '../../../lib/mindsUrls';
+import { MINDS_ADD_FUNDS_URL, MINDS_BILLING_URL, consoleUrlFor } from '../../../lib/mindsUrls';
+
+// Console links name the session's organization and account (ENG-4333).
+const forOrg = (url) => consoleUrlFor(url, { organizationId: 'org-1', subject: 'u1' });
 
 const RESET = '2099-09-11T12:00:00Z';
 const usage = (over = {}) => ({
@@ -31,17 +34,18 @@ const renderWith = (u) => render(
 );
 
 beforeEach(() => {
-  accountMock.user = { sub: 'u1', name: 'Hazem' };
+  accountMock.user = { orgId: 'org-1', sub: 'u1', name: 'Hazem' };
   hostMock.host.openExternal.mockClear();
   refresh.mockClear();
 });
 
 describe('UsageSection', () => {
-  it('inside the mobile app, shows the figures with no way to the billing console', () => {
+  it('inside the mobile app, shows the free allowance without account billing details', () => {
     hostMock.host.isMobileShell = true;
     try {
       renderWith(usage());
-      expect(screen.getByText('$99.63')).toBeInTheDocument();
+      expect(screen.getByText('87% left')).toBeInTheDocument();
+      expect(document.body.textContent).not.toMatch(/balance|credit spent|top up|\$/i);
       for (const name of ['View usage', 'Add funds', 'Set up auto top up']) {
         expect(screen.queryByRole('button', { name })).toBeNull();
       }
@@ -152,11 +156,11 @@ describe('UsageSection', () => {
     const { unmount } = renderWith(usage({ isBillingOwner: false }));
     expect(screen.getByText(/Only your organization's billing owner/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Add funds/ }));
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
     unmount();
     renderWith(usage());
     await user.click(screen.getByRole('button', { name: /Add funds/ }));
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_ADD_FUNDS_URL));
   });
 });
 
@@ -173,7 +177,124 @@ describe('mobile usage details', () => {
     hostMock.host.isMobileShell = true;
     try {
       const { container } = renderWith(usage(overrides));
-      expect(container.textContent).not.toMatch(/add funds|turn it on|turn on|update your payment method|in the console|Mobile/i);
+      expect(container.textContent).not.toMatch(/add funds|turn it on|turn on|update your payment method|in the console|balance|credit spent|top up|\$|Mobile/i);
+    } finally {
+      hostMock.host.isMobileShell = false;
+    }
+  });
+});
+
+// ── ENG-4186: plans ─────────────────────────────────────────────────────────
+describe('UsageSection plan card', () => {
+  const IN_2H = new Date(Date.now() + 2 * 3600 * 1000).toISOString();
+  const plan = (tier, over = {}) => ({
+    tier,
+    status: 'active',
+    renewsAt: '2099-12-19T00:00:00Z',
+    cancelAtPeriodEnd: false,
+    windows: tier === 'free' ? [] : [
+      { window: '5h', percentUsed: 42, resetsAt: IN_2H },
+      { window: '7d', percentUsed: 10, resetsAt: null },
+    ],
+    ...over,
+  });
+  const personal = () => { accountMock.user = { sub: 'u1', name: 'Hazem', orgId: 'org-1', orgIsPersonal: true }; };
+
+  it('shows no plan card and no Get Plus with no plan on the read', () => {
+    personal();
+    renderWith(usage());
+    expect(screen.queryByText(/plan$/)).toBeNull();
+    expect(screen.queryByRole('button', { name: /Get Plus/ })).toBeNull();
+  });
+
+  it('on Free, keeps the allowance as it was and adds Get Plus to it', async () => {
+    personal();
+    renderWith(usage({ plan: plan('free') }));
+    expect(screen.getByText('Free Air allowance')).toBeInTheDocument();
+    expect(screen.queryByText('Plus plan')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: /Get Plus/ }));
+    const url = new URL(hostMock.host.openExternal.mock.calls.at(-1)[0]);
+    expect(url.searchParams.get('upgrade')).toBe('plus');
+    expect(url.searchParams.get('organization')).toBe('org-1');
+  });
+
+  it('on Plus, shows the plan, its renewal, both windows as percentages, and Upgrade and Manage', async () => {
+    personal();
+    renderWith(usage({ plan: plan('plus') }));
+    expect(screen.getByText('Plus plan')).toBeInTheDocument();
+    expect(screen.getByText(/^Renews on /)).toBeInTheDocument();
+    expect(screen.getByText('5-hour allowance')).toBeInTheDocument();
+    expect(screen.getByText(/^42% used · resets at /)).toBeInTheDocument();
+    expect(screen.getByText('Weekly allowance')).toBeInTheDocument();
+    expect(screen.getByText('10% used')).toBeInTheDocument();
+    expect(screen.getByText('Past either allowance, tasks continue from your wallet at API rates, or pause until it resets.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Upgrade to Pro/ })).toBeEnabled();
+    await userEvent.click(screen.getByRole('button', { name: /Manage/ }));
+    expect(new URL(hostMock.host.openExternal.mock.calls.at(-1)[0]).pathname).toBe('/settings/organization/billing');
+  });
+
+  it('on a failed renewal, flags the payment and says how to keep the plan', () => {
+    personal();
+    renderWith(usage({ plan: plan('plus', { status: 'past_due' }) }));
+    expect(screen.getByText('Payment failed')).toBeInTheDocument();
+    expect(screen.getByText("We couldn't renew your plan. Update your card under Manage to keep it.")).toBeInTheDocument();
+  });
+
+  it('on Pro set to cancel, says when it ends and offers no upgrade', () => {
+    personal();
+    renderWith(usage({ plan: plan('pro', { cancelAtPeriodEnd: true }) }));
+    expect(screen.getByText('Pro plan')).toBeInTheDocument();
+    expect(screen.getByText(/^Ends on /)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Upgrade/ })).toBeNull();
+  });
+
+  it('shows the meters but no buy or manage buttons outside a personal organization', () => {
+    accountMock.user = { sub: 'u1', name: 'Hazem', orgId: 'org-2', orgIsPersonal: false };
+    renderWith(usage({ plan: plan('plus') }));
+    expect(screen.getByText('5-hour allowance')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Upgrade to Pro/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Manage/ })).toBeNull();
+  });
+
+  it.each(['plus', 'pro'])('on %s, drops the Free Air allowance card, since the plan pays for Air', (tier) => {
+    personal();
+    renderWith(usage({ plan: plan(tier), freeTokens: { limit: 100, used: 100, remaining: 0, resetsAt: RESET } }));
+    expect(screen.getByText(tier === 'plus' ? 'Plus plan' : 'Pro plan')).toBeInTheDocument();
+    expect(screen.queryByText('Free Air allowance')).toBeNull();
+    expect(document.body.textContent).not.toMatch(/MindsHub Air is billing your balance/);
+  });
+
+  it('on a paid plan with no allowance and no balance, says nothing about having no usage', () => {
+    personal();
+    renderWith(usage({ plan: plan('plus'), freeTokens: null, balance: null }));
+    expect(screen.getByText('Plus plan')).toBeInTheDocument();
+    expect(screen.queryByText('No usage to show for this account yet.')).toBeNull();
+  });
+
+  it('inside the mobile app, shows the plan and its windows but nothing to buy or manage', () => {
+    personal();
+    hostMock.host.isMobileShell = true;
+    try {
+      const { unmount } = renderWith(usage({ plan: plan('plus') }));
+      expect(screen.getByText('Plus plan')).toBeInTheDocument();
+      expect(screen.getByText('5-hour allowance')).toBeInTheDocument();
+      expect(screen.queryByText('Free Air allowance')).toBeNull();
+      for (const name of [/Upgrade/, /Manage/, /Get Plus/, /Add funds/]) {
+        expect(screen.queryByRole('button', { name })).toBeNull();
+      }
+      expect(document.body.textContent).not.toMatch(/\$|API rates|wallet|balance|allowance, tasks/i);
+      unmount();
+
+      // A failed renewal is a billing notice, so the mobile app leaves it out.
+      const pastDue = renderWith(usage({ plan: plan('plus', { status: 'past_due' }) }));
+      expect(screen.getByText('Plus plan')).toBeInTheDocument();
+      expect(screen.queryByText('Payment failed')).toBeNull();
+      expect(document.body.textContent).not.toMatch(/couldn't renew|balance/i);
+      pastDue.unmount();
+
+      renderWith(usage({ plan: plan('free') }));
+      expect(screen.getByText('Free Air allowance')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Get Plus/ })).toBeNull();
     } finally {
       hostMock.host.isMobileShell = false;
     }

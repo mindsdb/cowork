@@ -1,5 +1,5 @@
 // Building a connector from the directory, offered only where the server says
-// one would be kept, and never in org mode.
+// one would be kept, org mode included.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
@@ -70,14 +70,25 @@ describe('ConnectorPicker build a custom connector', () => {
     expect(screen.queryByRole('button', { name: /Build a custom connector for/ })).toBeNull();
   });
 
-  it('ends the list with a permanent entry that carries no query', async () => {
-    const onBuildCustom = await openWith([GMAIL]);
+  it('starts the list with a permanent entry that carries no query', async () => {
+    const onBuildCustom = await openWith([GMAIL, POSTGRES]);
 
     const tiles = screen.getAllByRole('button').filter((b) => b.tagName === 'BUTTON' && b.closest('[class*="grid"]'));
-    expect(tiles.at(-1)).toHaveAccessibleName(/^Build a custom connector Connect a system/);
-    fireEvent.click(tiles.at(-1));
+    expect(tiles.length).toBeGreaterThan(2);
+    expect(tiles[0]).toHaveAccessibleName(/^Build a custom connector Connect a system/);
+    fireEvent.click(tiles[0]);
 
     expect(onBuildCustom).toHaveBeenCalledWith('');
+  });
+
+  it('keeps the permanent entry first while a search still matches', async () => {
+    await openWith([GMAIL, POSTGRES]);
+
+    fireEvent.change(screen.getByLabelText('Search connectors'), { target: { value: 'gma' } });
+
+    const tiles = screen.getAllByRole('button').filter((b) => b.tagName === 'BUTTON' && b.closest('[class*="grid"]'));
+    expect(tiles[0]).toHaveAccessibleName(/^Build a custom connector Connect a system/);
+    expect(tiles.some((b) => /Gmail/.test(b.textContent))).toBe(true);
   });
 
   it('keeps the permanent entry while a search still matches', async () => {
@@ -114,8 +125,20 @@ describe('ConnectorPicker build a custom connector', () => {
     expect(within(tile).getByText('AP')).toBeTruthy();
   });
 
-  it('shows neither entry point in org mode', async () => {
+  it('offers both entry points in org mode when the server says a member may build', async () => {
     setOrgMode(true);
+    const onBuildCustom = await openWith([GMAIL]);
+
+    expect(fetchCanBuildCustomConnector).toHaveBeenCalled();
+    expect(await screen.findByText('Build a custom connector')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Search connectors'), { target: { value: 'acme' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Build a custom connector for “acme”' }));
+    expect(onBuildCustom).toHaveBeenCalledWith('acme');
+  });
+
+  it('shows neither entry point in org mode when the server says no', async () => {
+    setOrgMode(true);
+    fetchCanBuildCustomConnector.mockResolvedValue(false);
     await openWith([GMAIL]);
 
     expect(screen.queryByText('Build a custom connector')).toBeNull();

@@ -263,3 +263,24 @@ describe('notifying added people', () => {
     expect(addedIndividuals({ ...next, mode: 'org' }, saved, { orgSharing: true })).toEqual({ userIds: [], emails: [] });
   });
 });
+
+// The password unfolds under its own card, as the recipients do under
+// "Specific …", not after the last option (ENG-4455 follow-up).
+describe('AccessChooser password field', () => {
+  it('sits under "Password protected", before "Public"', () => {
+    const { container } = render(
+      <AccessChooser value={{ mode: 'password', password: '', emailsText: '', orgAllowed: false }} onChange={() => {}} />,
+    );
+    const field = screen.getByPlaceholderText('Add a password');
+    const editor = container.querySelector('[data-testid="password-field"]');
+    expect(editor).toContainElement(field);
+    const publicCard = screen.getByText('Public');
+    // eslint-disable-next-line no-bitwise
+    expect(field.compareDocumentPosition(publicCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('shows no password field for other choices', () => {
+    render(<AccessChooser value={{ mode: 'public', password: '', emailsText: '', orgAllowed: false }} onChange={() => {}} />);
+    expect(screen.queryByPlaceholderText('Add a password')).toBeNull();
+  });
+});
