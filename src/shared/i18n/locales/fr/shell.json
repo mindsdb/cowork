@@ -195,6 +195,8 @@
     "unavailableTitle": "Fonctionnalité indisponible",
     "cloudBodyNamed": "Aujourd’hui, {feature} fonctionne dans l’application de bureau. Téléchargez-la pour y connecter {feature}.",
     "cloudBody": "Aujourd’hui, cela fonctionne dans l’application de bureau. Téléchargez-la pour l’y utiliser.",
+    "mobileBodyNamed": "{feature} fonctionne dans l’application de bureau, sur un ordinateur.",
+    "mobileBody": "Cette fonction marche dans l’application de bureau, sur un ordinateur.",
     "cloudBodyCustom": "Aujourd’hui, {feature} fonctionne dans l’application de bureau. Ici, vous pouvez dès maintenant le connecter comme connecteur personnalisé.",
     "unavailableBodyNamed": "{feature} n’est pas disponible dans ce déploiement.",
     "unavailableBody": "Cette fonctionnalité n’est pas disponible dans ce déploiement.",

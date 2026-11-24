@@ -2,9 +2,10 @@ import { host } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
 
 // Where the web build lists what only the desktop app can do. The desktop app
-// keeps its own entries; a self-hosted build has no app of ours to offer; a
-// phone cannot install it. Kept out of host.ts, which harnesses load without
-// the build's constants.
+// keeps its own entries; a self-hosted build has no app of ours to offer; the
+// mobile app cannot install it. A phone's browser is not excluded and still
+// sees the offer. Kept out of host.ts, which harnesses load without the
+// build's constants.
 export function desktopOfferAvailable() {
   return PLATFORM_UI && host.isWeb && !host.isMobileShell;
 }

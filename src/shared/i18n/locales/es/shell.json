@@ -195,6 +195,8 @@
     "unavailableTitle": "Función no disponible",
     "cloudBodyNamed": "Hoy {feature} funciona en la app de escritorio. Descárgala para conectar {feature} allí.",
     "cloudBody": "Hoy esto funciona en la app de escritorio. Descárgala para usarlo allí.",
+    "mobileBodyNamed": "{feature} funciona en la app de escritorio, en un ordenador.",
+    "mobileBody": "Esto funciona en la app de escritorio, en un ordenador.",
     "cloudBodyCustom": "Hoy {feature} funciona en la app de escritorio. Aquí puedes conectarlo ya como un conector personalizado.",
     "unavailableBodyNamed": "{feature} no está disponible en esta implementación.",
     "unavailableBody": "Esta función no está disponible en esta implementación.",

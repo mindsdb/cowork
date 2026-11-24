@@ -195,6 +195,8 @@
     "unavailableTitle": "Recurso indisponível",
     "cloudBodyNamed": "Hoje {feature} funciona no app para desktop. Baixe o app para conectar {feature} lá.",
     "cloudBody": "Hoje isto funciona no app para desktop. Baixe o app para usar lá.",
+    "mobileBodyNamed": "{feature} funciona no app para desktop, em um computador.",
+    "mobileBody": "Isto funciona no app para desktop, em um computador.",
     "cloudBodyCustom": "Hoje {feature} funciona no app para desktop. Aqui, você já pode conectá-lo como um conector personalizado.",
     "unavailableBodyNamed": "{feature} não está disponível nesta implantação.",
     "unavailableBody": "Este recurso não está disponível nesta implantação.",

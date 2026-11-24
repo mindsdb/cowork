@@ -195,6 +195,8 @@
     "unavailableTitle": "この機能は利用できません",
     "cloudBodyNamed": "{feature}は現在デスクトップアプリで使えます。ダウンロードすると、そこで{feature}を接続できます。",
     "cloudBody": "これは現在デスクトップアプリで使えます。ダウンロードすると、そこで利用できます。",
+    "mobileBodyNamed": "{feature} はパソコン用のデスクトップアプリで使えます。",
+    "mobileBody": "この機能はパソコン用のデスクトップアプリで使えます。",
     "cloudBodyCustom": "{feature}は現在デスクトップアプリで使えます。ここでは、今すぐカスタムコネクタとして接続できます。",
     "unavailableBodyNamed": "{feature}はこの環境ではご利用いただけません。",
     "unavailableBody": "この機能はこの環境ではご利用いただけません。",

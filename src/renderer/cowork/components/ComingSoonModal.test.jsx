@@ -33,11 +33,21 @@ it('offers no download inside the mobile app', () => {
   const onClose = vi.fn();
   render(<ComingSoonModal feature="Channels" onClose={onClose} />);
   expect(screen.queryByText('Download the Desktop app')).toBeNull();
+  // The note must not tell the person to download what the phone can't install.
+  expect(screen.getByText('Channels runs in the Desktop app on a computer.')).toBeTruthy();
+  expect(screen.getByRole('dialog').textContent).not.toMatch(/download/i);
   fireEvent.click(screen.getAllByRole('button', { name: 'Close' }).at(-1));
   expect(onClose).toHaveBeenCalledTimes(1);
   expect(openExternal).not.toHaveBeenCalled();
   // No offer to download, so nothing is counted as one.
   expect(analytics.trackDesktopOfferShown).not.toHaveBeenCalled();
+});
+
+it('gives the mobile app an unnamed note with no download instruction', () => {
+  hostState.isMobileShell = true;
+  render(<ComingSoonModal feature="" onClose={vi.fn()} />);
+  expect(screen.getByText('This runs in the Desktop app on a computer.')).toBeTruthy();
+  expect(screen.getByRole('dialog').textContent).not.toMatch(/download/i);
 });
 
 describe('ComingSoonModal', () => {
@@ -111,14 +121,14 @@ describe('ComingSoonModal', () => {
     expect(screen.getByText('Build a custom connector')).toBeTruthy();
   });
 
-  it('keeps the download copy, and no offer, inside the mobile app', () => {
+  it('shows the mobile note, and no offer, inside the mobile app', () => {
     hostState.isMobileShell = true;
     render(<ComingSoonModal feature="HasData" onClose={vi.fn()}
       offer={{ kind: 'connect', onAccept: vi.fn() }} />);
 
     expect(screen.queryByText(/connect it now as a custom connector/)).toBeNull();
     expect(screen.queryByText('Connect your custom HasData')).toBeNull();
-    expect(screen.getByText('HasData runs in the Desktop app today. Download it to connect HasData there.')).toBeTruthy();
+    expect(screen.getByText('HasData runs in the Desktop app on a computer.')).toBeTruthy();
   });
 
   it('shows the offer body and both buttons in the UI language', async () => {

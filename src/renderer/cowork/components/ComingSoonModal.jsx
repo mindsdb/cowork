@@ -52,12 +52,15 @@ export default function ComingSoonModal({ feature, onClose, offer = null, connec
           {PLATFORM_UI
             ? (shownOffer
               ? t('comingSoon.cloudBodyCustom', { feature })
-              : (feature ? t('comingSoon.cloudBodyNamed', { feature }) : t('comingSoon.cloudBody')))
+              : hasFooterActions
+                ? (feature ? t('comingSoon.cloudBodyNamed', { feature }) : t('comingSoon.cloudBody'))
+                : (feature ? t('comingSoon.mobileBodyNamed', { feature }) : t('comingSoon.mobileBody')))
             : (feature ? t('comingSoon.unavailableBodyNamed', { feature }) : t('comingSoon.unavailableBody'))}
         </p>
       </ModalBody>
       {/* The mobile app offers no installer: a phone cannot run the desktop
-          app, so the note stands alone with a Close button. */}
+          app, so the note says where it runs, with no download, and only a
+          Close button. */}
       {hasFooterActions ? (
         <ModalFooter
           cancel={(

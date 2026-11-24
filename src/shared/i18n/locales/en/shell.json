@@ -195,6 +195,8 @@
     "unavailableTitle": "Feature unavailable",
     "cloudBodyNamed": "{feature} runs in the Desktop app today. Download it to connect {feature} there.",
     "cloudBody": "This runs in the Desktop app today. Download it to use it there.",
+    "mobileBodyNamed": "{feature} runs in the Desktop app on a computer.",
+    "mobileBody": "This runs in the Desktop app on a computer.",
     "cloudBodyCustom": "{feature} runs in the Desktop app today. Here, you can connect it now as a custom connector.",
     "unavailableBodyNamed": "{feature} isn’t available in this deployment.",
     "unavailableBody": "This feature isn’t available in this deployment.",

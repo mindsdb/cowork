@@ -195,6 +195,8 @@
     "unavailableTitle": "功能不可用",
     "cloudBodyNamed": "目前 {feature} 可在桌面应用中使用。下载桌面应用，即可在其中连接 {feature}。",
     "cloudBody": "目前此功能可在桌面应用中使用。下载桌面应用，即可在其中使用。",
+    "mobileBodyNamed": "{feature} 可在电脑上的桌面应用中使用。",
+    "mobileBody": "此功能可在电脑上的桌面应用中使用。",
     "cloudBodyCustom": "目前 {feature} 可在桌面应用中使用。在这里，你现在就可以将它作为自定义连接器接入。",
     "unavailableBodyNamed": "{feature} 在此部署中不可用。",
     "unavailableBody": "此功能在此部署中不可用。",
