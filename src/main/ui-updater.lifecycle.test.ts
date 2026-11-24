@@ -188,7 +188,7 @@ describe('serve gate (getRendererPath / isServingOta / getCachedVersion)', () =>
   });
 
   it('deletes an unsigned slot written by the shell before signing, and serves bundled, at the first launch', async () => {
-    // Today's layout: the renderer files plus a schema-2 .ota-meta.json, no signed manifest.
+    // The layout an older shell writes: the renderer files plus a schema-2 .ota-meta.json, no signed manifest.
     const dir = slotDir('current');
     writeRenderer(dir, '2.26.7.99.1');
     fs.writeFileSync(path.join(dir, '.ota-meta.json'), JSON.stringify({ schema: 2, version: '2.26.7.99.1' }));
