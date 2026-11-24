@@ -33,18 +33,6 @@
     },
     "field": {
       "optional": "（可选）"
-    },
-    "sortHeader": {
-      "label": "排序列表",
-      "sortBy": "按{column}排序",
-      "columns": {
-        "name": "名称",
-        "project": "项目",
-        "updated": "更新时间",
-        "activity": "活跃度",
-        "type": "类型",
-        "status": "状态"
-      }
     }
   },
   "rail": {

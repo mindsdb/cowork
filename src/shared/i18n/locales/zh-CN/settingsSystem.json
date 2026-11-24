@@ -221,6 +221,21 @@
       "tryAgain": "重试",
       "bodyMobile": "MindsHub 没有响应。"
     },
-    "empty": "此账户暂无用量数据。"
+    "empty": "此账户暂无用量数据。",
+    "plan": {
+      "title": "{tier, select, plus {Plus 套餐} pro {Pro 套餐} other {套餐}}",
+      "renewsOn": "{date} 续订",
+      "endsOn": "{date} 结束",
+      "ending": "即将结束",
+      "pastDue": "付款失败",
+      "pastDueBody": "我们无法续订你的套餐。请在“管理”中更新银行卡以保留套餐。",
+      "windowName": "{window, select, 7d {每周额度} other {5 小时额度}}",
+      "windowUsed": "已使用 {percent}",
+      "windowUsedResets": "已使用 {percent} · {time} 重置",
+      "windowMeterLabel": "{window, select, 7d {每周额度用量} other {5 小时额度用量}}",
+      "afterCap": "超出任一额度后，任务将按 API 价格使用你的余额，或暂停至额度重置。",
+      "upgrade": "{tier, select, plus {开通 Plus} pro {升级到 Pro} other {升级}}",
+      "manage": "管理"
+    }
   }
 }

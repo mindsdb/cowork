@@ -60,7 +60,7 @@ describe('PublishMenu with the platform UI off and no publish-token tag', () => 
     fireEvent.click(screen.getByRole('radio', { name: /Public/ }));
     expect(shareButton()).toBeEnabled();
     fireEvent.click(shareButton());
-    expect(ctrl.publish).toHaveBeenCalledWith({ mode: 'public' });
+    expect(ctrl.publish).toHaveBeenCalledWith({ mode: 'public' }, expect.anything());
   });
 
   it('opens an artifact already shared as Public on Public, without claiming the internet', async () => {

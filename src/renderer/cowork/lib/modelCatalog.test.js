@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   modelMaker, groupModelOptions, isModelLocked, isModelRestricted, isModelZdrRestricted, isModelBudgetReached, unavailableModelFields,
-  knownModelDisabledReasons, orderByFamily, latestAliasIds, OTHER_MAKER,
+  knownModelDisabledReasons, knownModelCoveredByTier, isModelNotInTier, orderByFamily, latestAliasIds, OTHER_MAKER,
 } from './modelCatalog';
 
 // The live minds-cloud catalog as of ENG-1096 (alias → MindsHub label).
@@ -399,5 +399,43 @@ describe('latestAliasIds', () => {
     expect(latestAliasIds(['claude-sonnet-4-5', 'claude-sonnet-4-5-20250929'], FAMILIES).size).toBe(0);
     expect(latestAliasIds(['sonnet', 'sonnet-5-5'], {}).size).toBe(0);
     expect(latestAliasIds(['sonnet', 'sonnet-5-5'], null).size).toBe(0);
+  });
+});
+
+/* ENG-4186: a model outside the org's plan, with a wallet that cannot pay. */
+describe('model_not_in_tier rows', () => {
+  const ENABLED = { glm: false, opus: false, air: true };
+  const REASONS = { glm: 'model_not_in_tier', opus: 'model_not_in_tier' };
+  const COVERED = { glm: 'plus', opus: 'pro', air: 'free' };
+
+  it('is a recognized reason, so it no longer falls back to Needs credits', () => {
+    expect(knownModelDisabledReasons({ glm: 'model_not_in_tier', x: 'window_allowance_exhausted', y: 'nope' }))
+      .toEqual({ glm: 'model_not_in_tier', x: 'window_allowance_exhausted' });
+    expect(isModelNotInTier(ENABLED, REASONS, 'glm')).toBe(true);
+    expect(isModelNotInTier({ glm: true }, REASONS, 'glm')).toBe(false);
+  });
+
+  it('is locked (funds lift it) and tier-locked (so does a plan), tagged with the covering tier', () => {
+    expect(unavailableModelFields(ENABLED, REASONS, 'opus', COVERED)).toEqual({
+      disabled: true,
+      locked: true,
+      tierLocked: true,
+      requiredTier: 'pro',
+      tag: 'Needs Pro',
+      title: "Your plan's allowance doesn't cover this model. Upgrade, or add credits to use it at API rates.",
+    });
+    expect(unavailableModelFields(ENABLED, REASONS, 'glm', COVERED).tag).toBe('Needs Plus');
+  });
+
+  it('without coverage data, names no tier', () => {
+    const fields = unavailableModelFields(ENABLED, REASONS, 'glm');
+    expect(fields.requiredTier).toBeUndefined();
+    expect(fields.tag).toBe('Needs upgrade');
+  });
+
+  it('narrows the coverage relay to known tiers', () => {
+    expect(knownModelCoveredByTier({ a: 'plus', b: 'ultra', c: null, d: 'free' })).toEqual({ a: 'plus', d: 'free' });
+    expect(knownModelCoveredByTier(['plus'])).toEqual({});
+    expect(knownModelCoveredByTier(null)).toEqual({});
   });
 });

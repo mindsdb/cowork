@@ -30,6 +30,8 @@ const {
 }));
 
 vi.mock('../../platform/host', () => ({
+  // Console links read the signed-in account (useConsoleLink).
+  getAccessToken: () => Promise.resolve(null),
   host: { pickCodeFolder, getPathForFile },
   onMindsHubCredentialChanged: (listener: () => void) => {
     credentialListeners.add(listener);

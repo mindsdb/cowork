@@ -246,8 +246,12 @@
     "changeNavigation": "Recorrer los cambios",
     "publishedArtifact": "Artefacto publicado",
     "reviewBeforePublishing": "Revisa el cambio antes de publicarlo",
+    "reviewUnshared": "Cambios aún no compartidos",
     "keepDraft": "Mantener como borrador",
     "publishChange": "Publicar este cambio",
+    "publishChanges": "Publicar cambios",
+    "sharedVersion": "Versión compartida",
+    "draftVersion": "Borrador",
     "publishing": "Publicando…"
   },
   "htmlEditor": {
@@ -302,6 +306,12 @@
   },
   "publish": {
     "ownedByOther": "Otro dueño publicó este artefacto.",
+    "datasources": {
+      "notice": "Al publicar se suben las credenciales de estas conexiones: {list}",
+      "review": "Esta app envía credenciales de conexiones que no has aprobado. Revísalas en Compartir y vuelve a publicar.",
+      "updateApp": "Actualiza la app para publicar esta app con sus conexiones. También puedes pedirle al agente que la publique desde el chat.",
+      "unapproved": "Publicada sin las credenciales de: {list}"
+    },
     "linkLeftLive": {
       "unrecorded": "Este enlace se compartió antes de que {product} registrara quién comparte cada página, así que {product} no puede actualizarlo ni retirarlo. Actualizar comparte un enlace nuevo, y dejar de compartir o eliminar el artefacto deja este abierto para cualquiera que lo tenga. Pide a tu administrador que lo quite.",
       "otherArtifact": "No se retiró nada: el registro de este artefacto apuntaba a la página de otro artefacto, {link}.",
@@ -426,7 +436,8 @@
     "moreActions": "Más acciones",
     "reloadPreview": "Recargar vista previa",
     "close": "Cerrar",
-    "unsharedChangesHint": "El enlace compartido muestra una versión anterior. Usa Actualizar en Compartir para publicar los cambios."
+    "unsharedChangesHint": "El enlace compartido muestra una versión anterior. Usa Actualizar en Compartir para publicar los cambios.",
+    "reviewUnsharedHint": "Revisa y publica los cambios que el enlace compartido aún no muestra"
   },
   "body": {
     "previewWatermark": "Vista previa",
@@ -546,7 +557,9 @@
     "owner": {
       "you": "Tú",
       "youHint": "Tuyo, compartido con otras personas."
-    }
+    },
+    "openComments": "{count, plural, one {# comentario abierto} other {# comentarios abiertos}}",
+    "openCommentsHint": "Abrir la vista previa en sus comentarios"
   },
   "compare": {
     "refused": "Este lado aún trabajaba en su último turno, así que no recibió tu mensaje. Lo dejamos de nuevo en el cuadro de abajo.",
@@ -745,6 +758,13 @@
     "workingInChat": "Trabajando en el chat…",
     "sentToChat": "Enviado al chat.",
     "chatStopped": "El turno del chat se detuvo antes de responder.",
+    "resolveThread": {
+      "question": "¿Marcar el comentario como resuelto?",
+      "resolve": "Resolver",
+      "notNow": "Ahora no",
+      "resolved": "Comentario resuelto.",
+      "failed": "No se pudo resolver el comentario. Inténtalo de nuevo."
+    },
     "unsavedConfirm": {
       "title": "Tienes cambios sin guardar. ¿Guardarlos antes de enviar?",
       "save": "Guardar y enviar",
@@ -755,6 +775,7 @@
     "queued": "En cola",
     "queueLabel": "Esperando turno",
     "removeQueued": "Quitar de la cola",
+    "hide": "Ocultar mensajes",
     "comment": {
       "onArtifact": "Atiende este comentario sobre el artefacto:",
       "onText": "Atiende este comentario sobre el texto «{quote}»:",

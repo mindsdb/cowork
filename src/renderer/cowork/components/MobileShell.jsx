@@ -428,16 +428,24 @@ export default function MobileShell({
               });
             } else if (section.key === 'scheduled') {
               count = schedulesList.length;
-              content = schedulesList.length === 0 ? (
-                <div className="mshell-empty">{t('mobile.noScheduled')}</div>
-              ) : schedulesList.map((s) => (
-                <ListRow
-                  key={s.id}
-                  primary={s.title || s.name || t('mobile.schedule')}
-                  secondary={s.cron || s.schedule || ''}
-                  onClick={() => handleScheduleTap(s.id)}
-                />
-              ));
+              content = (
+                <>
+                  <ListRow
+                    primary={t('projects:scheduleDetail.allScheduledTasks')}
+                    onClick={() => handleNavigate('scheduled')}
+                  />
+                  {schedulesList.length === 0 ? (
+                    <div className="mshell-empty">{t('mobile.noScheduled')}</div>
+                  ) : schedulesList.map((s) => (
+                    <ListRow
+                      key={s.id}
+                      primary={s.title || s.name || t('mobile.schedule')}
+                      secondary={s.cron || s.schedule || ''}
+                      onClick={() => handleScheduleTap(s.id)}
+                    />
+                  ))}
+                </>
+              );
             } else if (section.key === 'artifacts') {
               count = artifactsList.length;
               content = artifactsList.length === 0 ? (

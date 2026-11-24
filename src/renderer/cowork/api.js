@@ -1,4 +1,5 @@
 import { diagnostic } from '../../shared/diagnostics';
+import { planFailureFields } from './lib/subscriptionPlan';
 import { PLATFORM_UI } from '../lib/deployment';
 import { modelPickerMode, operatorEffortLevels } from '../lib/modelPicker';
 import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
@@ -32,7 +33,7 @@ import { getOrgMode } from '../lib/orgMode';
 import { isTaskBrowserOff } from './lib/taskBrowser';
 import { SHARING_OFF } from './lib/orgSharing';
 import {
-  MINDSHUB_ERROR_CODE, PEOPLE_LOOKUP, firstMindsHubFailure, readMindsHubFailure, readSharingCapabilities,
+  MINDSHUB_ERROR_CODE, PEOPLE_LOOKUP, PUBLISH_SHELL_TOO_OLD_CODE, firstMindsHubFailure, readMindsHubFailure, readSharingCapabilities,
 } from './lib/sharingContract';
 import {
   expectedOrganizationHeaders,
@@ -350,6 +351,9 @@ function _failedEventMeta(events) {
        render time: the server deliberately doesn't parse it, since only the
        client knows the viewer's timezone (ENG-1537). */
     resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
+    // window_allowance_exhausted / model_not_in_tier (ENG-4186): which plan
+    // window filled, and which tier covers the model.
+    ...planFailureFields(ev),
     // budget_exceeded: whose budget is spent (org, workspace, api_key); absent from an older server.
     budgetScope: typeof ev.budget_scope === 'string' ? ev.budget_scope : null,
     budgetPeriod: typeof ev.budget_period === 'string' ? ev.budget_period : null,
@@ -1681,6 +1685,10 @@ export async function fetchArtifactsStrict({ projectId, projectPath } = {}) {
   return Array.isArray(data) ? data : [];
 }
 
+export function fetchSharedArtifactPreview(target, signal) {
+  return req('/artifacts/shared-preview', { method: 'POST', body: JSON.stringify(target), signal });
+}
+
 export async function previewArtifact(path) {
   return req(`/artifacts/preview?path=${encodeURIComponent(path)}`);
 }
@@ -2559,10 +2567,14 @@ async function notionViaMain(path, call, signal) {
     signal?.addEventListener('abort', onAbort, { once: true });
     call().then(resolve, reject).finally(() => signal?.removeEventListener('abort', onAbort));
   });
-  if (!result) return null;
+  return result ? mainBridgeResult(result, path) : null;
+}
+
+// A main-process bridge's answer for the route at `path`: `{ data }` with the
+// server's JSON, else the same error a direct request raises.
+async function mainBridgeResult(result, path) {
   if (result.ok) return { data: result.data };
   if ('status' in result) {
-    // The same error a direct request raises for this response.
     throw await responseError({
       status: result.status,
       text: async () => result.text,
@@ -3118,19 +3130,43 @@ export async function submitDataVaultForm({ formId, conversationId, values, skip
 //   { mode: 'public' }
 //   { mode: 'password', password: '...' }
 //   { mode: 'restricted', emails: [...], org_allowed: bool, notify?: { user_ids, emails } }
-// Public (or a falsy access) sends just `{ path }`, which clears any prior
-// protection on re-publish. `notify` goes through as given: cowork-server
+// A falsy access is public, and is sent as such: a request without access
+// publishes to the owner only. `notify` goes through as given: cowork-server
 // forwards it to MindsHub, which emails exactly the people it lists.
-export async function publishArtifact(path, access) {
-  const body = access && access.mode && access.mode !== 'public' ? { path, access } : { path };
-  return req('/publish', { method: 'POST', body: JSON.stringify(body) });
+// `approvedDatasources` lists the connections the person just approved sending
+// credentials for; on the desktop such a request goes through main, which
+// holds the app secret it needs.
+async function sendPublish(kind, route, body, approvedDatasources) {
+  const approved = (approvedDatasources || []).map(({ engine, name }) => ({ engine, name }));
+  if (!approved.length) return req(route, { method: 'POST', body: JSON.stringify(body) });
+  const result = host.isElectron
+    ? await host.publishWithApproval({ kind, path: body.path, access: body.access, approvedDatasources: approved })
+    : null;
+  if (result?.reason === 'unsupported') {
+    const err = new Error(result.reason);
+    err.code = PUBLISH_SHELL_TOO_OLD_CODE;
+    throw err;
+  }
+  if (result) return (await mainBridgeResult(result, route)).data;
+  return req(route, { method: 'POST', body: JSON.stringify({ ...body, approved_datasources: approved }) });
+}
+
+export async function publishArtifact(path, access, { approvedDatasources = [] } = {}) {
+  const body = { path, access: access && access.mode ? access : { mode: 'public' } };
+  return sendPublish('publish', '/publish', body, approvedDatasources);
 }
 
 // Re-publish an already-published artifact: pushes current files to the same
 // URL with the same access settings (server reuses report_id). Clears the
 // "Modified" badge on success.
-export async function updateArtifact(path) {
-  return req('/publish/update', { method: 'POST', body: JSON.stringify({ path }) });
+export async function updateArtifact(path, { approvedDatasources = [] } = {}) {
+  return sendPublish('update', '/publish/update', { path }, approvedDatasources);
+}
+
+// The connections a full-stack publish would newly send credentials for.
+export async function fetchPendingDatasources(path) {
+  const r = await req(`/publish/datasources?path=${encodeURIComponent(path)}`);
+  return Array.isArray(r?.pending) ? r.pending : [];
 }
 
 // Version history of a live artifact:

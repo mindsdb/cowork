@@ -246,8 +246,12 @@
     "changeNavigation": "Durch Änderungen blättern",
     "publishedArtifact": "Veröffentlichtes Artefakt",
     "reviewBeforePublishing": "Änderung vor dem Veröffentlichen prüfen",
+    "reviewUnshared": "Noch nicht geteilte Änderungen",
     "keepDraft": "Als Entwurf behalten",
     "publishChange": "Diese Änderung veröffentlichen",
+    "publishChanges": "Änderungen veröffentlichen",
+    "sharedVersion": "Geteilte Version",
+    "draftVersion": "Entwurf",
     "publishing": "Wird veröffentlicht…"
   },
   "htmlEditor": {
@@ -302,6 +306,12 @@
   },
   "publish": {
     "ownedByOther": "Dieses Artefakt wurde von einem anderen Inhaber veröffentlicht.",
+    "datasources": {
+      "notice": "Beim Veröffentlichen werden die Zugangsdaten dieser Verbindungen hochgeladen: {list}",
+      "review": "Diese App sendet Zugangsdaten von Verbindungen, die Sie nicht freigegeben haben. Prüfen Sie sie unter „Teilen“ und veröffentlichen Sie erneut.",
+      "updateApp": "Aktualisieren Sie die App, um diese App mit ihren Verbindungen zu veröffentlichen. Sie können den Agenten auch bitten, sie im Chat zu veröffentlichen.",
+      "unapproved": "Ohne die Zugangsdaten folgender Verbindungen veröffentlicht: {list}"
+    },
     "linkLeftLive": {
       "unrecorded": "Dieser Link wurde geteilt, bevor {product} erfasst hat, wer welche Seite teilt. Daher kann {product} ihn weder aktualisieren noch entfernen. „Aktualisieren“ teilt einen neuen Link, und „Teilen beenden“ oder das Löschen des Artefakts lässt diesen Link für alle offen, die ihn haben. Bitten Sie Ihren Administrator, ihn zu entfernen.",
       "otherArtifact": "Nichts wurde entfernt: Der Eintrag dieses Artefakts verwies auf die Seite eines anderen Artefakts, {link}.",
@@ -426,7 +436,8 @@
     "moreActions": "Weitere Aktionen",
     "reloadPreview": "Vorschau neu laden",
     "close": "Schließen",
-    "unsharedChangesHint": "Der geteilte Link zeigt eine frühere Version. Veröffentliche die Änderungen mit „Aktualisieren“ unter „Teilen“."
+    "unsharedChangesHint": "Der geteilte Link zeigt eine frühere Version. Veröffentliche die Änderungen mit „Aktualisieren“ unter „Teilen“.",
+    "reviewUnsharedHint": "Änderungen prüfen und veröffentlichen, die der geteilte Link noch nicht zeigt"
   },
   "body": {
     "previewWatermark": "Vorschau",
@@ -546,7 +557,9 @@
     "owner": {
       "you": "Du",
       "youHint": "Deins, mit anderen geteilt."
-    }
+    },
+    "openComments": "{count, plural, one {# offener Kommentar} other {# offene Kommentare}}",
+    "openCommentsHint": "Vorschau mit den Kommentaren öffnen"
   },
   "compare": {
     "refused": "Diese Seite war noch mit ihrer letzten Runde beschäftigt und hat Ihre Nachricht daher nicht erhalten. Sie steht wieder im Feld unten.",
@@ -745,6 +758,13 @@
     "workingInChat": "Wird im Chat bearbeitet…",
     "sentToChat": "An den Chat gesendet.",
     "chatStopped": "Der Chat-Durchlauf wurde vor einer Antwort beendet.",
+    "resolveThread": {
+      "question": "Kommentar als erledigt markieren?",
+      "resolve": "Erledigt",
+      "notNow": "Nicht jetzt",
+      "resolved": "Kommentar erledigt.",
+      "failed": "Der Kommentar konnte nicht als erledigt markiert werden. Versuche es noch einmal."
+    },
     "unsavedConfirm": {
       "title": "Du hast nicht gespeicherte Änderungen. Vor dem Senden speichern?",
       "save": "Speichern und senden",
@@ -755,6 +775,7 @@
     "queued": "In Warteschlange",
     "queueLabel": "Wartet auf Ausführung",
     "removeQueued": "Aus der Warteschlange entfernen",
+    "hide": "Nachrichten ausblenden",
     "comment": {
       "onArtifact": "Bearbeite diesen Kommentar zum Artefakt:",
       "onText": "Bearbeite diesen Kommentar zum Text „{quote}“:",

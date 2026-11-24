@@ -7,7 +7,7 @@
  * ArtifactComparison.test.jsx; here it is a stand-in that draws the actions
  * the viewer hands it.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 const reviewState = vi.hoisted(() => ({ setComparison: null }));
@@ -18,6 +18,7 @@ const workspaceMock = vi.hoisted(() => ({
   source: null,
   dirty: false,
   currentRevision: { id: 'r1' },
+  publishedRevision: null,
   revisions: [],
   capabilities: { role: 'owner', canEdit: true, canQuickEdit: true },
   capabilitiesFromServer: true,
@@ -50,6 +51,7 @@ const publishMock = vi.hoisted(() => ({
   orgMode: false,
   phase: 'idle',
   error: '',
+  modified: false,
   update: vi.fn(async () => true),
   refresh: vi.fn(async () => {}),
 }));
@@ -90,7 +92,7 @@ vi.mock('./publish/usePublish', () => ({
     phase: publishMock.phase,
     busy: publishMock.phase !== 'idle',
     error: publishMock.error,
-    modified: false,
+    modified: publishMock.modified,
     update: publishMock.update,
     refresh: publishMock.refresh,
   }),
@@ -346,5 +348,83 @@ describe('ArtifactViewer: a quick edit to a published artifact', () => {
       await waitFor(() => expect(workspaceMock.load).toHaveBeenCalled());
       expect(workspaceMock.reviewPublish).not.toHaveBeenCalled();
     });
+  });
+});
+
+
+// Changes not shared yet (ENG-4595): an artifact whose draft moved past its
+// live page opens on the review of those changes against the shared version,
+// once per open; Publish changes puts them live, Keep as draft leaves them,
+// and the header's "Unshared changes" opens the review again.
+describe('ArtifactViewer: opening an artifact with unshared changes', () => {
+  beforeEach(() => {
+    publishMock.url = 'https://pages.example/launch-brief';
+    publishMock.orgMode = false;
+    publishMock.phase = 'idle';
+    publishMock.error = '';
+    publishMock.modified = true;
+    publishMock.update.mockReset().mockResolvedValue(true);
+    publishMock.refresh.mockClear();
+    workspaceMock.publishedRevision = { id: 'r0' };
+    workspaceMock.currentRevision = { id: 'r1' };
+    workspaceMock.reviewPublish.mockReset();
+    reviewOpens();
+    workspaceApi.loadArtifactDraftDocument.mockResolvedValue({
+      content: '<html><body>Hi</body></html>', contentType: 'text/html', isHtml: true,
+    });
+  });
+  afterEach(() => {
+    publishMock.modified = false;
+    workspaceMock.publishedRevision = null;
+  });
+
+  it('opens on the shared version against the draft, and publishes them from there', async () => {
+    renderViewer();
+
+    const review = await screen.findByRole('dialog', { name: 'Review' });
+    expect(within(review).getByText('r0 → r1')).toBeInTheDocument();
+    expect(workspaceMock.reviewPublish).toHaveBeenCalledWith('r0', 'r1', { unshared: true });
+    expect(publishMock.update).not.toHaveBeenCalled();
+
+    fireEvent.click(within(review).getByRole('button', { name: 'Publish this change' }));
+
+    expect(await screen.findByText('Published')).toBeInTheDocument();
+    expect(publishMock.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the draft without bringing the review back, and the header pill opens it again', async () => {
+    renderViewer();
+    fireEvent.click(await screen.findByRole('button', { name: 'Keep as draft' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Review' })).toBeNull());
+    expect(publishMock.update).not.toHaveBeenCalled();
+    expect(workspaceMock.reviewPublish).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: /Unshared changes/ }));
+
+    expect(await screen.findByRole('dialog', { name: 'Review' })).toBeInTheDocument();
+    expect(workspaceMock.reviewPublish).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['the shared version is unknown', () => { workspaceMock.publishedRevision = null; }],
+    ['nothing changed since', () => { publishMock.modified = false; }],
+    ['the draft is the shared version', () => { workspaceMock.publishedRevision = { id: 'r1' }; }],
+    ['it is not shared', () => { publishMock.url = ''; }],
+  ])('opens no review when %s', async (_why, arrange) => {
+    arrange();
+    renderViewer();
+    await screen.findByTitle('Launch brief');
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+
+    expect(workspaceMock.reviewPublish).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: 'Review' })).toBeNull();
+  });
+
+  it('works in MindsHub mode too', async () => {
+    publishMock.orgMode = true;
+    renderViewer();
+
+    expect(await screen.findByRole('dialog', { name: 'Review' })).toBeInTheDocument();
+    expect(workspaceMock.reviewPublish).toHaveBeenCalledWith('r0', 'r1', { unshared: true });
   });
 });

@@ -111,6 +111,16 @@ export const MINDS_ADD_FUNDS_URL = `${MINDS_BILLING_URL}?exhausted=1`;
    the console's auto top up controls call owner-only wallet endpoints, and a
    member who follows this link gets a dialog they cannot submit. */
 export const MINDS_AUTO_TOP_UP_URL = `${MINDS_BILLING_URL}?autoTopUp=1`;
+/* The billing page told to open the plan's confirm dialog. The console
+   checks who may buy (the owner of a personal organization) before it
+   subscribes, so the link is safe to follow for anyone; callers only offer
+   it where a purchase can be made. Always opened through `mindsUpgradeUrl`,
+   which names the organization. */
+export const MINDS_UPGRADE_URL = Object.freeze({
+  plus: `${MINDS_BILLING_URL}?upgrade=plus`,
+  pro: `${MINDS_BILLING_URL}?upgrade=pro`,
+});
+export type UpgradeTier = keyof typeof MINDS_UPGRADE_URL;
 // The org's Budgets tab; an administrator raises a spent budget here.
 export const MINDS_BUDGETS_URL = `${MINDS_BILLING_URL}?tab=budgets`;
 // From a budget denial (the stopped-task card, Code's composer lip). `from` lets
@@ -147,6 +157,16 @@ export function consoleUrlFor(
   if (organizationId) target.searchParams.set('organization', organizationId);
   if (subject) target.searchParams.set('subject', subject);
   return target.toString();
+}
+
+/** The console link that opens the plan's confirm dialog for `tier` (Plus
+ *  unless Pro is named), for the organization and account this session runs
+ *  in. */
+export function mindsUpgradeUrl(
+  tier: string | null | undefined,
+  account: { organizationId?: string | null; subject?: string | null } = {},
+): string {
+  return consoleUrlFor(MINDS_UPGRADE_URL[tier === 'pro' ? 'pro' : 'plus'], account);
 }
 
 // Environment-independent MindsHub destinations (docs site + support page).

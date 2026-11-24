@@ -5,7 +5,10 @@
     "searchAriaLabel": "Modelle durchsuchen",
     "unavailable": "Nicht verfügbar",
     "addCredits": "Guthaben aufladen",
-    "addCreditsTooltip": "Laden Sie Guthaben auf, um dieses Modell zu nutzen"
+    "addCreditsTooltip": "Laden Sie Guthaben auf, um dieses Modell zu nutzen",
+    "upgrade": "Upgraden",
+    "upgradeTooltip": "{tier, select, plus {Holen Sie Plus, um dieses Modell einzuschließen} pro {Upgraden Sie auf Pro, um dieses Modell einzuschließen} other {Upgraden Sie, um dieses Modell einzuschließen}}",
+    "tierTag": "{tier, select, plus {Plus} pro {Pro} other {Plan}}"
   },
   "groups": {
     "openWeight": "Open-Weight",

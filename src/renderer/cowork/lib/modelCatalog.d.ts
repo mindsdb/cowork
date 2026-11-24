@@ -9,7 +9,12 @@ export type ModelDisabledReason =
   | 'zdr_restricted'
   | 'budget_exceeded'
   | 'wallet_empty'
-  | 'included_allowance_exhausted';
+  | 'included_allowance_exhausted'
+  | 'model_not_in_tier'
+  | 'window_allowance_exhausted';
+
+/** The cheapest plan whose allowance covers a model (ENG-4186). */
+export type CoveringTier = 'free' | 'plus' | 'pro';
 
 /** Picker-row fields for a model that cannot run (see unavailableModelFields). */
 export interface UnavailableModelFields {
@@ -18,6 +23,10 @@ export interface UnavailableModelFields {
   restricted?: true;
   zdr?: true;
   budgetReached?: true;
+  /** The plan does not cover this model; ModelSelect adds "Upgrade". */
+  tierLocked?: true;
+  /** The paid tier that covers a tier-locked model, when the catalog says. */
+  requiredTier?: 'plus' | 'pro';
   tag?: string;
   title?: string;
 }
@@ -32,6 +41,15 @@ export function restrictedModelTitle(): string;
 export function modelRouterLabel(): string;
 export function operatorDefaultLabel(): string;
 export const BUDGET_EXCEEDED_REASON: 'budget_exceeded';
+export const MODEL_NOT_IN_TIER_REASON: 'model_not_in_tier';
+export const WINDOW_ALLOWANCE_EXHAUSTED_REASON: 'window_allowance_exhausted';
+/** Narrows cowork-server's `modelCoveredByTier` relay to known tiers. */
+export function knownModelCoveredByTier(raw: unknown): Record<string, CoveringTier>;
+export function isModelNotInTier(
+  modelEnabled: Record<string, boolean> | undefined,
+  modelDisabledReasons: Record<string, ModelDisabledReason> | undefined,
+  id: string,
+): boolean;
 export const BUDGET_REACHED_MODEL_TITLE: string;
 export function budgetReachedModelTitle(): string;
 
@@ -62,6 +80,7 @@ export function unavailableModelFields(
   modelEnabled: Record<string, boolean> | undefined,
   modelDisabledReasons: Record<string, ModelDisabledReason> | undefined,
   id: string,
+  modelCoveredByTier?: Record<string, CoveringTier> | null,
 ): UnavailableModelFields;
 export function orderByFamily(ids: string[], families?: Record<string, string>): string[];
 export function latestAliasIds(ids: string[], families?: Record<string, string>): Set<string>;

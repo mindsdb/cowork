@@ -18,7 +18,7 @@
 
 import { MINDS_API_BASE } from '../../lib/mindsUrls';
 import { mindsServesOpenAiCompatible, endpointHost, mindsApiRoot } from '../../../shared/minds-endpoint';
-import { isModelLocked, knownModelDisabledReasons, latestAliasIds, orderByFamily, unavailableModelFields } from './modelCatalog';
+import { isModelLocked, knownModelCoveredByTier, knownModelDisabledReasons, latestAliasIds, orderByFamily, unavailableModelFields } from './modelCatalog';
 import i18n from '../../lib/i18n';
 
 /* User-facing copy, translated when it is read (never at import). */
@@ -368,6 +368,10 @@ export function mergeRecommendedModels(prev, rec, { keepOrder = false } = {}) {
     modelEfforts: { ...(base.modelEfforts || {}), ...(overlayMap(null, rec.modelEfforts)) },
     modelEnabled: overlayMap(base.modelEnabled, rec.modelEnabled),
     modelDisabledReasons: hasEntries(rec.modelEnabled) ? liveReasons : (base.modelDisabledReasons || {}),
+    // The cheapest plan covering each MindsHub model (ENG-4186). Same rule as
+    // the other maps: an empty or missing one (older server, gate off, failed
+    // fetch) keeps what we hold.
+    modelCoveredByTier: overlayMap(base.modelCoveredByTier, knownModelCoveredByTier(rec.modelCoveredByTier)),
     modelLabels: overlayMap(base.modelLabels, rec.modelLabels),
     // Picker grouping metadata, same rule: an empty map from the server (older
     // cowork-server, BYOK provider, failed fetch) must not wipe what we hold.
@@ -595,6 +599,7 @@ export function resolveModelPickerValue(curModel, modelList, allowOther, forceCu
  *   modelProviders?: Record<string, string>,
  *   modelFamilies?: Record<string, string>,
  *   modelDisabledReasons?: Record<string, string>,
+ *   modelCoveredByTier?: Record<string, string>,
  * }} meta picker metadata from the settings blob
  */
 export function buildModelOptions(
@@ -610,7 +615,9 @@ export function buildModelOptions(
   const isLocked = (m) => isModelLocked(modelEnabled, m);
   const labelFor = (m) => displayModelLabel(m, modelLabels);
 
-  const { modelProviders = {}, modelFamilies = {}, modelDisabledReasons = {} } = meta || {};
+  const {
+    modelProviders = {}, modelFamilies = {}, modelDisabledReasons = {}, modelCoveredByTier = {},
+  } = meta || {};
 
   // Display-only ordering: a frozen version is listed directly under the alias it
   // froze. Total by construction — see orderByFamily; a dropped id would give
@@ -651,7 +658,9 @@ export function buildModelOptions(
       // closed trigger and filters on it. The "latest" note stays out of
       // `label` for the same reason. lib/modelPickerOptions builds both the same
       // way, so the pickers agree.
-      ...unavailableModelFields(modelEnabled, modelDisabledReasons, m),
+      ...unavailableModelFields(modelEnabled, modelDisabledReasons, m, modelCoveredByTier),
+      // Which plan covers it (ENG-4186); ModelSelect shows it on a paid plan.
+      ...(modelCoveredByTier?.[m] ? { coveredByTier: modelCoveredByTier[m] } : {}),
       ...(latest.has(m) ? { note: tr('latestNote') } : {}),
       // MindsHub's authoritative serving-vendor field, which decides the picker
       // section. Absent for every BYOK provider, where it falls back to inference.

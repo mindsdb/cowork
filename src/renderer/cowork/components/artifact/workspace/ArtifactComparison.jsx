@@ -151,6 +151,9 @@ export function ArtifactComparison({
   if (!comparison) return null;
   const isAgent = comparison.kind === 'agent';
   const isPublish = comparison.kind === 'publish';
+  // Changes not shared yet, opened with the artifact (ENG-4595): the live
+  // page against the draft, which may hold several changes.
+  const isUnshared = isPublish && comparison.review?.unshared === true;
   // Closing a publish review keeps the change as a draft, as the button says.
   const close = isPublish && publishReview?.onKeepDraft ? publishReview.onKeepDraft : onClose;
   const before = comparison.before;
@@ -159,8 +162,8 @@ export function ArtifactComparison({
   const changeLabel = visualModel
     ? t('comparison.textChanges', { count: changeCount })
     : t('comparison.changedLines', { count: changeCount });
-  const beforeLabel = labelOf(before, t('comparison.earlier'));
-  const afterLabel = labelOf(after, t('comparison.current'));
+  const beforeLabel = isUnshared ? t('comparison.sharedVersion') : labelOf(before, t('comparison.earlier'));
+  const afterLabel = isUnshared ? t('comparison.draftVersion') : labelOf(after, t('comparison.current'));
 
   return (
     <div className="artifact-compare" role="dialog" aria-modal="true" aria-labelledby="artifact-compare-title">
@@ -175,7 +178,9 @@ export function ArtifactComparison({
           <h3 id="artifact-compare-title">
             {isAgent
               ? t('comparison.reviewChange')
-              : isPublish
+              : isUnshared
+                ? t('comparison.reviewUnshared')
+                : isPublish
                 ? t('comparison.reviewBeforePublishing')
                 : t('comparison.compareWith', { label: labelOf(before, t('comparison.earlierDraft')) })}
           </h3>
@@ -251,7 +256,9 @@ export function ArtifactComparison({
               aria-busy={publishReview?.busy || undefined}
               onClick={publishReview?.onPublish}
             >
-              {publishReview?.busy ? t('comparison.publishing') : t('comparison.publishChange')}
+              {publishReview?.busy
+                ? t('comparison.publishing')
+                : isUnshared ? t('comparison.publishChanges') : t('comparison.publishChange')}
             </Button>
           </>
         ) : isAgent ? (

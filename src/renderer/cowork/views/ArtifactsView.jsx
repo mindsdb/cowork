@@ -17,9 +17,11 @@ import { Card } from '../components/ui/Card';
 import OverflowMenu from '../components/OverflowMenu';
 import { useToastManager } from '../components/ui/Toast';
 import { Button, Tooltip } from '../components/ui';
+import { badgeVariants } from '../components/ui/Badge';
+import { cn } from '../lib/cn';
 import {
   revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
-  publishTargetPath, artifactServeUrl, openArtifactFile,
+  publishTargetPath, artifactServeUrl, openArtifactFile, fetchPendingDatasources,
 } from '../api';
 import { copyText } from '../lib/clipboard';
 import { projectNameOf } from '../lib/artifactProject';
@@ -52,11 +54,14 @@ import {
   buildAccessPayload,
 } from '../components/artifact/publish/AccessChooser';
 import { AUDIENCE_CHOICE, groupArtifactsBySection, isOrgSharingOn } from '../lib/orgSharing';
-import { useArtifactAudiences } from '../hooks/useArtifactAudiences';
+import { useArtifactAudiencesState } from '../hooks/useArtifactAudiences';
 import { useKnownPeople, useMindsHubTeams, useSharingCapabilities, useSharingOrgName } from '../hooks/useOrgSharing';
 import { artifactOwnerUserId } from '../lib/artifactAuthorship';
-import { readAudienceAnswer, readAudienceRequest } from '../lib/sharingContract';
-import { publishFailureReason, publishRefusalMessage } from '../components/artifact/publish/publishErrors';
+import { LOAD_STATUS, readAudienceAnswer, readAudienceRequest } from '../lib/sharingContract';
+import {
+  isDatasourceApprovalError, pendingDatasourcesFromError, publishFailureReason, publishRefusalMessage, unapprovedDatasourcesNotice,
+} from '../components/artifact/publish/publishErrors';
+import { DatasourceApprovalNotice } from '../components/artifact/publish/DatasourceApprovalNotice';
 import {
   publishedPageId, reportAccessChangeFailed, reportAccessChanged, reportLinkCopied, reportShareOpened, reportWithdrawal,
   shareSnapshot,
@@ -76,8 +81,6 @@ import {
   ViewToggle,
   CollectionState,
   ListGroup,
-  ListSortHeader,
-  LIST_SORT_HEADER_MIN,
   ListItem,
   ItemActions,
   useCollectionShortcut,
@@ -87,6 +90,7 @@ import { host } from '../../platform/host';
 import { surfaceCopy } from '../lib/surface';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
+import { forgetOpenCommentCount, useOpenCommentCounts } from '../hooks/useOpenCommentCounts';
 import i18n, { useTranslation } from '../../lib/i18n';
 
 const tr = (key, vars) => i18n.t(key, { ns: 'artifacts', ...vars });
@@ -96,6 +100,11 @@ const EMPTY_ARTIFACTS = [];
 // Page padding of the row group, shared with its loading skeleton so loading
 // does not shift the layout.
 const LIST_CLASS = 'mx-8 mb-[60px]';
+
+// How long the page waits for what decides its sections (sharing, teams, who
+// restricted artifacts reach) before showing anyway, so a slow or failing read
+// never leaves it loading (ENG-4585).
+export const GROUPING_WAIT_MS = 4000;
 
 // With sharing in the org, artifacts are grouped as skills are (Mine, Shared
 // with me, a team, everyone at the org), with the Skills page's icons.
@@ -201,12 +210,26 @@ export function titleCompare(a, b) {
 // Password / Restricted UI and its validation live in one place now.
 // On confirm it hands back the access payload. Re-publishing pre-fills
 // the existing selection.
-function PublishDialog({ artifact, onCancel, onConfirm }) {
+function PublishDialog({ artifact, initialDraft, initialPending, onCancel, onConfirm }) {
   const { t } = useTranslation('artifacts');
-  const [draft, setDraft] = useState(() => accessDraftFromArtifact(artifact));
+  const [draft, setDraft] = useState(() => initialDraft || accessDraftFromArtifact(artifact));
+  const [pending, setPending] = useState(() => initialPending || []);
+  useEffect(() => {
+    let live = true;
+    // A dialog reopened after a 409 already holds the server's newest list.
+    if (artifact?.path && !initialPending) {
+      // Inside the promise chain, so a call that throws synchronously cannot
+      // escape the effect.
+      Promise.resolve()
+        .then(() => fetchPendingDatasources(publishTargetPath(artifact)))
+        .then((list) => { if (live) setPending(Array.isArray(list) ? list : []); })
+        .catch(() => { if (live) setPending([]); });
+    }
+    return () => { live = false; };
+  }, [artifact, initialPending]);
   if (!artifact) return null;
   const canConfirm = isAccessDraftValid(draft);
-  const submit = () => { if (canConfirm) onConfirm(buildAccessPayload(draft)); };
+  const submit = () => { if (canConfirm) onConfirm(buildAccessPayload(draft), pending, draft); };
 
   return (
     <Modal open onClose={onCancel} size="sm" width="min(440px, 94vw)" maxHeight="min(600px, 90vh)" labelledBy="publish-dialog-title">
@@ -221,6 +244,7 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
           {t('publish.whoCanAccess')}
         </div>
         <AccessChooser value={draft} onChange={setDraft} onSubmit={submit} />
+        <DatasourceApprovalNotice pending={pending} className="mt-3" />
       </ModalBody>
       <ModalFooter cancel={<Button variant="subtle" onClick={onCancel}>{t('common.cancel')}</Button>}>
         <Button variant="primary" onClick={submit} disabled={!canConfirm}>
@@ -284,10 +308,47 @@ function useOwnTag(markOwn) {
   return markOwn ? { label: t('artifactsView.owner.you'), description: t('artifactsView.owner.youHint') } : null;
 }
 
-function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject, liveLines = null, liveAppCard = false, liveAppAddress = '', markOwn = false }) {
+// Open comments on one of the caller's own artifacts (ENG-4560): an accent
+// pill with the count, drawn only when there is at least one. A click opens
+// the preview on its Comments panel, and only that: the row or card under it
+// does not open as well.
+function OpenCommentsCounter({ count, onOpen }) {
+  const { t } = useTranslation('artifacts');
+  if (!count || !onOpen) return null;
+  const label = t('artifactsView.openComments', { count });
+  return (
+    <Tooltip
+      content={(
+        <span className="flex flex-col gap-0.5">
+          <span className="font-semibold">{label}</span>
+          <span className="opacity-80">{t('artifactsView.openCommentsHint')}</span>
+        </span>
+      )}
+    >
+      <button
+        type="button"
+        aria-label={label}
+        data-testid="open-comments"
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => { e.stopPropagation(); onOpen(); }}
+        className={cn(
+          badgeVariants({ variant: 'accent', size: 'sm' }),
+          'm-0 shrink-0 cursor-pointer font-semibold tabular-nums transition-colors',
+          'hover:bg-[color-mix(in_srgb,var(--accent)_18%,transparent)]',
+          'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent',
+        )}
+      >
+        <span className="inline-flex shrink-0" aria-hidden="true">{Ico.chats(12)}</span>
+        {count > 99 ? '99+' : count}
+      </button>
+    </Tooltip>
+  );
+}
+
+function ArtifactBubble({ artifact, projects = [], onOpenViewer, onOpenComments, openComments = null, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject, liveLines = null, liveAppCard = false, liveAppAddress = '', markOwn = false }) {
   /* Same open rules as the list row: the body opens the best destination, and
      ↗ opens the artifact outside the app. */
-  const { openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer, { liveAppCard, liveAppAddress });
+  const { target, openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer, { liveAppCard, liveAppAddress });
   const orgMode = useOrgMode();
   const { t } = useTranslation('artifacts');
 
@@ -391,7 +452,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
           </div>
         </div>
 
-        <div className="flex min-w-0">
+        <div className="flex min-w-0 items-center gap-2">
           <ArtifactStatus
             artifact={artifact}
             phase={phase}
@@ -401,6 +462,10 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onMenuOpen, isM
             orgMode={orgMode}
             // A live app has no page link to report; its state line says what matters.
             pageBadge={!liveAppCard}
+          />
+          <OpenCommentsCounter
+            count={openComments}
+            onOpen={target === 'preview' && onOpenComments ? () => onOpenComments(artifact) : null}
           />
         </div>
         {liveLines?.state && (
@@ -720,7 +785,7 @@ function rowMenuItems({ artifact, orgMode, liveApps = false, onOpen, onOpenShare
     }));
 }
 
-function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onShareLiveApp: doShareLiveApp, onLaunchLiveApp: doLaunchLiveApp, onDelete: doDelete, onOpenProject, phase, onRetry, isMacPlatform, liveLines = null, liveAppCard = false, liveAppAddress = '', markOwn = false }) {
+function ArtifactRow({ artifact, projects, onOpenViewer, onOpenComments, openComments = null, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onShareLiveApp: doShareLiveApp, onLaunchLiveApp: doLaunchLiveApp, onDelete: doDelete, onOpenProject, phase, onRetry, isMacPlatform, liveLines = null, liveAppCard = false, liveAppAddress = '', markOwn = false }) {
   const { orgMode, toastManager, published, target, openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer, { liveAppCard, liveAppAddress });
   const liveApps = useLiveApps();
   const menuItems = rowMenuItems({
@@ -767,6 +832,11 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onPublish: doPublish, o
             pageBadge={!liveAppCard}
             markOwn={markOwn}
           />
+          {openComments > 0 && target === 'preview' && onOpenComments && (
+            <ItemActions>
+              <OpenCommentsCounter count={openComments} onOpen={() => onOpenComments(artifact)} />
+            </ItemActions>
+          )}
           <ArtifactProject artifact={artifact} projects={projects} onOpenProject={onOpenProject} />
           <span className="shrink-0 whitespace-nowrap">{artifact.updated || '—'}</span>
         </>
@@ -789,6 +859,7 @@ export default function ArtifactsView({
   onOpenProject,
   onAddressWithAgent,
   resolveRepairConversation,
+  onOpenConversation,
   agentLabel = 'the agent',
   // True until the app's first artifacts fetch settles; shows skeletons.
   loading = false,
@@ -799,7 +870,7 @@ export default function ArtifactsView({
   const orgMode = useOrgMode();
   // In MindsHub mode a restricted card doesn't say who it reaches; read it,
   // so its section, badge and hover say (useArtifactAudiences).
-  const list = useArtifactAudiences(cards, { enabled: orgMode });
+  const { list, settled: audiencesSettled } = useArtifactAudiencesState(cards, { enabled: orgMode });
   const liveApps = useLiveApps();
   // App hands down a new list after each turn, so the states re-read with it.
   const liveAppStates = useLiveAppStates(liveApps, list);
@@ -820,7 +891,24 @@ export default function ArtifactsView({
   // card leaves the list (e.g. after a delete).
   const [viewerPath, setViewerPath] = useState(null);
   const viewer = viewerPath ? list.find((a) => a.path === viewerPath) || null : null;
-  const openViewer = (artifact) => setViewerPath(artifact?.path || null);
+  // A new object each time a comments counter opens the viewer: it opens on
+  // its Comments panel then (ArtifactViewer's commentsRequest), and as it
+  // remembers otherwise.
+  const [commentsRequest, setCommentsRequest] = useState(null);
+  const openViewer = (artifact, { comments = false } = {}) => {
+    setCommentsRequest(comments ? {} : null);
+    setViewerPath(artifact?.path || null);
+  };
+  const openComments = (artifact) => openViewer(artifact, { comments: true });
+  // Read again after the viewer closes: its comments may have been resolved
+  // or added while it was open.
+  const [commentsRefresh, setCommentsRefresh] = useState(0);
+  const closeViewer = () => {
+    if (viewer) forgetOpenCommentCount(viewer);
+    setViewerPath(null);
+    setCommentsRequest(null);
+    setCommentsRefresh((n) => n + 1);
+  };
   // Phones always get the grid (list rows are 5 columns); see ViewToggle.
   const { view, setView, effectiveView } = useCollectionView('anton:artifacts-view');
   const [search, setSearch] = useState('');
@@ -831,6 +919,9 @@ export default function ArtifactsView({
   // Artifact awaiting the publish visibility choice (public vs password).
   // Null when the chooser is closed.
   const [publishTarget, setPublishTarget] = useState(null);
+  // The choice and connection list to restore when the dialog reopens after
+  // the server asked for connection approval.
+  const [publishRetry, setPublishRetry] = useState(null);
   // Resolver for the promise returned by `handlePublish`, so a delegated
   // caller (the preview's Publish button) can await the whole dialog +
   // POST flow for its busy state. Settled when the chooser confirms,
@@ -846,7 +937,6 @@ export default function ArtifactsView({
   // descendant to the card itself instead of the viewport.
   const [menuFor, setMenuFor] = useState(null); // { artifact, rect }
   const { t } = useTranslation('artifacts');
-  const { t: ts } = useTranslation('shell');
   const sortOptions = SORT_IDS.map((id) => ({ id, label: t(`artifactsView.sort.${id}`) }));
   const isMacPlatform = host.isMac() || /Mac|iPhone|iPod|iPad/.test(typeof navigator !== 'undefined' ? navigator.userAgent : '');
   // Toast surfaces publish/unpublish results — primarily so failures
@@ -909,19 +999,22 @@ export default function ArtifactsView({
     // Settle any prior unresolved flow before starting a new one so a
     // delegated awaiter is never left hanging.
     settlePublish();
+    setPublishRetry(null);
     setPublishTarget(artifact);
     reportShareOpened(artifact, { entry: 'list', isShared: shareSnapshot(artifact).shared });
     return new Promise((resolve) => { publishResolveRef.current = resolve; });
   };
 
-  const confirmPublish = async (access) => {
+  const confirmPublish = async (access, approvedDatasources = [], draft = null) => {
     const artifact = publishTarget;
+    let reopened = false;
     setPublishTarget(null);
+    setPublishRetry(null);
     if (!artifact?.path || busyPaths.has(artifact.path)) { settlePublish(); return; }
     setBusy(artifact.path, true);
     setPhase(artifact.path, 'publishing');
     try {
-      const r = await publishArtifact(publishTargetPath(artifact), access);
+      const r = await publishArtifact(publishTargetPath(artifact), access, { approvedDatasources });
       if (r?.url) {
         // Server is authoritative (it degrades an empty restricted/password
         // selection back to public); fall back to the requested access.
@@ -955,12 +1048,23 @@ export default function ArtifactsView({
           kind: 'ok',
           message: t('artifactsView.sharedToast', { mode: m === 'password' || m === 'restricted' ? m : 'other', url: r.url }),
         });
+        const unapproved = unapprovedDatasourcesNotice(r);
+        if (unapproved) showToast({ kind: 'warning', message: unapproved });
       } else {
         setPhase(artifact.path, 'failed');
         showToast({ kind: 'error', message: t('publish.errors.noUrl') });
       }
     } catch (e) {
       reportAccessChangeFailed(artifact, { entry: 'list', reason: publishFailureReason(e) });
+      if (isDatasourceApprovalError(e)) {
+        // The dialog is open again with the new list, which says what to do,
+        // so no toast; the caller keeps waiting for the dialog.
+        reopened = true;
+        setPublishRetry({ draft, pending: pendingDatasourcesFromError(e) });
+        setPublishTarget(artifact);
+        setPhase(artifact.path, null);
+        return;
+      }
       const msg = e?.message || String(e);
       // Map the failures a user can act on to a clearer message.
       const refusal = publishRefusalMessage(e);
@@ -975,7 +1079,7 @@ export default function ArtifactsView({
       showToast({ kind: 'error', message: friendly });
     } finally {
       setBusy(artifact.path, false);
-      settlePublish();
+      if (!reopened) settlePublish();
     }
   };
 
@@ -1011,6 +1115,8 @@ export default function ArtifactsView({
       updateOne({ ...artifact, modified: false, publishedUrl: r?.url || artifact.publishedUrl });
       const replaced = republishNotice(r);
       showToast(replaced ? { kind: 'warning', message: replaced } : { kind: 'ok', message: t('artifactsView.updated') });
+      const unapproved = unapprovedDatasourcesNotice(r);
+      if (unapproved) showToast({ kind: 'warning', message: unapproved });
     } catch (e) {
       const message = publishRefusalMessage(e) ?? t('publish.errors.updateFailed', { message: String(e?.message || e) });
       showToast({ kind: 'error', message });
@@ -1162,26 +1268,38 @@ export default function ArtifactsView({
     return out;
   }, [list, search, sort, typeFilter, statusFilter, ownerFilter]);
 
+  // Open comments on the caller's own artifacts the page shows, read after it
+  // paints (useOpenCommentCounts).
+  const openCommentsOf = useOpenCommentCounts(visible, { refresh: commentsRefresh });
+
   const total = (list || []).length;
   const { artifactsNote } = surfaceCopy(host.isWeb);
 
   // Sections, where the org shares (as on the Skills page); one list elsewhere.
-  const sharingCapabilities = useSharingCapabilities().capabilities;
+  const sharingState = useSharingCapabilities();
+  const sharingCapabilities = sharingState.capabilities;
   const sectionsOn = isOrgSharingOn(sharingCapabilities);
   const orgName = useSharingOrgName(sectionsOn);
   const teamsState = useMindsHubTeams(sectionsOn);
-  // A long list sorts from its header too, in step with the pill: atop the
-  // one list, or each section.
-  const sortHeader = visible.length > LIST_SORT_HEADER_MIN ? (
-    <ListSortHeader
-      value={sort}
-      onChange={setSort}
-      columns={[
-        { id: 'name', label: ts('ui.sortHeader.columns.name'), sorts: ['title'] },
-        { id: 'updated', label: ts('ui.sortHeader.columns.updated'), sorts: ['recent', 'oldest'] },
-      ]}
-    />
-  ) : null;
+  // The page shows once, in its final sections (ENG-4585): the skeleton stays
+  // until, in MindsHub mode, sharing is known (off draws one list, on draws
+  // sections) and restricted artifacts' audiences are read (unknown files
+  // under Yours), and, wherever sections are on, the teams are in (a default
+  // team counts as the org). Once shown it never goes back to the skeleton,
+  // so a list that changes after a turn just updates in place.
+  const groupingSettled = (!orgMode || sharingState.status !== LOAD_STATUS.LOADING)
+    && (!sectionsOn || teamsState.status === LOAD_STATUS.READY)
+    && audiencesSettled;
+  const [shownOnce, setShownOnce] = useState(false);
+  const bodyReady = !loading && (shownOnce || groupingSettled);
+  useEffect(() => {
+    if (bodyReady && !shownOnce) setShownOnce(true);
+  }, [bodyReady, shownOnce]);
+  useEffect(() => {
+    if (loading || shownOnce) return undefined;
+    const timer = setTimeout(() => setShownOnce(true), GROUPING_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [loading, shownOnce]);
   const sections = useMemo(
     () => (sectionsOn ? groupArtifactsBySection(visible, { orgName, teams: teamsState?.teams || [] }) : null),
     [sectionsOn, visible, orgName, teamsState?.teams],
@@ -1196,6 +1314,8 @@ export default function ArtifactsView({
       artifact={a}
       projects={projects}
       onOpenViewer={openViewer}
+      onOpenComments={openComments}
+      openComments={openCommentsOf(a)}
       onMenuOpen={(art, rect) => setMenuFor((prev) =>
         prev?.artifact?.path === art.path ? null : { artifact: art, rect },
       )}
@@ -1215,6 +1335,8 @@ export default function ArtifactsView({
       artifact={a}
       projects={projects}
       onOpenViewer={openViewer}
+      onOpenComments={openComments}
+      openComments={openCommentsOf(a)}
       onPublish={handlePublish}
       onUnpublish={handleUnpublish}
       onUpdate={handleUpdate}
@@ -1292,7 +1414,7 @@ export default function ArtifactsView({
       <ArtifactStatusOrgName.Provider value={orgName}>
       <ArtifactOwnerNamesProvider capabilitiesList={visible.map((a) => a.capabilities)}>
       <CollectionState
-        loading={loading}
+        loading={!bodyReady}
         total={total}
         shown={visible.length}
         query={search}
@@ -1352,14 +1474,12 @@ export default function ArtifactsView({
                   title={<SectionTitle section={section} />}
                   description={<span data-testid="section-count">{section.artifacts.length}</span>}
                 >
-                  {sortHeader}
                   {section.artifacts.map((a) => renderRow(a, section.id))}
                 </ListGroup>
               ))}
             </div>
           ) : (
             <ListGroup className={LIST_CLASS}>
-              {sortHeader}
               {visible.map(renderRow)}
             </ListGroup>
           )
@@ -1371,7 +1491,8 @@ export default function ArtifactsView({
       <ArtifactViewer
         open={!!viewer}
         artifact={viewer}
-        onClose={() => setViewerPath(null)}
+        onClose={closeViewer}
+        commentsRequest={commentsRequest}
         onChange={updateOne}
         // The viewer closes once its card leaves the list, so a link the
         // delete left live is told here instead.
@@ -1380,6 +1501,9 @@ export default function ArtifactsView({
         onAddressWithAgent={onAddressWithAgent}
         // No host chat here — the viewer asks which one a repair belongs to.
         resolveRepairConversation={resolveRepairConversation}
+        // The viewer stays open while the agent works in the artifact's chat;
+        // "Open in chat" goes there.
+        onOpenConversation={onOpenConversation}
       />
 
       {shareTarget && (
@@ -1388,8 +1512,11 @@ export default function ArtifactsView({
 
       {publishTarget && (
         <PublishDialog
+          key={publishTarget.path}
           artifact={publishTarget}
-          onCancel={() => { setPublishTarget(null); settlePublish(); }}
+          initialDraft={publishRetry?.draft}
+          initialPending={publishRetry?.pending}
+          onCancel={() => { setPublishTarget(null); setPublishRetry(null); settlePublish(); }}
           onConfirm={confirmPublish}
         />
       )}

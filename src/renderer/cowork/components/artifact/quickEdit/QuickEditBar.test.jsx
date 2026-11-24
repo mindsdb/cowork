@@ -1,7 +1,7 @@
 // The bar's motion (ENG-4227): a message gets its entrance once, never again
 // as its reply streams or changes stage.
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QuickEditBar } from './QuickEditBar';
 
 const controller = (messages) => ({
@@ -113,8 +113,11 @@ describe('QuickEditBar thread over the artifact', () => {
   const thread = () => document.querySelector('.artifact-quick-edit-thread');
   const bar = () => screen.getByRole('region');
 
+  const settled = { ...reply(null), state: 'applied', summary: 'Done' };
+  const idle = (messages) => ({ ...controller(messages), running: false });
+
   it('folds away when the pointer leaves for the artifact, and opens when it comes back over the bar', () => {
-    render(<QuickEditBar controller={controller([user, reply('reading')])} />);
+    render(<QuickEditBar controller={idle([user, settled])} />);
     expect(thread()).toHaveAttribute('data-open');
 
     fireEvent.pointerLeave(bar(), { pointerType: 'mouse' });
@@ -140,14 +143,13 @@ describe('QuickEditBar thread over the artifact', () => {
     expect(thread()).toHaveAttribute('data-open');
   });
 
-  it('opens again when a reply settles, but not for each stage on the way', () => {
-    const view = render(<QuickEditBar controller={controller([user, reply('reading')])} />);
+  it('opens again when a new message starts and when its reply settles', () => {
+    const view = render(<QuickEditBar controller={idle([user, settled])} />);
     fireEvent.pointerLeave(bar(), { pointerType: 'mouse' });
-
-    view.rerender(<QuickEditBar controller={controller([user, reply('writing')])} />);
     expect(thread()).not.toHaveAttribute('data-open');
 
-    view.rerender(<QuickEditBar controller={controller([user, { ...reply(null), state: 'applied', summary: 'Done' }])} />);
+    const next = { id: 'u2', role: 'user', text: 'Bigger' };
+    view.rerender(<QuickEditBar controller={idle([user, settled, next, { ...reply('reading'), id: 'r2' }])} />);
     expect(thread()).toHaveAttribute('data-open');
   });
 
@@ -159,6 +161,72 @@ describe('QuickEditBar thread over the artifact', () => {
     expect(thread()).toHaveAttribute('data-open');
   });
 
+  // For anyone who doesn't think to move the pointer away (ENG-4594).
+  it('folds at once from its Hide button, with the pointer still over the bar', () => {
+    render(<QuickEditBar controller={idle([user, settled])} />);
+    const hide = screen.getByRole('button', { name: 'Hide messages' });
+    // The press reaches the bar first, as a real click does.
+    fireEvent.pointerDown(hide);
+    fireEvent.focus(hide);
+    fireEvent.click(hide);
+    expect(thread()).not.toHaveAttribute('data-open');
+    expect(document.activeElement).not.toBe(hide);
+
+    // Clicking into the input brings it back.
+    fireEvent.pointerDown(screen.getByRole('textbox'));
+    expect(thread()).toHaveAttribute('data-open');
+  });
+
+  it('folds from Hide even while a change is on its way, and opens again when it settles', () => {
+    const view = render(<QuickEditBar controller={{ ...controller([user, reply('writing')]), running: true }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Hide messages' }));
+    expect(thread()).not.toHaveAttribute('data-open');
+
+    view.rerender(<QuickEditBar controller={idle([user, settled])} />);
+    expect(thread()).toHaveAttribute('data-open');
+  });
+
+  // Once done, a click anywhere else folds it, the artifact included (ENG-4594).
+  it('folds on a click elsewhere once nothing is on its way', () => {
+    render(<QuickEditBar controller={idle([user, settled])} />);
+    fireEvent.pointerDown(document.body);
+    expect(thread()).not.toHaveAttribute('data-open');
+  });
+
+  it('stays open on a click elsewhere while a change is on its way', () => {
+    render(<QuickEditBar controller={{ ...controller([user, reply('writing')]), running: true }} />);
+    fireEvent.pointerDown(document.body);
+    expect(thread()).toHaveAttribute('data-open');
+  });
+
+  it('stays open on a click inside the bar, or in a menu it opened', () => {
+    render(<QuickEditBar controller={idle([user, settled])} />);
+    fireEvent.pointerDown(screen.getByRole('textbox'));
+    expect(thread()).toHaveAttribute('data-open');
+
+    const menu = document.createElement('div');
+    menu.setAttribute('role', 'listbox');
+    const option = document.createElement('div');
+    option.setAttribute('role', 'option');
+    menu.appendChild(option);
+    document.body.appendChild(menu);
+    fireEvent.pointerDown(option);
+    expect(thread()).toHaveAttribute('data-open');
+    menu.remove();
+  });
+
+  it('folds when the focus moves into the artifact frame', async () => {
+    render(<QuickEditBar controller={idle([user, settled])} />);
+    const frame = document.createElement('iframe');
+    document.body.appendChild(frame);
+    frame.focus();
+    expect(document.activeElement).toBe(frame);
+
+    fireEvent.blur(window);
+    await waitFor(() => expect(thread()).not.toHaveAttribute('data-open'));
+    frame.remove();
+  });
+
   it('stays open while the focus is on a button in it', () => {
     const settled = { id: 'r1', role: 'assistant', state: 'applied', summary: 'Done.', undoable: true };
     render(<QuickEditBar controller={{ ...controller([user, settled]), running: false, undoableId: 'r1' }} />);
@@ -167,4 +235,23 @@ describe('QuickEditBar thread over the artifact', () => {
     fireEvent.pointerLeave(bar(), { pointerType: 'mouse' });
     expect(thread()).toHaveAttribute('data-open');
   });
+
+  it('stays open while a change is on its way, and folds once it is done', () => {
+    const view = render(<QuickEditBar controller={{ ...controller([user, reply('writing')]), running: true }} />);
+    fireEvent.pointerLeave(bar(), { pointerType: 'mouse' });
+    expect(thread()).toHaveAttribute('data-open');
+
+    view.rerender(<QuickEditBar controller={{ ...controller([user, { ...reply(null), state: 'applied', summary: 'Done' }]), running: false }} />);
+    fireEvent.pointerLeave(bar(), { pointerType: 'mouse' });
+    expect(thread()).not.toHaveAttribute('data-open');
+  });
+
+  it('stays open while the agent answers in the chat', () => {
+    const handedOff = { ...reply(null), state: 'chat' };
+    const live = [{ role: 'user', content: 'Make the title blue' }, { role: '_streaming', content: '' }];
+    render(<QuickEditBar controller={{ ...controller([user, handedOff]), running: false }} chatMessages={live} />);
+    fireEvent.pointerLeave(bar(), { pointerType: 'mouse' });
+    expect(thread()).toHaveAttribute('data-open');
+  });
 });
+

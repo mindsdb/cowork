@@ -31,6 +31,12 @@ export interface RecommendedModels {
    * known reason, an unknown one, or no entry renders "Needs credits".
    */
   modelDisabledReasons?: Record<string, string>;
+  /**
+   * The cheapest plan (`free` | `plus` | `pro`) whose allowance covers each
+   * MindsHub model, from the listing's `covered_by_tier` (ENG-4186). Absent
+   * from older servers and while the plans gate is off.
+   */
+  modelCoveredByTier?: Record<string, string>;
   /** MindsHub's display label per model id. Absent ⇒ derive from the id. */
   modelLabels?: Record<string, string>;
   /** Refresh scopes the server honors ('all', 'minds'); absent on servers that predate them. */
@@ -254,7 +260,13 @@ export function fetchMindsHubPeopleByEmails(emails: string[]): Promise<MindsHubP
 export function publishArtifact(
   path: string,
   access?: import('./lib/sharingContract').ArtifactAccessPayload | null,
+  options?: { approvedDatasources?: { engine: string; name: string }[] },
 ): Promise<Record<string, unknown>>;
+export function updateArtifact(
+  path: string,
+  options?: { approvedDatasources?: { engine: string; name: string }[] },
+): Promise<Record<string, unknown>>;
+export function fetchPendingDatasources(path: string): Promise<{ engine: string; name: string; label: string }[]>;
 
 /** Mobile app push (ENG-4023): register this device's APNs/FCM token. Rejects with `status` on a refusal. */
 export function registerPushDevice(body: {

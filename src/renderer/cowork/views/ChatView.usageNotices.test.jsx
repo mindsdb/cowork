@@ -16,6 +16,7 @@ const hostMock = vi.hoisted(() => ({
   isElectron: true, isWeb: false,
 }));
 vi.mock('../../platform/host', () => hostMock);
+vi.mock('../hooks/useAccountUser', () => ({ useAccountUser: () => ({ orgId: 'org-1', sub: 'u1' }) }));
 const analyticsMock = vi.hoisted(() => ({ trackBillingOpened: vi.fn(), trackKeyProvisioningRefused: vi.fn() }));
 vi.mock('../lib/analytics', () => analyticsMock);
 
@@ -77,6 +78,15 @@ describe('ChatView usage notices', () => {
     expect(screen.getByRole('button', { name: 'Update payment method' })).toBeInTheDocument();
   });
 
+  it("opens the auto top up failure's Add funds for this session's organization (ENG-4333)", () => {
+    hostMock.host.openExternal.mockClear();
+    render(<ChatView task={task([{ kind: 'auto_top_up_failed', createdAt: '2099-08-28T10:00:00Z' }])} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add funds' }));
+    const opened = new URL(hostMock.host.openExternal.mock.calls[0][0]);
+    expect(opened.searchParams.get('organization')).toBe('org-1');
+    expect(opened.searchParams.get('subject')).toBe('u1');
+  });
+
   it('inside the mobile app, shows the allowance change and hides the payment failure', () => {
     hostMock.host.isMobileShell = true;
     try {
@@ -89,6 +99,24 @@ describe('ChatView usage notices', () => {
       expect(screen.queryByRole('button', { name: 'View usage' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Add funds' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Update payment method' })).toBeNull();
+    } finally {
+      hostMock.host.isMobileShell = false;
+    }
+  });
+
+  it('inside the mobile app, shows a plan window running low or pausing the task, but not one that put the task on the wallet', () => {
+    hostMock.host.isMobileShell = true;
+    try {
+      render(<ChatView task={task([
+        { kind: 'window_low', window: '5h', percentUsed: 82, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z' },
+        { kind: 'window_exhausted', window: '7d', onWallet: true, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:01:00Z' },
+        { kind: 'window_exhausted', window: '5h', onWallet: false, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:02:00Z' },
+      ])} />);
+      expect(screen.getByText(/^82% of your 5-hour allowance used · resets at /)).toBeInTheDocument();
+      expect(screen.getByText(/^5-hour allowance used up · paused until Sep 1[12], 12:00 PM$/)).toBeInTheDocument();
+      expect(screen.queryByText(/Weekly allowance used up/)).toBeNull();
+      expect(screen.queryByText(/wallet|balance/i)).toBeNull();
+      expect(screen.queryByRole('button', { name: 'View usage' })).toBeNull();
     } finally {
       hostMock.host.isMobileShell = false;
     }

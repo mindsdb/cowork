@@ -933,9 +933,14 @@ export default function Composer({
   // polled usage; the pick decides whether free Air tokens or the paid
   // balance is what the next turn spends.
   const hubUsage = useContext(HubUsageContext);
+  // On Plus or Pro, a pick the plan does not cover runs on the wallet, so its
+  // bar speaks of the wallet rather than the plan's windows (ENG-4186).
+  const pickCoveredByTier = modelMeta?.modelCoveredByTier?.[model?.id ?? model] ?? null;
   const usageWarning = useMemo(
-    () => (hubUsage ? deriveComposerWarning(hubUsage.usage, { providerType: hubUsage.providerType, model }) : null),
-    [hubUsage, model],
+    () => (hubUsage ? deriveComposerWarning(hubUsage.usage, {
+      providerType: hubUsage.providerType, model, coveredByTier: pickCoveredByTier,
+    }) : null),
+    [hubUsage, model, pickCoveredByTier],
   );
   // What the bar would say for ANY pick, not just the current one. Two things
   // read it: "healthy" for forgetting closed bars, and the height reservation
