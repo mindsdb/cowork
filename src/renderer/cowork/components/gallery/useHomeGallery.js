@@ -3,15 +3,15 @@ import { host } from '../../../platform/host';
 import { PLATFORM_UI } from '../../../lib/deployment';
 import { MINDS_API_BASE, MINDS_CONSOLE_URL } from '../../../lib/mindsUrls';
 import { fetchGalleryManifest } from './galleryManifest';
-import { galleryOffered, opensByItself, readGallerySettled, markGallerySettled, firstRunPreviewRequested } from './galleryRules';
+import { galleryOffered, opensByItself, readGallerySettled, markGallerySettled, takeFirstRunPreview, clearFirstRunPreview } from './galleryRules';
 import {
   trackGalleryShown, trackGalleryClosed, trackGalleryExampleStarted, trackGalleryUnavailable,
 } from '../../lib/analytics';
 
 const OFFERED = galleryOffered({ isWeb: host.isWeb, platformUi: PLATFORM_UI, isMobileShell: host.isMobileShell });
-// Read when the app loads, before the router tidies the address.
+// Read when the app loads; kept for the tab across the sign-in redirect.
 const PREVIEW = typeof window !== 'undefined'
-  && firstRunPreviewRequested({ search: window.location.search, apiBase: MINDS_API_BASE });
+  && takeFirstRunPreview({ search: window.location.search, apiBase: MINDS_API_BASE });
 
 /**
  * The Use Case Gallery column's state for the app: the console's list (read
@@ -82,6 +82,7 @@ export function useHomeGallery({ onHome, tasks, tasksStatus, consoleUrl = MINDS_
       setOpenedBy('auto');
       setFocusSearch(false);
       trackGalleryShown('preview');
+      clearFirstRunPreview();
       return;
     }
     if (opensByItself(decide)) {

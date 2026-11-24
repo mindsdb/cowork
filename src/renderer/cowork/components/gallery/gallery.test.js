@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { readGalleryManifest, fetchGalleryManifest, galleryManifestUrl } from './galleryManifest';
 import { filterGallery, matchesQuery, ALL_CATEGORIES } from './galleryFilter';
-import { galleryOffered, opensByItself, readGallerySettled, markGallerySettled, runMinutes, firstRunPreviewRequested } from './galleryRules';
+import { galleryOffered, opensByItself, readGallerySettled, markGallerySettled, runMinutes, firstRunPreviewRequested, takeFirstRunPreview, clearFirstRunPreview } from './galleryRules';
 
 const CONSOLE = 'https://console.example.test';
 const LIST_URL = `${CONSOLE}/gallery-examples/manifest.json`;
@@ -231,5 +231,33 @@ describe('firstRunPreviewRequested', () => {
     ['', 'https://api.staging.mindshub.ai', false],
   ])('%s on %s → %s', (search, apiBase, expected) => {
     expect(firstRunPreviewRequested({ search, apiBase })).toBe(expected);
+  });
+});
+
+describe('takeFirstRunPreview', () => {
+  const memory = () => {
+    const store = new Map();
+    return { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: (k) => store.delete(k) };
+  };
+  const STAGING = 'https://api.staging.mindshub.ai';
+
+  it('remembers the request across the sign-in redirect, which drops the query, until it is shown', () => {
+    const storage = memory();
+    expect(takeFirstRunPreview({ search: '?gallery=first-run', apiBase: STAGING, storage })).toBe(true);
+    expect(takeFirstRunPreview({ search: '', apiBase: STAGING, storage })).toBe(true);
+    clearFirstRunPreview(storage);
+    expect(takeFirstRunPreview({ search: '', apiBase: STAGING, storage })).toBe(false);
+  });
+
+  it('never honours it against production, even if a request was kept', () => {
+    const storage = memory();
+    storage.setItem('anton.gallery.firstRunPreview', '1');
+    expect(takeFirstRunPreview({ search: '?gallery=first-run', apiBase: 'https://api.mindshub.ai', storage })).toBe(false);
+  });
+
+  it('falls back to the address when storage throws', () => {
+    const storage = { getItem: () => { throw new Error('blocked'); }, setItem: () => { throw new Error('blocked'); } };
+    expect(takeFirstRunPreview({ search: '?gallery=first-run', apiBase: STAGING, storage })).toBe(true);
+    expect(takeFirstRunPreview({ search: '', apiBase: STAGING, storage })).toBe(false);
   });
 });

@@ -40,6 +40,33 @@ export function firstRunPreviewRequested({ search, apiBase }) {
   }
 }
 
+const PREVIEW_KEY = 'anton.gallery.firstRunPreview';
+
+/**
+ * The replay request, kept for this tab: every full load here goes through
+ * the sign-in redirect, which comes back to the bare address and drops the
+ * query, so the request is remembered when the address carries it and read
+ * after the redirect. Never honoured against production.
+ */
+export function takeFirstRunPreview({ search, apiBase, storage = globalThis.sessionStorage }) {
+  if (String(apiBase || '').replace(/\/+$/, '') === PRODUCTION_API) return false;
+  try {
+    if (firstRunPreviewRequested({ search, apiBase })) storage?.setItem(PREVIEW_KEY, '1');
+    return storage?.getItem(PREVIEW_KEY) === '1';
+  } catch {
+    return firstRunPreviewRequested({ search, apiBase });
+  }
+}
+
+/** Forgets the replay request once it has been shown. */
+export function clearFirstRunPreview(storage = globalThis.sessionStorage) {
+  try {
+    storage?.removeItem(PREVIEW_KEY);
+  } catch {
+    // Nothing kept.
+  }
+}
+
 /* Per browser, or per Desktop install: localStorage, like the checklist. A
    storage that throws (private mode, blocked site data) reads as not settled,
    so at worst the column opens once more; it never fails to render. */
