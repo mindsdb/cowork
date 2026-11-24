@@ -146,6 +146,7 @@ const EVENTS = {
   UPGRADE_CLICKED:          'upgrade_clicked',          // { surface: 'allowance_card'|'window_card'|'model_card'|'model_picker'|'usage_bar'|'usage_alert'|'usage_settings'|'compare', tier: 'plus'|'pro', from_tier: 'free'|'plus' } a plan upgrade was clicked (ENG-4186). Opens the console billing page but is NOT also a billing_opened: the two series stay disjoint, so the funnels add up
   BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'window_allowance_exhausted'|'model_not_in_tier'|'free_serving_paused'|'budget_exceeded'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'allowance_used_notice'|'free_air_paused_notice'|'budget_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_at_rest'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav', 'usage_settings', 'budget_exceeded' and 'budget_notice' are NOT upgrade intent (credits do not lift a budget). 'usage_at_rest' IS intent but is the standing allowance figure rather than a warning, so it is kept apart from 'usage_notice' to grade the two surfaces separately
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
+  ORGANIZATION_CHANGED:     'organization_changed',     // { from_kind: 'personal'|'company', to_kind: 'personal'|'company', cause: 'menu'|'landing'|'outside_app' } this device found the account in a different organization than it last saw. 'outside_app' = nothing in this app instance asked for it: another tab, window, app or the server moved it
   APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
   BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready, build_kind, shell_version, ui_version, server_version } desktop, per launch (ENG-921). One row per layer's running version, so adoption per layer needs no join
   SHELL_UPDATE_PHASE:       'shell_update_phase',       // { phase: 'available'|'ready-to-install'|'installing'|'failed'|'relaunched' (see trackShellUpdatePhase), channel, mode, trigger, install_source, current_version, target_version, error_code, recoverable } desktop shell auto-update, once per milestone per app run
@@ -1318,6 +1319,18 @@ export function trackComparisonContinued(comparisonId, { side, models = {}, turn
 // path (first run) no paywall is shown at all; the fork is the measurement.
 export function trackKeyProvisioningRefused(outcome) {
   capture(EVENTS.KEY_PROVISIONING_REFUSED, { outcome: outcome || 'unknown' });
+}
+
+// The active organization is one value per account, shared by every surface the
+// person is signed in to, so a page can load into one nobody here picked. This
+// counts those loads. Kinds only: the organization itself is already a person
+// property, and the question is how often a session starts in the wrong kind.
+export function trackOrganizationChanged({ fromKind, toKind, cause } = {}) {
+  capture(EVENTS.ORGANIZATION_CHANGED, {
+    from_kind: fromKind,
+    to_kind: toKind,
+    cause: cause || 'outside_app',
+  });
 }
 
 // Once per user (ENG-501). Mark the localStorage flag only after the event is
