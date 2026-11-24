@@ -1096,6 +1096,12 @@ function AppCore() {
    * second send into the same conversation reads this instead (ENG-4635).
    */
   const settingUpRef = useRef(new Set()); // cid
+  // A send here holds the shared slot or is still setting its turn up. Reads
+  // that asked only `activeStreamingTaskIdRef.current === cid` missed a send
+  // whose slot another conversation's send took meanwhile.
+  const settingUpHere = useCallback((cid) => (
+    Boolean(cid) && (activeStreamingTaskIdRef.current === cid || settingUpRef.current.has(cid))
+  ), []);
   /*
    * Conversations a Stop is ending, from its cancel request until that Stop
    * has finished. Each maps to a promise that settles true once that Stop has
@@ -1368,7 +1374,10 @@ function AppCore() {
     // Releasing then would let the send reassign the refs into a second
     // concurrent stream on one conversation; a real strand still holds its dead
     // controller.
-    const preflight = Boolean(streaming) && !activeStreamCtrlRef.current;
+    // With tasks side by side the shared controller can be another
+    // conversation's while this one still uploads (ENG-4635), so its own
+    // setup entry counts too.
+    const preflight = Boolean(streaming) && (!activeStreamCtrlRef.current || settingUpRef.current.has(streaming));
     // Suppresses the unseen reap when the turn has produced events but the poll
     // hasn't listed it yet (see reservationReleaseDecision / the ref's decl).
     const producedData = activeStreamProducedRef.current;
@@ -2901,7 +2910,7 @@ function AppCore() {
     // A tail or send registered here, or a send holding the slot while it
     // uploads. A second stream would abort it, whoever holds the shared slot.
     const alreadyStreamingHere = () => (
-      liveStreamsRef.current.has(taskId) || activeStreamingTaskIdRef.current === taskId
+      liveStreamsRef.current.has(taskId) || settingUpHere(taskId)
     );
     if (alreadyStreamingHere()) return true;
     let status;
@@ -3061,7 +3070,7 @@ function AppCore() {
     activeStreamCtrlRef.current = ctrl;
     registerStream(taskId, ctrl);
     return true;
-  }, [markInFlight, markInFlightDone, handleStreamError, registerStream, releaseStream, setStreamPad, releaseSlotClaim]);
+  }, [markInFlight, markInFlightDone, handleStreamError, registerStream, releaseStream, setStreamPad, releaseSlotClaim, settingUpHere]);
 
   /*
    * A dropped connection, not a failed turn: keep trying to reach the turn
@@ -3167,7 +3176,7 @@ function AppCore() {
     // Is this conversation actually mid-stream right now? If yes, we LEAVE
     // running indicators alone. If no, reconcile strips zombie placeholders
     // and collapses stale step state.
-    const isLive = activeStreamingTaskIdRef.current === id;
+    const isLive = settingUpHere(id);
     // Cross-client cache (Option B): when the server says this
     // conversation's producer is still running, skip the "things stopped"
     // continuation prompt — the reconnect above attaches to the live tail.
@@ -3204,7 +3213,7 @@ function AppCore() {
       // Unless the page proves a pending delete took everything. A turn just
       // sent here is not on the server yet, so it keeps the rows.
       const emptiedByCut = cutCommitted
-        && activeStreamingTaskIdRef.current !== id && !hasLiveTurnHere(id);
+        && !settingUpHere(id) && !hasLiveTurnHere(id);
       // An empty page means every row this read knew of is gone; rows that
       // arrived after it began stay. The cut's own ids count as known: a read
       // started during the DELETE predates the rows that delete's resync wrote.
@@ -3271,7 +3280,7 @@ function AppCore() {
       ? prev.map((t) => (t.id === id ? patch(t) : t))
       : [patch(fresh), ...prev]));
     if (cutCommitted) settleCut();
-  }, [reconnectInFlight]);
+  }, [reconnectInFlight, settingUpHere]);
 
   // Show the conversation the `/c/:id` route resolved, and hydrate it.
   const openConversation = useCallback((id, loaded) => {
@@ -6521,7 +6530,7 @@ function AppCore() {
        */
       const deletingTask = snapshot;
       const running = liveStreamsRef.current.has(taskId)
-        || activeStreamingTaskIdRef.current === taskId
+        || settingUpHere(taskId)
         || inFlightSetRef.current.has(taskId)
         || (deletingTask?.messages || []).some((m) => m.role === '_streaming');
       let stoppedStream = false;

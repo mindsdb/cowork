@@ -2006,6 +2006,39 @@ describe('a send while a task is still setting up its turn (ENG-1378, ENG-4635)'
     expect(spies.streamMessage.mock.calls[1][1]).toBe('beta with file');
   });
 
+  it('reopening a task still uploading doesn\'t attach a second stream after another task took the slot', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user); // Alpha (conv-a)
+    let releaseUpload;
+    uploadAttachments.mockImplementationOnce(
+      () => new Promise((resolve) => { releaseUpload = () => resolve([]); }),
+    );
+    await attach(user, 'notes.txt');
+    await send(user, composer, 'alpha with file');
+    await waitFor(() => expect(uploadAttachments).toHaveBeenCalledTimes(1));
+
+    // Beta's send takes the shared slot while Alpha still uploads.
+    const betaComposer = await openByTitle(user, 'Beta task');
+    await send(user, betaComposer, 'beta now');
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
+    expect(spies.streamMessage.mock.calls[0][0]).toBe('conv-b');
+
+    // The server already lists Alpha's turn. Reopening Alpha must not tail it:
+    // a second stream there would abort Alpha's own once it registers.
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: true }));
+    try {
+      await openByTitle(user, 'Alpha task');
+      await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+      expect(streams.some((h) => h.kind === 'tail')).toBe(false);
+    } finally {
+      spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false }));
+    }
+
+    await act(async () => { releaseUpload(); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][0]).toBe('conv-a');
+  });
+
   it('queues a second send into the same task instead of starting a second stream there', async () => {
     const user = userEvent.setup();
     const composer = await openTask(user); // Alpha (conv-a)
