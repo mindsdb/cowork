@@ -10,6 +10,8 @@ import {
   rememberLastOrg,
   useOrgLanding,
 } from './orgLanding';
+import { __resetWorkStartedForTests, markWorkStarted } from './documentWork';
+import { __resetDraftsForTests, setDraft } from './draftStore';
 
 const PERSONAL = { id: 'org-personal', name: 'personal_user-1', isPersonal: true };
 const ACME = { id: 'org-acme', name: 'acme', isPersonal: false };
@@ -21,6 +23,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  __resetDraftsForTests();
+  __resetWorkStartedForTests();
   localStorage.clear();
   sessionStorage.clear();
 });
@@ -126,6 +130,27 @@ describe('useOrgLanding', () => {
     run({ sub: 'user-1', orgs: [ACME, GLOBEX, PERSONAL], activeOrg: PERSONAL, switchOrg });
 
     expect(switchOrg).toHaveBeenCalledWith(GLOBEX.id);
+  });
+
+  // The list can land seconds after the page is usable. Reloading into
+  // another organization then would hide the task just started.
+  it('stays put once work has started in the page, and lands on the next load', () => {
+    const switchOrg = vi.fn();
+    markWorkStarted();
+    run({ sub: 'user-1', orgs: [ACME, PERSONAL], activeOrg: PERSONAL, switchOrg });
+    expect(switchOrg).not.toHaveBeenCalled();
+
+    __resetWorkStartedForTests();
+    run({ sub: 'user-1', orgs: [ACME, PERSONAL], activeOrg: PERSONAL, switchOrg });
+    expect(switchOrg).toHaveBeenCalledWith(ACME.id);
+  });
+
+  it('counts typing a draft as work started', () => {
+    const switchOrg = vi.fn();
+    setDraft('new', 'Summarize the');
+    run({ sub: 'user-1', orgs: [ACME, PERSONAL], activeOrg: PERSONAL, switchOrg });
+
+    expect(switchOrg).not.toHaveBeenCalled();
   });
 
   it('keeps one account\'s pick from moving another', () => {

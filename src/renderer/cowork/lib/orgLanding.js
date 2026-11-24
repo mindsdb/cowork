@@ -7,11 +7,13 @@
  *
  * The record is per account and per browser, so a pick holds in every tab
  * and window. Landing tries at most once per session, so a refused switch
- * can't loop through reloads.
+ * can't loop through reloads, and not at all once the person has started
+ * work in the page.
  */
 
 import { useEffect } from 'react';
 import { PLATFORM_UI } from '../../lib/deployment';
+import { hasWorkStarted } from './documentWork';
 
 /**
  * The organization to land in: the one used last while it is still listed,
@@ -96,7 +98,11 @@ export function useOrgLanding({ sub, orgs, activeOrg, switchOrg }) {
       return;
     }
     const target = landingSwitchTarget(orgs, { activeOrgId, lastOrgId: readLastOrgId(sub) });
-    if (!target || !claimLandingAttempt(sub)) return;
+    // The list can arrive late (its read retries for up to 40 s), and the
+    // switch reloads into the other organization: a task already started here
+    // would vanish from view and a draft would be cleared. Stay put, without
+    // claiming the attempt, so the next load lands instead.
+    if (!target || hasWorkStarted() || !claimLandingAttempt(sub)) return;
     switchOrg(target.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sub, orgs, activeOrgId]);
