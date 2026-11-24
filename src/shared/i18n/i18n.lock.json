@@ -127737,6 +127737,74 @@
       "text": "7a2f003cf90c"
     }
   },
+  "projects:messages.scheduleCopy.lateRunApp": {
+    "de": {
+      "from": "02c085b6e5d8",
+      "text": "db01d3fa360a"
+    },
+    "es": {
+      "from": "02c085b6e5d8",
+      "text": "66ba533d81ba"
+    },
+    "fr": {
+      "from": "02c085b6e5d8",
+      "text": "02ac672b277c"
+    },
+    "it": {
+      "from": "02c085b6e5d8",
+      "text": "8b779e459691"
+    },
+    "ja": {
+      "from": "02c085b6e5d8",
+      "text": "1ac10dba340d"
+    },
+    "ko": {
+      "from": "02c085b6e5d8",
+      "text": "5803ee8aee4e"
+    },
+    "pt-BR": {
+      "from": "02c085b6e5d8",
+      "text": "5d7347376a31"
+    },
+    "zh-CN": {
+      "from": "02c085b6e5d8",
+      "text": "9ec54126ccee"
+    }
+  },
+  "projects:messages.scheduleCopy.lateRunServer": {
+    "de": {
+      "from": "0012bab72a10",
+      "text": "fe06a24da0b0"
+    },
+    "es": {
+      "from": "0012bab72a10",
+      "text": "88bde6e587ac"
+    },
+    "fr": {
+      "from": "0012bab72a10",
+      "text": "9f93b73a1bd5"
+    },
+    "it": {
+      "from": "0012bab72a10",
+      "text": "9dabc15342dc"
+    },
+    "ja": {
+      "from": "0012bab72a10",
+      "text": "398045a9481e"
+    },
+    "ko": {
+      "from": "0012bab72a10",
+      "text": "4f6d2083466c"
+    },
+    "pt-BR": {
+      "from": "0012bab72a10",
+      "text": "fd34f85ecb86"
+    },
+    "zh-CN": {
+      "from": "0012bab72a10",
+      "text": "693de732d774"
+    }
+  },
   "projects:messages.scheduleCopy.missedLabelApp": {
     "de": {
       "from": "e7590009cc09",
@@ -136847,6 +136915,40 @@
     "zh-CN": {
       "from": "5c39123805ff",
       "text": "4b47dbae97ba"
+    }
+  },
+  "projects:scheduleDetail.ranLate": {
+    "de": {
+      "from": "0f950da185fc",
+      "text": "7307954de904"
+    },
+    "es": {
+      "from": "0f950da185fc",
+      "text": "02fcf0ea1770"
+    },
+    "fr": {
+      "from": "0f950da185fc",
+      "text": "223434eda195"
+    },
+    "it": {
+      "from": "0f950da185fc",
+      "text": "b3462342df97"
+    },
+    "ja": {
+      "from": "0f950da185fc",
+      "text": "ced645396439"
+    },
+    "ko": {
+      "from": "0f950da185fc",
+      "text": "056a3e147f3e"
+    },
+    "pt-BR": {
+      "from": "0f950da185fc",
+      "text": "5f40198a6687"
+    },
+    "zh-CN": {
+      "from": "0f950da185fc",
+      "text": "18045b8c40f1"
     }
   },
   "projects:scheduleDetail.ranOnDefaultModel": {

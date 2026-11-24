@@ -105,7 +105,9 @@
       "missedLabelServer": "この時刻にサーバーが停止している場合",
       "missedLabelApp": "この時刻にMindsHubが閉じている場合",
       "missedOnceTitleServer": "サーバーの停止中に、この1回限りのタスクの実行時刻が過ぎました",
-      "missedOnceTitleApp": "MindsHubが閉じている間に、この1回限りのタスクの実行時刻が過ぎました"
+      "missedOnceTitleApp": "MindsHubが閉じている間に、この1回限りのタスクの実行時刻が過ぎました",
+      "lateRunApp": "予定: {when}。MindsHub が閉じていたか、コンピューターがスリープ中でした。",
+      "lateRunServer": "予定: {when}。サーバーが停止中か混雑していました。"
     },
     "stopScheduleRun": {
       "unreachable": "実行を停止するためにサーバーに接続できませんでした。もう一度お試しください。",
@@ -735,6 +737,7 @@
     "scheduleAriaLabel": "スケジュール",
     "accountDefaultModel": "アカウントのデフォルトモデル",
     "ranOnDefaultModel": "デフォルトモデル",
+    "ranLate": "遅延",
     "modelUnavailable": "{model}は利用できないため、この実行ではデフォルトモデルを使用しました。",
     "succeededCount": "{total, plural, other {#回中{succeeded}回成功}}",
     "promptAriaLabel": "プロンプト",

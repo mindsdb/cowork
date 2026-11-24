@@ -105,7 +105,9 @@
       "missedLabelServer": "Se a quell’ora il server non è attivo",
       "missedLabelApp": "Se a quell’ora MindsHub è chiuso",
       "missedOnceTitleServer": "L’ora di questa attività singola è passata mentre il server non era attivo",
-      "missedOnceTitleApp": "L’ora di questa attività singola è passata mentre MindsHub era chiuso"
+      "missedOnceTitleApp": "L’ora di questa attività singola è passata mentre MindsHub era chiuso",
+      "lateRunApp": "Prevista {when}. MindsHub era chiuso o il computer in stop.",
+      "lateRunServer": "Prevista {when}. Il server non era disponibile o era occupato."
     },
     "stopScheduleRun": {
       "unreachable": "Impossibile raggiungere il server per interrompere l’esecuzione. Riprova.",
@@ -735,6 +737,7 @@
     "scheduleAriaLabel": "Pianificazione",
     "accountDefaultModel": "Modello predefinito dell’account",
     "ranOnDefaultModel": "Modello predefinito",
+    "ranLate": "In ritardo",
     "modelUnavailable": "{model} non è disponibile, quindi questa esecuzione ha usato il tuo modello predefinito.",
     "succeededCount": "{total, plural, one {{succeeded} esecuzione riuscita su #} other {{succeeded} esecuzioni riuscite su #}}",
     "promptAriaLabel": "Prompt",

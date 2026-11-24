@@ -105,7 +105,9 @@
       "missedLabelServer": "Se o servidor estiver fora do ar nesse horário",
       "missedLabelApp": "Se o MindsHub estiver fechado nesse horário",
       "missedOnceTitleServer": "O horário desta tarefa única passou enquanto o servidor estava fora do ar",
-      "missedOnceTitleApp": "O horário desta tarefa única passou enquanto o MindsHub estava fechado"
+      "missedOnceTitleApp": "O horário desta tarefa única passou enquanto o MindsHub estava fechado",
+      "lateRunApp": "Prevista para {when}. O MindsHub estava fechado ou o computador em repouso.",
+      "lateRunServer": "Prevista para {when}. O servidor estava fora do ar ou ocupado."
     },
     "stopScheduleRun": {
       "unreachable": "Não foi possível acessar o servidor para parar a execução. Tente novamente.",
@@ -735,6 +737,7 @@
     "scheduleAriaLabel": "Agendamento",
     "accountDefaultModel": "Modelo padrão da conta",
     "ranOnDefaultModel": "Modelo padrão",
+    "ranLate": "Atrasada",
     "modelUnavailable": "{model} não está disponível, então esta execução usou seu modelo padrão.",
     "succeededCount": "{total, plural, one {{succeeded} de # execução concluída} other {{succeeded} de # execuções concluídas}}",
     "promptAriaLabel": "Prompt",

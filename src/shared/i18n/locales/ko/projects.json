@@ -105,7 +105,9 @@
       "missedLabelServer": "이 시간에 서버가 다운되어 있는 경우",
       "missedLabelApp": "이 시간에 MindsHub가 닫혀 있는 경우",
       "missedOnceTitleServer": "서버가 다운된 동안 이 일회성 작업의 예정 시간이 지났습니다",
-      "missedOnceTitleApp": "MindsHub가 닫혀 있는 동안 이 일회성 작업의 예정 시간이 지났습니다"
+      "missedOnceTitleApp": "MindsHub가 닫혀 있는 동안 이 일회성 작업의 예정 시간이 지났습니다",
+      "lateRunApp": "예정: {when}. MindsHub가 닫혀 있었거나 컴퓨터가 절전 모드였습니다.",
+      "lateRunServer": "예정: {when}. 서버가 중단되었거나 사용량이 많았습니다."
     },
     "stopScheduleRun": {
       "unreachable": "서버에 연결할 수 없어 실행을 중지하지 못했습니다. 다시 시도하세요.",
@@ -735,6 +737,7 @@
     "scheduleAriaLabel": "일정",
     "accountDefaultModel": "계정 기본 모델",
     "ranOnDefaultModel": "기본 모델",
+    "ranLate": "지연됨",
     "modelUnavailable": "{model}을(를) 사용할 수 없어 이 실행에는 기본 모델을 사용했습니다.",
     "succeededCount": "{total, plural, other {#회 중 {succeeded}회 성공}}",
     "promptAriaLabel": "프롬프트",

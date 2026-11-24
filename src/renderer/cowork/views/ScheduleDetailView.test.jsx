@@ -142,6 +142,18 @@ describe('ScheduleDetailView — header and summary', () => {
     expect(await screen.findByText("GPT X isn't available, so this run used your default model.")).toBeInTheDocument();
   });
 
+  it('marks a run that started well after its slot as late', async () => {
+    vi.mocked(fetchScheduleRuns).mockResolvedValue({ runs: [
+      { ...RUNS[2], id: 'late', slotAt: '2026-09-29T08:30:00Z' },
+      { ...RUNS[1], id: 'on-time', slotAt: '2026-09-30T08:59:30Z' },
+    ] });
+    const { user } = setup();
+    const notes = await screen.findAllByText('Late');
+    expect(notes).toHaveLength(1);
+    await user.hover(notes[0]);
+    expect(await screen.findByText(/^Due .+\. (MindsHub was closed|The server was down)/)).toBeInTheDocument();
+  });
+
   it('goes back from the breadcrumb', async () => {
     const { user, props } = setup();
     await user.click(screen.getByRole('button', { name: /Scheduled Tasks/ }));
