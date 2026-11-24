@@ -58,9 +58,13 @@ export function httpsGet(
         }
         const mod = isHttp ? http : https;
         const req = mod.get(reqUrl, { headers: { 'User-Agent': 'antontron-updater' } }, (res) => {
-          // Follow redirects (GitHub releases use 302)
+          // Follow redirects (GitHub releases use 302). The redirect's own
+          // request is finished with: drain and destroy it, or its inactivity
+          // timer fires mid-download and fails the request that replaced it.
           if ((res.statusCode === 301 || res.statusCode === 302) && res.headers.location) {
+            res.resume();
             doGet(res.headers.location, redirects + 1);
+            req.destroy();
             return;
           }
           const chunks: Buffer[] = [];
@@ -73,8 +77,10 @@ export function httpsGet(
           res.on('error', fail);
         });
         activeReq = req;
-        req.on('error', fail);
-        req.setTimeout(timeoutMs, () => fail(new Error('Request timed out')));
+        // A superseded request's errors and timeout no longer speak for the fetch.
+        const current = () => activeReq === req;
+        req.on('error', (err) => { if (current()) fail(err); });
+        req.setTimeout(timeoutMs, () => { if (current()) fail(new Error('Request timed out')); });
       } catch (err) {
         fail(err as Error);
       }
