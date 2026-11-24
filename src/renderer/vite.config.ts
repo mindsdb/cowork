@@ -9,6 +9,7 @@ import { platformUiEnabled } from '../shared/ui-capabilities';
 import { withDeploymentBrand } from '../shared/deployment-brand';
 import { withDraftLinkFrameSources } from '../shared/draft-link-origins';
 import { orgBrandImageOrigins, withOrgBrandImageSources } from '../shared/org-brand-image-origins';
+import { galleryImageOrigins, withGalleryImageSources } from '../shared/gallery-image-origins';
 
 const pkg = JSON.parse(readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'));
 
@@ -125,6 +126,16 @@ function orgBrandImageSourcesFor(mode: string) {
   return webEntryTransform('cowork-org-brand-image-sources', (html) => withOrgBrandImageSources(html, origins));
 }
 
+// The Use Case Gallery shows the console's example pictures, so the hosted
+// page's img-src also names this environment's console (images only; the
+// gallery frames none of its pages). Same build-time, hosted-only reasoning.
+function galleryImageSourcesFor(mode: string) {
+  const env = process.env.VITE_BRAND_ENV
+    || loadEnv(mode, path.resolve(__dirname, '../..'), 'VITE_').VITE_BRAND_ENV;
+  const origins = galleryImageOrigins(env);
+  return webEntryTransform('cowork-gallery-image-sources', (html) => withGalleryImageSources(html, origins));
+}
+
 // The build's platform switch: on for desktop, and for web only when
 // VITE_PLATFORM_UI is exactly "true" (shared/ui-capabilities.ts).
 function platformUiFor(mode: string): boolean {
@@ -145,7 +156,7 @@ export default defineConfig(({ mode }) => ({
     react(),
     babel({ presets: [reactCompilerPreset()] }),
     ...(IS_WEB ? [webSpaFallback, deploymentBrand] : []),
-    ...(IS_WEB && platformUiFor(mode) ? [draftLinkFrameSources, orgBrandImageSourcesFor(mode)] : []),
+    ...(IS_WEB && platformUiFor(mode) ? [draftLinkFrameSources, orgBrandImageSourcesFor(mode), galleryImageSourcesFor(mode)] : []),
   ],
   customLogger: logger,
   define: {

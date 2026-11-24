@@ -287,6 +287,12 @@ export default function HomeView({
   // own-work mode, the same way the examples request works.
   ownWorkRequest = 0,
   onOwnWorkRequestConsumed,
+  // An example started from the Use Case Gallery column ({ entry, bump }):
+  // placed like a picked example, then reported consumed.
+  galleryPick = null,
+  onGalleryPickConsumed,
+  // Opens the Use Case Gallery column; null while it is open or not offered.
+  onOpenGallery = null,
   codingModeEnabled = false,
   codingModelDefault,
   harnessClaudeCodeEnabled,
@@ -324,8 +330,14 @@ export default function HomeView({
     trackSignupLanded(welcome.from);
     if (welcome.from === SIGNUP_FROM_DESKTOP) setDesktopWelcome(true);
   }, []);
+  // The gallery example in the composer, named under it while it is there.
+  const galleryStartRef = useRef(null);
+  const [galleryHint, setGalleryHint] = useState(null);
   useEffect(() => {
-    if (!taskMode) setHandoffHint(false);
+    if (!taskMode) {
+      setHandoffHint(false);
+      setGalleryHint(null);
+    }
   }, [taskMode]);
 
   // Task modes (slides/website/app-style prompt scaffolding) don't apply to
@@ -421,6 +433,7 @@ export default function HomeView({
       ...meta,
       ...(modeLine ? { taskMode: { task_mode: taskMode.id, mode_line: modeLine, example_placed: Boolean(pickedSample) } } : {}),
       ...(ownWork && ownWorkVia ? { startVia: ownWorkVia } : {}),
+      ...(!ownWork && pickedSample && pickedSample === galleryStartRef.current ? { startVia: 'gallery' } : {}),
       ...(ownWork && ownWorkFromConsoleRef.current ? { entryExampleId: OWN_WORK_START } : {}),
     };
     const result = await onSend(message, sendMeta);
@@ -653,6 +666,26 @@ export default function HomeView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownWorkRequest, composerUsable, codingModeEnabled]);
 
+  // An example started from the gallery is placed once the composer is usable,
+  // exactly as one picked under the composer: its mode selected, its prompt in
+  // the box, nothing sent. The person chose it, so it replaces what is there.
+  // The draft store is written first so leaving the own-work mode, which
+  // clears a bare job, reads the example and keeps it.
+  useEffect(() => {
+    if (!galleryPick || !composerUsable || codingModeEnabled || !onPrefill) return;
+    const { entry } = galleryPick;
+    galleryStartRef.current = entry.sample;
+    setDraft('new', entry.sample.prompt);
+    setTaskMode(entry.mode);
+    setPickedSample(entry.sample);
+    setHandoffHint(false);
+    setGalleryHint(entry.title);
+    trackExamplePicked(entry.id, 'gallery');
+    onPrefill(entry.sample.prompt);
+    onGalleryPickConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [galleryPick, composerUsable, codingModeEnabled]);
+
   // Shows the examples once the composer is usable, like the console handoff.
   useEffect(() => {
     if (!examplesRequest || !composerUsable || codingModeEnabled) return;
@@ -684,7 +717,16 @@ export default function HomeView({
           </button>
         </div>
       )}
-      {topShortcuts && <div className="absolute top-3.5 right-3.5 z-10">{topShortcuts}</div>}
+      {(topShortcuts || onOpenGallery) && (
+        <div className="absolute top-3.5 right-3.5 z-10 flex items-center gap-2">
+          {onOpenGallery && (
+            <Button variant="default" size="sm" onClick={onOpenGallery}>
+              {Ico.grid(14)} {t('gallery.open')}
+            </Button>
+          )}
+          {topShortcuts}
+        </div>
+      )}
       {/* Deliberate exception to the .s-* ladder. This is the home hero, and
           the ladder has no rung between s-h1 (28px) and s-display (44px): 28px
           is dwarfed by the 42px orb, 44px wraps to two lines in the 640px
@@ -869,6 +911,11 @@ export default function HomeView({
               overflows downward; the scroll container still reaches it
               because descendant overflow extends the scrollable area. */}
           <div className="w-full h-0 overflow-visible flex flex-col items-center">
+            {galleryHint && taskMode && (
+              <p role="status" className="text-sm text-[var(--frost-700)] mt-2 mb-0 w-full max-w-[var(--composer-max-width,640px)]">
+                {t('home.galleryHint', { title: galleryHint })}
+              </p>
+            )}
             {handoffHint && taskMode && (
               <p role="status" className="text-sm text-[var(--frost-700)] mt-2 mb-0 w-full max-w-[var(--composer-max-width,640px)]">
                 {t('home.handoffHint')}

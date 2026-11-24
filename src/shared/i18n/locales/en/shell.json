@@ -468,7 +468,8 @@
       "fromDesktop": "Your account is ready. You can start right here, or go back to the {product} app and sign in.",
       "dismiss": "Dismiss"
     },
-    "ownWorkHeading": "What should {product} work on?"
+    "ownWorkHeading": "What should {product} work on?",
+    "galleryHint": "From the example {title}. Change anything, then press Send."
   },
   "logout": {
     "title": "Sign out of {product}?",
@@ -483,5 +484,38 @@
   },
   "shortcuts": {
     "showBrowser": "Show browser"
+  },
+  "gallery": {
+    "open": "Use Case Gallery",
+    "title": "Use Case Gallery",
+    "intro": "Things {product} made from one message. Look at the finished result, then start from it.",
+    "hide": "Hide the gallery",
+    "searchLabel": "Search examples",
+    "searchPlaceholder": "Search: slides, spreadsheet, study…",
+    "tabsLabel": "Categories",
+    "all": "All",
+    "startHere": "Start here",
+    "allExamples": "All examples",
+    "results": "{count, plural, one {# example matches} other {# examples match}}",
+    "noResults": "Nothing matches. Describe what you need in the box and {product} will start from there.",
+    "loading": "Loading examples…",
+    "unavailable": "The examples can't load right now.",
+    "retry": "Try again",
+    "minutes": "{count, plural, one {About # minute} other {About # minutes}}",
+    "builtWith": "Built with {model}",
+    "needs": "Needs: {needs}",
+    "backToAll": "All examples",
+    "backToResults": "Results for “{query}”",
+    "position": "{current} of {total}",
+    "previous": "Previous example",
+    "next": "Next example",
+    "breadcrumb": "Breadcrumb",
+    "whatItMade": "What {product} made",
+    "download": "Download",
+    "sampleInput": "The sample we gave it",
+    "playInBrowser": "Open it in your browser",
+    "start": "Start from this example",
+    "startNote": "Puts the message in the box. Nothing runs until you press Send.",
+    "ownFile": "Use my own file"
   }
 }

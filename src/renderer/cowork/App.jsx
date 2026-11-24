@@ -30,6 +30,8 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from './components/ui/Moda
 import { Button, EmptyState, Tooltip } from './components/ui';
 import { ToastProvider, useToastManager } from './components/ui/Toast';
 import HomeView from './views/HomeView';
+import GalleryColumn from './components/gallery/GalleryColumn';
+import { useHomeGallery } from './components/gallery/useHomeGallery';
 import ChatView, { warmBrowser } from './views/ChatView';
 import ProjectsView from './views/ProjectsView';
 import ScheduledView from './views/ScheduledView';
@@ -2528,6 +2530,8 @@ function AppCore() {
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = effectiveWorkspaceMode === 'code' ? 'code' : route;
+  // The Use Case Gallery column beside Home (ENG-4664).
+  const gallery = useHomeGallery({ onHome: route === 'home' && effectiveWorkspaceMode === 'cowork', tasks, tasksStatus });
   // Route-aware gravity-field intensity: dense work surfaces quiet the
   // light-mode field (gf-quiet + gravity-field.css) so it never competes
   // with content; the home stage keeps the full ambient motion.
@@ -5627,6 +5631,33 @@ function AppCore() {
       {dockOffTask && offTaskPane}
     </div>
   );
+  // The Use Case Gallery column: docked beside Home while the browser pane is
+  // not, a sheet over Home on a phone. The wrapper is the same element open or
+  // shut, so Home, and what is typed in it, is not remounted when it opens.
+  const galleryColumn = gallery.open && route === 'home' && (
+    <GalleryColumn
+      manifest={gallery.manifest}
+      failure={gallery.failure}
+      onRetry={gallery.retry}
+      onHide={gallery.hide}
+      onStart={gallery.start}
+      onOwnWork={() => {
+        gallery.hide('own_work');
+        setOwnWorkRequest(Date.now());
+      }}
+      isElectron={host.isElectron}
+      openExternal={(url) => host.openExternal(url)}
+      focusSearch={gallery.focusSearch}
+    />
+  );
+  const galleryDocked = Boolean(galleryColumn) && !isMobile && !dockOffTask;
+  const galleryShown = galleryDocked || (isMobile && Boolean(galleryColumn));
+  const besideGallery = (view) => (
+    <div className={`flex-1 min-h-0 ${galleryDocked ? 'grid grid-cols-[minmax(0,1fr)_minmax(340px,440px)]' : 'flex flex-col'}`}>
+      <div className="min-w-0 min-h-0 flex-1 flex flex-col">{view}</div>
+      {galleryDocked && galleryColumn}
+    </div>
+  );
   // An ended voice call only shows its card: the call button dismisses it and starts anew.
   const noCallRunning = !voiceCallRunning(voiceCall.phase);
   // The composers' dictate mic (ENG-4630): the call's lane, so only where live
@@ -7440,7 +7471,8 @@ function AppCore() {
           // showing. newTask also closes the popout drawer.
           onOpenExamples={() => {
             newTask();
-            setExamplesRequest(Date.now());
+            if (gallery.offered) gallery.show('checklist');
+            else setExamplesRequest(Date.now());
           }}
           // Home's drafted files stay: they are the material that mode asks for.
           onOpenOwnWork={() => {
@@ -7504,7 +7536,12 @@ function AppCore() {
           hidden={effectiveWorkspaceMode !== 'cowork'}
           aria-hidden={effectiveWorkspaceMode !== 'cowork'}
         >
-        {route === 'home' && besideOffTask(
+        {route === 'home' && isMobile && galleryColumn && (
+          <div className="fixed inset-0 z-40 flex flex-col justify-end bg-[rgba(4,8,16,0.6)]">
+            <div className="h-[92%] rounded-t-2xl overflow-hidden border-t border-line">{galleryColumn}</div>
+          </div>
+        )}
+        {route === 'home' && besideOffTask(besideGallery(
           <HomeView
             onComposeTask={offerMobileTaskNotifications}
             greeting={look.greeting}
@@ -7554,9 +7591,12 @@ function AppCore() {
             onExamplesRequestConsumed={() => setExamplesRequest(0)}
             ownWorkRequest={ownWorkRequest}
             onOwnWorkRequestConsumed={() => setOwnWorkRequest(0)}
+            galleryPick={gallery.pick}
+            onGalleryPickConsumed={gallery.clearPick}
+            onOpenGallery={gallery.offered && !galleryShown ? () => gallery.show('button') : null}
             codingModeEnabled={false}
           />
-        )}
+        ))}
 
         {route === 'task' && showConversationError && <ConversationUnavailable />}
 

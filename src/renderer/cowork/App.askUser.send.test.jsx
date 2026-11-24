@@ -213,6 +213,12 @@ vi.mock('./lib/analytics', () => ({
   trackNextStepClicked: vi.fn(),
   trackOnboardingRowClicked: vi.fn(),
   trackOnboardingStepCompleted: vi.fn(),
+  trackGalleryShown: vi.fn(),
+  trackGalleryClosed: vi.fn(),
+  trackGalleryExampleOpened: vi.fn(),
+  trackGalleryExampleStarted: vi.fn(),
+  trackGallerySearched: vi.fn(),
+  trackGalleryUnavailable: vi.fn(),
 }));
 
 import App, { unsavedRefusedQuestions } from './App';

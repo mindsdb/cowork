@@ -468,7 +468,8 @@
       "fromDesktop": "Ihr Konto ist bereit. Sie können direkt hier loslegen oder zur {product}-App zurückkehren und sich anmelden.",
       "dismiss": "Schließen"
     },
-    "ownWorkHeading": "Woran soll {product} arbeiten?"
+    "ownWorkHeading": "Woran soll {product} arbeiten?",
+    "galleryHint": "Aus dem Beispiel {title}. Ändere, was du willst, und drücke dann Senden."
   },
   "logout": {
     "title": "Von {product} abmelden?",
@@ -483,5 +484,38 @@
   },
   "shortcuts": {
     "showBrowser": "Browser anzeigen"
+  },
+  "gallery": {
+    "open": "Anwendungsgalerie",
+    "title": "Anwendungsgalerie",
+    "intro": "Was {product} aus einer einzigen Nachricht gemacht hat. Sieh dir das fertige Ergebnis an und starte davon aus.",
+    "hide": "Galerie ausblenden",
+    "searchLabel": "Beispiele suchen",
+    "searchPlaceholder": "Suchen: Folien, Tabelle, Lernen…",
+    "tabsLabel": "Kategorien",
+    "all": "Alle",
+    "startHere": "Hier anfangen",
+    "allExamples": "Alle Beispiele",
+    "results": "{count, plural, one {# Beispiel passt} other {# Beispiele passen}}",
+    "noResults": "Nichts passt. Beschreibe im Feld, was du brauchst, und {product} fängt dort an.",
+    "loading": "Beispiele werden geladen…",
+    "unavailable": "Die Beispiele können gerade nicht geladen werden.",
+    "retry": "Erneut versuchen",
+    "minutes": "{count, plural, one {Etwa # Minute} other {Etwa # Minuten}}",
+    "builtWith": "Erstellt mit {model}",
+    "needs": "Benötigt: {needs}",
+    "backToAll": "Alle Beispiele",
+    "backToResults": "Ergebnisse für „{query}“",
+    "position": "{current} von {total}",
+    "previous": "Vorheriges Beispiel",
+    "next": "Nächstes Beispiel",
+    "breadcrumb": "Brotkrumen",
+    "whatItMade": "Was {product} gemacht hat",
+    "download": "Herunterladen",
+    "sampleInput": "Das Beispiel, das wir ihm gegeben haben",
+    "playInBrowser": "Im Browser öffnen",
+    "start": "Mit diesem Beispiel starten",
+    "startNote": "Setzt die Nachricht ins Feld. Nichts läuft, bis du auf Senden drückst.",
+    "ownFile": "Eigene Datei verwenden"
   }
 }

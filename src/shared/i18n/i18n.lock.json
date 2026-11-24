@@ -182885,6 +182885,1060 @@
       "text": "811ace97bcf2"
     }
   },
+  "shell:gallery.all": {
+    "de": {
+      "from": "a52ace420f21",
+      "text": "3801a35c5182"
+    },
+    "es": {
+      "from": "a52ace420f21",
+      "text": "bd02b9a7d71d"
+    },
+    "fr": {
+      "from": "a52ace420f21",
+      "text": "2ff599814388"
+    },
+    "it": {
+      "from": "a52ace420f21",
+      "text": "7f65ef4af637"
+    },
+    "ja": {
+      "from": "a52ace420f21",
+      "text": "b55eb06d25e1"
+    },
+    "ko": {
+      "from": "a52ace420f21",
+      "text": "a4b69faf0c11"
+    },
+    "pt-BR": {
+      "from": "a52ace420f21",
+      "text": "bd02b9a7d71d"
+    },
+    "zh-CN": {
+      "from": "a52ace420f21",
+      "text": "5c55a67935af"
+    }
+  },
+  "shell:gallery.allExamples": {
+    "de": {
+      "from": "5331c5c7cf00",
+      "text": "37ef2183e9e0"
+    },
+    "es": {
+      "from": "5331c5c7cf00",
+      "text": "4658398b7037"
+    },
+    "fr": {
+      "from": "5331c5c7cf00",
+      "text": "0746b0a2db66"
+    },
+    "it": {
+      "from": "5331c5c7cf00",
+      "text": "1af0b618f557"
+    },
+    "ja": {
+      "from": "5331c5c7cf00",
+      "text": "a2fca2e3c0cd"
+    },
+    "ko": {
+      "from": "5331c5c7cf00",
+      "text": "741f3bbc5b5f"
+    },
+    "pt-BR": {
+      "from": "5331c5c7cf00",
+      "text": "2ecb0e2db5d7"
+    },
+    "zh-CN": {
+      "from": "5331c5c7cf00",
+      "text": "4ac82f12b7d5"
+    }
+  },
+  "shell:gallery.backToAll": {
+    "de": {
+      "from": "5331c5c7cf00",
+      "text": "37ef2183e9e0"
+    },
+    "es": {
+      "from": "5331c5c7cf00",
+      "text": "4658398b7037"
+    },
+    "fr": {
+      "from": "5331c5c7cf00",
+      "text": "0746b0a2db66"
+    },
+    "it": {
+      "from": "5331c5c7cf00",
+      "text": "1af0b618f557"
+    },
+    "ja": {
+      "from": "5331c5c7cf00",
+      "text": "a2fca2e3c0cd"
+    },
+    "ko": {
+      "from": "5331c5c7cf00",
+      "text": "741f3bbc5b5f"
+    },
+    "pt-BR": {
+      "from": "5331c5c7cf00",
+      "text": "2ecb0e2db5d7"
+    },
+    "zh-CN": {
+      "from": "5331c5c7cf00",
+      "text": "4ac82f12b7d5"
+    }
+  },
+  "shell:gallery.backToResults": {
+    "de": {
+      "from": "9691a6ea65c7",
+      "text": "97b3199bf23f"
+    },
+    "es": {
+      "from": "9691a6ea65c7",
+      "text": "0c78b99f4ab7"
+    },
+    "fr": {
+      "from": "9691a6ea65c7",
+      "text": "1b3f23e9319d"
+    },
+    "it": {
+      "from": "9691a6ea65c7",
+      "text": "167dc4079dcf"
+    },
+    "ja": {
+      "from": "9691a6ea65c7",
+      "text": "e329848b0f46"
+    },
+    "ko": {
+      "from": "9691a6ea65c7",
+      "text": "5de2bafe29a6"
+    },
+    "pt-BR": {
+      "from": "9691a6ea65c7",
+      "text": "0c78b99f4ab7"
+    },
+    "zh-CN": {
+      "from": "9691a6ea65c7",
+      "text": "25133da77aba"
+    }
+  },
+  "shell:gallery.breadcrumb": {
+    "de": {
+      "from": "2bd873d6c734",
+      "text": "37b26b61f391"
+    },
+    "es": {
+      "from": "2bd873d6c734",
+      "text": "21bee151fbaa"
+    },
+    "fr": {
+      "from": "2bd873d6c734",
+      "text": "69bee433c010"
+    },
+    "it": {
+      "from": "2bd873d6c734",
+      "text": "9ea2e0562fb5"
+    },
+    "ja": {
+      "from": "2bd873d6c734",
+      "text": "f6c5f7686c68"
+    },
+    "ko": {
+      "from": "2bd873d6c734",
+      "text": "e0103c8fadb8"
+    },
+    "pt-BR": {
+      "from": "2bd873d6c734",
+      "text": "686857f2fd1d"
+    },
+    "zh-CN": {
+      "from": "2bd873d6c734",
+      "text": "24f40d195e57"
+    }
+  },
+  "shell:gallery.builtWith": {
+    "de": {
+      "from": "fa34c68d3737",
+      "text": "44bef21369ff"
+    },
+    "es": {
+      "from": "fa34c68d3737",
+      "text": "408e930ab81d"
+    },
+    "fr": {
+      "from": "fa34c68d3737",
+      "text": "4ce62390de4c"
+    },
+    "it": {
+      "from": "fa34c68d3737",
+      "text": "5aa0b8111ae7"
+    },
+    "ja": {
+      "from": "fa34c68d3737",
+      "text": "a8a24c33d67e"
+    },
+    "ko": {
+      "from": "fa34c68d3737",
+      "text": "dc7540f78869"
+    },
+    "pt-BR": {
+      "from": "fa34c68d3737",
+      "text": "92044a86e5f4"
+    },
+    "zh-CN": {
+      "from": "fa34c68d3737",
+      "text": "2d3233ca869e"
+    }
+  },
+  "shell:gallery.download": {
+    "de": {
+      "from": "d6eafe823591",
+      "text": "b3025b16bfa6"
+    },
+    "es": {
+      "from": "d6eafe823591",
+      "text": "ed3d9c907370"
+    },
+    "fr": {
+      "from": "d6eafe823591",
+      "text": "cdaaab442d26"
+    },
+    "it": {
+      "from": "d6eafe823591",
+      "text": "723d32f77a1d"
+    },
+    "ja": {
+      "from": "d6eafe823591",
+      "text": "b85d7a94ae57"
+    },
+    "ko": {
+      "from": "d6eafe823591",
+      "text": "0a4ca9bc91ee"
+    },
+    "pt-BR": {
+      "from": "d6eafe823591",
+      "text": "b45ae836a031"
+    },
+    "zh-CN": {
+      "from": "d6eafe823591",
+      "text": "4673a2306165"
+    }
+  },
+  "shell:gallery.hide": {
+    "de": {
+      "from": "18f9758ccfa1",
+      "text": "d5c4b809b11b"
+    },
+    "es": {
+      "from": "18f9758ccfa1",
+      "text": "b94245fa3daf"
+    },
+    "fr": {
+      "from": "18f9758ccfa1",
+      "text": "adb9d985ef58"
+    },
+    "it": {
+      "from": "18f9758ccfa1",
+      "text": "09aa6444aa8d"
+    },
+    "ja": {
+      "from": "18f9758ccfa1",
+      "text": "83fb5f7717fd"
+    },
+    "ko": {
+      "from": "18f9758ccfa1",
+      "text": "d8b1ac7145ff"
+    },
+    "pt-BR": {
+      "from": "18f9758ccfa1",
+      "text": "3a4646fe1c45"
+    },
+    "zh-CN": {
+      "from": "18f9758ccfa1",
+      "text": "9728ac77e42c"
+    }
+  },
+  "shell:gallery.intro": {
+    "de": {
+      "from": "ee2bd5e2473e",
+      "text": "9f8278bb02d4"
+    },
+    "es": {
+      "from": "ee2bd5e2473e",
+      "text": "b15230fba642"
+    },
+    "fr": {
+      "from": "ee2bd5e2473e",
+      "text": "8c77eb446b43"
+    },
+    "it": {
+      "from": "ee2bd5e2473e",
+      "text": "91ff4f925e90"
+    },
+    "ja": {
+      "from": "ee2bd5e2473e",
+      "text": "94937e3ddf74"
+    },
+    "ko": {
+      "from": "ee2bd5e2473e",
+      "text": "80ac61b409ac"
+    },
+    "pt-BR": {
+      "from": "ee2bd5e2473e",
+      "text": "2a522d64f761"
+    },
+    "zh-CN": {
+      "from": "ee2bd5e2473e",
+      "text": "e8c392647c21"
+    }
+  },
+  "shell:gallery.loading": {
+    "de": {
+      "from": "05b01a715745",
+      "text": "be23cc0907a6"
+    },
+    "es": {
+      "from": "05b01a715745",
+      "text": "5359d66144e1"
+    },
+    "fr": {
+      "from": "05b01a715745",
+      "text": "553f5e156e4a"
+    },
+    "it": {
+      "from": "05b01a715745",
+      "text": "f4e96c13b30e"
+    },
+    "ja": {
+      "from": "05b01a715745",
+      "text": "ecb2d2b3dda7"
+    },
+    "ko": {
+      "from": "05b01a715745",
+      "text": "2f239c10929a"
+    },
+    "pt-BR": {
+      "from": "05b01a715745",
+      "text": "73cae15b984b"
+    },
+    "zh-CN": {
+      "from": "05b01a715745",
+      "text": "fc749c22e104"
+    }
+  },
+  "shell:gallery.minutes": {
+    "de": {
+      "from": "b87925ed2ba1",
+      "text": "daf96578c01a"
+    },
+    "es": {
+      "from": "b87925ed2ba1",
+      "text": "0df912f2ef5b"
+    },
+    "fr": {
+      "from": "b87925ed2ba1",
+      "text": "703af0a47e82"
+    },
+    "it": {
+      "from": "b87925ed2ba1",
+      "text": "dddfeadddae2"
+    },
+    "ja": {
+      "from": "b87925ed2ba1",
+      "text": "6296d351faa2"
+    },
+    "ko": {
+      "from": "b87925ed2ba1",
+      "text": "854a442f8b0d"
+    },
+    "pt-BR": {
+      "from": "b87925ed2ba1",
+      "text": "0df912f2ef5b"
+    },
+    "zh-CN": {
+      "from": "b87925ed2ba1",
+      "text": "9113d24105a7"
+    }
+  },
+  "shell:gallery.needs": {
+    "de": {
+      "from": "9088e4ae9015",
+      "text": "16699326d4c8"
+    },
+    "es": {
+      "from": "9088e4ae9015",
+      "text": "daff31259d2b"
+    },
+    "fr": {
+      "from": "9088e4ae9015",
+      "text": "c19969acce9d"
+    },
+    "it": {
+      "from": "9088e4ae9015",
+      "text": "1c402353005f"
+    },
+    "ja": {
+      "from": "9088e4ae9015",
+      "text": "4b4c167052c8"
+    },
+    "ko": {
+      "from": "9088e4ae9015",
+      "text": "6cf4d184cbce"
+    },
+    "pt-BR": {
+      "from": "9088e4ae9015",
+      "text": "85457c542a05"
+    },
+    "zh-CN": {
+      "from": "9088e4ae9015",
+      "text": "f17e7660ff7a"
+    }
+  },
+  "shell:gallery.next": {
+    "de": {
+      "from": "380295ff1df6",
+      "text": "ca2bb01471e2"
+    },
+    "es": {
+      "from": "380295ff1df6",
+      "text": "26b04839ee66"
+    },
+    "fr": {
+      "from": "380295ff1df6",
+      "text": "e87e902abbd8"
+    },
+    "it": {
+      "from": "380295ff1df6",
+      "text": "e0e35f691d04"
+    },
+    "ja": {
+      "from": "380295ff1df6",
+      "text": "3a4dec344fef"
+    },
+    "ko": {
+      "from": "380295ff1df6",
+      "text": "279ca852b3df"
+    },
+    "pt-BR": {
+      "from": "380295ff1df6",
+      "text": "5c80fb7f963a"
+    },
+    "zh-CN": {
+      "from": "380295ff1df6",
+      "text": "cbb417b3ed9b"
+    }
+  },
+  "shell:gallery.noResults": {
+    "de": {
+      "from": "74567475b13e",
+      "text": "41d84111b02d"
+    },
+    "es": {
+      "from": "74567475b13e",
+      "text": "fc591e77ac61"
+    },
+    "fr": {
+      "from": "74567475b13e",
+      "text": "f87f36f8be2b"
+    },
+    "it": {
+      "from": "74567475b13e",
+      "text": "53c798787142"
+    },
+    "ja": {
+      "from": "74567475b13e",
+      "text": "c7321eb88359"
+    },
+    "ko": {
+      "from": "74567475b13e",
+      "text": "8b9c6a68ef1d"
+    },
+    "pt-BR": {
+      "from": "74567475b13e",
+      "text": "b7934e0aca3a"
+    },
+    "zh-CN": {
+      "from": "74567475b13e",
+      "text": "dba704e9cb0d"
+    }
+  },
+  "shell:gallery.open": {
+    "de": {
+      "from": "9f8dd612fab3",
+      "text": "58dc5c4ab821"
+    },
+    "es": {
+      "from": "9f8dd612fab3",
+      "text": "0c1760de50f0"
+    },
+    "fr": {
+      "from": "9f8dd612fab3",
+      "text": "c33e00834cce"
+    },
+    "it": {
+      "from": "9f8dd612fab3",
+      "text": "af1e07910ba4"
+    },
+    "ja": {
+      "from": "9f8dd612fab3",
+      "text": "e9626b054d11"
+    },
+    "ko": {
+      "from": "9f8dd612fab3",
+      "text": "864b6f51d733"
+    },
+    "pt-BR": {
+      "from": "9f8dd612fab3",
+      "text": "e0c5b50fb7fd"
+    },
+    "zh-CN": {
+      "from": "9f8dd612fab3",
+      "text": "1fc731e1ae12"
+    }
+  },
+  "shell:gallery.ownFile": {
+    "de": {
+      "from": "123f7beb9190",
+      "text": "def500ea4ad2"
+    },
+    "es": {
+      "from": "123f7beb9190",
+      "text": "51b9c7c46e02"
+    },
+    "fr": {
+      "from": "123f7beb9190",
+      "text": "d46eba54d805"
+    },
+    "it": {
+      "from": "123f7beb9190",
+      "text": "387e305bcbee"
+    },
+    "ja": {
+      "from": "123f7beb9190",
+      "text": "3e8e11eb2440"
+    },
+    "ko": {
+      "from": "123f7beb9190",
+      "text": "c23d2451a413"
+    },
+    "pt-BR": {
+      "from": "123f7beb9190",
+      "text": "544be042094e"
+    },
+    "zh-CN": {
+      "from": "123f7beb9190",
+      "text": "1723d0b738f8"
+    }
+  },
+  "shell:gallery.playInBrowser": {
+    "de": {
+      "from": "36ee90fcd36d",
+      "text": "bb392f9a01be"
+    },
+    "es": {
+      "from": "36ee90fcd36d",
+      "text": "207ecf62878a"
+    },
+    "fr": {
+      "from": "36ee90fcd36d",
+      "text": "f8347545d64a"
+    },
+    "it": {
+      "from": "36ee90fcd36d",
+      "text": "60f6db83d077"
+    },
+    "ja": {
+      "from": "36ee90fcd36d",
+      "text": "67b5018637f3"
+    },
+    "ko": {
+      "from": "36ee90fcd36d",
+      "text": "ce2500d61dbf"
+    },
+    "pt-BR": {
+      "from": "36ee90fcd36d",
+      "text": "8d990bce305e"
+    },
+    "zh-CN": {
+      "from": "36ee90fcd36d",
+      "text": "bfcf57d4bef3"
+    }
+  },
+  "shell:gallery.position": {
+    "de": {
+      "from": "35d900116a14",
+      "text": "ab8b505453b0"
+    },
+    "es": {
+      "from": "35d900116a14",
+      "text": "bb0c6efef18c"
+    },
+    "fr": {
+      "from": "35d900116a14",
+      "text": "b74edc87d77a"
+    },
+    "it": {
+      "from": "35d900116a14",
+      "text": "5c1fe5666b49"
+    },
+    "ja": {
+      "from": "35d900116a14",
+      "text": "11b4f63bb08c"
+    },
+    "ko": {
+      "from": "35d900116a14",
+      "text": "11b4f63bb08c"
+    },
+    "pt-BR": {
+      "from": "35d900116a14",
+      "text": "bb0c6efef18c"
+    },
+    "zh-CN": {
+      "from": "35d900116a14",
+      "text": "11b4f63bb08c"
+    }
+  },
+  "shell:gallery.previous": {
+    "de": {
+      "from": "1aa184044e02",
+      "text": "c46ad0de4d9d"
+    },
+    "es": {
+      "from": "1aa184044e02",
+      "text": "c17fddc6230c"
+    },
+    "fr": {
+      "from": "1aa184044e02",
+      "text": "e468c1bc98e3"
+    },
+    "it": {
+      "from": "1aa184044e02",
+      "text": "27d8e6887aec"
+    },
+    "ja": {
+      "from": "1aa184044e02",
+      "text": "c28000382219"
+    },
+    "ko": {
+      "from": "1aa184044e02",
+      "text": "6d24b8d6019c"
+    },
+    "pt-BR": {
+      "from": "1aa184044e02",
+      "text": "ed39bb6329ce"
+    },
+    "zh-CN": {
+      "from": "1aa184044e02",
+      "text": "f7c9907e006f"
+    }
+  },
+  "shell:gallery.results": {
+    "de": {
+      "from": "7349f62a2d27",
+      "text": "fe01e59b2dc0"
+    },
+    "es": {
+      "from": "7349f62a2d27",
+      "text": "71781c5f6886"
+    },
+    "fr": {
+      "from": "7349f62a2d27",
+      "text": "cf22132d61be"
+    },
+    "it": {
+      "from": "7349f62a2d27",
+      "text": "b4b0031a2909"
+    },
+    "ja": {
+      "from": "7349f62a2d27",
+      "text": "4b03a2c159a5"
+    },
+    "ko": {
+      "from": "7349f62a2d27",
+      "text": "876c1e1934b0"
+    },
+    "pt-BR": {
+      "from": "7349f62a2d27",
+      "text": "44aef78bd4fb"
+    },
+    "zh-CN": {
+      "from": "7349f62a2d27",
+      "text": "9e73d7f387e6"
+    }
+  },
+  "shell:gallery.retry": {
+    "de": {
+      "from": "d8b8392e2c54",
+      "text": "948643cb59e8"
+    },
+    "es": {
+      "from": "d8b8392e2c54",
+      "text": "a9254c5f8128"
+    },
+    "fr": {
+      "from": "d8b8392e2c54",
+      "text": "af273d956b5b"
+    },
+    "it": {
+      "from": "d8b8392e2c54",
+      "text": "20b5f4b8bfd5"
+    },
+    "ja": {
+      "from": "d8b8392e2c54",
+      "text": "fb6cc190949d"
+    },
+    "ko": {
+      "from": "d8b8392e2c54",
+      "text": "196856a662bd"
+    },
+    "pt-BR": {
+      "from": "d8b8392e2c54",
+      "text": "6bb3150b9757"
+    },
+    "zh-CN": {
+      "from": "d8b8392e2c54",
+      "text": "b8784c8dd563"
+    }
+  },
+  "shell:gallery.sampleInput": {
+    "de": {
+      "from": "f682712bd7e4",
+      "text": "1841b4898d99"
+    },
+    "es": {
+      "from": "f682712bd7e4",
+      "text": "8ada53bdfbbe"
+    },
+    "fr": {
+      "from": "f682712bd7e4",
+      "text": "48fbc07f1ffe"
+    },
+    "it": {
+      "from": "f682712bd7e4",
+      "text": "073b165b2309"
+    },
+    "ja": {
+      "from": "f682712bd7e4",
+      "text": "623881d25dd1"
+    },
+    "ko": {
+      "from": "f682712bd7e4",
+      "text": "e32c5eb73b45"
+    },
+    "pt-BR": {
+      "from": "f682712bd7e4",
+      "text": "6f428ae20b1b"
+    },
+    "zh-CN": {
+      "from": "f682712bd7e4",
+      "text": "d6b7995da4cd"
+    }
+  },
+  "shell:gallery.searchLabel": {
+    "de": {
+      "from": "e1bd0e56261c",
+      "text": "2024c94e860a"
+    },
+    "es": {
+      "from": "e1bd0e56261c",
+      "text": "0045130405af"
+    },
+    "fr": {
+      "from": "e1bd0e56261c",
+      "text": "ca4a1b4ba6cb"
+    },
+    "it": {
+      "from": "e1bd0e56261c",
+      "text": "a6d246d6fe5a"
+    },
+    "ja": {
+      "from": "e1bd0e56261c",
+      "text": "7cfd5f81f52d"
+    },
+    "ko": {
+      "from": "e1bd0e56261c",
+      "text": "5e2d914ae3fd"
+    },
+    "pt-BR": {
+      "from": "e1bd0e56261c",
+      "text": "c454cf19aac0"
+    },
+    "zh-CN": {
+      "from": "e1bd0e56261c",
+      "text": "7601a0320b8d"
+    }
+  },
+  "shell:gallery.searchPlaceholder": {
+    "de": {
+      "from": "6f8da49ab8b1",
+      "text": "0e90e8d8e2cf"
+    },
+    "es": {
+      "from": "6f8da49ab8b1",
+      "text": "42d2eaa2f90b"
+    },
+    "fr": {
+      "from": "6f8da49ab8b1",
+      "text": "0acdab4e69f5"
+    },
+    "it": {
+      "from": "6f8da49ab8b1",
+      "text": "5f3010356972"
+    },
+    "ja": {
+      "from": "6f8da49ab8b1",
+      "text": "33d643c35af8"
+    },
+    "ko": {
+      "from": "6f8da49ab8b1",
+      "text": "2fbd0908a67b"
+    },
+    "pt-BR": {
+      "from": "6f8da49ab8b1",
+      "text": "a418c14ae75d"
+    },
+    "zh-CN": {
+      "from": "6f8da49ab8b1",
+      "text": "cf903f431825"
+    }
+  },
+  "shell:gallery.start": {
+    "de": {
+      "from": "2bebcdce8571",
+      "text": "2be5918436f6"
+    },
+    "es": {
+      "from": "2bebcdce8571",
+      "text": "d7fc6c9a265b"
+    },
+    "fr": {
+      "from": "2bebcdce8571",
+      "text": "2c50d6f56530"
+    },
+    "it": {
+      "from": "2bebcdce8571",
+      "text": "73de39734038"
+    },
+    "ja": {
+      "from": "2bebcdce8571",
+      "text": "5df103f2f028"
+    },
+    "ko": {
+      "from": "2bebcdce8571",
+      "text": "e03ffea079bf"
+    },
+    "pt-BR": {
+      "from": "2bebcdce8571",
+      "text": "340128c38113"
+    },
+    "zh-CN": {
+      "from": "2bebcdce8571",
+      "text": "5a91b10f3bd1"
+    }
+  },
+  "shell:gallery.startHere": {
+    "de": {
+      "from": "2adc964c0847",
+      "text": "1922304a52e8"
+    },
+    "es": {
+      "from": "2adc964c0847",
+      "text": "4ddfeb755269"
+    },
+    "fr": {
+      "from": "2adc964c0847",
+      "text": "f97275a64b9f"
+    },
+    "it": {
+      "from": "2adc964c0847",
+      "text": "45c47e0c4fb1"
+    },
+    "ja": {
+      "from": "2adc964c0847",
+      "text": "9f575b16691c"
+    },
+    "ko": {
+      "from": "2adc964c0847",
+      "text": "af14594e0c10"
+    },
+    "pt-BR": {
+      "from": "2adc964c0847",
+      "text": "0e6995b2635f"
+    },
+    "zh-CN": {
+      "from": "2adc964c0847",
+      "text": "df7006ca0697"
+    }
+  },
+  "shell:gallery.startNote": {
+    "de": {
+      "from": "45d1f6d7532f",
+      "text": "72b3b3e13880"
+    },
+    "es": {
+      "from": "45d1f6d7532f",
+      "text": "40f683b5245b"
+    },
+    "fr": {
+      "from": "45d1f6d7532f",
+      "text": "bdcdfd254171"
+    },
+    "it": {
+      "from": "45d1f6d7532f",
+      "text": "f17904ee7758"
+    },
+    "ja": {
+      "from": "45d1f6d7532f",
+      "text": "b061e2763abb"
+    },
+    "ko": {
+      "from": "45d1f6d7532f",
+      "text": "a715eb7594f5"
+    },
+    "pt-BR": {
+      "from": "45d1f6d7532f",
+      "text": "25367bae99ab"
+    },
+    "zh-CN": {
+      "from": "45d1f6d7532f",
+      "text": "9f516d3834eb"
+    }
+  },
+  "shell:gallery.tabsLabel": {
+    "de": {
+      "from": "b8b1d894c683",
+      "text": "055b8f9b9e50"
+    },
+    "es": {
+      "from": "b8b1d894c683",
+      "text": "7ef4eab73ebc"
+    },
+    "fr": {
+      "from": "b8b1d894c683",
+      "text": "4b151208bce6"
+    },
+    "it": {
+      "from": "b8b1d894c683",
+      "text": "3977d35296ee"
+    },
+    "ja": {
+      "from": "b8b1d894c683",
+      "text": "88074d4c5cc6"
+    },
+    "ko": {
+      "from": "b8b1d894c683",
+      "text": "b68c7d1bc959"
+    },
+    "pt-BR": {
+      "from": "b8b1d894c683",
+      "text": "cba7e08a0778"
+    },
+    "zh-CN": {
+      "from": "b8b1d894c683",
+      "text": "0d12cbd6562b"
+    }
+  },
+  "shell:gallery.title": {
+    "de": {
+      "from": "9f8dd612fab3",
+      "text": "58dc5c4ab821"
+    },
+    "es": {
+      "from": "9f8dd612fab3",
+      "text": "0c1760de50f0"
+    },
+    "fr": {
+      "from": "9f8dd612fab3",
+      "text": "c33e00834cce"
+    },
+    "it": {
+      "from": "9f8dd612fab3",
+      "text": "af1e07910ba4"
+    },
+    "ja": {
+      "from": "9f8dd612fab3",
+      "text": "e9626b054d11"
+    },
+    "ko": {
+      "from": "9f8dd612fab3",
+      "text": "864b6f51d733"
+    },
+    "pt-BR": {
+      "from": "9f8dd612fab3",
+      "text": "e0c5b50fb7fd"
+    },
+    "zh-CN": {
+      "from": "9f8dd612fab3",
+      "text": "1fc731e1ae12"
+    }
+  },
+  "shell:gallery.unavailable": {
+    "de": {
+      "from": "210969046898",
+      "text": "bb2f3bdb3c1b"
+    },
+    "es": {
+      "from": "210969046898",
+      "text": "9c19fb5a2055"
+    },
+    "fr": {
+      "from": "210969046898",
+      "text": "07640021531d"
+    },
+    "it": {
+      "from": "210969046898",
+      "text": "a409686dc6db"
+    },
+    "ja": {
+      "from": "210969046898",
+      "text": "0dc7b05c390e"
+    },
+    "ko": {
+      "from": "210969046898",
+      "text": "380cbf89b818"
+    },
+    "pt-BR": {
+      "from": "210969046898",
+      "text": "44c6c6c37e38"
+    },
+    "zh-CN": {
+      "from": "210969046898",
+      "text": "88169e53d40e"
+    }
+  },
+  "shell:gallery.whatItMade": {
+    "de": {
+      "from": "864f2b793f45",
+      "text": "d31d77b86453"
+    },
+    "es": {
+      "from": "864f2b793f45",
+      "text": "a7c975b623a6"
+    },
+    "fr": {
+      "from": "864f2b793f45",
+      "text": "cdbf5e7a8fc7"
+    },
+    "it": {
+      "from": "864f2b793f45",
+      "text": "6327821d5e17"
+    },
+    "ja": {
+      "from": "864f2b793f45",
+      "text": "a6eb5212df24"
+    },
+    "ko": {
+      "from": "864f2b793f45",
+      "text": "a77251669030"
+    },
+    "pt-BR": {
+      "from": "864f2b793f45",
+      "text": "82fc6236754c"
+    },
+    "zh-CN": {
+      "from": "864f2b793f45",
+      "text": "ccfeeeafdf5a"
+    }
+  },
   "shell:home.active": {
     "de": {
       "from": "92340695899b",
@@ -183155,6 +184209,40 @@
     "zh-CN": {
       "from": "3c3cf53639e5",
       "text": "08bb652726cd"
+    }
+  },
+  "shell:home.galleryHint": {
+    "de": {
+      "from": "afe1a8340dde",
+      "text": "fb7c72dd8593"
+    },
+    "es": {
+      "from": "afe1a8340dde",
+      "text": "89d9ed02e70e"
+    },
+    "fr": {
+      "from": "afe1a8340dde",
+      "text": "3bbaf5f55275"
+    },
+    "it": {
+      "from": "afe1a8340dde",
+      "text": "4b898f3440e3"
+    },
+    "ja": {
+      "from": "afe1a8340dde",
+      "text": "579b153a2ee4"
+    },
+    "ko": {
+      "from": "afe1a8340dde",
+      "text": "fd30be7275c1"
+    },
+    "pt-BR": {
+      "from": "afe1a8340dde",
+      "text": "dcd1df67ed5f"
+    },
+    "zh-CN": {
+      "from": "afe1a8340dde",
+      "text": "35a866f7726a"
     }
   },
   "shell:home.greetingFallback": {

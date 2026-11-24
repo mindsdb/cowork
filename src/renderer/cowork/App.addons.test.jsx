@@ -145,6 +145,12 @@ vi.mock('./lib/analytics', () => ({
   trackAddonAdded: vi.fn(),
   trackAddonQueued: vi.fn(),
   trackAddonOverridden: vi.fn(),
+  trackGalleryShown: vi.fn(),
+  trackGalleryClosed: vi.fn(),
+  trackGalleryExampleOpened: vi.fn(),
+  trackGalleryExampleStarted: vi.fn(),
+  trackGallerySearched: vi.fn(),
+  trackGalleryUnavailable: vi.fn(),
 }));
 
 
