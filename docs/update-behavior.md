@@ -404,7 +404,15 @@ PR #401); update polling and server updates run in every packaged build.
   a missing/malformed/unrecognized kind is **never** treated as `prod`, so a
   mispackaged build fails safe to OTA-off.
 - QA override: `OTA_UI=on|off` flips the gate in any build without a rebuild
-  (`otaUiEnabled()` in `update-logic.ts`).
+  (`otaUiEnabled()` in `update-logic.ts`). The override doesn't change which
+  bundles the app accepts: a packaged build still takes only a bundle signed
+  with the release key.
+- Past the gate, a UI bundle is taken only when `latest.json` and the bundle's
+  own file list carry valid signatures, and it is served only while every
+  cached file still matches that list. The app checks this before every load.
+  A cached bundle that fails is deleted without a prompt, and the window loads
+  the renderer bundled with the shell. The next check downloads a clean copy.
+  The README's "Over-the-Air Updates → Security" section has the details.
 
 ## Stream repair: a prod install holding a pre-release
 
