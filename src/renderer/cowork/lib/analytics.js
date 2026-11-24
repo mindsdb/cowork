@@ -71,7 +71,7 @@ const EVENTS = {
   EXAMPLE_PICKED:           'example_picked',           // { example_id, list: 'examples'|<task mode id> } — an example was picked on Home; it fills the composer and sends nothing
   // The Use Case Gallery column beside Home (ENG-4664). Its own names, apart
   // from the console Gallery's gallery_* events, so neither funnel counts the other.
-  HOME_GALLERY_SHOWN:       'home_gallery_shown',       // { how: 'auto'|'button'|'checklist' } — the column opened
+  HOME_GALLERY_SHOWN:       'home_gallery_shown',       // { how: 'auto'|'button'|'checklist'|'preview' } — the column opened; 'preview' is a replayed first run (?gallery=first-run, never production)
   HOME_GALLERY_CLOSED:      'home_gallery_closed',      // { how: 'button'|'escape'|'started'|'own_work' } — it folded away; 'started' = an example was started from it, 'own_work' = Use my own file
   HOME_GALLERY_EXAMPLE_OPENED: 'home_gallery_example_opened', // { example_id, from: 'start_here'|'list'|'search'|'step' }
   HOME_GALLERY_EXAMPLE_STARTED: 'home_gallery_example_started', // { example_id } — Start from this example: composer filled, nothing sent

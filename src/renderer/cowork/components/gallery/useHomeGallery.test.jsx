@@ -132,6 +132,15 @@ describe('useHomeGallery', () => {
     expect(trackGalleryUnavailable).toHaveBeenCalledWith('http');
   });
 
+  it('replays the first run with the welcome when asked, even for an account with tasks, and records it apart', async () => {
+    window.localStorage.setItem('anton.gallery.settled', '1');
+    const { result } = mount({ preview: true, tasks: [{ id: 't1' }] });
+    await waitFor(() => expect(result.current.open).toBe(true));
+    expect(result.current.welcome).toBe(true);
+    expect(trackGalleryShown).toHaveBeenCalledWith('preview');
+    expect(trackGalleryShown).not.toHaveBeenCalledWith('auto');
+  });
+
   it('does nothing where the gallery is not offered', async () => {
     const fetchSpy = respond(LIST);
     vi.stubGlobal('fetch', fetchSpy);

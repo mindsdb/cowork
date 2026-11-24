@@ -23,6 +23,23 @@ export function opensByItself({ offered, hasManifest, tasksStatus, taskCount, se
   return Boolean(offered && hasManifest && tasksStatus === 'ready' && taskCount === 0 && !settled);
 }
 
+const PRODUCTION_API = 'https://api.mindshub.ai';
+
+/**
+ * Whether to replay the first run for testing: `?gallery=first-run` on the
+ * address, honoured only away from production (PR environments, dev,
+ * staging), so the first run can be seen again with any account. Production
+ * ignores it, so it never needs removing and real users cannot trigger it.
+ */
+export function firstRunPreviewRequested({ search, apiBase }) {
+  if (String(apiBase || '').replace(/\/+$/, '') === PRODUCTION_API) return false;
+  try {
+    return new URLSearchParams(search || '').get('gallery') === 'first-run';
+  } catch {
+    return false;
+  }
+}
+
 /* Per browser, or per Desktop install: localStorage, like the checklist. A
    storage that throws (private mode, blocked site data) reads as not settled,
    so at worst the column opens once more; it never fails to render. */

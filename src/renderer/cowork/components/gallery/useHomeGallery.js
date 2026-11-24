@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { host } from '../../../platform/host';
 import { PLATFORM_UI } from '../../../lib/deployment';
-import { MINDS_CONSOLE_URL } from '../../../lib/mindsUrls';
+import { MINDS_API_BASE, MINDS_CONSOLE_URL } from '../../../lib/mindsUrls';
 import { fetchGalleryManifest } from './galleryManifest';
-import { galleryOffered, opensByItself, readGallerySettled, markGallerySettled } from './galleryRules';
+import { galleryOffered, opensByItself, readGallerySettled, markGallerySettled, firstRunPreviewRequested } from './galleryRules';
 import {
   trackGalleryShown, trackGalleryClosed, trackGalleryExampleStarted, trackGalleryUnavailable,
 } from '../../lib/analytics';
 
 const OFFERED = galleryOffered({ isWeb: host.isWeb, platformUi: PLATFORM_UI, isMobileShell: host.isMobileShell });
+// Read when the app loads, before the router tidies the address.
+const PREVIEW = typeof window !== 'undefined'
+  && firstRunPreviewRequested({ search: window.location.search, apiBase: MINDS_API_BASE });
 
 /**
  * The Use Case Gallery column's state for the app: the console's list (read
@@ -18,7 +21,7 @@ const OFFERED = galleryOffered({ isWeb: host.isWeb, platformUi: PLATFORM_UI, isM
  * It opens by itself once, on Home, for an account with no tasks yet, and
  * never again in this browser or Desktop install after it is folded or used.
  */
-export function useHomeGallery({ onHome, tasks, tasksStatus, consoleUrl = MINDS_CONSOLE_URL, offered = OFFERED }) {
+export function useHomeGallery({ onHome, tasks, tasksStatus, consoleUrl = MINDS_CONSOLE_URL, offered = OFFERED, preview = PREVIEW }) {
   // `attempt` counts reads, so each failed one is recorded at most once.
   const [list, setList] = useState({ manifest: null, failure: null, attempt: 0 });
   // Whether the list was needed: the column could open by itself, or someone
@@ -56,8 +59,8 @@ export function useHomeGallery({ onHome, tasks, tasksStatus, consoleUrl = MINDS_
   }, [offered, onHome, load]);
 
   useEffect(() => {
-    if (offered && onHome && tasksStatus === 'ready' && tasks.length === 0 && !readGallerySettled()) setNeeded(true);
-  }, [offered, onHome, tasksStatus, tasks.length]);
+    if (offered && onHome && (preview || (tasksStatus === 'ready' && tasks.length === 0 && !readGallerySettled()))) setNeeded(true);
+  }, [offered, onHome, preview, tasksStatus, tasks.length]);
 
   useEffect(() => {
     if (!onHome || autoTriedRef.current) return;
@@ -72,13 +75,22 @@ export function useHomeGallery({ onHome, tasks, tasksStatus, consoleUrl = MINDS_
     if (offered && (!list.manifest && !list.failure)) return;
     if (tasksStatus === 'loading') return;
     autoTriedRef.current = true;
+    // A replayed first run (testing, never production): opens and greets
+    // whatever the account holds, recorded apart from real first runs.
+    if (offered && preview && list.manifest) {
+      setOpen(true);
+      setOpenedBy('auto');
+      setFocusSearch(false);
+      trackGalleryShown('preview');
+      return;
+    }
     if (opensByItself(decide)) {
       setOpen(true);
       setOpenedBy('auto');
       setFocusSearch(false);
       trackGalleryShown('auto');
     }
-  }, [onHome, offered, list, tasksStatus, tasks.length]);
+  }, [onHome, offered, preview, list, tasksStatus, tasks.length]);
 
   const show = useCallback((how) => {
     if (!offered) return;

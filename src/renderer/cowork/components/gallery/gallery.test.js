@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { readGalleryManifest, fetchGalleryManifest, galleryManifestUrl } from './galleryManifest';
 import { filterGallery, matchesQuery, ALL_CATEGORIES } from './galleryFilter';
-import { galleryOffered, opensByItself, readGallerySettled, markGallerySettled, runMinutes } from './galleryRules';
+import { galleryOffered, opensByItself, readGallerySettled, markGallerySettled, runMinutes, firstRunPreviewRequested } from './galleryRules';
 
 const CONSOLE = 'https://console.example.test';
 const LIST_URL = `${CONSOLE}/gallery-examples/manifest.json`;
@@ -218,5 +218,18 @@ describe('runMinutes', () => {
     expect(runMinutes(20)).toBe(1);
     expect(runMinutes(187)).toBe(3);
     expect(runMinutes(null)).toBeNull();
+  });
+});
+
+describe('firstRunPreviewRequested', () => {
+  it.each([
+    ['?gallery=first-run', 'https://api-pr-cowork-1568.dev.mindshub.ai', true],
+    ['?x=1&gallery=first-run', 'https://api.staging.mindshub.ai', true],
+    ['?gallery=first-run', 'https://api.mindshub.ai', false],
+    ['?gallery=first-run', 'https://api.mindshub.ai/', false],
+    ['?gallery=other', 'https://api.staging.mindshub.ai', false],
+    ['', 'https://api.staging.mindshub.ai', false],
+  ])('%s on %s → %s', (search, apiBase, expected) => {
+    expect(firstRunPreviewRequested({ search, apiBase })).toBe(expected);
   });
 });
