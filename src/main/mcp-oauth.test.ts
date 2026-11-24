@@ -584,6 +584,59 @@ describe('discoverMcpAuth through the guarded fetch', () => {
     expect(Date.now() - started).toBeLessThan(1000);
   });
 
+  it('settles an open stream whose first chunk starts with a byte order mark', async () => {
+    const { fetchFn } = guardedFetch({ 'content-type': 'text/event-stream' }, ['﻿data: ' + RESULT + '\n\n'], true);
+    expect(await discoverMcpAuth(SERVER, fetchFn)).toEqual({ needsLogin: false });
+  });
+
+  it('settles when the byte order mark is split across chunks', async () => {
+    const bytes = Buffer.from('﻿data: ' + RESULT + '\n\n');
+    const { fetchFn } = guardedFetch({ 'content-type': 'text/event-stream' }, [bytes.subarray(0, 2), bytes.subarray(2)], true);
+    expect(await discoverMcpAuth(SERVER, fetchFn)).toEqual({ needsLogin: false });
+  });
+
+  it('strips only one byte order mark and only at the start', () => {
+    const feed = initializeEventFeeder();
+    expect(feed('﻿﻿data: ' + RESULT + '\n\n')).toBe(false);
+    const later = initializeEventFeeder();
+    expect(later(': c\n')).toBe(false);
+    expect(later('﻿data: ' + RESULT + '\n\n')).toBe(false);
+  });
+
+  describe('OAuth calls keep their status handling when the body cannot be decoded', () => {
+    const junk = { 'content-encoding': 'compress' };
+    const CLIENT = { clientId: 'id', authMethod: 'none' as const };
+
+    it('treats an undecodable metadata 404 as no document and continues the 401 fallback', async () => {
+      const first = guardedFetch({ 'www-authenticate': 'Bearer' }, [], false, 401).fetchFn;
+      const missing = guardedFetch(junk, ['junk'], false, 404).fetchFn;
+      let calls = 0;
+      const fetchFn: GuardedFetch = (input, init) => (calls++ === 0 ? first(input, init) : missing(input, init));
+      const found = await discoverMcpAuth(SERVER, fetchFn);
+      expect(found).toMatchObject({
+        needsLogin: true,
+        resource: SERVER,
+        authorizationServer: { tokenEndpoint: 'https://mcp.example.com/token' },
+      });
+    });
+
+    it('keeps a token endpoint 401 as grant_refused', async () => {
+      const { fetchFn } = guardedFetch(junk, ['junk'], false, 401);
+      expect(await failure(refreshTokens(AS, CLIENT, { refreshToken: 'rt', resource: SERVER }, fetchFn, () => 0))).toBe('grant_refused');
+    });
+
+    it('reports an undecodable token 200 as the retryable token_failed', async () => {
+      const { fetchFn } = guardedFetch(junk, ['junk'], false, 200);
+      expect(await failure(refreshTokens(AS, CLIENT, { refreshToken: 'rt', resource: SERVER }, fetchFn, () => 0))).toBe('token_failed');
+    });
+
+    it('still reports revocation success from the status alone', async () => {
+      const { fetchFn } = guardedFetch(junk, ['junk'], false, 200);
+      const as = { ...AS, revocationEndpoint: 'https://auth.example.com/revoke' };
+      expect(await revokeToken(as, CLIENT, { token: 't', hint: 'refresh_token' }, fetchFn)).toBe(true);
+    });
+  });
+
   it('times out on an open stream that never completes an answer', async () => {
     const { fetchFn } = guardedFetch({ 'content-type': 'text/event-stream' }, ['data: {"jsonrpc"'], true);
     expect(await failure(discoverMcpAuth(SERVER, fetchFn))).toBe('timeout');

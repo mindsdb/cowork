@@ -12,7 +12,7 @@
  * meant for another service under its own name.
  */
 
-import type { GuardedFetch } from './guarded-fetch';
+import { GuardedFetchError, type GuardedFetch } from './guarded-fetch';
 
 export type McpOAuthErrorCode =
   | 'not_mcp'
@@ -134,8 +134,14 @@ export function initializeEventFeeder(): (text: string) => boolean {
   let data: string[] = [];
   let pending = '';
   let skipLf = false;
+  let started = false;
   return (input) => {
     let text = input;
+    // One leading byte order mark is not part of the first line (WHATWG SSE).
+    if (!started && text !== '') {
+      started = true;
+      if (text.startsWith('\uFEFF')) text = text.slice(1);
+    }
     if (skipLf && text.startsWith('\n')) text = text.slice(1);
     if (text !== '') skipLf = false;
     let start = 0;
@@ -304,7 +310,8 @@ export async function revokeToken(
 ): Promise<boolean> {
   if (!authorizationServer.revocationEndpoint) return false;
   const { headers, body } = authenticated(client, { token: token.token, token_type_hint: token.hint });
-  const response = await fetchFn(authorizationServer.revocationEndpoint, { method: 'POST', headers, body });
+  // Only the status counts, so the body is never decoded.
+  const response = await fetchFn(authorizationServer.revocationEndpoint, { method: 'POST', headers, body, decodeBody: () => false });
   return response.status === 200;
 }
 
@@ -316,7 +323,22 @@ async function tokenRequest(
   now: () => number,
 ): Promise<TokenSet> {
   const { headers, body } = authenticated(client, params);
-  const response = await fetchFn(authorizationServer.tokenEndpoint, { method: 'POST', headers, body });
+  // A 401 is judged by status alone, so its body is never decoded; an
+  // undecodable 200 or 400 body is the same retryable failure as an unreadable one.
+  let response: Response;
+  try {
+    response = await fetchFn(authorizationServer.tokenEndpoint, {
+      method: 'POST',
+      headers,
+      body,
+      decodeBody: (status) => status === 200 || status === 400,
+    });
+  } catch (err) {
+    if (err instanceof GuardedFetchError && err.code === 'bad_response') {
+      throw new McpOAuthError('token_failed', 'the token endpoint sent a body that could not be decoded');
+    }
+    throw err;
+  }
   if (response.status !== 200) {
     const error = await jsonObject(response, 'token_failed').catch(() => ({} as Record<string, unknown>));
     const code = typeof error.error === 'string' && OAUTH_ERROR_CODES.has(error.error) ? `: ${error.error}` : '';
@@ -516,7 +538,8 @@ function scopesFrom(metadata: { scopes_supported?: unknown } | null): string | u
 
 /* A JSON object from `url` when it answers 200 with one, else null. */
 async function optionalJson(url: string, fetchFn: GuardedFetch): Promise<Record<string, unknown> | null> {
-  const response = await fetchFn(url, { headers: { accept: 'application/json' } });
+  // Only a 200 body is read; an undecodable error page still means "none there".
+  const response = await fetchFn(url, { headers: { accept: 'application/json' }, decodeBody: (status) => status === 200 });
   if (response.status !== 200) return null;
   try {
     const parsed: unknown = await response.json();

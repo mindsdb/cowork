@@ -321,6 +321,20 @@ describe('createGuardedFetch', () => {
       expect(await refusal(fetchFn('https://mcp.example.com/'))).toBe('bad_response');
     });
 
+    it('rejects an empty 200 with an unsupported encoding or a missing gzip payload', async () => {
+      for (const encoding of ['zstd', 'gzip']) {
+        const { fetchFn } = guarded(encoded(encoding, Buffer.alloc(0)));
+        expect(await refusal(fetchFn('https://mcp.example.com/'))).toBe('bad_response');
+      }
+    });
+
+    it('does not decode when decodeBody declines, and the status stays readable', async () => {
+      const { fetchFn } = guarded(() => ({ status: 401, headers: { 'content-encoding': 'zstd' }, chunks: ['junk'] }));
+      const response = await fetchFn('https://mcp.example.com/', { decodeBody: (status) => status === 200 });
+      expect(response.status).toBe(401);
+      expect(await response.text()).toBe('');
+    });
+
     it('accepts a bodiless response that carries a content-encoding header', async () => {
       const { fetchFn } = guarded(() => ({ status: 204, headers: { 'content-encoding': 'gzip' } }));
       expect((await fetchFn('https://mcp.example.com/')).status).toBe(204);

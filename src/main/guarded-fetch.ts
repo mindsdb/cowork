@@ -294,7 +294,7 @@ function isEncoded(res: IncomingMessage): boolean {
 /* Decodes a body the server compressed despite `accept-encoding: identity`.
    An encoding this cannot decode is an error, never raw bytes read as text. */
 function decodeBody(res: IncomingMessage, body: Buffer, maxBytes: number): Buffer {
-  if (!isEncoded(res) || NO_BODY_STATUSES.has(res.statusCode ?? 0) || body.length === 0) return body;
+  if (!isEncoded(res) || NO_BODY_STATUSES.has(res.statusCode ?? 0)) return body;
   const encoding = contentEncoding(res);
   const options = { maxOutputLength: maxBytes };
   try {
