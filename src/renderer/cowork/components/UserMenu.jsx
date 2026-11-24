@@ -48,6 +48,7 @@ import { trustedOrgIcon } from './OrgIcon';
 import { useLogout, LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
 import { useMindsOrgs } from '../hooks/useMindsOrgs';
 import { rememberLastOrg, useOrgLanding } from '../lib/orgLanding';
+import { noteOrgSwitchIntent, useOrgChangeTracking } from '../lib/orgChangeTracking';
 import { organizationLabel, orgDisplayName } from '../../../shared/minds-orgs';
 import { accountInitials } from '../lib/accountUser';
 import { trackBillingOpened, trackMenuApiDocsClicked, trackMenuApiKeysClicked } from '../lib/analytics';
@@ -119,7 +120,16 @@ export function UserMenu({ user, onOpenSettings }) {
   const { loggingOut, waitNote, logout } = useLogout();
   const { orgs, activeOrg, switching, switchOrg } = useMindsOrgs(user);
   // MindsHub UI lands a company member in a company organization.
-  useOrgLanding({ sub: user.sub ?? null, orgs, activeOrg, switchOrg });
+  useOrgLanding({
+    sub: user.sub ?? null,
+    orgs,
+    activeOrg,
+    switchOrg: (organizationId) => {
+      noteOrgSwitchIntent(user.sub ?? null, organizationId, 'landing');
+      return switchOrg(organizationId);
+    },
+  });
+  useOrgChangeTracking({ sub: user.sub ?? null, activeOrg });
   const toastManager = useToastManager();
   // Each org's icon: /hub/org-icons first, then the Keycloak attribute.
   const orgIcons = useOrgIcons();
@@ -163,6 +173,7 @@ export function UserMenu({ user, onOpenSettings }) {
 
   const pick = async (organizationId) => {
     setPendingOrgId(organizationId);
+    noteOrgSwitchIntent(user.sub ?? null, organizationId, 'menu');
     let result;
     try {
       result = await switchOrg(organizationId);

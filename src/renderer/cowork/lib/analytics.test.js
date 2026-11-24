@@ -1203,6 +1203,20 @@ describe('billing + provisioning events (ENG-1533)', () => {
     expect(event.properties.outcome).toBe('unknown');
   });
 
+  it('organization_changed carries both kinds and the cause', async () => {
+    const fetchMock = mockFetch();
+    const { trackOrganizationChanged } = await importAnalytics();
+
+    trackOrganizationChanged({ fromKind: 'company', toKind: 'personal', cause: 'outside_app' });
+
+    const event = await sentEvent(fetchMock, 'organization_changed');
+    expect(event.properties).toMatchObject({
+      from_kind: 'company',
+      to_kind: 'personal',
+      cause: 'outside_app',
+    });
+  });
+
   it('token_cap_hit carries the reason so the three credit blocks are distinguishable', async () => {
     const fetchMock = mockFetch();
     const { trackTokenCapHit } = await importAnalytics();

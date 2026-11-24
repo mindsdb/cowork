@@ -16,6 +16,7 @@ const analyticsMock = vi.hoisted(() => ({
   trackBillingOpened: vi.fn(),
   trackMenuApiKeysClicked: vi.fn(),
   trackMenuApiDocsClicked: vi.fn(),
+  trackOrganizationChanged: vi.fn(),
 }));
 vi.mock('../lib/analytics', () => analyticsMock);
 
