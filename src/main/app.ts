@@ -2016,7 +2016,7 @@ app.whenReady().then(async () => {
         if (fs.existsSync(envPath)) {
           const lines = fs.readFileSync(envPath, 'utf-8').split('\n')
             .filter(l => !l.startsWith('ANTON_OPENAI_API_KEY=') && !l.startsWith('ANTON_MINDS_API_KEY='));
-          fs.writeFileSync(envPath, lines.join('\n'), 'utf-8');
+          await writeEnvFileAtomic(envPath, lines.join('\n'));
         }
       } else if (outcome.status === 'transient') {
         diagnostic("main.app", "WARNING", "auth_boot_token_refresh_failed_transiently_keeping_session_retry_scheduled", '[auth] boot token refresh failed transiently — keeping session, retry scheduled');

@@ -21,10 +21,6 @@ vi.mock('./coding-workspace', () => ({
   removeTaskWorktree: removeTaskWorktreeMock,
 }));
 
-/* The folder modes are pinned on a real filesystem in
- * coding-terminal.private-folder.test.ts; this file's fs is an in-memory fake. */
-vi.mock('./private-files', () => ({ pinPrivateDir: vi.fn(), restrictToOwnerOnWindows: vi.fn() }));
-
 const fsStore = vi.hoisted(() => new Map<string, string>());
 vi.mock('fs', () => ({
   mkdirSync: vi.fn(),

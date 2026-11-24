@@ -3,8 +3,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-// writeEnvFileAtomic is #548's atomic + lock-tolerant writer (ENG-1209). Stub
-// it so we can drive the "write still fails after retries" path deterministically.
+/* writeEnvFileAtomic is the atomic, lock-tolerant private writer. Stub it so
+ * we can drive the "write still fails after retries" path deterministically. */
 const writeEnvFileAtomic = vi.hoisted(() => vi.fn());
 vi.mock('./private-files', () => ({ writeEnvFileAtomic }));
 

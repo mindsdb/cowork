@@ -20,7 +20,6 @@ import { mindsApiRoot } from '../shared/minds-endpoint';
 import { detectClaudeCode, revealMindsApiKey, revealMindsBaseUrl } from './coding-mode';
 import { ensureTaskWorktree, removeTaskWorktree } from './coding-workspace';
 import { getEnvPath } from './uv-paths';
-import { pinPrivateDir, restrictToOwnerOnWindows, type PlatformOption } from './private-files';
 
 // Last-resort fallback only — real requests use revealMindsBaseUrl(), the
 // actual host the stored key was minted against (dev/preview/stable builds
@@ -69,25 +68,8 @@ function readJsonFile(filePath: string): Record<string, unknown> {
  *  tmp means a raw, unresolved key silently never matches. Merges into
  *  whatever's already there so later CLI-managed state (other trust
  *  records, migration flags, etc.) is never clobbered. Best-effort: a
- *  filesystem error here just means the CLI falls back to prompting.
- *
- *  The `.claude-mindshub` folder above the config dir holds the CLI's
- *  transcripts and the task worktrees, inside a repository other accounts may
- *  be able to read. It is pinned to 0700, and on Windows, where modes do
- *  nothing, it gets an owner-only access list once. A failure there logs and
- *  the config is still written. */
-export function ensureClaudeConfigDefaults(
-  configDir: string,
-  cwd: string,
-  { platform = process.platform }: PlatformOption = {},
-): void {
-  const mindshubDir = path.dirname(configDir);
-  try {
-    pinPrivateDir(mindshubDir, { platform });
-    restrictToOwnerOnWindows(mindshubDir, { platform });
-  } catch (err) {
-    diagnostic("main.coding-terminal", "WARNING", "coding_terminal_could_not_make_the_mindshub_folder_private", '[coding-terminal] could not make the .claude-mindshub folder private', err);
-  }
+ *  filesystem error here just means the CLI falls back to prompting. */
+function ensureClaudeConfigDefaults(configDir: string, cwd: string): void {
   try {
     fs.mkdirSync(configDir, { recursive: true });
 
@@ -193,15 +175,16 @@ export async function startCodingTerminal(
     diagnostic("main.coding-terminal", "ERROR", "coding_terminal_failed_to_set_up_task_worktree_falling_back_to_project_dir", '[coding-terminal] failed to set up task worktree, falling back to project dir', err?.message || err);
   }
 
-  // Per-project, not a single shared dir — keeps MindsHub Claude Code
-  // sessions/config isolated per project and separate from the user's own
-  // claude.ai profile (~/.claude). Lives under .claude-mindshub/config/,
-  // alongside .claude-mindshub/tasks/<taskId>/ (the worktrees) — everything
-  // MindsHub/coding-mode-owned under one directory, deliberately not
-  // `.claude/` (Claude Code's own real per-project state dir; see
-  // coding-workspace.ts for why that name is reserved). Trust is recorded
-  // against `cwd` (resolved above), not the project root, since that's the
-  // CLI's actual working directory once worktrees are in play.
+  /* Per-project, not a single shared dir: keeps MindsHub Claude Code
+   * sessions/config isolated per project and separate from the user's own
+   * claude.ai profile (~/.claude). Lives under .claude-mindshub/config/,
+   * alongside .claude-mindshub/tasks/<taskId>/ (the worktrees), so everything
+   * MindsHub/coding-mode-owned sits under one directory, deliberately not
+   * `.claude/` (Claude Code's own real per-project state dir; see
+   * coding-workspace.ts for why that name is reserved). ensureTaskWorktree
+   * made that directory owner-only as its first step, git or no git. Trust is
+   * recorded against `cwd` (resolved above), not the project root, since
+   * that's the CLI's actual working directory once worktrees are in play. */
   const claudeConfigDir = path.join(opts.projectPath, '.claude-mindshub', 'config');
   ensureClaudeConfigDefaults(claudeConfigDir, cwd);
 

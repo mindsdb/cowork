@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { startCrashReporter } from './crash-reporter';
+import type { PlatformOption } from './private-files';
 
 const RUNNER_ENV = 'ANTON_HTML_LINT_RUNNER';
 const PROFILE_PREFIX = 'cowork-html-lint-';
@@ -22,7 +23,7 @@ const STALE_PROFILE_MS = 60 * 60 * 1000;
  * never a link, which the removal could follow into the user's own files, and
  * never another account's folder, whose contents that account controls.
  * Windows reports no user id, and its temp folder is per user anyway. */
-export function sweepStaleProfiles(platform: NodeJS.Platform = process.platform): void {
+export function sweepStaleProfiles({ platform = process.platform }: PlatformOption = {}): void {
   const now = Date.now();
   for (const name of fs.readdirSync(os.tmpdir())) {
     if (!name.startsWith(PROFILE_PREFIX)) continue;

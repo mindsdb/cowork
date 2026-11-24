@@ -25,6 +25,8 @@
 import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { diagnostic } from '../shared/diagnostics';
+import { pinPrivateDir, restrictToOwnerOnWindows, type PlatformOption } from './private-files';
 
 export const MINDSHUB_DIRNAME = '.claude-mindshub';
 const TASKS_SUBDIR = 'tasks';
@@ -132,10 +134,34 @@ export interface TaskWorktree {
   isNew: boolean;
 }
 
-/** Get (or lazily create) the worktree for a task in a given repo. Never
- *  throws — a git failure just means the caller falls back to running
- *  directly in `repoPath` (logged by the caller, not here). */
-export async function ensureTaskWorktree(repoPath: string, taskId: string): Promise<TaskWorktree> {
+/* `<repo>/.claude-mindshub` holds Claude Code's transcripts and the task
+ * worktrees, inside a repository other accounts may be able to read. It is
+ * made owner-only before anything is created in it, so each checkout starts
+ * out private: 0700 on macOS and Linux, and on Windows, where modes do
+ * nothing, an owner-only access list that every entry below inherits. A
+ * folder from an older build is pinned the same way. A failure logs and never
+ * stops the task. */
+async function ensurePrivateMindshubDir(repoPath: string, options: PlatformOption): Promise<void> {
+  const dir = path.join(repoPath, MINDSHUB_DIRNAME);
+  try {
+    pinPrivateDir(dir, options);
+    await restrictToOwnerOnWindows(dir, options);
+  } catch (err) {
+    diagnostic("main.coding-workspace", "WARNING", "coding_workspace_could_not_make_the_mindshub_folder_private", '[coding-workspace] could not make the .claude-mindshub folder private', err);
+  }
+}
+
+/** Get (or lazily create) the worktree for a task in a given repo, inside a
+ *  `.claude-mindshub` made owner-only first, before any git step can fail. A
+ *  git failure rejects, and the caller falls back to running directly in
+ *  `repoPath` (logged by the caller, not here). `platform` is a parameter
+ *  only so tests can run the Windows access list on any machine. */
+export async function ensureTaskWorktree(
+  repoPath: string,
+  taskId: string,
+  options: PlatformOption = {},
+): Promise<TaskWorktree> {
+  await ensurePrivateMindshubDir(repoPath, options);
   const worktreePath = taskWorktreePath(repoPath, taskId);
   if (fs.existsSync(worktreePath)) {
     ensureSharedLinks(repoPath, worktreePath);

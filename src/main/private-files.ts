@@ -16,7 +16,7 @@ import { diagnostic } from '../shared/diagnostics';
  * pin and the pass do nothing on win32. A folder Cowork creates inside a
  * repository can sit outside the profile, so it gets an owner-only access list
  * instead (`restrictToOwnerOnWindows`). */
-import { execFileSync } from 'child_process';
+import { execFile } from 'child_process';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -26,6 +26,7 @@ import { retryOnTransientLock } from './fs-retry';
 const LOGGER = 'main.private-files';
 const PRIVATE_DIR_MODE = 0o700;
 const GROUP_AND_OTHER = 0o077;
+const GROUP_AND_OTHER_WRITE = 0o022;
 const PERMISSION_BITS = 0o777;
 const MODE_BITS = 0o7777;
 
@@ -145,29 +146,64 @@ function childRole(parent: FolderRole, name: string): FolderRole {
  * refused rather than followed. A socket, a FIFO or a device cannot be opened
  * safely, and an entry without its owner's read bit cannot be opened at all;
  * those take a path chmod. Their folder belongs to this user and has already
- * lost its group and other bits, so no other account can swap them. */
-async function chmodSeenEntry(entry: string, seen: fs.Stats, mode: number): Promise<void> {
+ * lost its group and other bits, so no other account can swap them.
+ *
+ * Returns false, and changes nothing, when the name no longer holds the entry
+ * lstat saw: a different inode, a link (ELOOP) or a file where a folder was
+ * (ENOTDIR). The sidecar's own temp-and-rename writes do this while the pass
+ * runs. The replacement was made inside a folder that is already private (the
+ * pass tightens a folder before it reads it, and the boot pin covers the home),
+ * so it needs no mode of its own, like any file created after the pass. */
+async function chmodSeenEntry(entry: string, seen: fs.Stats, mode: number): Promise<boolean> {
   if (seen.isFile() || seen.isDirectory()) {
     let handle: fs.promises.FileHandle | undefined;
     try {
       handle = await fs.promises.open(entry, openNoFollowFlags(seen.isDirectory() ? fs.constants.O_DIRECTORY : 0));
     } catch (err) {
-      if (errorCode(err) !== 'EACCES') throw err;
+      const code = errorCode(err);
+      if (code === 'ELOOP' || code === 'ENOTDIR') return false;
+      if (code !== 'EACCES') throw err;
     }
     if (handle) {
       try {
         const opened = await handle.stat();
-        if (opened.dev !== seen.dev || opened.ino !== seen.ino) {
-          throw new Error('[private-files] an entry changed while its mode was being set');
-        }
+        if (opened.dev !== seen.dev || opened.ino !== seen.ino) return false;
         await handle.chmod(mode);
       } finally {
         await handle.close();
       }
-      return;
+      return true;
     }
   }
   await fs.promises.chmod(entry, mode);
+  return true;
+}
+
+/* Linux's fs.protected_hardlinks, on by default on Ubuntu, Debian and Fedora,
+ * stops an account from hard-linking a file it cannot also write. */
+const PROTECTED_HARDLINKS_SETTING = '/proc/sys/fs/protected_hardlinks';
+
+/* False wherever the setting cannot be read, as on macOS, which has no such
+ * protection. False is the cautious answer: it makes the pass tighten every
+ * hard-linked file. */
+async function hardLinksAreProtected(): Promise<boolean> {
+  try {
+    return (await fs.promises.readFile(PROTECTED_HARDLINKS_SETTING, 'utf8')).trim() === '1';
+  } catch {
+    return false;
+  }
+}
+
+/* A file with more than one name shares one inode, and so one mode, with a
+ * name that can sit outside the home: on Linux uv, pnpm and bun hard-link
+ * package files from their caches into every environment they install. Where
+ * hard links are protected and the file grants no group or other write, no
+ * other account can have made such a link, so the file is left as it is and
+ * its other names keep their mode. Anywhere else another account may have
+ * planted the link before the upgrade to keep reading the file, so the pass
+ * tightens it like any other entry. */
+function isOwnHardLink(seen: fs.Stats, hardLinksProtected: boolean): boolean {
+  return hardLinksProtected && seen.isFile() && seen.nlink > 1 && (seen.mode & GROUP_AND_OTHER_WRITE) === 0;
 }
 
 export type HomeTightening =
@@ -183,8 +219,9 @@ export type HomeTightening =
  * change. The pass reads each entry with lstat and never follows a link, so a
  * link's target outside the home keeps its mode. It stays on the home's
  * device, and it skips, without entering, anything another account owns. A
- * file hard-linked from elsewhere is one inode, so tightening it here tightens
- * it there too. `coding/` is pinned to 0700 and not entered.
+ * hard-linked file is one inode, so tightening it here tightens its other
+ * names too; the pass does that unless the link can only be the user's own
+ * (`isOwnHardLink`). `coding/` is pinned to 0700 and not entered.
  *
  * Folders are tightened before their contents are read, so no other account
  * can swap an entry below a folder the pass has reached. The pass does not
@@ -224,6 +261,7 @@ export async function tightenHomeOnce(home: string, { platform = process.platfor
   if (rootStat.uid !== uid) return { kind: 'skipped', reason: 'another-owner' };
   const marker = path.join(root, PRIVATE_MODES_MARKER);
   if (await isFile(marker)) return { kind: 'already-tightened' };
+  const hardLinksProtected = await hardLinksAreProtected();
 
   const folders: { dir: string; role: FolderRole }[] = [{ dir: root, role: 'store-root' }];
   while (folders.length) {
@@ -240,12 +278,13 @@ export async function tightenHomeOnce(home: string, { platform = process.platfor
       try {
         const seen = await fs.promises.lstat(entry);
         if (seen.isSymbolicLink() || seen.dev !== rootStat.dev || seen.uid !== uid) continue;
+        if (isOwnHardLink(seen, hardLinksProtected)) continue;
         const isCoding = role === 'store-root' && name === CODING_DIR && seen.isDirectory();
         const current = seen.mode & MODE_BITS;
         const wanted = isCoding ? PRIVATE_DIR_MODE : stripGroupAndOther(current);
         const needsChange = isCoding ? (current & PERMISSION_BITS) !== PRIVATE_DIR_MODE : wanted !== current;
         if (needsChange) {
-          await chmodSeenEntry(entry, seen, wanted);
+          if (!(await chmodSeenEntry(entry, seen, wanted))) continue;
           changed += 1;
         }
         if (seen.isDirectory() && !isCoding) folders.push({ dir: entry, role: childRole(role, name) });
@@ -297,14 +336,22 @@ const OWNER_ONLY_ICACLS_ARGS = [
  * list, and a repository outside the profile, such as `C:\src\app`, grants
  * every local account read access. The marker is written only after icacls
  * succeeds, so a failure retries the next time. A failure logs a warning and
- * never stops the caller. Nothing on other platforms.
+ * never stops the caller; the returned promise never rejects. Nothing on
+ * other platforms.
+ *
+ * icacls runs as a child process the caller awaits, not a synchronous one: on
+ * a folder that already holds task checkouts, Windows applies the new
+ * inherited rules to every entry below, which takes a while on a large tree
+ * and would otherwise freeze the app's main thread.
  */
-export function restrictToOwnerOnWindows(dir: string, { platform = process.platform }: PlatformOption = {}): void {
+export async function restrictToOwnerOnWindows(dir: string, { platform = process.platform }: PlatformOption = {}): Promise<void> {
   if (platform !== 'win32') return;
   const marker = path.join(dir, OWNER_ONLY_ACCESS_MARKER);
   if (fs.existsSync(marker)) return;
   try {
-    execFileSync('icacls', [dir, ...OWNER_ONLY_ICACLS_ARGS], { stdio: 'ignore', windowsHide: true });
+    await new Promise<void>((resolve, reject) => {
+      execFile('icacls', [dir, ...OWNER_ONLY_ICACLS_ARGS], { windowsHide: true }, (err) => (err ? reject(err) : resolve()));
+    });
     fs.writeFileSync(marker, '');
   } catch (err) {
     diagnostic(LOGGER, 'WARNING', 'private_files_could_not_restrict_a_folder_to_its_owner', '[private-files] could not restrict a folder to its owner', err);

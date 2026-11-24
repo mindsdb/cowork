@@ -145,7 +145,6 @@ describe('token-store persistence', () => {
   });
 });
 
-// ─── ENG-761: renderer must hear every auth transition ───────────────
 /* Node applies a write's mode only when it creates the file, so a token file an
  * older build left at 0644 stayed 0644 through every later write. */
 describe('token files are owner-only', () => {
@@ -181,6 +180,7 @@ describe('token files are owner-only', () => {
   });
 });
 
+// ─── ENG-761: renderer must hear every auth transition ───────────────
 describe('token-store auth-changed broadcast', () => {
   it('broadcasts authenticated:true on saveTokens', async () => {
     const store = await loadStore('win32');

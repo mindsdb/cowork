@@ -35,6 +35,10 @@ vi.mock('fs', () => ({
   symlinkSync: symlinkSyncMock,
 }));
 
+/* The folder's modes and access list are checked on a real filesystem in
+ * coding-terminal.private-folder.test.ts; this file's fs is an in-memory fake. */
+vi.mock('./private-files', () => ({ pinPrivateDir: vi.fn(), restrictToOwnerOnWindows: vi.fn(async () => {}) }));
+
 // execFile's callback signature is (err, stdout, stderr) — succeed by
 // default; individual tests override with mockImplementationOnce to
 // simulate a specific git command failing (e.g. "not a repo").

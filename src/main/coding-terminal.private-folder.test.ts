@@ -1,7 +1,9 @@
 /* `<repo>/.claude-mindshub` holds Claude Code's transcripts and the task
  * worktrees, inside a repository other accounts may be able to read. Real fs
- * under a temp folder; coding-terminal.test.ts covers the terminal itself with
- * an in-memory fs. */
+ * under a temp folder and the real ensureTaskWorktree, so the order of the
+ * steps is the order the app runs them. git and icacls are fakes: the fake git
+ * records the folder's state at the moment it would check a worktree out.
+ * coding-terminal.test.ts covers the terminal itself with an in-memory fs. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
 import * as fs from 'fs';
@@ -20,42 +22,75 @@ vi.mock('./coding-mode', () => ({
   revealMindsBaseUrl: async () => 'https://api.staging.mindshub.ai',
 }));
 vi.mock('./uv-paths', () => ({ getEnvPath: () => '/fake/path' }));
-// No git here: the terminal falls back to running in the project folder.
-vi.mock('./coding-workspace', () => ({
-  ensureTaskWorktree: async () => {
-    throw new Error('no git in this test');
-  },
-  removeTaskWorktree: vi.fn(),
-}));
 
-const execFileSync = vi.hoisted(() => vi.fn());
+/** What the fakes saw, in order: each icacls call, and the folder's mode and
+ *  access-list marker when git checked a worktree out. */
+type Step =
+  | { kind: 'icacls'; args: string[] }
+  | { kind: 'checkout'; folderMode: number; ownerOnlyMarker: boolean };
+
+const fake = vi.hoisted(() => ({
+  steps: [] as Step[],
+  gitMissing: false,
+  icaclsFails: false,
+}));
+const execFile = vi.hoisted(() => vi.fn());
 vi.mock('child_process', async (importOriginal) => ({
   ...(await importOriginal<typeof import('child_process')>()),
-  execFileSync,
+  execFile,
 }));
 
-import { ensureClaudeConfigDefaults, killAllCodingTerminals, startCodingTerminal } from './coding-terminal';
+import { killAllCodingTerminals, startCodingTerminal } from './coding-terminal';
+import { ensureTaskWorktree } from './coding-workspace';
 
+/* Spelled out rather than imported: folders on disk already carry this name,
+ * so renaming it would run icacls on every one of them again. */
+const OWNER_ONLY_ACCESS_MARKER = '.owner-only-access';
 const ICACLS_ARGS = ['/inheritance:r', '/grant:r', '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', '*S-1-3-4:(OI)(CI)F'];
 
 let repo: string;
 let mindshub: string;
-let configDir: string;
+
+const modeOf = (dir: string) => fs.statSync(dir).mode & 0o777;
+
+type Callback = (err: Error | null, stdout?: string, stderr?: string) => void;
+
+function fakeExecFile(cmd: string, args: string[], _opts: unknown, cb: Callback): void {
+  if (cmd === 'icacls') {
+    fake.steps.push({ kind: 'icacls', args });
+    cb(fake.icaclsFails ? new Error('icacls failed') : null, '', '');
+    return;
+  }
+  if (fake.gitMissing) {
+    cb(Object.assign(new Error('spawn git ENOENT'), { code: 'ENOENT' }));
+    return;
+  }
+  const [command, subcommand, worktreePath] = args.filter((arg) => arg !== '-c' && arg !== 'core.longpaths=true');
+  if (command === 'worktree' && subcommand === 'add') {
+    fake.steps.push({
+      kind: 'checkout',
+      folderMode: modeOf(mindshub),
+      ownerOnlyMarker: fs.existsSync(path.join(mindshub, OWNER_ONLY_ACCESS_MARKER)),
+    });
+    fs.mkdirSync(worktreePath, { recursive: true });
+  }
+  cb(null, '', '');
+}
 
 beforeEach(() => {
-  execFileSync.mockReset();
+  execFile.mockReset().mockImplementation(fakeExecFile);
   forkMock.mockReset();
+  fake.steps = [];
+  fake.gitMissing = false;
+  fake.icaclsFails = false;
   repo = fs.mkdtempSync(path.join(os.tmpdir(), 'cowork-repo-'));
   mindshub = path.join(repo, '.claude-mindshub');
-  configDir = path.join(mindshub, 'config');
 });
 
 afterEach(() => {
   killAllCodingTerminals();
   fs.rmSync(repo, { recursive: true, force: true });
 });
-
-const modeOf = (dir: string) => fs.statSync(dir).mode & 0o777;
 
 async function startTerminal(taskId: string): Promise<void> {
   const child = new FakeUtilityProcess();
@@ -66,52 +101,71 @@ async function startTerminal(taskId: string): Promise<void> {
   expect(await started).toEqual({ ok: true });
 }
 
+const checkouts = () => fake.steps.filter((step) => step.kind === 'checkout');
+const icaclsCalls = () => fake.steps.filter((step) => step.kind === 'icacls');
+
 describe('the .claude-mindshub folder a coding terminal uses', () => {
-  it.skipIf(process.platform === 'win32')('is created at 0700 when a terminal starts, with the config seeded', async () => {
+  it.skipIf(process.platform === 'win32')('is 0700 before git checks the task worktree out into it', async () => {
     await startTerminal('task-private');
 
+    expect(checkouts()).toEqual([{ kind: 'checkout', folderMode: 0o700, ownerOnlyMarker: false }]);
     expect(modeOf(mindshub)).toBe(0o700);
-    expect(JSON.parse(fs.readFileSync(path.join(configDir, 'settings.json'), 'utf8'))).toEqual({ theme: 'dark' });
+    expect(JSON.parse(fs.readFileSync(path.join(mindshub, 'config', 'settings.json'), 'utf8'))).toEqual({ theme: 'dark' });
   });
 
-  it.skipIf(process.platform === 'win32')('is pinned when the task worktree step already made it at 0755', async () => {
-    fs.mkdirSync(path.join(mindshub, 'tasks'), { recursive: true });
+  it.skipIf(process.platform === 'win32')('is pinned when an older build left it at 0755 and the task reconnects', async () => {
+    fs.mkdirSync(path.join(mindshub, 'tasks', 'task-existing'), { recursive: true });
     fs.chmodSync(mindshub, 0o755);
 
     await startTerminal('task-existing');
 
+    expect(checkouts()).toEqual([]);
     expect(modeOf(mindshub)).toBe(0o700);
   });
 
-  it('never runs icacls on linux', () => {
-    ensureClaudeConfigDefaults(configDir, repo, { platform: 'linux' });
-    expect(execFileSync).not.toHaveBeenCalled();
+  it.skipIf(process.platform === 'win32')('is 0700 with the config seeded when git is missing', async () => {
+    fake.gitMissing = true;
+
+    await startTerminal('task-no-git');
+
+    expect(modeOf(mindshub)).toBe(0o700);
+    expect(fs.existsSync(path.join(mindshub, 'config', 'settings.json'))).toBe(true);
   });
 
-  it('gets an owner-only access list once on win32, and not again once marked', () => {
-    ensureClaudeConfigDefaults(configDir, repo, { platform: 'win32' });
-    ensureClaudeConfigDefaults(configDir, repo, { platform: 'win32' });
-
-    expect(execFileSync).toHaveBeenCalledTimes(1);
-    expect(execFileSync).toHaveBeenCalledWith('icacls', [mindshub, ...ICACLS_ARGS], expect.anything());
-    expect(fs.existsSync(path.join(configDir, 'settings.json'))).toBe(true);
+  it('never runs icacls on linux', async () => {
+    await ensureTaskWorktree(repo, 'task-linux', { platform: 'linux' });
+    expect(icaclsCalls()).toEqual([]);
   });
 
-  it('gets the access list on win32 when it exists without the marker', () => {
-    fs.mkdirSync(path.join(mindshub, 'tasks'), { recursive: true });
+  it('gets an owner-only access list on win32 before the checkout, once', async () => {
+    await ensureTaskWorktree(repo, 'task-win-1', { platform: 'win32' });
+    await ensureTaskWorktree(repo, 'task-win-2', { platform: 'win32' });
 
-    ensureClaudeConfigDefaults(configDir, repo, { platform: 'win32' });
-
-    expect(execFileSync).toHaveBeenCalledTimes(1);
+    expect(fake.steps).toEqual([
+      { kind: 'icacls', args: [mindshub, ...ICACLS_ARGS] },
+      { kind: 'checkout', folderMode: expect.any(Number), ownerOnlyMarker: true },
+      { kind: 'checkout', folderMode: expect.any(Number), ownerOnlyMarker: true },
+    ]);
   });
 
-  it('still seeds the config when icacls fails', () => {
-    execFileSync.mockImplementation(() => {
-      throw new Error('icacls failed');
-    });
+  it('gets the access list on win32 when an older build made it without the marker', async () => {
+    fs.mkdirSync(path.join(mindshub, 'tasks', 'task-old'), { recursive: true });
 
-    ensureClaudeConfigDefaults(configDir, repo, { platform: 'win32' });
+    await ensureTaskWorktree(repo, 'task-old', { platform: 'win32' });
 
-    expect(fs.existsSync(path.join(configDir, 'settings.json'))).toBe(true);
+    expect(icaclsCalls()).toEqual([{ kind: 'icacls', args: [mindshub, ...ICACLS_ARGS] }]);
+    expect(fs.existsSync(path.join(mindshub, OWNER_ONLY_ACCESS_MARKER))).toBe(true);
+  });
+
+  it('still checks the worktree out when icacls fails, and tries again next time', async () => {
+    fake.icaclsFails = true;
+
+    const worktree = await ensureTaskWorktree(repo, 'task-acl-failed', { platform: 'win32' });
+    await ensureTaskWorktree(repo, 'task-acl-retry', { platform: 'win32' });
+
+    expect(worktree).toEqual({ path: path.join(mindshub, 'tasks', 'task-acl-failed'), isNew: true });
+    expect(checkouts()).toHaveLength(2);
+    expect(icaclsCalls()).toHaveLength(2);
+    expect(fs.existsSync(path.join(mindshub, OWNER_ONLY_ACCESS_MARKER))).toBe(false);
   });
 });

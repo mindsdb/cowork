@@ -1,11 +1,11 @@
-// A per-account root holds that account's database, files, connector vault and
-// dotenv. Another OS user on the machine should not be able to read it, and
-// which OS user can must not depend on whichever code happened to create the
-// home first.
-//
-// Its own file because it needs coworkHome() and the root resolution both under
-// control: calling ensureAccountDataRoot() against an uncontrolled home would
-/* mkdir into the developer's real ~/.cowork-*. For the same reason os.homedir()
+/* A per-account root holds that account's database, files, connector vault and
+ * dotenv. Another OS user on the machine should not be able to read it, and
+ * which OS user can must not depend on whichever code happened to create the
+ * home first.
+ *
+ * Its own file because it needs coworkHome() and the root resolution both under
+ * control: calling ensureAccountDataRoot() against an uncontrolled home would
+ * mkdir into the developer's real ~/.cowork-*. For the same reason os.homedir()
  * is a temp folder here, so the boot pin's "real homes" are fakes. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
@@ -158,6 +158,40 @@ describe('the boot pin of every home', () => {
 
     expect(pinned).not.toContain(path.normalize(home));
     expect(modeOf(path.join(userHome, '.cowork-stable'))).toBe(0o700);
+  });
+
+  // Root can open a folder without its read bit, so the pin would not fail.
+  it.skipIf(process.getuid?.() === 0)('still returns, and so tightens, a home with an account root that cannot be pinned', async () => {
+    fs.chmodSync(home, 0o755);
+    const db = path.join(home, 'cowork.db');
+    fs.writeFileSync(db, 'x');
+    fs.chmodSync(db, 0o644);
+    // Without its owner's read bit, the pin's open fails with EACCES.
+    const unreadable = path.join(home, 'accounts', 'unreadable');
+    fs.mkdirSync(unreadable, { recursive: true });
+    fs.chmodSync(unreadable, 0o000);
+    try {
+      const pinned = pinPrivateHomes({ platform: 'linux' });
+      await tightenPrivateHomes(pinned, { platform: 'linux' });
+
+      expect(pinned).toEqual([path.normalize(home)]);
+      expect(modeOf(home)).toBe(0o700);
+      expect(modeOf(db)).toBe(0o600);
+    } finally {
+      fs.chmodSync(unreadable, 0o700);
+    }
+  });
+
+  it('never rejects, so the boot step can start the pass without awaiting it', async () => {
+    const getuid = vi.spyOn(process, 'getuid').mockImplementation(() => {
+      throw new Error('no user id');
+    });
+    try {
+      await expect(tightenPrivateHomes([home], { platform: 'linux' })).resolves.toBeUndefined();
+      expect(getuid).toHaveBeenCalled();
+    } finally {
+      getuid.mockRestore();
+    }
   });
 
   it('makes no chmod on win32', async () => {

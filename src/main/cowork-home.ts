@@ -163,7 +163,8 @@ function privateHomePaths(): string[] {
  * Pin each Cowork home and each of its account roots to 0700, and return the
  * homes it pinned. Synchronous, and run at boot before any sidecar can start:
  * this pin is what keeps other accounts out. A failure logs and never blocks
- * boot.
+ * boot. An account root that cannot be pinned costs only itself: its home is
+ * still returned, so the home still gets its one-time pass.
  */
 export function pinPrivateHomes(options: PlatformOption = {}): string[] {
   const pinned: string[] = [];
@@ -177,10 +178,17 @@ export function pinPrivateHomes(options: PlatformOption = {}): string[] {
   for (const home of homes) {
     try {
       pinPrivateDir(home, options);
-      for (const name of knownAccountRoots(home)) pinPrivateDir(path.join(home, ACCOUNTS_DIR, name), options);
-      pinned.push(home);
     } catch (err) {
       diagnostic("main.cowork-home", "WARNING", "cowork_home_could_not_pin_a_home_to_its_owner", '[cowork-home] could not pin a home to its owner', err);
+      continue;
+    }
+    pinned.push(home);
+    for (const name of knownAccountRoots(home)) {
+      try {
+        pinPrivateDir(path.join(home, ACCOUNTS_DIR, name), options);
+      } catch (err) {
+        diagnostic("main.cowork-home", "WARNING", "cowork_home_could_not_pin_an_account_root_to_its_owner", '[cowork-home] could not pin an account root to its owner', err);
+      }
     }
   }
   return pinned;
@@ -189,13 +197,19 @@ export function pinPrivateHomes(options: PlatformOption = {}): string[] {
 /**
  * Run the one-time pass that strips group and other bits from every entry of
  * each home `pinPrivateHomes` pinned. One home at a time, after boot. Never
- * rejects: each pass logs its own failure and runs again next launch.
+ * rejects, so the boot step can start it without awaiting it: a failure in one
+ * home is logged, the next home still runs, and the pass runs again next
+ * launch.
  */
 export async function tightenPrivateHomes(homes: readonly string[], options: PlatformOption = {}): Promise<void> {
   for (const home of homes) {
-    const result = await tightenHomeOnce(home, options);
-    if (result.kind === 'tightened') {
-      diagnostic("main.cowork-home", "INFO", "cowork_home_tightened_the_modes_in_a_home", '[cowork-home] tightened the modes in a home', { count: result.changed });
+    try {
+      const result = await tightenHomeOnce(home, options);
+      if (result.kind === 'tightened') {
+        diagnostic("main.cowork-home", "INFO", "cowork_home_tightened_the_modes_in_a_home", '[cowork-home] tightened the modes in a home', { count: result.changed });
+      }
+    } catch (err) {
+      diagnostic("main.cowork-home", "WARNING", "cowork_home_could_not_tighten_the_modes_in_a_home", '[cowork-home] could not tighten the modes in a home', err);
     }
   }
 }

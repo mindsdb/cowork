@@ -125,7 +125,7 @@ describe('the stale profile sweep', () => {
     const dir = staleProfile('cowork-html-lint-win');
     vi.spyOn(process, 'getuid').mockReturnValue(fs.statSync(dir).uid + 1);
 
-    sweepStaleProfiles('win32');
+    sweepStaleProfiles({ platform: 'win32' });
 
     expect(fs.existsSync(dir)).toBe(false);
   });
