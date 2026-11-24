@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Button } from '../ui';
+import { Button, Input, Tabs, TabList, Tab } from '../ui';
+import { Crumb, CrumbSep } from '../ui/Crumb';
 import { useTranslation } from '../../../lib/i18n';
 import { productName } from '../../../lib/deploymentBrand';
 import { ALL_CATEGORIES, filterGallery } from './galleryFilter';
@@ -11,7 +12,9 @@ import { trackGalleryExampleOpened, trackGallerySearched } from '../../lib/analy
 // one event rather than one per keystroke.
 const SEARCH_SETTLE_MS = 1000;
 
-const iconButton = 'w-8 h-8 shrink-0 rounded-md inline-grid place-items-center bg-transparent border border-line text-ink-3 hover:text-ink hover:bg-surface-2 cursor-pointer';
+// The same pill tabs as the own-work panel on Home, wrapping rather than
+// scrolling sideways.
+const pillTab = 'mb-0 rounded-full border border-solid border-line-2 px-3 py-[5px] [font-family:inherit] text-[12.5px] font-medium text-[var(--frost-700)] hover:text-[var(--text-strong)] aria-[selected=true]:border-[var(--text-strong)] aria-[selected=true]:bg-[var(--text-strong)] aria-[selected=true]:text-[var(--surface-0)]';
 
 function Thumbnail({ src, className }) {
   const [failed, setFailed] = useState(false);
@@ -85,7 +88,8 @@ function FileLink({ file, isElectron, openExternal }) {
           as an attachment, so a plain link saves it. */}
       {isElectron
         ? <Button variant="subtle" size="sm" onClick={() => openExternal(file.href)}>{Ico.download(14)} {t('gallery.download')}</Button>
-        : <a href={file.href} target="_blank" rel="noopener noreferrer" className="text-[13px] font-medium text-accent shrink-0">{t('gallery.download')}</a>}
+        // Button's own classes on a real link, so it looks the same as Desktop's.
+        : <a href={file.href} target="_blank" rel="noopener noreferrer" className="btn subtle sm shrink-0 no-underline">{Ico.download(14)} {t('gallery.download')}</a>}
     </div>
   );
 }
@@ -125,17 +129,17 @@ function Detail({ entry, position, total, query, onBack, onStep, onCategory, onS
           {Ico.chevLeft(14)} {query ? t('gallery.backToResults', { query }) : t('gallery.backToAll')}
         </Button>
         <div className="flex items-center gap-1.5">
-          <button type="button" className={iconButton} aria-label={t('gallery.previous')} disabled={position <= 1} onClick={() => onStep(-1)}>{Ico.chevLeft(14)}</button>
+          <Button icon size="sm" variant="subtle" aria-label={t('gallery.previous')} disabled={position <= 1} onClick={() => onStep(-1)}>{Ico.chevLeft(14)}</Button>
           <span className="text-[12px] text-ink-3 min-w-[44px] text-center" aria-live="polite">{t('gallery.position', { current: position, total })}</span>
-          <button type="button" className={iconButton} aria-label={t('gallery.next')} disabled={position >= total} onClick={() => onStep(1)}>{Ico.chevRight(14)}</button>
-          <button type="button" className={`${iconButton} ml-1`} aria-label={t('gallery.hide')} onClick={onHide}>{Ico.close(14)}</button>
+          <Button icon size="sm" variant="subtle" aria-label={t('gallery.next')} disabled={position >= total} onClick={() => onStep(1)}>{Ico.chevRight(14)}</Button>
+          <Button icon size="sm" variant="subtle" className="ml-1" aria-label={t('gallery.hide')} onClick={onHide}>{Ico.close(14)}</Button>
         </div>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 flex flex-col gap-3">
-        <nav aria-label={t('gallery.breadcrumb')} className="text-[12px] text-ink-3 flex items-center gap-1">
-          <button type="button" className="bg-transparent border-0 p-0 text-ink-2 hover:text-ink cursor-pointer font-[inherit]" onClick={onBack}>{t('gallery.title')}</button>
-          <span aria-hidden="true">›</span>
-          <button type="button" className="bg-transparent border-0 p-0 text-ink-2 hover:text-ink cursor-pointer font-[inherit]" onClick={() => onCategory(entry.category)}>{entry.category}</button>
+        <nav aria-label={t('gallery.breadcrumb')} className="-ml-1.5 flex items-center min-w-0">
+          <Crumb label={t('gallery.title')} onClick={onBack} />
+          <CrumbSep />
+          <Crumb label={entry.category} onClick={() => onCategory(entry.category)} />
         </nav>
         <Example entry={entry} openExternal={openExternal} />
         <h3 className="m-0 text-[18px] font-semibold text-ink leading-snug">{entry.title}</h3>
@@ -255,50 +259,44 @@ export default function GalleryColumn({
           same search, tab and scroll position. */}
       <div className={`flex-1 min-h-0 flex flex-col ${opened ? 'hidden' : ''}`}>
         <div className="px-4 pt-4 flex flex-col gap-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex flex-col gap-1">
-              {welcome && <span className="text-[11px] font-semibold tracking-[0.06em] uppercase text-ink-3">{t('gallery.title')}</span>}
-              <h2 id="home-gallery-title" className="m-0 text-[17px] font-semibold text-ink">
-                {welcome ? t('gallery.welcomeTitle', { product: productName('Cowork') }) : t('gallery.title')}
-              </h2>
-              <p className="m-0 text-[13px] leading-snug text-ink-2">
-                {t(welcome ? 'gallery.welcomeIntro' : 'gallery.intro', { product: productName('Cowork') })}
-              </p>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-1 min-w-0">
+                {welcome && <span className="text-[11px] font-semibold tracking-[0.06em] uppercase text-ink-3">{t('gallery.title')}</span>}
+                <h2 id="home-gallery-title" className="m-0 text-[17px] font-semibold text-ink">
+                  {welcome ? t('gallery.welcomeTitle', { product: productName('Cowork') }) : t('gallery.title')}
+                </h2>
+              </div>
+              <Button icon size="sm" variant="subtle" className="-mr-1.5" aria-label={t('gallery.hide')} onClick={() => onHide('button')}>{Ico.close(14)}</Button>
             </div>
-            <button type="button" className={iconButton} aria-label={t('gallery.hide')} onClick={() => onHide('button')}>{Ico.close(14)}</button>
+            <p className="m-0 text-[13px] leading-snug text-ink-2">
+              {t(welcome ? 'gallery.welcomeIntro' : 'gallery.intro', { product: productName('Cowork') })}
+            </p>
           </div>
           {manifest && (
             <>
-              <label className="flex items-center gap-2 h-10 px-3 rounded-lg border border-line bg-[var(--surface-raised)] focus-within:border-accent">
-                <span className="text-ink-3 inline-flex" aria-hidden="true">{Ico.search(14)}</span>
-                <span className="sr-only">{t('gallery.searchLabel')}</span>
-                <input
-                  ref={searchRef}
-                  type="search"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder={t('gallery.searchPlaceholder')}
-                  className="flex-1 min-w-0 bg-transparent border-0 outline-none text-[14px] text-ink font-[inherit]"
-                />
-              </label>
-              <div role="tablist" aria-label={t('gallery.tabsLabel')} className="flex gap-4 overflow-x-auto border-b border-line">
-                {tabs.map((tab) => {
-                  const selected = tab.category === category;
-                  const count = view.counts[tab.category] ?? 0;
-                  return (
-                    <button
-                      key={tab.category}
-                      type="button"
-                      role="tab"
-                      aria-selected={selected}
-                      onClick={() => setCategory(tab.category)}
-                      className={`shrink-0 h-9 px-0 bg-transparent border-0 border-b-2 cursor-pointer font-[inherit] text-[13px] font-semibold whitespace-nowrap ${selected ? 'border-accent text-ink' : `border-transparent ${count ? 'text-ink-2' : 'text-ink-4'}`}`}
-                    >
-                      {tab.label} <span className="font-normal text-ink-3">{count}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              <Input
+                ref={searchRef}
+                type="search"
+                aria-label={t('gallery.searchLabel')}
+                value={query}
+                onChange={setQuery}
+                placeholder={t('gallery.searchPlaceholder')}
+                leading={Ico.search(14)}
+                wrapperClassName="w-full"
+              />
+              <Tabs value={category} onValueChange={setCategory}>
+                <TabList className="flex-wrap gap-[6px] border-b-0" aria-label={t('gallery.tabsLabel')}>
+                  {tabs.map((tab) => {
+                    const count = view.counts[tab.category] ?? 0;
+                    return (
+                      <Tab key={tab.category} value={tab.category} className={`${pillTab} ${count ? '' : 'opacity-60'}`}>
+                        {tab.label} <span className="opacity-70">{count}</span>
+                      </Tab>
+                    );
+                  })}
+                </TabList>
+              </Tabs>
             </>
           )}
         </div>
