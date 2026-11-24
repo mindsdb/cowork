@@ -155,6 +155,7 @@
       "unavailableTitle": "{model} no está disponible ahora",
       "askOperatorBody": "Pide a tu operador que revise el modelo configurado y su acceso.",
       "restrictedBody": "Un administrador de tu organización restringió este modelo. Elige otro modelo en Configuración.",
+      "zdrRestrictedBody": "La retención cero de datos está activada en tu organización, así que este modelo no está disponible. Elige otro modelo en Configuración.",
       "needsCreditsTitle": "{model} necesita créditos",
       "needsCreditsBody": "No tienes suficientes créditos para este modelo. Recarga tu saldo para usarlo.",
       "disabledBody": "Este modelo está desactivado en tu espacio de trabajo. Elige otro modelo en Configuración.",

@@ -155,6 +155,7 @@
       "unavailableTitle": "{model} 暂时不可用",
       "askOperatorBody": "请让运营方检查已配置的模型及其访问权限。",
       "restrictedBody": "你所在组织的管理员限制了此模型。请在“设置”中选择其他模型。",
+      "zdrRestrictedBody": "你所在组织已开启零数据保留，因此此模型不可用。请在“设置”中选择其他模型。",
       "needsCreditsTitle": "{model} 需要积分",
       "needsCreditsBody": "你的积分不足以使用此模型。请为余额充值后再使用。",
       "disabledBody": "此模型已在你的工作区中关闭。请在“设置”中选择其他模型。",

@@ -155,6 +155,7 @@
       "unavailableTitle": "{model} isn't available right now",
       "askOperatorBody": "Ask your operator to check the configured model and its access.",
       "restrictedBody": "An admin in your organization restricted this model. Choose another model in Settings.",
+      "zdrRestrictedBody": "Zero data retention is on for your organization, so this model isn't available. Choose another model in Settings.",
       "needsCreditsTitle": "{model} needs credits",
       "needsCreditsBody": "You don't have enough credits for this model. Top up your balance to use it.",
       "disabledBody": "This model is turned off for your workspace. Choose another model in Settings.",

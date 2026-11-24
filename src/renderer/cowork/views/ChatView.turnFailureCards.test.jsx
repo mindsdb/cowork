@@ -277,6 +277,27 @@ describe('included_allowance_exhausted card for an org with no free grant', () =
   });
 });
 
+describe('zdr_restricted card', () => {
+  it('says zero data retention rules the model out and offers Open Settings only', async () => {
+    const user = userEvent.setup();
+    const onOpenSettings = vi.fn();
+    render(
+      <ChatView
+        task={taskWith(failedTurn('zdr_restricted', 'Zero data retention is on.', { failedModel: 'claude-opus-4-8' }))}
+        onOpenSettings={onOpenSettings}
+        onSwitchToAirAndResend={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Claude Opus 4.8 is restricted')).toBeInTheDocument();
+    expect(screen.getByText("Zero data retention is on for your organization, so this model isn't available. Choose another model in Settings.")).toBeInTheDocument();
+    expect(screen.queryByText(/admin/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Add funds' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Switch to MindsHub Air' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Open Settings' }));
+    expect(onOpenSettings).toHaveBeenCalledWith('agent');
+  });
+});
+
 describe('model_restricted card', () => {
   const BODY = "An administrator in your organization has restricted the model 'claude-opus-4-8'. Choose another model.";
 

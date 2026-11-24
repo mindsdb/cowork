@@ -2017,6 +2017,7 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
  * unlock it, so the card offers Open Settings only: no Top up, no Air switch.
  * A hosted turn cannot name the model, so the title falls back to
  * "This model is restricted".
+ * `zdr_restricted` (zero data retention rules the model out) takes the same card with ZDR copy.
  */
 export function ModelUnavailableCard({
   time, agentLabel, onOpenSettings, code, failedModel, onSwitchToAir, modelLabels,
@@ -2036,17 +2037,18 @@ export function ModelUnavailableCard({
   // only, leaving anything already spaced/cased untouched.
   const raw = displayModelLabel(failedModel, modelLabels) || failedModel || t('chatView.model.thisModel');
   const label = /\s/.test(raw) ? raw : raw.charAt(0).toUpperCase() + raw.slice(1);
-  if (code === 'model_restricted' || !PLATFORM_UI) {
+  if (code === 'model_restricted' || code === 'zdr_restricted' || !PLATFORM_UI) {
+    const zdr = code === 'zdr_restricted';
     return (
       <ActionCard
         deleting={deleting}
         time={time}
         agentLabel={agentLabel}
         kind={t('chatView.kinds.model')}
-        title={code === 'model_restricted' ? t('chatView.model.restrictedTitle', { model: label }) : t('chatView.model.unavailableTitle', { model: label })}
+        title={code === 'model_restricted' || zdr ? t('chatView.model.restrictedTitle', { model: label }) : t('chatView.model.unavailableTitle', { model: label })}
         body={!PLATFORM_UI
           ? t('chatView.model.askOperatorBody')
-          : t('chatView.model.restrictedBody')}
+          : zdr ? t('chatView.model.zdrRestrictedBody') : t('chatView.model.restrictedBody')}
         buttons={PLATFORM_UI ? [
           { label: t('chatView.cards.openSettings'), onClick: () => onOpenSettings?.('agent'), primary: true },
         ] : []}
@@ -3648,7 +3650,7 @@ export default function ChatView({
                  * `model_restricted` shares the card: an org admin's model
                  * rule, which the card answers with Open Settings only. */
                 if (m.code === 'model_access_denied' || m.code === 'model_disabled' || m.code === 'model_restricted'
-                  || m.code === 'model_not_in_tier') {
+                  || m.code === 'zdr_restricted' || m.code === 'model_not_in_tier') {
                   const deniedResend = lastUserMessageBefore(visibleMessages, i);
                   return (
                     <ModelUnavailableCard
