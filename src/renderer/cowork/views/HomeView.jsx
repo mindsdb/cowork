@@ -669,13 +669,10 @@ export default function HomeView({
   // An example started from the gallery is placed once the composer is usable,
   // exactly as one picked under the composer: its mode selected, its prompt in
   // the box, nothing sent. The person chose it, so it replaces what is there.
-  // The draft store is written first so leaving the own-work mode, which
-  // clears a bare job, reads the example and keeps it.
   useEffect(() => {
     if (!galleryPick || !composerUsable || codingModeEnabled || !onPrefill) return;
     const { entry } = galleryPick;
     galleryStartRef.current = entry.sample;
-    setDraft('new', entry.sample.prompt);
     setTaskMode(entry.mode);
     setPickedSample(entry.sample);
     setHandoffHint(false);

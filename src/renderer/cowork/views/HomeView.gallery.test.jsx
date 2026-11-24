@@ -110,6 +110,11 @@ describe('HomeView gallery start', () => {
   it('replaces the own-work mode with the example instead of clearing it', async () => {
     render(<Home onSend={vi.fn(async () => true)} ownWorkRequest={1} />);
     await screen.findByText(/What should .* work on\?/);
+    // A job placed with nothing after it is cleared when the mode is left;
+    // the example that replaces it must survive that.
+    const job = 'Turn these bank statements or invoices into one spreadsheet.';
+    await userEvent.setup().click(await screen.findByRole('button', { name: new RegExp(job.replace(/[.]/g, '\\.')) }));
+    await screen.findByDisplayValue(new RegExp(job.replace(/[.]/g, '\\.')));
     pickFromGallery();
 
     await screen.findByDisplayValue(found.sample.prompt);

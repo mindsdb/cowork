@@ -1,0 +1,256 @@
+{
+ "version": 1,
+ "sections": [
+  {
+   "category": "Sales and research",
+   "line": "Learn about a company, a deal or a field, and get something to send.",
+   "ids": [
+    "research-a-prospect-and-draft-outreach"
+   ]
+  },
+  {
+   "category": "Your documents",
+   "line": "Bring a contract, report, statement, notes or a spreadsheet. Most run on a sample if you have none.",
+   "ids": [
+    "turn-a-bank-statement-into-a-spreadsheet",
+    "make-a-study-guide-from-course-material"
+   ]
+  },
+  {
+   "category": "Plans and dashboards",
+   "line": "Turn a plan, a process or numbers into something people can click through.",
+   "ids": [
+    "build-a-project-rollout-timeline",
+    "track-monthly-kpis-across-departments"
+   ]
+  },
+  {
+   "category": "Games",
+   "line": "Built in one go from one prompt.",
+   "ids": [
+    "celestial-merge-2048"
+   ]
+  }
+ ],
+ "startHere": [
+  "research-a-prospect-and-draft-outreach",
+  "build-a-project-rollout-timeline",
+  "celestial-merge-2048"
+ ],
+ "entries": [
+  {
+   "id": "celestial-merge-2048",
+   "mode": "games",
+   "category": "Games",
+   "badge": "Playable",
+   "thumbnail": "/gallery-examples/thumbs/celestial-merge.webp",
+   "title": "Make a merge puzzle game",
+   "description": "A sliding puzzle where matching planets merge into bigger ones. Built in one go from one prompt.",
+   "needs": "Nothing",
+   "example": {
+    "src": "/gallery-examples/celestial-merge.html",
+    "viewUrl": "https://view.mindshub.ai/view/acc7252b2/0a8e03ec",
+    "background": "#05060f",
+    "noun": "game"
+   },
+   "run": {
+    "model": "DeepSeek V4.1 Flash",
+    "seconds": 307
+   }
+  },
+  {
+   "id": "track-monthly-kpis-across-departments",
+   "mode": "visualization",
+   "category": "Plans and dashboards",
+   "badge": "Dashboard",
+   "thumbnail": "/gallery-examples/thumbs/kpi-dashboard.webp",
+   "title": "Build a KPI dashboard",
+   "description": "Monthly sales, marketing, product and support metrics with trend charts, on sample data you can replace. Built on the free MindsHub Air.",
+   "needs": "Nothing",
+   "example": {
+    "src": "/gallery-examples/kpi-dashboard.html",
+    "viewUrl": "https://view.mindshub.ai/view/acc7252b2/e7057702",
+    "background": "#0e131b",
+    "noun": "dashboard"
+   },
+   "run": {
+    "model": "MindsHub Air",
+    "seconds": 69
+   }
+  },
+  {
+   "id": "research-a-prospect-and-draft-outreach",
+   "mode": "wide-research",
+   "category": "Sales and research",
+   "badge": "Brief and email",
+   "thumbnail": "/gallery-examples/thumbs/prospect-brief.webp",
+   "title": "Research a prospect and draft outreach",
+   "description": "For a made-up regional freight company, Cowork researched what businesses like it are facing right now, worked out what its revenue operations lead likely cares about, and wrote a brief and a first email.",
+   "needs": "Nothing",
+   "answer": {
+    "note": "researched 12 Nov 2026",
+    "draft": {
+     "label": "The first email, ready to edit and send",
+     "text": "Subject: Connecting freight growth to fulfillment economics\n\nHi there,\n\nI noticed Fernhill is growing its e-commerce fulfillment line alongside its Midwest trucking and warehousing business. That kind of expansion can make it harder to connect what sales promises with the true account economics and day-to-day service performance, especially as freight capacity and costs shift.\n\nI’d be interested in how you’re thinking about visibility across the customer journey, from quote and operating cost through fulfillment and delivery, and where RevOps is focusing first. Would a 20-minute conversation next week be useful?\n\nBest,\n[Your name]"
+    },
+    "blocks": [
+     {
+      "type": "paragraph",
+      "text": "The opening thesis: freight is getting less forgiving just as fulfillment adds complexity, so the useful conversation is how Fernhill grows the new line without losing sight of account margin, service quality or capacity."
+     },
+     {
+      "type": "heading",
+      "text": "What is happening in the industry"
+     },
+     {
+      "type": "list",
+      "ordered": false,
+      "items": [
+       "Capacity, not a demand boom, is tightening truckload: tonnage flat year over year, spot rates up in October with diesel behind much of it.",
+       "Fulfillment is growing selectively: value-added warehousing up an estimated 4.4% in 2025, with automation bought only where it pays back.",
+       "Logistics surveys put freight-cost control, shipment visibility and practical AI first, with data quality the main barrier."
+      ]
+     }
+    ]
+   },
+   "files": [
+    {
+     "label": "The brief",
+     "name": "fernhill-freight-brief.docx",
+     "what": "What the company does, the industry now, likely priorities, two angles and the email, with sources",
+     "href": "/gallery-examples/fernhill-freight-brief.docx"
+    }
+   ],
+   "run": {
+    "model": "MindsHub Air",
+    "seconds": 187
+   }
+  },
+  {
+   "id": "build-a-project-rollout-timeline",
+   "mode": "visualization",
+   "category": "Plans and dashboards",
+   "badge": "Live app",
+   "thumbnail": "/gallery-examples/thumbs/rollout-timeline.webp",
+   "title": "Plan a project rollout timeline",
+   "description": "A 12-week plan as a swimlane Gantt chart, grouped by phase and colored by team. Click any bar for its details, or replace the sample with your own plan.",
+   "needs": "Nothing",
+   "example": {
+    "src": "/gallery-examples/rollout-timeline.html",
+    "viewUrl": "https://view.mindshub.ai/view/dab6a7755/abfcfcba",
+    "background": "#0d1117",
+    "noun": "timeline"
+   },
+   "run": {
+    "model": "MindsHub Air",
+    "seconds": 77
+   }
+  },
+  {
+   "id": "turn-a-bank-statement-into-a-spreadsheet",
+   "mode": "spreadsheet",
+   "category": "Your documents",
+   "badge": "Workbook",
+   "thumbnail": "/gallery-examples/thumbs/bank-statement.webp",
+   "title": "Turn a bank statement into a spreadsheet",
+   "description": "Cowork made a sample one-month bank statement, turned it into a workbook with one transaction per row and a running balance, and checked that the totals match.",
+   "needs": "Nothing, or your statement",
+   "answer": {
+    "blocks": [
+     {
+      "type": "heading",
+      "text": "The check"
+     },
+     {
+      "type": "table",
+      "columns": [
+       "",
+       "October 2026"
+      ],
+      "rows": [
+       [
+        "Beginning balance",
+        "$1,800.00"
+       ],
+       [
+        "Money in",
+        "$3,512.65"
+       ],
+       [
+        "Money out",
+        "$2,964.23"
+       ],
+       [
+        "Ending balance",
+        "$2,348.42"
+       ],
+       [
+        "Difference from the statement",
+        "$0.00"
+       ]
+      ]
+     },
+     {
+      "type": "paragraph",
+      "text": "22 transactions, one per row with date, description, money in, money out and running balance. Every running balance matches the statement, so nothing was left to reconcile. The bank, account holder and transactions are made up."
+     }
+    ]
+   },
+   "files": [
+    {
+     "label": "The workbook",
+     "name": "sample-bank-statement-oct-2026.xlsx",
+     "what": "Transactions, a summary with the reconciliation check, and notes",
+     "href": "/gallery-examples/sample-bank-statement-oct-2026.xlsx"
+    }
+   ],
+   "run": {
+    "model": "MindsHub Air",
+    "seconds": 124
+   }
+  },
+  {
+   "id": "make-a-study-guide-from-course-material",
+   "mode": "wide-research",
+   "category": "Your documents",
+   "badge": "Study guide",
+   "thumbnail": "/gallery-examples/thumbs/study-guide.webp",
+   "title": "Make a study guide from course material",
+   "description": "Cowork wrote sample lecture notes on contract law, then a study guide from them: key concepts, definitions in the notes’ exact words, a glossary and a 10-question quiz with answers.",
+   "needs": "Nothing, or your course material",
+   "answer": {
+    "blocks": [
+     {
+      "type": "heading",
+      "text": "Definitions, word for word from the notes"
+     },
+     {
+      "type": "list",
+      "ordered": false,
+      "items": [
+       "Offer: a communication showing willingness to make a bargain on sufficiently definite terms, such that the recipient can accept and conclude the bargain.",
+       "Consideration: a bargained-for exchange in which each side gives, promises, or undertakes something the law treats as value.",
+       "Breach: a failure, without legal excuse, to perform a contractual duty when performance is due."
+      ]
+     },
+     {
+      "type": "heading",
+      "text": "From the quiz"
+     }
+    ]
+   },
+   "files": [
+    {
+     "label": "The study guide",
+     "name": "contract-law-study-guide.docx",
+     "what": "The lecture notes, key concepts, definitions, glossary, quiz and answer key",
+     "href": "/gallery-examples/contract-law-study-guide.docx"
+    }
+   ],
+   "run": {
+    "model": "MindsHub Air",
+    "seconds": 119
+   }
+  }
+ ]
+}
