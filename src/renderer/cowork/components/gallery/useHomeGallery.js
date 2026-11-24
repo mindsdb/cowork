@@ -19,7 +19,14 @@ const OFFERED = galleryOffered({ isWeb: host.isWeb, platformUi: PLATFORM_UI, isM
  * never again in this browser or Desktop install after it is folded or used.
  */
 export function useHomeGallery({ onHome, tasks, tasksStatus, consoleUrl = MINDS_CONSOLE_URL, offered = OFFERED }) {
-  const [list, setList] = useState({ manifest: null, failure: null });
+  // `attempt` counts reads, so each failed one is recorded at most once.
+  const [list, setList] = useState({ manifest: null, failure: null, attempt: 0 });
+  // Whether the list was needed: the column could open by itself, or someone
+  // opened it. Every offered user reads the list (the button and the
+  // checklist row need to know it is there), but only a failed read that
+  // someone was waiting on is recorded, so the event tracks new users.
+  const [needed, setNeeded] = useState(false);
+  const reportedAttemptRef = useRef(0);
   const [open, setOpen] = useState(false);
   const [focusSearch, setFocusSearch] = useState(false);
   const [pick, setPick] = useState(null);
@@ -29,19 +36,26 @@ export function useHomeGallery({ onHome, tasks, tasksStatus, consoleUrl = MINDS_
   const load = useCallback(async () => {
     setList((prev) => ({ ...prev, failure: null }));
     const result = await fetchGalleryManifest(consoleUrl);
-    if (result.manifest) {
-      setList({ manifest: result.manifest, failure: null });
-    } else {
-      setList((prev) => ({ manifest: prev.manifest, failure: result.failure }));
-      trackGalleryUnavailable(result.failure);
-    }
+    setList((prev) => (result.manifest
+      ? { manifest: result.manifest, failure: null, attempt: prev.attempt + 1 }
+      : { manifest: prev.manifest, failure: result.failure, attempt: prev.attempt + 1 }));
   }, [consoleUrl]);
+
+  useEffect(() => {
+    if (!needed || !list.failure || reportedAttemptRef.current === list.attempt) return;
+    reportedAttemptRef.current = list.attempt;
+    trackGalleryUnavailable(list.failure);
+  }, [needed, list]);
 
   useEffect(() => {
     if (!offered || !onHome || requestedRef.current) return;
     requestedRef.current = true;
     load();
   }, [offered, onHome, load]);
+
+  useEffect(() => {
+    if (offered && onHome && tasksStatus === 'ready' && tasks.length === 0 && !readGallerySettled()) setNeeded(true);
+  }, [offered, onHome, tasksStatus, tasks.length]);
 
   useEffect(() => {
     if (!onHome || autoTriedRef.current) return;
@@ -65,6 +79,7 @@ export function useHomeGallery({ onHome, tasks, tasksStatus, consoleUrl = MINDS_
 
   const show = useCallback((how) => {
     if (!offered) return;
+    setNeeded(true);
     setOpen(true);
     setFocusSearch(true);
     trackGalleryShown(how);
@@ -85,6 +100,10 @@ export function useHomeGallery({ onHome, tasks, tasksStatus, consoleUrl = MINDS_
 
   return {
     offered,
+    // The list has loaded, so the column has something to show. The button
+    // and the checklist row use the gallery only then; otherwise the row
+    // keeps today's examples list.
+    available: offered && Boolean(list.manifest),
     open: offered && open,
     manifest: list.manifest,
     failure: list.failure,

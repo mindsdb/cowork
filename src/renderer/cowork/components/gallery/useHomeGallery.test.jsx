@@ -104,6 +104,32 @@ describe('useHomeGallery', () => {
     expect(result.current.failure).toBeNull();
   });
 
+  it('is available only once the list has loaded, so the checklist keeps its examples list otherwise', async () => {
+    vi.stubGlobal('fetch', respond(LIST, false));
+    const failing = mount();
+    expect(failing.result.current.available).toBe(false);
+    await waitFor(() => expect(failing.result.current.failure).toBe('http'));
+    expect(failing.result.current.available).toBe(false);
+    failing.unmount();
+
+    vi.stubGlobal('fetch', respond(LIST));
+    const loading = mount({ tasks: [{ id: 't1' }] });
+    await waitFor(() => expect(loading.result.current.available).toBe(true));
+  });
+
+  it('records a failed read only when someone was waiting on the list', async () => {
+    vi.stubGlobal('fetch', respond(LIST, false));
+    const { result } = mount({ tasks: [{ id: 't1' }] });
+    await waitFor(() => expect(result.current.failure).toBe('http'));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(trackGalleryUnavailable).not.toHaveBeenCalled();
+
+    // Opening it reads again; that read, which someone waited on, is recorded.
+    act(() => result.current.show('button'));
+    await waitFor(() => expect(trackGalleryUnavailable).toHaveBeenCalledTimes(1));
+    expect(trackGalleryUnavailable).toHaveBeenCalledWith('http');
+  });
+
   it('does nothing where the gallery is not offered', async () => {
     const fetchSpy = respond(LIST);
     vi.stubGlobal('fetch', fetchSpy);

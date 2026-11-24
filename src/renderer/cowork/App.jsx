@@ -7471,7 +7471,7 @@ function AppCore() {
           // showing. newTask also closes the popout drawer.
           onOpenExamples={() => {
             newTask();
-            if (gallery.offered) gallery.show('checklist');
+            if (gallery.available) gallery.show('checklist');
             else setExamplesRequest(Date.now());
           }}
           // Home's drafted files stay: they are the material that mode asks for.
@@ -7593,7 +7593,7 @@ function AppCore() {
             onOwnWorkRequestConsumed={() => setOwnWorkRequest(0)}
             galleryPick={gallery.pick}
             onGalleryPickConsumed={gallery.clearPick}
-            onOpenGallery={gallery.offered && !galleryShown ? () => gallery.show('button') : null}
+            onOpenGallery={gallery.available && !galleryShown ? () => gallery.show('button') : null}
             codingModeEnabled={false}
           />
         ))}
