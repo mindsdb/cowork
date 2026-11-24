@@ -163,6 +163,7 @@ describe('Sidebar — persistent Cowork / Code workspace switch', () => {
     // this switch sizes its halves to their content (layout is not measurable
     // here; checked in the full app at 240px in every locale).
     expect(code.parentElement).toHaveClass('workspace-mode-switch--tagged');
+    expect(code.style.padding).toBe('5px 6px');
     expect(screen.queryByRole('dialog')).toBeNull();
 
     fireEvent.click(code);
@@ -190,6 +191,7 @@ describe('Sidebar — persistent Cowork / Code workspace switch', () => {
     expect(screen.getAllByRole('button', { name: /^Code/ })).toHaveLength(1);
     // Desktop keeps its equal halves.
     expect(screen.getByRole('button', { name: 'Code' }).parentElement).not.toHaveClass('workspace-mode-switch--tagged');
+    expect(screen.getByRole('button', { name: 'Code' }).style.padding).toBe('5px 10px');
   });
 });
 

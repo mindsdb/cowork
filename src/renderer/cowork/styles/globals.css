@@ -1942,9 +1942,10 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
 }
 /* With a tag beside Code (the web build's Desktop tag), equal halves are too
    narrow for Code in a 240px sidebar, and it runs into Cowork. Each half
-   sizes to its content and shares what is left. */
+   sizes to its content, on one line, and shares what is left. */
 .workspace-mode-switch--tagged > button {
   flex: 1 1 auto;
+  white-space: nowrap;
 }
 
 .anton-sidebar__cta-wrap { padding: 8px 10px 10px; }

@@ -25,6 +25,9 @@ export function WorkspaceModeSwitch({
         }}
         aria-label={t('workspace.label')}
         className={codeTag ? 'workspace-mode-switch workspace-mode-switch--tagged' : 'workspace-mode-switch'}
+        // A tag beside Code needs the room: in a 240px sidebar, Japanese only
+        // fits on one line with tighter sides.
+        itemPadding={codeTag ? '5px 6px' : undefined}
         options={[
           { value: 'cowork', label: 'Cowork', icon: Ico.mindsdb(14) },
           {
