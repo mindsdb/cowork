@@ -1089,6 +1089,14 @@ function AppCore() {
   // the conversation it stops, not whichever one claimed them last.
   const liveStreamsRef = useRef(new Map()); // cid -> { ctrl, pad }
   /*
+   * Conversations a send is still setting up a turn in: from its reservation
+   * until its stream registers (or the send gives up), while it uploads files
+   * and loads Notion pages. The shared slot above can't say this per
+   * conversation, since another conversation's send takes it meanwhile, so a
+   * second send into the same conversation reads this instead (ENG-4635).
+   */
+  const settingUpRef = useRef(new Set()); // cid
+  /*
    * Conversations a Stop is ending, from its cancel request until that Stop
    * has finished. Each maps to a promise that settles true once that Stop has
    * finished, history reload included, or false when its cancel failed and
@@ -1135,6 +1143,8 @@ function AppCore() {
     }
     liveStreamsRef.current.set(cid, { ctrl, pad: prev?.pad ?? null });
     streamCountRef.current.set(cid, (streamCountRef.current.get(cid) ?? 0) + 1);
+    // Its turn is live now: liveStreamsRef holds it from here.
+    settingUpRef.current.delete(cid);
   }, []);
 
   // Drop the record only when `ctrl` is still the registered one, so a stream
@@ -1188,6 +1198,7 @@ function AppCore() {
    * lets reopening it re-attach a second stream that aborts the running one.
    */
   const releaseSlotClaim = useCallback((...ids) => {
+    ids.forEach((cid) => settingUpRef.current.delete(cid));
     const held = activeStreamingTaskIdRef.current;
     if (held && ids.includes(held)) activeStreamingTaskIdRef.current = null;
   }, []);
@@ -1382,6 +1393,7 @@ function AppCore() {
       }
       activeStreamCtrlRef.current = null;
       activeStreamingTaskIdRef.current = null;
+      settingUpRef.current.delete(streaming);
       activeStreamProducedRef.current = false;
       staleReservationRef.current = { cid: null, misses: 0, seen: false, lastMissAt: 0 };
       // Clear the dead turn's live steps like every terminal path, else a turn
@@ -4428,6 +4440,7 @@ function AppCore() {
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
       }
+      if (settingUpRef.current.delete(previousId)) settingUpRef.current.add(sid);
       rekeyStream(previousId, sid);
       markInFlightDone(previousId);
       markInFlight(sid);
@@ -4783,32 +4796,29 @@ function AppCore() {
     }
 
     // Anton-core can't run two turns in parallel against the same
-    // conversation, so if a stream is in flight (or one is about to
-    // start) for this task we queue the new message and let
-    // onDone/onError drain it.
+    // conversation, so if this task has a turn in flight (or one is about to
+    // start) we queue the new message and let that turn's onDone/onError
+    // drain it. Turns in OTHER conversations don't matter: they run side by
+    // side (ENG-4635). This used to queue whenever any conversation held the
+    // shared slot (the ENG-1378 hotfix), so a follow-up in an idle task waited
+    // for every other running task to finish.
     //
-    // The check covers two race conditions:
-    //   1) `activeStreamCtrlRef` is already set — a fully launched
-    //      stream is in flight.
-    //   2) `activeStreamingTaskIdRef` is set but the controller hasn't
-    //      been assigned yet — a previous invocation is mid-await
-    //      (resolving attachments). This holds for ANY task's
-    //      reservation, not just this id: two rapid clicks on the same
-    //      task, or a manual send that lands while a cross-task drain
-    //      (ENG-1378) is between reserving the slot and awaiting
-    //      attachments, both otherwise pass the guard and start a second
-    //      parallel stream against anton-core (which runs one turn at a
-    //      time). The reservation is always cleared on done/error, so a
-    //      broadened guard cannot wedge later sends.
-    //   3) This task still has a live stream while the shared slot is free,
-    //      as after another task's Stop or terminal released it. A send now
-    //      would register over that stream and abort it mid-answer; the
-    //      stream's own terminal drops the record and drains this queue.
-    //      Likewise while a Stop on this task is running, which would abort the
-    //      new stream and leave its server turn running, or a turn delete is,
+    // The check covers:
+    //   1) A send into this task still setting up its turn (settingUpRef):
+    //      between its reservation and its stream registering it awaits
+    //      uploads and Notion pages. Two rapid sends, or a manual send that
+    //      lands while a drain into this task is in that window, would
+    //      otherwise start a second stream on one conversation. The entry is
+    //      cleared when the stream registers or the send gives up
+    //      (releaseSlotClaim), so it cannot wedge later sends.
+    //   2) This task has a live stream (hasLiveTurnHere). A send now would
+    //      register over that stream and abort it mid-answer; the stream's
+    //      own terminal drops the record and drains this queue. Likewise
+    //      while a Stop on this task is running, which would abort the new
+    //      stream and leave its server turn running, or a turn delete is,
     //      which may remove the new turn. The message waits, and that Stop or
     //      delete drains it once it has finished.
-    if (activeStreamingTaskIdRef.current || activeStreamCtrlRef.current || hasLiveTurnHere(id)) {
+    if (settingUpRef.current.has(id) || hasLiveTurnHere(id)) {
       // A message typed into a task that is working right now may belong to
       // that task ("use the sales DB instead"): offer it to the running turn
       // first (ENG-4194). Only the person's own composer sends: a drained or
@@ -4848,8 +4858,11 @@ function AppCore() {
       return true;
     }
     // Synchronous reservation so a second invocation that fires
-    // before our awaits resolve sees us as "in flight."
+    // before our awaits resolve sees us as "in flight." That check reads this
+    // conversation's own entry: another conversation's send may take the
+    // shared slot before this stream registers.
     activeStreamingTaskIdRef.current = id;
+    settingUpRef.current.add(id);
     activeStreamProducedRef.current = false; // fresh stream: no events yet
     // Cross-client cache: we know this conversation is about to be
     // mid-stream. Marking immediately (rather than waiting for the
@@ -4927,13 +4940,11 @@ function AppCore() {
       // clear it now rather than leave the sidebar's running dot on until the
       // next in-flight poll.
       markInFlightDone(id);
-      // Other tasks' messages were queued behind this reservation, so send
-      // the next one now. This task is skipped: retrying its failed upload
-      // straight away would fail again. A send the drain started carries the
-      // tasks its drain chain already skipped, so two tasks whose uploads keep
-      // failing don't hand the slot back and forth: each is tried once, and
-      // the next turn to finish drains them again.
-      drainNextQueuedMessage(null, [...(opts.drainSkipped || []), id]);
+      // No drain here. Only this task's own messages can wait on this send
+      // (another task's never queue behind it: ENG-4635), and retrying its
+      // failed upload straight away would fail again; its next turn to finish
+      // drains them. (Before ENG-4635 every task's queue waited on this
+      // reservation, so a failure had to drain the next task's.)
       // Make the failure impossible to miss. The inline composer error alone
       // was easy to overlook, so a file that couldn't upload just sat at
       // "Queued" with no visible reason (the exact shape of the stuck-upload
@@ -4996,6 +5007,7 @@ function AppCore() {
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
       }
+      if (settingUpRef.current.delete(previousId)) settingUpRef.current.add(sid);
       rekeyStream(previousId, sid);
       markInFlightDone(previousId);
       markInFlight(sid);
@@ -5584,19 +5596,22 @@ function AppCore() {
   // browser (ChatView's phone dock).
   const callInTaskOnPhone = isMobile && route === 'task' && Boolean(currentTask) && !showConversationError && !showConversationLoading;
 
-  const drainNextQueuedMessage = (preferredTaskId, skipTaskIds = []) => {
-    // Slot re-reserved (a new turn already started) — that turn's own
-    // onDone/onError will drain next. Prevents launching two parallel turns.
-    if (activeStreamCtrlRef.current || activeStreamingTaskIdRef.current) return;
+  const drainNextQueuedMessage = (preferredTaskId) => {
     /*
+     * Turns in different conversations run side by side (ENG-4635): another
+     * conversation streaming doesn't hold this one's queue. This used to
+     * return whenever any conversation held the shared slot, so a task whose
+     * turn had ended kept its queued message until every other task finished.
+     *
      * A conversation with a live stream is still running its own turn, which a
      * follow-up would replace (registerStream aborts it). Its own terminal drops
-     * the record before it drains, so its follow-up goes out then. One being
-     * stopped or having a turn deleted is skipped too: Stop drops what was
-     * queued before the click, and Stop or the delete drains the rest itself.
+     * the record before it drains, so its follow-up goes out then. One a send is
+     * still setting up a turn in is skipped the same way: that turn drains it.
+     * One being stopped or having a turn deleted is skipped too: Stop drops what
+     * was queued before the click, and Stop or the delete drains the rest itself.
      */
-    const skipped = new Set(Object.keys(messageQueueRef.current).filter(hasLiveTurnHere));
-    for (const skipTaskId of skipTaskIds) skipped.add(skipTaskId);
+    const skipped = new Set(Object.keys(messageQueueRef.current)
+      .filter((cid) => hasLiveTurnHere(cid) || settingUpRef.current.has(cid)));
     const taskId = selectNextQueuedTask(
       messageQueueRef.current,
       new Set(tasksRef.current.map((t) => t.id)),
@@ -5621,7 +5636,6 @@ function AppCore() {
     Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || [], {
       targetTask,
       disabledConnections: next.disabledConnections,
-      drainSkipped: skipped,
     })).catch(() => {
       enqueueMessage(taskId, next.text, next.attachments || [], next.disabledConnections || []);
     });
@@ -5770,6 +5784,7 @@ function AppCore() {
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
       }
+      if (settingUpRef.current.delete(previousId)) settingUpRef.current.add(sid);
       rekeyStream(previousId, sid);
       setActiveTaskId((curr) => (curr === previousId ? sid : curr));
       migrateQueuedMessages([previousId, id], sid);

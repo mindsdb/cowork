@@ -427,9 +427,11 @@ describe('composer send while a question is pending', () => {
 
     await send(user, composer, 'a brand new message');
 
+    // Released: the text is a message of its own, never an answer to the dead
+    // question. With the turn gone it starts a new one; the aborted controller
+    // left in the shared slot no longer holds it (ENG-4635).
     expect(spies.submitAnswer).not.toHaveBeenCalled();
-    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
-    expect(screen.getByText('a brand new message')).toBeInTheDocument();
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenLastCalledWith('conv-a', 'a brand new message', expect.anything()));
   });
 
   it('releases the composer when the card itself learns the question is dead', async () => {
@@ -614,11 +616,11 @@ describe('reconnected background stream (tailInFlight)', () => {
     await send(user, composer, 'a brand new message');
 
     // Released: still just the one submit from before the stream died, and the
-    // text went to the queue (the aborted controller is still parked) rather
-    // than into a dead question.
+    // text went out as a message of its own rather than into a dead question.
+    // The aborted controller left in the shared slot no longer holds it back
+    // (ENG-4635).
     expect(spies.submitAnswer).toHaveBeenCalledTimes(1);
-    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
-    expect(screen.getByText('a brand new message')).toBeInTheDocument();
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenLastCalledWith('conv-a', 'a brand new message', expect.anything()));
   });
 });
 
@@ -1532,8 +1534,10 @@ describe('new-session stream (send from home)', () => {
 
     await send(user, chatComposer, 'a brand new message');
 
+    // A message of its own, not an answer to the dead question (ENG-4635: no
+    // longer held behind the aborted controller left in the shared slot).
     expect(spies.submitAnswer).toHaveBeenCalledTimes(1);
-    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenLastCalledWith('conv-new', 'a brand new message', expect.anything()));
   });
 });
 
@@ -1883,38 +1887,47 @@ describe('superseded data-vault stream', () => {
   });
 });
 
-describe('Stop while a sibling task is queued (ENG-1378 stop-drain)', () => {
-  it('drains another task\'s queue when the streaming task is stopped', async () => {
+describe('tasks running side by side (ENG-4635)', () => {
+  it('starts a message in an idle task at once while another task streams', async () => {
     const user = userEvent.setup();
     const composer = await openTask(user); // Alpha (conv-a)
 
-    // Alpha starts a turn and holds the single shared stream slot.
+    // Alpha starts a turn and holds the shared stream slot.
     await send(user, composer, 'alpha turn');
     await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
 
-    // Switch to Beta and fire a message — it queues behind Alpha's live slot
-    // rather than starting a second parallel turn.
+    // Beta has nothing running: its message starts its own turn now, beside
+    // Alpha's. It used to queue behind Alpha until Alpha finished.
     const betaComposer = await openByTitle(user, 'Beta task');
-    await send(user, betaComposer, 'queued for beta');
-    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
-    expect(spies.streamMessage).toHaveBeenCalledTimes(1); // still only Alpha's
-
-    // Back to Alpha and press Stop. Freeing the slot must sweep Beta's queue —
-    // Stop bumps the generation and silences Alpha's cancelled callback, so
-    // without an explicit drain Beta strands at "waiting for Anton" with no
-    // future turn to release it.
-    await openByTitle(user, 'Alpha task');
-    await user.click(await screen.findByRole('button', { name: /stop/i }));
-    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
-
-    // Beta's queued message is now sent against its own conversation, and its
-    // queue chip is gone.
+    await send(user, betaComposer, 'beta now');
     await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
     expect(spies.streamMessage.mock.calls[1][0]).toBe('conv-b');
-    expect(spies.streamMessage.mock.calls[1][1]).toBe('queued for beta');
-    await waitFor(() =>
-      expect(screen.queryByLabelText('Remove from queue')).toBeNull(),
-    );
+    expect(spies.streamMessage.mock.calls[1][1]).toBe('beta now');
+    expect(screen.queryByLabelText('Remove from queue')).toBeNull();
+  });
+
+  it('sends a task\'s queued message when its own turn ends, while another task still streams', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user); // Alpha (conv-a)
+    await send(user, composer, 'alpha turn');
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
+
+    const betaComposer = await openByTitle(user, 'Beta task');
+    await send(user, betaComposer, 'beta turn');
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    const betaStream = streams[streams.length - 1];
+    // Beta is busy: a follow-up there queues behind Beta's own turn.
+    await send(user, betaComposer, 'beta follow-up');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+    expect(spies.streamMessage).toHaveBeenCalledTimes(2);
+
+    // Beta's turn ends while Alpha's still runs: the follow-up goes out now,
+    // not once Alpha finishes (the drain no longer waits on the shared slot).
+    await act(async () => { betaStream.opts.onDone('conv-b'); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(3));
+    expect(spies.streamMessage.mock.calls[2][0]).toBe('conv-b');
+    expect(spies.streamMessage.mock.calls[2][1]).toBe('beta follow-up');
+    await waitFor(() => expect(screen.queryByLabelText('Remove from queue')).toBeNull());
   });
 });
 
@@ -1956,15 +1969,19 @@ describe('Stop when the cancel request never lands (ENG-1919)', () => {
   });
 });
 
-describe('a manual send racing another task mid-reserve (ENG-1378 parallel-stream guard)', () => {
-  it('queues rather than starting a second stream while another task is between reserving the slot and its controller', async () => {
+describe('a send while a task is still setting up its turn (ENG-1378, ENG-4635)', () => {
+  beforeEach(() => uploadAttachments.mockClear());
+  afterEach(() => {
+    uploadAttachments.mockReset();
+    uploadAttachments.mockResolvedValue([]);
+  });
+
+  it('starts another task\'s message at once, and the parked send still starts after its upload', async () => {
     const user = userEvent.setup();
     const composer = await openTask(user); // Alpha (conv-a)
 
     // Beta sends with a file. Its upload is held open, parking Beta's send
-    // between reserving the shared slot (activeStreamingTaskIdRef = conv-b) and
-    // assigning its stream controller — the exact window where the old guard,
-    // keyed to `=== id`, let a different task slip through.
+    // between reserving the shared slot and its stream registering.
     let releaseUpload;
     uploadAttachments.mockImplementationOnce(
       () => new Promise((resolve) => { releaseUpload = () => resolve([]); }),
@@ -1972,58 +1989,82 @@ describe('a manual send racing another task mid-reserve (ENG-1378 parallel-strea
     const betaComposer = await openByTitle(user, 'Beta task');
     await attach(user, 'beta-notes.txt');
     await send(user, betaComposer, 'beta with file');
-    // Parked on the upload: no stream has started for anyone yet.
     await waitFor(() => expect(uploadAttachments).toHaveBeenCalledTimes(1));
     expect(spies.streamMessage).not.toHaveBeenCalled();
 
-    // A manual send to Alpha lands in that window. anton-core runs one turn at
-    // a time, so it must queue behind Beta's reservation, not launch a second
-    // parallel stream.
+    // A send to Alpha in that window is another conversation: it starts now.
     await openByTitle(user, 'Alpha task');
     await send(user, composer, 'manual alpha');
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
+    expect(spies.streamMessage.mock.calls[0][0]).toBe('conv-a');
+    expect(screen.queryByLabelText('Remove from queue')).toBeNull();
+
+    // Beta's upload completes: its own stream starts too.
+    await act(async () => { releaseUpload(); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][0]).toBe('conv-b');
+    expect(spies.streamMessage.mock.calls[1][1]).toBe('beta with file');
+  });
+
+  it('queues a second send into the same task instead of starting a second stream there', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user); // Alpha (conv-a)
+    let releaseUpload;
+    uploadAttachments.mockImplementationOnce(
+      () => new Promise((resolve) => { releaseUpload = () => resolve([]); }),
+    );
+    await attach(user, 'notes.txt');
+    await send(user, composer, 'with a file');
+    await waitFor(() => expect(uploadAttachments).toHaveBeenCalledTimes(1));
+
+    // Same conversation, mid-setup: anton-core runs one turn per
+    // conversation, so this waits for that turn.
+    await send(user, composer, 'right after');
     expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
     expect(spies.streamMessage).not.toHaveBeenCalled();
 
-    // Beta's upload completes: its (single) stream starts, against its own
-    // conversation. Alpha stays queued for the next drain.
     await act(async () => { releaseUpload(); await Promise.resolve(); });
     await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
-    expect(spies.streamMessage.mock.calls[0][0]).toBe('conv-b');
-    expect(spies.streamMessage.mock.calls[0][1]).toBe('beta with file');
+    expect(spies.streamMessage.mock.calls[0][1]).toBe('with a file');
+    // Its turn ends: the queued one goes out after it. (The composer still
+    // held the first text while it uploaded, so the second carries it too.)
+    const first = streams[streams.length - 1];
+    await act(async () => { first.opts.onDone('conv-a'); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][0]).toBe('conv-a');
+    expect(spies.streamMessage.mock.calls[1][1]).toContain('right after');
   });
 });
 
-describe('a send whose upload fails while another task is queued', () => {
+describe('a send whose upload fails', () => {
   beforeEach(() => uploadAttachments.mockClear());
   afterEach(() => {
     uploadAttachments.mockReset();
     uploadAttachments.mockResolvedValue([]);
   });
 
-  it('sends the other task\'s queued message instead of leaving it queued', async () => {
+  it('lets the next send into that task start instead of queueing behind the failed one', async () => {
     const user = userEvent.setup();
     const composer = await openTask(user); // Alpha (conv-a)
-
-    // Beta's upload holds the slot, so Alpha's send queues behind it.
     let failUpload;
     uploadAttachments.mockImplementationOnce(
       () => new Promise((_resolve, reject) => { failUpload = () => reject(new Error('Upload failed (500)')); }),
     );
-    const betaComposer = await openByTitle(user, 'Beta task');
-    await attach(user, 'beta-notes.txt');
-    await send(user, betaComposer, 'beta with file');
+    await attach(user, 'notes.txt');
+    await send(user, composer, 'with a file');
     await waitFor(() => expect(uploadAttachments).toHaveBeenCalledTimes(1));
 
-    await openByTitle(user, 'Alpha task');
-    await send(user, composer, 'queued alpha');
-    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
-    expect(spies.streamMessage).not.toHaveBeenCalled();
-
-    // No turn ever started, so no terminal will drain Alpha. The failure must.
+    // The failure ends the setup: nothing is left marking Alpha as starting a
+    // turn (ENG-4635), so the next message is not queued behind a turn that
+    // will never come.
     await act(async () => { failUpload(); await Promise.resolve(); });
+    await waitFor(() => expect(screen.queryByLabelText('Active')).toBeNull());
+    // The composer kept the failed text (and its file) for a retry.
+    await user.clear(composer);
+    await send(user, composer, 'try again without it');
     await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
-    expect(spies.streamMessage.mock.calls[0][0]).toBe('conv-a');
-    expect(spies.streamMessage.mock.calls[0][1]).toBe('queued alpha');
+    expect(spies.streamMessage.mock.calls[0][1]).toContain('try again without it');
+    expect(screen.queryByLabelText('Remove from queue')).toBeNull();
   });
 
   it('clears the task\'s running dot when its upload fails', async () => {
@@ -2109,12 +2150,15 @@ describe('a drained message whose send fails (ENG-1378)', () => {
     const user = userEvent.setup();
     const alpha = await openTask(user); // conv-a
 
-    // Turn 1 in Alpha holds the slot; Alpha and Beta each queue a file.
+    // Alpha and Beta each run a turn, and each queues a file behind its own.
     await send(user, alpha, 'first message');
     const stream = streams[streams.length - 1];
     await attach(user, 'alpha.txt');
     await send(user, alpha, 'queued alpha');
     const beta = await openByTitle(user, 'Beta task');
+    await send(user, beta, 'beta first');
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    const betaStream = streams[streams.length - 1];
     await attach(user, 'beta.txt');
     await send(user, beta, 'queued beta');
     await waitFor(() => expect(screen.getAllByLabelText('Remove from queue').length).toBeGreaterThan(0));
@@ -2127,7 +2171,13 @@ describe('a drained message whose send fails (ENG-1378)', () => {
     uploadAttachments.mockImplementation(() => new Promise((_, reject) => {
       setTimeout(() => reject(new Error('Upload failed (500)')), 0);
     }));
-    await act(async () => { stream.opts.onDone('conv-a'); await Promise.resolve(); });
+    // Both turns end together, so each drains its own queue while the other's
+    // send is still uploading.
+    await act(async () => {
+      betaStream.opts.onDone('conv-b');
+      stream.opts.onDone('conv-a');
+      await Promise.resolve();
+    });
 
     // One upload attempt per task, then the drain chain stops.
     await waitFor(() => expect(uploadAttachments).toHaveBeenCalledTimes(2));
