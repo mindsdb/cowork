@@ -99,6 +99,7 @@ import { linkFigureSteps } from '../lib/figureSources';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { billingActions, billingCopyKey, offersBilling } from '../lib/billingLinks';
 import { useBudgetsUrl } from '../hooks/useBudgetsUrl';
+import { useConsoleLink } from '../hooks/useConsoleLink';
 import { useUpgradeOffer } from '../hooks/useUpgradeOffer';
 import { cleanRequiredTier } from '../lib/subscriptionPlan';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
@@ -471,9 +472,10 @@ function AnswerTurn({ state = 'done', time, children, showActions = true, copyTe
       {state !== 'thinking' && (
         <div className="flex items-center gap-2">
           {showActions && !deleting && (
-            <TurnActions text={copyText || ''} copyLabel={t('chatView.turn.copyResponse')} onDelete={onDelete} isLast={isLast} />
+            <TurnActions text={copyText || ''} copyLabel={t('chatView.turn.copyResponse')} onDelete={onDelete} isLast={isLast}>
+              <ReportContentButton conversationId={conversationId} messageId={messageId} />
+            </TurnActions>
           )}
-          {!deleting && <ReportContentButton conversationId={conversationId} messageId={messageId} />}
           {/* Agent always named; the timestamp joins it when the caller
               resolved one. No message row carries `createdAt` — the server
               sends `created_at` and nothing maps it. */}
@@ -1406,6 +1408,7 @@ export function AllowanceExhaustedCard({
   time, agentLabel, resetAt, usage, isBillingOwner, deleting = false,
 }) {
   const { t } = useTranslation('chat');
+  const consoleLink = useConsoleLink();
   /* ENG-4186: on a Free plan the highest-intent moment offers Plus first.
      No plan (gate off, older server) or no right to buy: no button, and the
      card reads exactly as before. */
@@ -1441,7 +1444,7 @@ export function AllowanceExhaustedCard({
           // once and this one is not the exception.
           onClick: () => {
             trackBillingOpened('included_allowance_exhausted');
-            host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+            host.openExternal(consoleLink(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner })));
           },
           primary: !getPlus,
         },
@@ -1450,7 +1453,7 @@ export function AllowanceExhaustedCard({
           label: USAGE_ACTIONS.setUpAutoTopUp.label,
           onClick: () => {
             trackBillingOpened('included_allowance_exhausted');
-            host.openExternal(usageActionUrl(USAGE_ACTIONS.setUpAutoTopUp, { isBillingOwner }));
+            host.openExternal(consoleLink(usageActionUrl(USAGE_ACTIONS.setUpAutoTopUp, { isBillingOwner })));
           },
         }]),
       ])}
@@ -1471,6 +1474,7 @@ export function WindowAllowanceExhaustedCard({
 }) {
   const { t } = useTranslation('chat');
   const upgrade = useUpgradeOffer();
+  const consoleLink = useConsoleLink();
   if (!PLATFORM_UI) return <ProviderLimitCard time={time} agentLabel={agentLabel} deleting={deleting} />;
   const until = formatResetTime(resetAt);
   const windowKey = allowanceWindow === '7d' || allowanceWindow === '5h' ? allowanceWindow : 'other';
@@ -1493,7 +1497,7 @@ export function WindowAllowanceExhaustedCard({
           // The click only; token_cap_hit counted the impression on receipt.
           onClick: () => {
             trackBillingOpened('window_allowance_exhausted');
-            host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+            host.openExternal(consoleLink(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner })));
           },
           primary: true,
         },
@@ -1543,6 +1547,7 @@ export function BalanceEmptyCard({
   time, agentLabel, usage, isBillingOwner, onSwitchToAir, deleting = false,
 }) {
   const { t } = useTranslation('chat');
+  const consoleLink = useConsoleLink();
   if (!PLATFORM_UI) return <ProviderLimitCard time={time} agentLabel={agentLabel} deleting={deleting} />;
   const free = freeAllowanceState(usage);
   if (!offersBilling()) {
@@ -1561,7 +1566,7 @@ export function BalanceEmptyCard({
     // every paint.
     onClick: () => {
       trackBillingOpened('token_limit');
-      host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+      host.openExternal(consoleLink(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner })));
     },
     primary: true,
   };
@@ -1605,6 +1610,7 @@ export function FreeServingPausedCard({
   time, agentLabel, resetAt, isBillingOwner, deleting = false,
 }) {
   const { t } = useTranslation('chat');
+  const consoleLink = useConsoleLink();
   if (!PLATFORM_UI) {
     return (
       <ActionCard
@@ -1634,7 +1640,7 @@ export function FreeServingPausedCard({
              trigger: a fleet-wide pause is not this user running out. */
           onClick: () => {
             trackBillingOpened('free_serving_paused');
-            host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+            host.openExternal(consoleLink(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner })));
           },
           primary: true,
         },
@@ -1703,6 +1709,7 @@ export function BudgetExceededCard({
    on the home screen and its first sentence must read the same. */
 export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) {
   const { t } = useTranslation('chat');
+  const consoleLink = useConsoleLink();
   return (
     <ActionCard
       deleting={deleting}
@@ -1720,7 +1727,7 @@ export function ConnectProviderCard({ time, onOpenSettings, deleting = false }) 
           // question, and is not settled here.
           onClick: () => {
             trackBillingOpened('connect_provider');
-            host.openExternal(MINDS_BILLING_URL);
+            host.openExternal(consoleLink(MINDS_BILLING_URL));
           },
           primary: true,
         }]),
@@ -1741,6 +1748,7 @@ function UsageAlertCard({
   allowanceWindow = null, percentUsed = null, onWallet = false,
 }) {
   const { t } = useTranslation('chat');
+  const consoleLink = useConsoleLink();
   // Inside the mobile app only the lines that name no wallet show: the free
   // allowance or a plan window running low, and a plan window used up that
   // paused the task. A window that put the task on the wallet stays hidden.
@@ -1748,7 +1756,7 @@ function UsageAlertCard({
   if (!PLATFORM_UI || (!offersBilling() && !namesNoWallet)) return null;
   const open = (action) => () => {
     trackBillingOpened('usage_alert', undefined, kind);
-    host.openExternal(usageActionUrl(action, { isBillingOwner }));
+    host.openExternal(consoleLink(usageActionUrl(action, { isBillingOwner })));
   };
   if (kind === 'auto_top_up_failed') {
     // The one notice that asks for something, so it stays a card.
@@ -1904,6 +1912,7 @@ function RateLimitedCard({
 // Settings too.
 function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, providerLabel, deleting = false }) {
   const { t } = useTranslation('chat');
+  const consoleLink = useConsoleLink();
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [err, setErr] = useState(null);
@@ -1923,7 +1932,7 @@ function ReconnectCard({ time, agentLabel, onOpenSettings, reconnectable, provid
         // this handler did about it, and joins the paywall funnel.
         trackKeyProvisioningRefused('billing_opened');
         trackBillingOpened('key_provisioning_refused');
-        host.openExternal(MINDS_BILLING_URL);
+        host.openExternal(consoleLink(MINDS_BILLING_URL));
         return;
       }
       if (!res?.ok) {
@@ -2026,6 +2035,7 @@ export function ModelUnavailableCard({
   isBillingOwner = false, requiredTier = null, deleting = false,
 }) {
   const { t } = useTranslation('chat');
+  const consoleLink = useConsoleLink();
   const upgrade = useUpgradeOffer();
   // Same naming rule as the picker (ENG-1638): MindsHub's catalog label when we
   // hold one, else the id-derived form. This card used to call the bare
@@ -2089,7 +2099,7 @@ export function ModelUnavailableCard({
               label: t('chatView.cards.addFunds'),
               onClick: () => {
                 trackBillingOpened('model_not_in_tier');
-                host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+                host.openExternal(consoleLink(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner })));
               },
               primary: !canUpgrade,
             },
@@ -2110,7 +2120,7 @@ export function ModelUnavailableCard({
     trackBillingOpened(denied ? 'model_access_denied' : 'model_disabled');
     // Only a credit denial opens the add-credits dialog: credits cannot turn a
     // disabled model back on, so that row keeps the plain billing page.
-    host.openExternal(denied ? usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }) : MINDS_BILLING_URL);
+    host.openExternal(consoleLink(denied ? usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }) : MINDS_BILLING_URL));
   };
   const title = denied && offersBilling()
     ? t('chatView.model.needsCreditsTitle', { model: label })

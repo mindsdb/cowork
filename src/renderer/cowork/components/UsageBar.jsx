@@ -4,6 +4,7 @@ import { Icon } from './ui/Icon';
 import { host } from '../../platform/host';
 import { trackBillingOpened } from '../lib/analytics';
 import { usageActionUrl } from '../lib/usageWarnings';
+import { useConsoleLink } from '../hooks/useConsoleLink';
 import { billingActions } from '../lib/billingLinks';
 import { useUsageBarDismiss, useStandingFigureHidden } from '../lib/usageBarDismiss';
 import { useTranslation } from '../../lib/i18n';
@@ -39,6 +40,7 @@ const keyOf = (d) => d.dismissKey ?? d.kind;
 // closed warnings are forgotten.
 export default function UsageBar({ warning, isBillingOwner = false, usageKnown = false, trigger = 'usage_notice' }) {
   const { t } = useTranslation('shell');
+  const consoleLink = useConsoleLink();
   const [dismissed, dismiss] = useUsageBarDismiss({
     // Closed warnings are forgotten once the bar is back at rest: the standing
     // figure or nothing at all. Not while a warning is up, even one the person
@@ -99,7 +101,7 @@ export default function UsageBar({ warning, isBillingOwner = false, usageKnown =
                     return;
                   }
                   trackBillingOpened(clickTrigger);
-                  host.openExternal(usageActionUrl(a, { isBillingOwner }));
+                  host.openExternal(consoleLink(usageActionUrl(a, { isBillingOwner })));
                 }}
                 className="border-0 bg-transparent p-0 m-0 font-body text-[13px] font-semibold underline underline-offset-2 text-[color:inherit] cursor-pointer hover:opacity-80"
               >{a.label}</button>

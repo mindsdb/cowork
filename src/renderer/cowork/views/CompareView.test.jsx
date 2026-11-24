@@ -12,6 +12,7 @@ const hostMock = vi.hoisted(() => ({
 const deployment = vi.hoisted(() => ({ PLATFORM_UI: true }));
 vi.mock('../../lib/deployment', () => deployment);
 
+vi.mock('../hooks/useAccountUser', () => ({ useAccountUser: () => ({ orgId: 'org-1', sub: 'u1' }) }));
 vi.mock('../../platform/host', () => ({
   host: hostMock,
   getAccessToken: vi.fn(async () => null),
@@ -302,6 +303,9 @@ describe('CompareView', () => {
     // Both the card's send arrow and the button below it.
     expect(screen.getAllByRole('button', { name: 'Start comparison' }).map((b) => b.disabled)).toEqual([true, true]);
     expect(screen.getAllByRole('button', { name: /Add funds/ }).length).toBeGreaterThan(0);
+    // The notice names the session's organization, so the console tops up this one (ENG-4333).
+    fireEvent.click(screen.getAllByRole('button', { name: /Add funds/ })[0]);
+    expect(new URL(hostMock.openExternal.mock.calls[0][0]).searchParams.get('organization')).toBe('org-1');
   });
 
   it('on a plan, will not start a side the plan does not cover and the wallet cannot pay for', async () => {
@@ -416,6 +420,8 @@ describe('CompareView', () => {
     expect(within(held).getByText('Qwen stopped because the balance ran out. Add funds to keep comparing.')).toBeTruthy();
     fireEvent.click(within(held).getByRole('button', { name: 'Add funds' }));
     expect(hostMock.openExternal).toHaveBeenCalledTimes(1);
+    // Names the session's organization, so the console tops up this one (ENG-4333).
+    expect(new URL(hostMock.openExternal.mock.calls[0][0]).searchParams.get('organization')).toBe('org-1');
     expect(screen.getByRole('status', { name: 'Side B status' }).textContent).toMatch(/^Out of credits/);
     expect(screen.getByText("Qwen ran out of credits before finishing, so this turn can't be judged.")).toBeTruthy();
     expect(screen.queryByRole('group', { name: 'Which answer was better?' })).toBeNull();

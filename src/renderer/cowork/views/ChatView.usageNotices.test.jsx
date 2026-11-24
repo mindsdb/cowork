@@ -16,6 +16,7 @@ const hostMock = vi.hoisted(() => ({
   isElectron: true, isWeb: false,
 }));
 vi.mock('../../platform/host', () => hostMock);
+vi.mock('../hooks/useAccountUser', () => ({ useAccountUser: () => ({ orgId: 'org-1', sub: 'u1' }) }));
 const analyticsMock = vi.hoisted(() => ({ trackBillingOpened: vi.fn(), trackKeyProvisioningRefused: vi.fn() }));
 vi.mock('../lib/analytics', () => analyticsMock);
 
@@ -75,6 +76,15 @@ describe('ChatView usage notices', () => {
     expect(screen.getByText('Auto top up failed')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add funds' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Update payment method' })).toBeInTheDocument();
+  });
+
+  it("opens the auto top up failure's Add funds for this session's organization (ENG-4333)", () => {
+    hostMock.host.openExternal.mockClear();
+    render(<ChatView task={task([{ kind: 'auto_top_up_failed', createdAt: '2099-08-28T10:00:00Z' }])} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Add funds' }));
+    const opened = new URL(hostMock.host.openExternal.mock.calls[0][0]);
+    expect(opened.searchParams.get('organization')).toBe('org-1');
+    expect(opened.searchParams.get('subject')).toBe('u1');
   });
 
   it('inside the mobile app, shows the allowance change and hides the payment failure', () => {

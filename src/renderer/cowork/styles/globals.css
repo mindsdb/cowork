@@ -4462,6 +4462,8 @@ button.artifact-ref-pill:focus-visible { outline: 2px solid color-mix(in srgb, v
 .quick-edit-card-request { color: var(--ink-4); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .quick-edit-card-summary { display: flex; align-items: baseline; gap: 6px; color: var(--ink); font-size: var(--text-sm); line-height: 1.45; }
 .quick-edit-card-summary-text { min-width: 0; }
+/* Outside a turn's action row, so it takes that row's muted ink here. */
+.quick-edit-card-row .turn-action-btn { flex-shrink: 0; color: var(--ink-4); }
 .quick-edit-card-time { flex-shrink: 0; color: var(--ink-4); font-size: var(--text-xs); line-height: 1.6; font-variant-numeric: tabular-nums; }
 .quick-edit-card-row.is-undone .quick-edit-card-summary-text { color: var(--ink-4); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink-4) 70%, transparent); }
 .quick-edit-card-tag { flex-shrink: 0; padding: 1px 6px; border-radius: 999px; background: var(--surface-2); color: var(--ink-3); font-size: var(--text-2xs); font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
