@@ -1631,6 +1631,15 @@ describe('app secret handoff', () => {
     expect(appSecretHeader()).toEqual({ [APP_SECRET_HEADER]: secret });
   });
 
+  it('points Node programs the server starts at the system trust store', async () => {
+    spawnAnswering({ app_secret_protocol: 1 });
+
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+
+    const opts = vi.mocked(cp.spawn).mock.calls[0][2] as cp.SpawnOptions;
+    expect(opts.env?.NODE_USE_SYSTEM_CA).toBe('1');
+  });
+
   it('generates a new secret for every spawn', async () => {
     const first = spawnAnswering({ app_secret_protocol: 1 });
     await startServer({ port: PORT, readyTimeoutMs: 5_000 });

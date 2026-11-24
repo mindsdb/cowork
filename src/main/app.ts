@@ -66,6 +66,7 @@ import {
 import { sendEvent } from './analytics';
 import { resolveRendererLoad, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, rollbackUI } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
+import { trustSystemCertificates } from './system-trust';
 import {
   accountDataHome,
   adoptDefaultRootAsIncumbent,
@@ -1947,6 +1948,8 @@ app.whenReady().then(async () => {
   // instead of hardcoding 26866. Best-effort + bounded — never blocks boot.
   await resolveServerPort();
   createWindow();
+  // After the window starts loading, so reading the trust store doesn't delay it.
+  setImmediate(trustSystemCertificates);
 
   // Capture renderer readiness NOW, before the async server start —
   // did-finish-load fires quickly (especially with Vite dev server)

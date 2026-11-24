@@ -938,6 +938,14 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // PYTHONIOENCODING (a bare value downgrades stdio to strict). Respect an
       // explicit operator override if one is already set.
       PYTHONUTF8: process.env.PYTHONUTF8 || '1',
+      /* A release build's nodeOptions fuse makes Electron remove
+         NODE_EXTRA_CA_CERTS from this process's environment before any app
+         code runs, so Node programs the server starts (npx-based tools) can't
+         take a corporate root from it. This sends them to the operating
+         system's trust store instead, where a corporate root is installed and
+         where nothing can add one without the user's or an admin's consent.
+         A Node version without system-store support ignores it. */
+      NODE_USE_SYSTEM_CA: '1',
       COWORK_SERVER_PORT: String(serverPort),
       COWORK_LISTEN_PORT: String(serverPort),
       COWORK_SERVER_HOST: SERVER_HOST,
