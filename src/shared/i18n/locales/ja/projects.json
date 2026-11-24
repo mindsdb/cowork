@@ -590,6 +590,7 @@
     "lastFailed": "前回失敗",
     "lastRunFailed": "前回の実行に失敗",
     "stoppedAtLimit": "上限で停止",
+    "writesRefused": "承認が必要",
     "done": "完了",
     "active": "有効"
   },
@@ -621,6 +622,7 @@
     "partialNote": "一部の操作は完了している可能性があります。再実行する前に実行内容を確認してください。",
     "limitTitle": "前回の実行は上限に達して停止しました",
     "limitNote": "作業の一部は完了している可能性があります。再実行する前に実行内容を確認してください。",
+    "approvalTitle": "前回の実行の変更は承認されませんでした",
     "failedTitle": "前回の実行に失敗しました",
     "resume": "再開",
     "runNow": "今すぐ実行",
@@ -720,7 +722,8 @@
       "success": "成功",
       "failed": "失敗",
       "cancelled": "停止",
-      "stoppedAtLimit": "上限で停止"
+      "stoppedAtLimit": "上限で停止",
+      "writesRefused": "未承認"
     },
     "sentence": "{when}（{zone}）",
     "runningNow": "現在実行中",

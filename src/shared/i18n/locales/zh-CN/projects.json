@@ -590,6 +590,7 @@
     "lastFailed": "上次失败",
     "lastRunFailed": "上次运行失败",
     "stoppedAtLimit": "达到上限后停止",
+    "writesRefused": "需要批准",
     "done": "已完成",
     "active": "已启用"
   },
@@ -621,6 +622,7 @@
     "partialNote": "部分操作可能已经完成。再次运行前，请先查看本次运行。",
     "limitTitle": "上次运行达到上限后停止",
     "limitNote": "部分工作可能已经完成。再次运行前，请先查看本次运行。",
+    "approvalTitle": "上次运行的更改未获批准",
     "failedTitle": "上次运行失败",
     "resume": "恢复",
     "runNow": "立即运行",
@@ -720,7 +722,8 @@
       "success": "成功",
       "failed": "失败",
       "cancelled": "已停止",
-      "stoppedAtLimit": "达到上限后停止"
+      "stoppedAtLimit": "达到上限后停止",
+      "writesRefused": "未批准"
     },
     "sentence": "{when}（{zone}）",
     "runningNow": "正在运行",

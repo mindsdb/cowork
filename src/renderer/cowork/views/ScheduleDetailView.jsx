@@ -59,7 +59,12 @@ const RUN_STATUS = {
 };
 // A run that stopped at a limit is failed on the server, but did its work up
 // to there: it reads as a warning, and its reason names the limit.
-const STOPPED_AT_LIMIT = { tone: 'warning', key: 'stoppedAtLimit' };
+// Runs that ended short on purpose, by their outcome: failed on the server,
+// but they did their work up to there, so they read as a warning.
+const STOPPED_SHORT = {
+  stopped_at_limit: { tone: 'warning', key: 'stoppedAtLimit' },
+  writes_refused: { tone: 'warning', key: 'writesRefused' },
+};
 
 const msg = (key, vars) => i18n.t(`scheduleDetail.${key}`, { ns: 'projects', ...vars });
 
@@ -269,9 +274,8 @@ export default function ScheduleDetailView({
             <ListNotice>{t('scheduleDetail.noRuns')}</ListNotice>
           )}
           {shown.map((run) => {
-            const status = run.status === 'failed' && run.outcome === 'stopped_at_limit'
-              ? STOPPED_AT_LIMIT
-              : RUN_STATUS[run.status] || RUN_STATUS.cancelled;
+            const status = (run.status === 'failed' && STOPPED_SHORT[run.outcome])
+              || RUN_STATUS[run.status] || RUN_STATUS.cancelled;
             const look = { tone: status.tone, label: t(`scheduleDetail.runStatus.${status.key}`) };
             const reason = run.status === 'failed' ? (run.error || null) : null;
             const when = absoluteTime(run.startedAt);

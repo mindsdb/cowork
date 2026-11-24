@@ -590,6 +590,7 @@
     "lastFailed": "Ultima non riuscita",
     "lastRunFailed": "Ultima esecuzione non riuscita",
     "stoppedAtLimit": "Interrotta a un limite",
+    "writesRefused": "Richiede approvazione",
     "done": "Completata",
     "active": "Attiva"
   },
@@ -621,6 +622,7 @@
     "partialNote": "Alcune delle sue azioni potrebbero essere state completate. Controlla l’esecuzione prima di ripeterla.",
     "limitTitle": "L’ultima esecuzione si è interrotta a un limite",
     "limitNote": "Parte del lavoro potrebbe essere stata completata. Controlla l’esecuzione prima di ripeterla.",
+    "approvalTitle": "Le modifiche dell’ultima esecuzione non sono state approvate",
     "failedTitle": "L’ultima esecuzione non è riuscita",
     "resume": "Riprendi",
     "runNow": "Esegui ora",
@@ -720,7 +722,8 @@
       "success": "Riuscita",
       "failed": "Non riuscita",
       "cancelled": "Interrotta",
-      "stoppedAtLimit": "Interrotta a un limite"
+      "stoppedAtLimit": "Interrotta a un limite",
+      "writesRefused": "Non approvata"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "In esecuzione ora",
