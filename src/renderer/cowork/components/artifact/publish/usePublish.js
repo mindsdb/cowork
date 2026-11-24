@@ -402,7 +402,7 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
     } finally {
       setPhase('idle');
     }
-  }, [phase, canAct, orgMode, targetPath, publishedUrl, artifact, onChange]);
+  }, [phase, canAct, orgMode, targetPath, identityKey, publishedUrl, artifact, onChange]);
 
   /* Resolves to { ok, notice }: whether the artifact stopped pointing at its
      page, and what to tell the person when the page itself stays live. The

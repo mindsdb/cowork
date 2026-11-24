@@ -84,6 +84,8 @@ describe('connection approval on the Artifacts page', () => {
     shareFrom(first);
     const again = await screen.findByRole('dialog');
     expect(await within(again).findByText(/mysql\/late/)).toBeTruthy();
+    // The reopened dialog explains it; no toast sends the person to Share.
+    expect(toast.add).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'danger' }));
   });
 
   it('keeps the chosen access and the 409 list when the dialog reopens, and publishes them', async () => {
@@ -116,6 +118,15 @@ describe('connection approval on the Artifacts page', () => {
     render(<ArtifactsView artifacts={[app]} />);
     openMenuItem('Share');
     shareFrom(screen.getByRole('dialog'));
+    await waitFor(() => expect(toast.add).toHaveBeenCalledWith(
+      expect.objectContaining({ title: expect.stringMatching(/mysql\/late/) }),
+    ));
+  });
+
+  it('warns when a row Update published connections without credentials', async () => {
+    api.updateArtifact.mockResolvedValue({ url: 'https://share/a1', unapprovedDatasources: [{ label: 'mysql/late' }] });
+    render(<ArtifactsView artifacts={[{ ...app, publishedUrl: 'https://share/a1', modified: true }]} />);
+    openMenuItem('Update');
     await waitFor(() => expect(toast.add).toHaveBeenCalledWith(
       expect.objectContaining({ title: expect.stringMatching(/mysql\/late/) }),
     ));

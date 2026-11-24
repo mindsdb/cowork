@@ -1054,13 +1054,16 @@ export default function ArtifactsView({
         showToast({ kind: 'error', message: t('publish.errors.noUrl') });
       }
     } catch (e) {
+      reportAccessChangeFailed(artifact, { entry: 'list', reason: publishFailureReason(e) });
       if (isDatasourceApprovalError(e)) {
-        // The dialog is open again, so the caller keeps waiting for it.
+        // The dialog is open again with the new list, which says what to do,
+        // so no toast; the caller keeps waiting for the dialog.
         reopened = true;
         setPublishRetry({ draft, pending: pendingDatasourcesFromError(e) });
         setPublishTarget(artifact);
+        setPhase(artifact.path, null);
+        return;
       }
-      reportAccessChangeFailed(artifact, { entry: 'list', reason: publishFailureReason(e) });
       const msg = e?.message || String(e);
       // Map the failures a user can act on to a clearer message.
       const refusal = publishRefusalMessage(e);
@@ -1111,6 +1114,8 @@ export default function ArtifactsView({
       updateOne({ ...artifact, modified: false, publishedUrl: r?.url || artifact.publishedUrl });
       const replaced = republishNotice(r);
       showToast(replaced ? { kind: 'warning', message: replaced } : { kind: 'ok', message: t('artifactsView.updated') });
+      const unapproved = unapprovedDatasourcesNotice(r);
+      if (unapproved) showToast({ kind: 'warning', message: unapproved });
     } catch (e) {
       const message = publishRefusalMessage(e) ?? t('publish.errors.updateFailed', { message: String(e?.message || e) });
       showToast({ kind: 'error', message });
