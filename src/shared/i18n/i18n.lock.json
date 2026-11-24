@@ -22235,6 +22235,74 @@
       "text": "d2c34ab16877"
     }
   },
+  "artifacts:publish.access.websiteDesc": {
+    "de": {
+      "from": "5f7def5e1f1b",
+      "text": "9765378f5120"
+    },
+    "es": {
+      "from": "5f7def5e1f1b",
+      "text": "959274e8cdcc"
+    },
+    "fr": {
+      "from": "5f7def5e1f1b",
+      "text": "5522862756b6"
+    },
+    "it": {
+      "from": "5f7def5e1f1b",
+      "text": "8e8bf5e08afd"
+    },
+    "ja": {
+      "from": "5f7def5e1f1b",
+      "text": "61c6728856c1"
+    },
+    "ko": {
+      "from": "5f7def5e1f1b",
+      "text": "0685c47f36a8"
+    },
+    "pt-BR": {
+      "from": "5f7def5e1f1b",
+      "text": "684c33e4a785"
+    },
+    "zh-CN": {
+      "from": "5f7def5e1f1b",
+      "text": "33186b1eedf3"
+    }
+  },
+  "artifacts:publish.access.websiteTitle": {
+    "de": {
+      "from": "528afaa2ffbf",
+      "text": "5547558e6c50"
+    },
+    "es": {
+      "from": "528afaa2ffbf",
+      "text": "7ca4e46ed951"
+    },
+    "fr": {
+      "from": "528afaa2ffbf",
+      "text": "460cf9861b50"
+    },
+    "it": {
+      "from": "528afaa2ffbf",
+      "text": "0bc7314f2131"
+    },
+    "ja": {
+      "from": "528afaa2ffbf",
+      "text": "c4cdbc597b66"
+    },
+    "ko": {
+      "from": "528afaa2ffbf",
+      "text": "665d8bba43aa"
+    },
+    "pt-BR": {
+      "from": "528afaa2ffbf",
+      "text": "55068dbf0b00"
+    },
+    "zh-CN": {
+      "from": "528afaa2ffbf",
+      "text": "0ae15c6b8196"
+    }
+  },
   "artifacts:publish.addPassword": {
     "de": {
       "from": "a4e0337667fc",
@@ -24103,6 +24171,74 @@
     "zh-CN": {
       "from": "9d15f80c7180",
       "text": "e26af8326f72"
+    }
+  },
+  "artifacts:publish.websiteAddress": {
+    "de": {
+      "from": "82b2a6fe809d",
+      "text": "e295abe0cf30"
+    },
+    "es": {
+      "from": "82b2a6fe809d",
+      "text": "f60712e90f6d"
+    },
+    "fr": {
+      "from": "82b2a6fe809d",
+      "text": "625e89b80112"
+    },
+    "it": {
+      "from": "82b2a6fe809d",
+      "text": "e7e7b916db7c"
+    },
+    "ja": {
+      "from": "82b2a6fe809d",
+      "text": "a1f00decc4b2"
+    },
+    "ko": {
+      "from": "82b2a6fe809d",
+      "text": "ef6f7a353614"
+    },
+    "pt-BR": {
+      "from": "82b2a6fe809d",
+      "text": "a15bd4c16e4d"
+    },
+    "zh-CN": {
+      "from": "82b2a6fe809d",
+      "text": "9441b841e50a"
+    }
+  },
+  "artifacts:publish.websiteEmailGateNotice": {
+    "de": {
+      "from": "ca246b603b61",
+      "text": "7b407157a7c1"
+    },
+    "es": {
+      "from": "ca246b603b61",
+      "text": "d78e636f3c98"
+    },
+    "fr": {
+      "from": "ca246b603b61",
+      "text": "f50b7968f644"
+    },
+    "it": {
+      "from": "ca246b603b61",
+      "text": "ccff882cac75"
+    },
+    "ja": {
+      "from": "ca246b603b61",
+      "text": "b9c017235197"
+    },
+    "ko": {
+      "from": "ca246b603b61",
+      "text": "a59b071f759e"
+    },
+    "pt-BR": {
+      "from": "ca246b603b61",
+      "text": "338bfa2c6332"
+    },
+    "zh-CN": {
+      "from": "ca246b603b61",
+      "text": "0e1e1189a6e1"
     }
   },
   "artifacts:publish.websiteUrl": {
@@ -29509,6 +29645,40 @@
     "zh-CN": {
       "from": "a00571bcb257",
       "text": "878363589f71"
+    }
+  },
+  "artifacts:status.badge.website": {
+    "de": {
+      "from": "b5a229ac8bec",
+      "text": "b5a229ac8bec"
+    },
+    "es": {
+      "from": "b5a229ac8bec",
+      "text": "bd25cbf8710e"
+    },
+    "fr": {
+      "from": "b5a229ac8bec",
+      "text": "eca85827a8d5"
+    },
+    "it": {
+      "from": "b5a229ac8bec",
+      "text": "ee13c1b9c8a3"
+    },
+    "ja": {
+      "from": "b5a229ac8bec",
+      "text": "46c7c6667b59"
+    },
+    "ko": {
+      "from": "b5a229ac8bec",
+      "text": "ed7ccd38d976"
+    },
+    "pt-BR": {
+      "from": "b5a229ac8bec",
+      "text": "fa7955814e32"
+    },
+    "zh-CN": {
+      "from": "b5a229ac8bec",
+      "text": "fb8d739d08b9"
     }
   },
   "artifacts:status.couldNotShare": {

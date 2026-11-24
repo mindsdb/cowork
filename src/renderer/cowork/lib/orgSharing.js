@@ -150,13 +150,15 @@ export function orgShareLockReason(capabilities, kind) {
 
 /* The audience cards both Share panels offer, private → public. The same
    values name the same choice on a skill and on an artifact; an artifact
-   adds Password and Public. */
+   adds Password, Public and, in MindsHub mode, Public website (served at its
+   own address, without the shell). */
 export const AUDIENCE_CHOICE = Object.freeze({
   PRIVATE: 'private',
   ORG: 'org',
   SPECIFIC: 'specific',
   PASSWORD: 'password',
   PUBLIC: 'public',
+  WEBSITE: 'website',
 });
 
 /** The private choice's title, on every surface. */

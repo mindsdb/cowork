@@ -9,8 +9,9 @@
 // The choices, private → public (AUDIENCE_CHOICE, the same values a skill's
 // audience uses): Only me, Everyone at ‹org› (sharing in MindsHub mode
 // only), Specific teams and people (or, without it, Specific people by
-// email), Password protected, Public. "Specific …" unfolds its recipient field right
-// under its own card.
+// email), Password protected, Public, and Public website (MindsHub mode,
+// where the caller offers it: `website`). "Specific …" unfolds its recipient
+// field right under its own card.
 //
 // Controlled via a single `value` draft + `onChange`:
 //   const [draft, setDraft] = useState(accessDraftFromArtifact(artifact));
@@ -71,7 +72,7 @@ export function newAccessDraft({ preselect = true } = {}) {
 // Seed a draft from an artifact's current (owner-side) access state, so
 // re-opening the chooser pre-selects what's already live.
 //
-// The wire format has three modes; the chooser has more. "Only me" is
+// The wire format has four modes (website only in MindsHub mode); the chooser has more. "Only me" is
 // `restricted` with nothing selected, and with sharing on (`orgSharing`)
 // "Everyone at ‹org›" is `restricted` with `org_allowed`, or naming the
 // org's default team, which the server maps to everyone (`teams` is what
@@ -136,7 +137,8 @@ export function isAccessDraftValid(draft, { orgSharing = false } = {}) {
   if (!draft) return false;
   if (draft.mode === AUDIENCE_CHOICE.PUBLIC) return true;
   // Nothing to fill in: each is a complete selection on its own.
-  if (draft.mode === AUDIENCE_CHOICE.PRIVATE || draft.mode === AUDIENCE_CHOICE.ORG) return true;
+  if (draft.mode === AUDIENCE_CHOICE.PRIVATE || draft.mode === AUDIENCE_CHOICE.ORG
+    || draft.mode === AUDIENCE_CHOICE.WEBSITE) return true;
   if (draft.mode === AUDIENCE_CHOICE.PASSWORD) return (draft.password || '').trim().length > 0;
   if (draft.mode === AUDIENCE_CHOICE.SPECIFIC) {
     const { valid, invalid } = parseEmailList(draft.emailsText);
@@ -196,6 +198,9 @@ function buildOrgAccessPayload(draft) {
   switch (draft?.mode) {
     case AUDIENCE_CHOICE.PUBLIC:
       return { mode: 'public' };
+    // The mode alone: cowork-server refuses any other field with it.
+    case AUDIENCE_CHOICE.WEBSITE:
+      return { mode: AUDIENCE_CHOICE.WEBSITE };
     case AUDIENCE_CHOICE.PASSWORD:
       return passwordPayload(draft);
     case AUDIENCE_CHOICE.ORG:
@@ -259,6 +264,12 @@ export const ACCESS_LABELS = {
     get title() { return accessText('publicTitle'); },
     get desc() { return accessText(SHARED_TOKEN_PUBLISH ? 'publicDescShared' : 'publicDesc'); },
   },
+  // MindsHub mode only: served at the artifact's own address, without the shell.
+  website: {
+    icon: Ico.globe,
+    get title() { return accessText('websiteTitle'); },
+    get desc() { return accessText('websiteDesc'); },
+  },
   password: {
     icon: Ico.lock,
     get title() { return accessText('passwordTitle'); },
@@ -316,8 +327,8 @@ export function accessSummaryLabel(artifact, { orgSharing = false, orgName = nul
 // COWORK_PUBLISH_TOKEN) has no owner to let in, so it answers an owner-only
 // upload with a 400. Everyone at ‹org› shows only with sharing on.
 const DEFAULT_MODES = SHARED_TOKEN_PUBLISH
-  ? [AUDIENCE_CHOICE.ORG, AUDIENCE_CHOICE.SPECIFIC, AUDIENCE_CHOICE.PASSWORD, AUDIENCE_CHOICE.PUBLIC]
-  : [AUDIENCE_CHOICE.PRIVATE, AUDIENCE_CHOICE.ORG, AUDIENCE_CHOICE.SPECIFIC, AUDIENCE_CHOICE.PASSWORD, AUDIENCE_CHOICE.PUBLIC];
+  ? [AUDIENCE_CHOICE.ORG, AUDIENCE_CHOICE.SPECIFIC, AUDIENCE_CHOICE.PASSWORD, AUDIENCE_CHOICE.PUBLIC, AUDIENCE_CHOICE.WEBSITE]
+  : [AUDIENCE_CHOICE.PRIVATE, AUDIENCE_CHOICE.ORG, AUDIENCE_CHOICE.SPECIFIC, AUDIENCE_CHOICE.PASSWORD, AUDIENCE_CHOICE.PUBLIC, AUDIENCE_CHOICE.WEBSITE];
 
 // `modes` lets a caller restrict the offered set (e.g. [PASSWORD, PUBLIC]);
 // defaults to every mode this build offers. `value`/`onChange` are the
@@ -336,6 +347,10 @@ const DEFAULT_MODES = SHARED_TOKEN_PUBLISH
 // (the password, the people), for a card that only shows and switches, and
 // `chosenDesc` replaces the chosen option's line on the card (who is on a
 // list, rather than what a list is).
+// `website` offers "Public website" (the caller decides: MindsHub mode, the
+// deployment allows it, a static artifact). A draft that already is a website
+// lists the card whatever `website` says, so a published website still shows
+// its access; once another card is picked it is not offered again.
 export function AccessChooser({
   value,
   onChange,
@@ -345,6 +360,7 @@ export function AccessChooser({
   layout = 'list',
   showEditor = true,
   chosenDesc = '',
+  website = false,
 }) {
   const { t } = useTranslation('artifacts');
   const draft = value;
@@ -412,6 +428,9 @@ export function AccessChooser({
       editor: draft.mode === AUDIENCE_CHOICE.PASSWORD ? passwordField : null, editorTestId: 'password-field',
     },
     modes.includes(AUDIENCE_CHOICE.PUBLIC) && { value: AUDIENCE_CHOICE.PUBLIC, icon: Ico.globe(16), title: ACCESS_LABELS.public.title, desc: ACCESS_LABELS.public.desc },
+    modes.includes(AUDIENCE_CHOICE.WEBSITE) && (website || draft.mode === AUDIENCE_CHOICE.WEBSITE) && {
+      value: AUDIENCE_CHOICE.WEBSITE, icon: ACCESS_LABELS.website.icon(16), title: ACCESS_LABELS.website.title, desc: ACCESS_LABELS.website.desc,
+    },
   ].filter(Boolean);
 
   if (layout === 'dropdown') {

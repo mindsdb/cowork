@@ -50,7 +50,8 @@
     "badge": {
       "public": "Öffentlich",
       "password": "Passwort",
-      "restricted": "Eingeschränkt"
+      "restricted": "Eingeschränkt",
+      "website": "Website"
     },
     "hint": {
       "notSharedYet": "Noch nicht geteilt. Öffnen Sie es und wählen Sie „Teilen“, um einen Weblink zu erhalten.",
@@ -336,7 +337,9 @@
       "restrictedTitle": "Eingeschränkt",
       "restrictedDesc": "Wer den Link öffnen kann, ist noch nicht bekannt",
       "specificTitle": "Bestimmte Personen",
-      "specificDesc": "Nur die von Ihnen angegebenen Personen"
+      "specificDesc": "Nur die von Ihnen angegebenen Personen",
+      "websiteTitle": "Öffentliche Website",
+      "websiteDesc": "Eine eigene Webadresse, für alle im Internet offen"
     },
     "whoCanAccess": "Wer auf Ihre App zugreifen kann",
     "addPassword": "Passwort hinzufügen",
@@ -385,7 +388,9 @@
       "ownerOnlyTitle": "Nur der Eigentümer",
       "ownerOnlyDesc": "Niemand sonst kann den geteilten Link öffnen",
       "listWithheld": "Nur die Teams und Personen, mit denen es geteilt ist"
-    }
+    },
+    "websiteAddress": "Website-Adresse",
+    "websiteEmailGateNotice": "Eine öffentliche Website fragt Besucher nicht nach ihrer E-Mail-Adresse. Alle können sie öffnen."
   },
   "previewErrors": {
     "reported": "{count, plural, one {Die Vorschau hat # Fehler gemeldet} other {Die Vorschau hat # Fehler gemeldet}}",

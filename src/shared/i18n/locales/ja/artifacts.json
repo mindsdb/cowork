@@ -50,7 +50,8 @@
     "badge": {
       "public": "公開",
       "password": "パスワード",
-      "restricted": "制限付き"
+      "restricted": "制限付き",
+      "website": "Webサイト"
     },
     "hint": {
       "notSharedYet": "まだ共有されていません。開いて「共有」を選ぶと、Webリンクを取得できます。",
@@ -336,7 +337,9 @@
       "restrictedTitle": "制限付き",
       "restrictedDesc": "リンクを開ける人はまだ確認できていません",
       "specificTitle": "特定のユーザー",
-      "specificDesc": "指定したユーザーのみ"
+      "specificDesc": "指定したユーザーのみ",
+      "websiteTitle": "公開Webサイト",
+      "websiteDesc": "独自のWebアドレスで、インターネット上の誰でも開けます"
     },
     "whoCanAccess": "アプリにアクセスできるユーザー",
     "addPassword": "パスワードを追加",
@@ -385,7 +388,9 @@
       "ownerOnlyTitle": "所有者のみ",
       "ownerOnlyDesc": "他のユーザーは共有リンクを開けません",
       "listWithheld": "共有されているチームとユーザーのみ"
-    }
+    },
+    "websiteAddress": "Webサイトのアドレス",
+    "websiteEmailGateNotice": "公開Webサイトでは閲覧者にメールアドレスを求めません。誰でも開けます。"
   },
   "previewErrors": {
     "reported": "{count, plural, other {プレビューで#件のエラーが報告されました}}",

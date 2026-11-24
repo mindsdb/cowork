@@ -50,7 +50,8 @@
     "badge": {
       "public": "公开",
       "password": "密码",
-      "restricted": "受限"
+      "restricted": "受限",
+      "website": "网站"
     },
     "hint": {
       "notSharedYet": "尚未分享。打开后选择“分享”即可获取网页链接。",
@@ -336,7 +337,9 @@
       "restrictedTitle": "受限",
       "restrictedDesc": "尚不清楚谁能打开此链接",
       "specificTitle": "特定人员",
-      "specificDesc": "仅限你列出的人"
+      "specificDesc": "仅限你列出的人",
+      "websiteTitle": "公开网站",
+      "websiteDesc": "拥有独立网址，互联网上的任何人都能打开"
     },
     "whoCanAccess": "谁可以访问你的应用",
     "addPassword": "添加密码",
@@ -385,7 +388,9 @@
       "ownerOnlyTitle": "仅所有者",
       "ownerOnlyDesc": "其他人无法打开分享链接",
       "listWithheld": "仅限分享给的团队和人员"
-    }
+    },
+    "websiteAddress": "网站地址",
+    "websiteEmailGateNotice": "公开网站不会要求访客提供邮箱，任何人都能打开。"
   },
   "previewErrors": {
     "reported": "{count, plural, other {预览报告了 # 个错误}}",

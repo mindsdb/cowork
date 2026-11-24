@@ -50,7 +50,8 @@
     "badge": {
       "public": "Public",
       "password": "Mot de passe",
-      "restricted": "Restreint"
+      "restricted": "Restreint",
+      "website": "Site web"
     },
     "hint": {
       "notSharedYet": "Pas encore partagé. Ouvrez-le et choisissez Partager pour obtenir un lien web.",
@@ -336,7 +337,9 @@
       "restrictedTitle": "Restreint",
       "restrictedDesc": "On ne sait pas encore qui peut ouvrir le lien",
       "specificTitle": "Personnes spécifiques",
-      "specificDesc": "Uniquement les personnes de votre liste"
+      "specificDesc": "Uniquement les personnes de votre liste",
+      "websiteTitle": "Site web public",
+      "websiteDesc": "Sa propre adresse web, ouverte à tous sur Internet"
     },
     "whoCanAccess": "Qui peut accéder à votre application",
     "addPassword": "Ajouter un mot de passe",
@@ -385,7 +388,9 @@
       "ownerOnlyTitle": "Seulement son propriétaire",
       "ownerOnlyDesc": "Personne d’autre ne peut ouvrir le lien partagé",
       "listWithheld": "Seulement les équipes et les personnes avec qui c’est partagé"
-    }
+    },
+    "websiteAddress": "Adresse du site web",
+    "websiteEmailGateNotice": "Un site web public ne demande pas leur e-mail aux visiteurs. Tout le monde peut l’ouvrir."
   },
   "previewErrors": {
     "reported": "{count, plural, one {L’aperçu a signalé # erreur} other {L’aperçu a signalé # erreurs}}",
