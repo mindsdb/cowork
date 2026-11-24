@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../Icons';
-import { Button, Input, Tabs, TabList, Tab } from '../ui';
+import { ActionBar, Button, Card, Input, Tabs, TabList, Tab } from '../ui';
 import { Crumb, CrumbSep } from '../ui/Crumb';
+import { MarkdownContent } from '../markdown/MarkdownContent';
+import { answerMarkdown } from './galleryAnswer';
 import { useTranslation } from '../../../lib/i18n';
 import { productName } from '../../../lib/deploymentBrand';
 import { ALL_CATEGORIES, filterGallery } from './galleryFilter';
@@ -46,27 +48,12 @@ function Row({ entry, onOpen, highlighted = false }) {
 }
 
 function AnswerBlocks({ answer }) {
+  const text = useMemo(() => answerMarkdown(answer), [answer]);
   return (
-    <div className="flex flex-col gap-2 text-[13px] leading-relaxed text-ink-2">
-      {answer.blocks.map((block, index) => {
-        const key = `${block.type}-${index}`;
-        if (block.type === 'heading') return <h4 key={key} className="m-0 text-[13px] font-semibold text-ink">{block.text}</h4>;
-        if (block.type === 'paragraph') return <p key={key} className="m-0">{block.text}</p>;
-        if (block.type === 'list') {
-          const List = block.ordered ? 'ol' : 'ul';
-          return <List key={key} className="m-0 pl-5 flex flex-col gap-1">{block.items.map((item) => <li key={item}>{item}</li>)}</List>;
-        }
-        return (
-          <div key={key} className="overflow-x-auto">
-            <table className="text-[12px] border-collapse">
-              <thead><tr>{block.columns.map((c) => <th key={c} className="text-left font-semibold text-ink pr-3 pb-1">{c}</th>)}</tr></thead>
-              <tbody>{block.rows.map((row, r) => <tr key={r}>{row.map((cell, c) => <td key={c} className="pr-3 py-0.5 align-top">{cell}</td>)}</tr>)}</tbody>
-            </table>
-          </div>
-        );
-      })}
+    <div className="flex flex-col gap-3">
+      {text && <MarkdownContent text={text} variant="user" enableForms={false} enableCharts={false} animateStreamingWords={false} />}
       {answer.draft && (
-        <div className="flex flex-col gap-1 rounded-lg border border-line bg-surface-2 p-3">
+        <div className="flex flex-col gap-1 rounded-lg border border-line bg-surface-2 p-3 text-body text-ink-2">
           {answer.draft.label && <span className="text-[12px] font-semibold text-ink-3">{answer.draft.label}</span>}
           <p className="m-0 whitespace-pre-line">{answer.draft.text}</p>
         </div>
@@ -75,22 +62,19 @@ function AnswerBlocks({ answer }) {
   );
 }
 
-function FileLink({ file, isElectron, openExternal }) {
+function FileLink({ file, openExternal }) {
   const { t } = useTranslation('shell');
   const label = file.label || file.name;
+  // The console serves these as attachments, so handing the address to the
+  // browser saves the file on Desktop and on the web alike.
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-line bg-surface-2 px-3 py-2">
+    <Card flat padding="snug" className="flex items-center justify-between gap-3">
       <span className="min-w-0 flex flex-col">
         <span className="text-[13px] text-ink">{label}</span>
         {file.what && <span className="text-[12px] text-ink-3">{file.what}</span>}
       </span>
-      {/* Desktop hands the file to the browser; on the web the console sends it
-          as an attachment, so a plain link saves it. */}
-      {isElectron
-        ? <Button variant="subtle" size="sm" onClick={() => openExternal(file.href)}>{Ico.download(14)} {t('gallery.download')}</Button>
-        // Button's own classes on a real link, so it looks the same as Desktop's.
-        : <a href={file.href} target="_blank" rel="noopener noreferrer" className="btn subtle sm shrink-0 no-underline">{Ico.download(14)} {t('gallery.download')}</a>}
-    </div>
+      <Button size="sm" variant="default" onClick={() => openExternal(file.href)}>{Ico.download(14)} {t('gallery.download')}</Button>
+    </Card>
   );
 }
 
@@ -105,7 +89,7 @@ function Example({ entry, openExternal }) {
     <div className="flex flex-col gap-2">
       <Thumbnail src={entry.thumbnail} className="w-full h-[220px] rounded-lg border border-line" />
       {live && (
-        <Button variant="subtle" size="sm" className="self-start" onClick={() => openExternal(live)}>
+        <Button variant="default" size="sm" className="self-start" onClick={() => openExternal(live)}>
           {Ico.externalLink(14)} {t('gallery.playInBrowser')}
         </Button>
       )}
@@ -113,7 +97,7 @@ function Example({ entry, openExternal }) {
   );
 }
 
-function Detail({ entry, position, total, query, onBack, onStep, onCategory, onStart, onOwnWork, onHide, isElectron, openExternal, reserveCorner }) {
+function Detail({ entry, position, total, query, onBack, onStep, onCategory, onStart, onOwnWork, onHide, openExternal, reserveCorner }) {
   const { t } = useTranslation('shell');
   const minutes = runMinutes(entry.seconds);
   const facts = [
@@ -152,17 +136,18 @@ function Detail({ entry, position, total, query, onBack, onStep, onCategory, onS
         )}
         {files.length > 0 && (
           <div className="flex flex-col gap-2">
-            {files.map((file) => <FileLink key={file.href} file={file} isElectron={isElectron} openExternal={openExternal} />)}
+            {files.map((file) => <FileLink key={file.href} file={file} openExternal={openExternal} />)}
           </div>
         )}
         {facts.length > 0 && <p className="m-0 text-[12px] text-ink-3">{facts.join(' · ')}</p>}
       </div>
       <div className={`px-4 py-3 border-t border-line flex flex-col gap-2 ${reserveCorner ? 'pr-12' : ''}`}>
-        <div className="flex gap-2">
-          <Button variant="primary" className="flex-1" onClick={() => onStart(entry)}>{t(sendsAtOnce(entry) ? 'gallery.tryIt' : 'gallery.start')}</Button>
-          {takesOwnFile(entry.needs) && onOwnWork && <Button variant="default" onClick={onOwnWork}>{t('gallery.ownFile')}</Button>}
-        </div>
-        <p className="m-0 text-[12px] text-ink-3 text-center">{t(sendsAtOnce(entry) ? 'gallery.tryItNote' : 'gallery.startNote')}</p>
+        <ActionBar
+          size="md"
+          primary={{ label: t(sendsAtOnce(entry) ? 'gallery.tryIt' : 'gallery.start'), onClick: () => onStart(entry) }}
+          secondary={takesOwnFile(entry.needs) && onOwnWork ? { label: t('gallery.ownFile'), onClick: onOwnWork } : null}
+        />
+        <p className="m-0 text-[12px] text-ink-3 text-right">{t(sendsAtOnce(entry) ? 'gallery.tryItNote' : 'gallery.startNote')}</p>
       </div>
     </div>
   );
@@ -176,7 +161,7 @@ function Detail({ entry, position, total, query, onBack, onStep, onCategory, onS
  */
 export default function GalleryColumn({
   manifest, failure = null, onRetry, onHide, onStart, onOwnWork = null,
-  isElectron = false, openExternal = () => {}, focusSearch = false, className = '',
+  openExternal = () => {}, focusSearch = false, className = '',
   // The first run, opened by itself: greets the person instead of titling the list.
   welcome = false,
   // 'panel' beside Home, drawn like the sidebar; 'sheet' over Home on a phone.
@@ -250,7 +235,6 @@ export default function GalleryColumn({
           onStart={onStart}
           onOwnWork={onOwnWork}
           onHide={() => onHide('button')}
-          isElectron={isElectron}
           openExternal={openExternal}
           reserveCorner={reserveCorner}
         />

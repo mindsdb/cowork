@@ -5645,7 +5645,6 @@ function AppCore() {
         gallery.hide('own_work');
         setOwnWorkRequest(Date.now());
       }}
-      isElectron={host.isElectron}
       openExternal={(url) => host.openExternal(url)}
       focusSearch={gallery.focusSearch}
       welcome={gallery.welcome}

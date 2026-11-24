@@ -173,10 +173,10 @@ describe('GalleryColumn example', () => {
   });
 
   it('offers the own-work start only for examples that take a file, and downloads from the console', async () => {
-    const { user, onOwnWork } = setup();
+    const { user, onOwnWork, openExternal } = setup();
     await user.click(rows()[2]);
-    const link = screen.getByRole('link', { name: 'Download' });
-    expect(link).toHaveAttribute('href', `${CONSOLE}/gallery-examples/s.xlsx`);
+    await user.click(screen.getByRole('button', { name: 'Download' }));
+    expect(openExternal).toHaveBeenCalledWith(`${CONSOLE}/gallery-examples/s.xlsx`);
     await user.click(screen.getByRole('button', { name: 'Use my own file' }));
     expect(onOwnWork).toHaveBeenCalled();
 
@@ -184,11 +184,27 @@ describe('GalleryColumn example', () => {
     expect(screen.queryByRole('button', { name: 'Use my own file' })).not.toBeInTheDocument();
   });
 
-  it('hands a download to the browser on Desktop', async () => {
-    const { user, openExternal } = setup({ isElectron: true });
-    await user.click(rows()[2]);
-    await user.click(within(screen.getByText('The workbook').closest('div').parentElement).getByRole('button', { name: /Download/ }));
-    expect(openExternal).toHaveBeenCalledWith(`${CONSOLE}/gallery-examples/s.xlsx`);
+  it('draws a written result as chat draws an answer, keeping its text literal', async () => {
+    const { user } = setup({ manifest: readGalleryManifest({
+      version: 1, sections: [{ category: 'Your documents', line: '', ids: ['summarize-a-document-and-draft-my-reply'] }], startHere: [],
+      entries: [entry({
+        id: 'summarize-a-document-and-draft-my-reply', mode: 'wide-research', title: 'Summarize a document', category: 'Your documents',
+        answer: { blocks: [
+          { type: 'heading', text: 'Summary' },
+          { type: 'table', columns: ['Term', 'Current'], rows: [['Price', '$4.80/lb'], ['Pipe | cell', '—']] },
+          { type: 'paragraph', text: 'About ~$420/month, or ~$5,000/year, with *no* change.' },
+          { type: 'list', ordered: true, items: ['Decide by Friday.'] },
+        ] },
+      })],
+    }, `${CONSOLE}/gallery-examples/manifest.json`) });
+    await user.click(screen.getAllByRole('button').find((b) => /Summarize a document/.test(b.textContent)));
+    expect(screen.getByRole('heading', { name: 'Summary' })).toBeInTheDocument();
+    const table = screen.getByRole('table');
+    expect(within(table).getAllByRole('columnheader').map((c) => c.textContent)).toEqual(['Term', 'Current']);
+    expect(within(table).getByRole('cell', { name: 'Pipe | cell' })).toBeInTheDocument();
+    expect(screen.getByText('About ~$420/month, or ~$5,000/year, with *no* change.')).toBeInTheDocument();
+    expect(document.querySelector('del, s, .katex, em')).toBeNull();
+    expect(within(screen.getByRole('list')).getByText('Decide by Friday.')).toBeInTheDocument();
   });
 
   it('jumps to a category from the breadcrumb', async () => {
