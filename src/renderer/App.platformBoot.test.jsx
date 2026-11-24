@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   checkConfigured: vi.fn(),
   setOrgMode: vi.fn(),
   setDraftLinks: vi.fn(),
+  setArtifactWebsites: vi.fn(),
 }));
 
 // The cloud web image is built with the platform UI on (Dockerfile.frontend,
@@ -26,6 +27,7 @@ vi.mock('./platform/host', () => ({ host: {
 } }));
 vi.mock('./lib/orgMode', () => ({ setOrgMode: mocks.setOrgMode }));
 vi.mock('./lib/draftLinks', () => ({ setDraftLinks: mocks.setDraftLinks }));
+vi.mock('./lib/artifactWebsites', () => ({ setArtifactWebsites: mocks.setArtifactWebsites }));
 vi.mock('./lib/keycloak', () => ({ keycloak: { authenticated: true } }));
 vi.mock('./lib/bootWelcome', () => ({
   hasBootedBefore: () => true,
@@ -59,5 +61,19 @@ describe('platform boot stores the draft-links flag', () => {
     render(<App />);
     expect(await screen.findByText('Workspace ready')).toBeInTheDocument();
     expect(mocks.setDraftLinks).toHaveBeenLastCalledWith(stored);
+  });
+});
+
+describe('platform boot stores the public-websites flag', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it.each([
+    [{ artifactWebsites: true }, true],
+    [{}, false],
+  ])('stores what /health reported (%o)', async (flag, stored) => {
+    mocks.checkConfigured.mockResolvedValue({ configured: true, provider: 'minds_cloud', orgMode: true, ...flag });
+    render(<App />);
+    expect(await screen.findByText('Workspace ready')).toBeInTheDocument();
+    expect(mocks.setArtifactWebsites).toHaveBeenLastCalledWith(stored);
   });
 });

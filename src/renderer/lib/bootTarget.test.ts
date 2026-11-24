@@ -314,3 +314,37 @@ describe('resolveRegistrationConsent', () => {
     expect(await resolveRegistrationConsent(true, load)).toBe(false);
   });
 });
+
+describe('resolveBootTarget artifactWebsites', () => {
+  it('reports artifactWebsites from checkConfigured on every route', async () => {
+    const sites = async () => ({ ...CONFIGURED, artifactWebsites: true });
+    const terminal = makeHost({ readSettings: async () => ({ ANTON_TERMS_CONSENT: 'true' }), checkConfigured: sites });
+    const setup = makeHost({
+      readSettings: async () => ({ ANTON_TERMS_CONSENT: 'true' }),
+      checkConfigured: sites,
+      checkInstall: async () => ({ antonInstalled: false, serverDepsReady: true }),
+    });
+    const auth = makeHost({ readSettings: async () => ({}), checkConfigured: sites });
+
+    expect(await resolveBootTarget(terminal, true)).toMatchObject({ target: 'terminal', artifactWebsites: true });
+    expect(await resolveBootTarget(setup, true)).toMatchObject({ target: 'setup', artifactWebsites: true });
+    expect(await resolveBootTarget(auth, false)).toMatchObject({ target: 'auth', artifactWebsites: true });
+  });
+
+  it('reports artifactWebsites false when the server does not say true', async () => {
+    const absent = makeHost({ checkConfigured: async () => CONFIGURED });
+    const off = makeHost({ checkConfigured: async () => ({ ...CONFIGURED, artifactWebsites: false }) });
+    expect((await resolveBootTarget(absent, true)).artifactWebsites).toBe(false);
+    expect((await resolveBootTarget(off, true)).artifactWebsites).toBe(false);
+  });
+
+  // False hides the card, which is the safe answer when /health can't be read.
+  it('reports artifactWebsites false when the health read failed', async () => {
+    const host = makeHost({
+      checkConfigured: async () => {
+        throw new Error('offline');
+      },
+    });
+    expect((await resolveBootTarget(host, true)).artifactWebsites).toBe(false);
+  });
+});

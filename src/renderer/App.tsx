@@ -19,6 +19,7 @@ import { resolveBootTarget, resolveRegistrationConsent } from './lib/bootTarget'
 import { setOrgMode } from './lib/orgMode';
 import { setLiveApps } from './lib/liveApps';
 import { setDraftLinks } from './lib/draftLinks';
+import { setArtifactWebsites } from './lib/artifactWebsites';
 import { trackBootScreenResolved, trackShellUpdatePhase, drainUpdateJournal } from './cowork/lib/analytics';
 import { hasBootedBefore, rememberBooted, welcomeFloorMs } from './lib/bootWelcome';
 import { runPostAuthHandshake } from './lib/postAuth';
@@ -94,6 +95,7 @@ export default function App() {
       setOrgMode(result.orgMode ?? host.isWeb);
       setLiveApps(result.liveApps);
       setDraftLinks(result.draftLinks);
+      setArtifactWebsites(result.artifactWebsites);
       setServiceUnconfigured(result.state === 'unconfigured');
       setPage(result.state === 'ready' ? 'terminal' : 'auth');
     } finally {
@@ -218,6 +220,7 @@ export default function App() {
       setOrgMode(decision.orgMode ?? host.isWeb);
       setLiveApps(decision.liveApps);
       setDraftLinks(decision.draftLinks);
+      setArtifactWebsites(decision.artifactWebsites);
       // ENG-921: record the resolved first screen + ground-truth server-install
       // state before sign-in, so first-run breakage between download and a
       // healthy server is measurable (app_installed only fires once the server

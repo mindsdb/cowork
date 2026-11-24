@@ -609,6 +609,9 @@ export async function checkConfigured(): Promise<{
   // Only a server that issues signed draft links reports them; the bridge
   // path never does.
   draftLinks?: boolean;
+  // Only a server that lets owners publish public websites reports them; the
+  // bridge path never does.
+  artifactWebsites?: boolean;
 }> {
   if (isElectron && typeof bridge.checkConfigured === 'function') {
     return bridge.checkConfigured();
@@ -623,6 +626,7 @@ export async function checkConfigured(): Promise<{
     org_mode?: boolean;
     live_apps?: boolean;
     draft_links?: boolean;
+    artifact_websites?: boolean;
   };
   return {
     configured: Boolean(h.config_ready),
@@ -630,6 +634,7 @@ export async function checkConfigured(): Promise<{
     orgMode: Boolean(h.org_mode),
     liveApps: h.live_apps === true,
     draftLinks: h.draft_links === true,
+    artifactWebsites: h.artifact_websites === true,
   };
 }
 

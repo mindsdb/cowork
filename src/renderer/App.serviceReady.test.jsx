@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   setOrgMode: vi.fn(),
   setLiveApps: vi.fn(),
   setDraftLinks: vi.fn(),
+  setArtifactWebsites: vi.fn(),
   syncSettingsToDb: vi.fn(),
   onboarding: vi.fn(() => <div>Provider onboarding</div>),
 }));
@@ -31,6 +32,8 @@ vi.mock('./lib/liveApps', () => ({ setLiveApps: mocks.setLiveApps }));
 // A spy, not the real store: the store starts false, so reading it can't tell
 // a stored false from no call at all.
 vi.mock('./lib/draftLinks', () => ({ setDraftLinks: mocks.setDraftLinks }));
+// A spy, not the real store, for the same reason as the draft-links flag.
+vi.mock('./lib/artifactWebsites', () => ({ setArtifactWebsites: mocks.setArtifactWebsites }));
 vi.mock('./lib/syncSettings', () => ({
   syncSettingsToDb: mocks.syncSettingsToDb,
   syncModelsToDbWithRetry: vi.fn(),
@@ -161,5 +164,34 @@ describe('service readiness', () => {
       expect(await screen.findByText('Workspace ready')).toBeInTheDocument();
       expect(mocks.setDraftLinks).toHaveBeenLastCalledWith(true);
     });
+  });
+});
+
+describe('service readiness stores the public-websites flag', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    mocks.checkConfigured.mockReset();
+  });
+
+  it.each([
+    ['true', { artifactWebsites: true }, true],
+    ['absent', {}, false],
+  ])('stores what /health reported when the flag is %s', async (_label, flag, stored) => {
+    mocks.checkConfigured.mockResolvedValue({ configured: true, orgMode: true, ...flag });
+    render(<App />);
+    expect(await screen.findByText('Workspace ready')).toBeInTheDocument();
+    expect(mocks.setArtifactWebsites).toHaveBeenLastCalledWith(stored);
+  });
+
+  it('reads off when /health fails, and on once Try again reaches a server that allows websites', async () => {
+    mocks.checkConfigured.mockRejectedValueOnce(new Error('Restarting'))
+      .mockResolvedValue({ configured: true, orgMode: true, artifactWebsites: true });
+    render(<App />);
+    expect(await screen.findByRole('status')).toHaveTextContent('The service is unavailable');
+    expect(mocks.setArtifactWebsites).toHaveBeenLastCalledWith(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Workspace ready')).toBeInTheDocument();
+    expect(mocks.setArtifactWebsites).toHaveBeenLastCalledWith(true);
   });
 });
