@@ -25,6 +25,7 @@ import { subscribeOrganizationChanges } from './organizationChanges';
 import { subscribeUsagePlanTier, usagePlanTier } from './usagePlanTier';
 import { ANALYTICS_MERGED_SUB_KEY, isFirstVisit, firstVisitRecorded } from './accountVisit';
 import { posthogKeyForBuildKind } from '../../../shared/analytics-project';
+import { DESKTOP_DOWNLOAD_FROM } from './desktopOffer';
 
 // The single register of product events, so every event and its own properties
 // are visible at a glance. capture() additionally stamps surface, app_version,
@@ -192,6 +193,15 @@ const EVENTS = {
   // Share is counted by artifact_share_opened with entry 'chat_card'.
   NEXT_STEPS_SHOWN:         'next_steps_shown',         // { result_kind: 'example'|'file'|'artifact'|'table'|'research'|'other', steps: ('own_data'|'another_file'|'make_page'|'schedule')[] } — once per answer per app run
   NEXT_STEP_CLICKED:        'next_step_clicked',        // { step, result_kind, position }
+  // The web build's offers of the desktop app, opened only when the person
+  // picks an entry for something the browser can't do (lib/desktopOffer).
+  // feature: 'code_mode'|'local_folder'|'connector'; entry: 'sidebar_switch'|
+  // 'new_project'|'chat_context'|'connector_directory'|'connector_note'.
+  // connector_id only for connectors. offer says what the dialog's main button
+  // did: 'download', or for a connector a member can stand in for,
+  // 'connect_custom'|'build_custom'.
+  DESKTOP_OFFER_SHOWN:      'desktop_offer_shown',      // { feature, entry, connector_id?, offer }
+  DESKTOP_OFFER_DOWNLOAD_CLICKED: 'desktop_offer_download_clicked', // { feature, entry, connector_id?, from } — from is the download link's from= tag
   // The account menu's developer links (ENG-4288). Sign-in lands in Cowork now,
   // so these are how a developer who came for the API still reaches it; the
   // count is the measure of whether that path is being found.
@@ -1627,5 +1637,23 @@ export function trackNextStepClicked({ step, resultKind, position } = {}) {
     step: step || 'unknown',
     result_kind: resultKind || 'other',
     position: Number.isInteger(position) ? position : null,
+  });
+}
+
+export function trackDesktopOfferShown({ feature, entry, connectorId = null, offer = 'download' } = {}) {
+  capture(EVENTS.DESKTOP_OFFER_SHOWN, {
+    feature: feature || 'unknown',
+    entry: entry || 'unknown',
+    ...(connectorId ? { connector_id: connectorId } : {}),
+    offer,
+  });
+}
+
+export function trackDesktopOfferDownloadClicked({ feature, entry, connectorId = null } = {}) {
+  capture(EVENTS.DESKTOP_OFFER_DOWNLOAD_CLICKED, {
+    feature: feature || 'unknown',
+    entry: entry || 'unknown',
+    ...(connectorId ? { connector_id: connectorId } : {}),
+    from: DESKTOP_DOWNLOAD_FROM[feature] || 'cowork-web',
   });
 }

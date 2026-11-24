@@ -190,17 +190,45 @@
     }
   },
   "comingSoon": {
-    "cloudTitle": "Cloudに近日対応",
+    "cloudTitle": "これはデスクトップアプリで使えます",
+    "cloudTitleNamed": "{feature}はデスクトップアプリで使えます",
     "unavailableTitle": "この機能は利用できません",
-    "cloudBodyNamed": "{feature}はまだCloudではご利用いただけません。それまではデスクトップアプリでご利用ください。",
-    "cloudBody": "この機能はまだCloudではご利用いただけません。それまではデスクトップアプリでご利用ください。",
-    "cloudBodyCustom": "{feature}はまだCloudではご利用いただけません。今すぐカスタムコネクタとして接続できます。",
+    "cloudBodyNamed": "{feature}は現在デスクトップアプリで使えます。ダウンロードすると、そこで{feature}を接続できます。",
+    "cloudBody": "これは現在デスクトップアプリで使えます。ダウンロードすると、そこで利用できます。",
+    "cloudBodyCustom": "{feature}は現在デスクトップアプリで使えます。ここでは、今すぐカスタムコネクタとして接続できます。",
     "unavailableBodyNamed": "{feature}はこの環境ではご利用いただけません。",
     "unavailableBody": "この機能はこの環境ではご利用いただけません。",
     "notNow": "後で",
-    "download": "アプリをダウンロード",
+    "download": "デスクトップアプリをダウンロード",
     "connectCustom": "カスタム{feature}コネクタを接続",
     "buildCustom": "カスタムコネクタを作成"
+  },
+  "desktopOffer": {
+    "tag": "デスクトップ",
+    "notNow": "後で",
+    "download": "デスクトップアプリをダウンロード",
+    "platforms": "Mac と Windows に対応しています。",
+    "code": {
+      "title": "コードモードはデスクトップアプリで使えます",
+      "body": "コードモードはお使いのコンピュータ上のコードを扱うため、デスクトップアプリが必要です。デスクトップアプリでは、Cowork は次のことができます:",
+      "points": {
+        "files": "自分のフォルダやリポジトリのコードを読み取り、変更する",
+        "commands": "お使いのマシンでコマンドやテストを実行する",
+        "agents": "タスクを Claude Code や Codex に任せる"
+      }
+    },
+    "folder": {
+      "projectTitle": "コンピュータ上のフォルダをデスクトップアプリで使う",
+      "chatTitle": "作業フォルダはデスクトップアプリで使えます",
+      "projectBody": "ブラウザからはお使いのコンピュータ上のファイルにアクセスできません。デスクトップアプリなら既存のフォルダでプロジェクトを始められ、Cowork がその中のファイルで作業します。",
+      "chatBody": "ブラウザからはお使いのコンピュータ上のファイルにアクセスできません。デスクトップアプリではコンピュータ上のフォルダをチャットに追加でき、Cowork がその中で作業します。",
+      "points": {
+        "inPlace": "アップロード不要：ファイルはその場所のまま使われます",
+        "saved": "作成したものはお使いのコンピュータに保存されます",
+        "kept": "Cowork からフォルダを外しても、ファイルはそのまま残ります"
+      },
+      "note": "Mac と Windows に対応しています。このブラウザでも、ファイルのアップロードは引き続きできます。"
+    }
   },
   "loadStatus": {
     "retry": "再試行",

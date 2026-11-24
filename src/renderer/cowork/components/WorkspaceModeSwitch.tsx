@@ -8,9 +8,12 @@ export type WorkspaceMode = 'cowork' | 'code';
 export function WorkspaceModeSwitch({
   value,
   onChange,
+  codeTag,
 }: {
   value: WorkspaceMode;
   onChange: (value: WorkspaceMode) => void;
+  /** Shown after the Code label, e.g. where Code only opens an offer. */
+  codeTag?: React.ReactNode;
 }) {
   const { t } = useTranslation('shell');
   return (
@@ -24,7 +27,11 @@ export function WorkspaceModeSwitch({
         className="workspace-mode-switch"
         options={[
           { value: 'cowork', label: 'Cowork', icon: Ico.mindsdb(14) },
-          { value: 'code', label: t('workspaceMode.code'), icon: Ico.code(14) },
+          {
+            value: 'code',
+            label: codeTag ? <>{t('workspaceMode.code')}{codeTag}</> : t('workspaceMode.code'),
+            icon: Ico.code(14),
+          },
         ]}
       />
     </div>

@@ -190,17 +190,45 @@
     }
   },
   "comingSoon": {
-    "cloudTitle": "即将登陆 Cloud",
+    "cloudTitle": "此功能在桌面应用中可用",
+    "cloudTitleNamed": "{feature} 在桌面应用中可用",
     "unavailableTitle": "功能不可用",
-    "cloudBodyNamed": "{feature} 暂未在 Cloud 上提供。在此之前，你可以在桌面应用中使用。",
-    "cloudBody": "此功能暂未在 Cloud 上提供。在此之前，你可以在桌面应用中使用。",
-    "cloudBodyCustom": "{feature} 暂未在 Cloud 上提供。你现在可以将它作为自定义连接器接入。",
+    "cloudBodyNamed": "目前 {feature} 可在桌面应用中使用。下载桌面应用，即可在其中连接 {feature}。",
+    "cloudBody": "目前此功能可在桌面应用中使用。下载桌面应用，即可在其中使用。",
+    "cloudBodyCustom": "目前 {feature} 可在桌面应用中使用。在这里，你现在就可以将它作为自定义连接器接入。",
     "unavailableBodyNamed": "{feature} 在此部署中不可用。",
     "unavailableBody": "此功能在此部署中不可用。",
     "notNow": "以后再说",
-    "download": "下载应用",
+    "download": "下载桌面应用",
     "connectCustom": "连接你的自定义 {feature} 连接器",
     "buildCustom": "构建自定义连接器"
+  },
+  "desktopOffer": {
+    "tag": "桌面版",
+    "notNow": "以后再说",
+    "download": "下载桌面应用",
+    "platforms": "适用于 Mac 和 Windows。",
+    "code": {
+      "title": "代码模式在桌面应用中可用",
+      "body": "代码模式处理的是你电脑上的代码，因此需要桌面应用。在桌面应用中，Cowork 可以：",
+      "points": {
+        "files": "读取和修改你自己文件夹和仓库中的代码",
+        "commands": "在你的电脑上运行命令和测试",
+        "agents": "把任务交给 Claude Code 或 Codex"
+      }
+    },
+    "folder": {
+      "projectTitle": "在桌面应用中使用你电脑上的文件夹",
+      "chatTitle": "工作文件夹在桌面应用中可用",
+      "projectBody": "浏览器无法访问你电脑上的文件。桌面应用可以在你已有的文件夹中创建项目，Cowork 会处理其中的文件。",
+      "chatBody": "浏览器无法访问你电脑上的文件。在桌面应用中，你可以把电脑上的文件夹添加到对话中，Cowork 会在其中工作。",
+      "points": {
+        "inPlace": "无需上传：直接使用原位置的文件",
+        "saved": "它生成的内容会保存在你的电脑上",
+        "kept": "从 Cowork 中移除文件夹后，你的文件仍保留在原处"
+      },
+      "note": "适用于 Mac 和 Windows。在浏览器中，你仍然可以上传文件。"
+    }
   },
   "loadStatus": {
     "retry": "重试",
