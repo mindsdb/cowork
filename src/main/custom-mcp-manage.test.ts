@@ -84,7 +84,7 @@ async function serverFetch(input: string | URL | Request, init: RequestInit = {}
   return json(404, { detail: 'no route' });
 }
 
-type Answer = { status: number; headers?: Record<string, string>; json?: unknown };
+type Answer = { status: number; headers?: Record<string, string>; json?: unknown; text?: string };
 const LOGIN_SERVER: Record<string, Answer> = {
   [`POST ${SERVER_URL}`]: { status: 401, headers: { 'www-authenticate': 'Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"' } },
   'GET https://mcp.example.com/.well-known/oauth-protected-resource/mcp': { status: 200, json: { resource: SERVER_URL, authorization_servers: [AUTH] } },
@@ -104,7 +104,7 @@ function loginServer(table: Record<string, Answer> = LOGIN_SERVER) {
   const fetchFn: GuardedFetch = async (input, init = {}) => {
     requests.push({ url: String(input), init });
     const answer = table[`${init.method ?? 'GET'} ${String(input)}`] ?? { status: 404 };
-    return new Response(answer.json === undefined ? '' : JSON.stringify(answer.json), { status: answer.status, headers: answer.headers });
+    return new Response(answer.json === undefined ? answer.text ?? '' : JSON.stringify(answer.json), { status: answer.status, headers: answer.headers });
   };
   const authorize = vi.fn(async () => ({ ok: true as const, code: 'code-2', codeVerifier: 'verifier', redirectUri: 'http://127.0.0.1:47295/callback' }));
   const deps: ConnectDeps = { fetchFn, authorize, newId: () => ID, checkAuthorizeUrl: async (url) => new URL(url) };
@@ -237,6 +237,27 @@ describe('reconnect', () => {
     const { deps, authorize } = loginServer();
     expect(await reconnectCustom({ id: ID }, deps)).toEqual({ ok: false, code: 'confirm_login_hosts', loginHosts: ['auth.example.com'] });
     expect(authorize).not.toHaveBeenCalled();
+  });
+
+  it('reports a failure when the address no longer answers as an MCP server', async () => {
+    await seed();
+    const before = await readPart(ROOT, ID, 'settings');
+    const { deps, authorize } = loginServer({
+      [`POST ${SERVER_URL}`]: { status: 200, headers: { 'content-type': 'text/html' }, text: '<html></html>' },
+    });
+
+    expect(await reconnectCustom({ id: ID }, deps)).toMatchObject({ ok: false, code: 'not_mcp' });
+
+    expect(authorize).not.toHaveBeenCalled();
+    expect(await readPart(ROOT, ID, 'settings')).toBe(before);
+    expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-old');
+  });
+
+  it('reconnects a server with no login that still answers as MCP', async () => {
+    await seed();
+    const { deps } = loginServer({ [`POST ${SERVER_URL}`]: { status: 200, json: { jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 's', version: '1' } } } } });
+
+    expect(await reconnectCustom({ id: ID }, deps)).toEqual({ ok: true });
   });
 
   it('logs in with the connection\'s own client, keeps the tool switches and replaces the refresh token', async () => {

@@ -109,7 +109,7 @@ async function serverFetch(input: string | URL | Request, init: RequestInit = {}
   return json(404, { detail: 'no route' });
 }
 
-type Answer = { status: number; headers?: Record<string, string>; json?: unknown };
+type Answer = { status: number; headers?: Record<string, string>; json?: unknown; text?: string };
 
 /** The MCP server and its authorization server, answering by "METHOD url". */
 function mcpServer(table: Record<string, Answer>) {
@@ -117,7 +117,7 @@ function mcpServer(table: Record<string, Answer>) {
   const fetchFn: GuardedFetch = async (input, init = {}) => {
     requests.push({ url: String(input), init });
     const answer = table[`${init.method ?? 'GET'} ${String(input)}`] ?? { status: 404 };
-    return new Response(answer.json === undefined ? '' : JSON.stringify(answer.json), { status: answer.status, headers: answer.headers });
+    return new Response(answer.json === undefined ? answer.text ?? '' : JSON.stringify(answer.json), { status: answer.status, headers: answer.headers });
   };
   return { fetchFn, requests };
 }
@@ -143,7 +143,7 @@ const LOGIN_SERVER: Record<string, Answer> = {
   [`POST ${AUTH}/token`]: { status: 200, json: { access_token: 'AT-1', refresh_token: 'RT-1', token_type: 'Bearer', expires_in: 3600 } },
 };
 
-const NO_LOGIN_SERVER: Record<string, Answer> = { [`POST ${SERVER_URL}`]: { status: 200, json: { jsonrpc: '2.0', id: 1, result: {} } } };
+const NO_LOGIN_SERVER: Record<string, Answer> = { [`POST ${SERVER_URL}`]: { status: 200, json: { jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 's', version: '1' } } } } };
 
 let ids: string[];
 function deps(table: Record<string, Answer>, overrides: Partial<ConnectDeps> = {}) {
@@ -241,6 +241,21 @@ describe('connectCustomMcp', () => {
     expect(server.held.get(ID)).not.toHaveProperty('access_token');
     expect(await readPart(store.root!, ID, 'refresh')).toBeNull();
     expect(hasRefreshLoop(store.root!, ID)).toBe(false);
+  });
+
+  it('refuses an address that answers 200 with a web page, and keeps nothing', async () => {
+    const page: Record<string, Answer> = {
+      [`POST ${SERVER_URL}`]: { status: 200, headers: { 'content-type': 'text/html' }, text: '<html><body>Hello</body></html>' },
+    };
+    const { deps: d, authorize } = deps(page);
+
+    const result = await connectCustomMcp({ label: 'Docs', url: SERVER_URL }, d);
+
+    expect(result).toMatchObject({ ok: false, code: 'not_mcp' });
+    expect(authorize).not.toHaveBeenCalled();
+    expect(server.held.size).toBe(0);
+    expect(await listConnectionIds(store.root!)).toEqual([]);
+    expect(await readPart(store.root!, ID, 'settings')).toBeNull();
   });
 
   it('uses a given client ID and keeps its secret in the keychain only', async () => {

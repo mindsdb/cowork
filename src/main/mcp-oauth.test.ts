@@ -94,6 +94,46 @@ function hostile(overrides: { resource?: unknown; servers?: unknown; asMetadata?
   } satisfies Record<string, Answer>;
 }
 
+describe('discoverMcpAuth on a 200 answer', () => {
+  const JSON_TYPE = { 'content-type': 'application/json' };
+  const SSE_TYPE = { 'content-type': 'text/event-stream' };
+  const INIT = { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 's', version: '1' } };
+  const RESULT = JSON.stringify({ jsonrpc: '2.0', id: 1, result: INIT });
+  const refused: Array<[string, Answer]> = [
+    ['a generic empty result', { status: 200, headers: JSON_TYPE, text: '{"jsonrpc":"2.0","id":1,"result":{}}' }],
+    ['a result without serverInfo', { status: 200, headers: JSON_TYPE, text: JSON.stringify({ jsonrpc: '2.0', id: 1, result: { protocolVersion: 'x', capabilities: {} } }) }],
+    ['a result without a server version', { status: 200, headers: JSON_TYPE, text: JSON.stringify({ jsonrpc: '2.0', id: 1, result: { ...INIT, serverInfo: { name: 's' } } }) }],
+    ['a message carrying both result and error', { status: 200, headers: JSON_TYPE, text: JSON.stringify({ jsonrpc: '2.0', id: 1, result: INIT, error: { code: 1, message: 'x' } }) }],
+    ['an event stream whose last event has no blank line', { status: 200, headers: SSE_TYPE, text: `data: ${RESULT}\n` }],
+    ['an HTML page', { status: 200, headers: { 'content-type': 'text/html' }, text: '<html><body>Hi</body></html>' }],
+    ['plain JSON', { status: 200, headers: JSON_TYPE, text: '{"ok":true}' }],
+    ['an empty body', { status: 200, text: '' }],
+    ['a JSON-RPC error only', { status: 200, headers: JSON_TYPE, text: '{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"no"}}' }],
+    ['a JSON-RPC answer for another id', { status: 200, headers: JSON_TYPE, text: '{"jsonrpc":"2.0","id":2,"result":{}}' }],
+    ['a result that is not an object', { status: 200, headers: JSON_TYPE, text: '{"jsonrpc":"2.0","id":1,"result":"x"}' }],
+    ['an event stream with data that is not JSON', { status: 200, headers: SSE_TYPE, text: 'event: message\r\ndata: hello\r\n\r\n' }],
+    ['an HTML page claiming to be an event stream', { status: 200, headers: SSE_TYPE, text: '<html></html>' }],
+  ];
+
+  it.each(refused)('refuses %s as not_mcp', async (_name, answer) => {
+    const { fetchFn } = replay({ [`POST ${SERVER}`]: answer });
+    expect(await failure(discoverMcpAuth(SERVER, fetchFn))).toBe('not_mcp');
+  });
+
+  const accepted: Array<[string, Answer]> = [
+    ['JSON', { status: 200, headers: JSON_TYPE, text: RESULT }],
+    ['an event stream with CRLF line endings', { status: 200, headers: SSE_TYPE, text: `event: message\r\ndata: ${RESULT}\r\n\r\n` }],
+    ['an event stream with mixed line endings', { status: 200, headers: SSE_TYPE, text: `data: {"jsonrpc":"2.0","method":"ping"}\r\n\ndata: ${RESULT}\n\r\n` }],
+    ['an event stream with multi-line data', { status: 200, headers: SSE_TYPE, text: `data: {"jsonrpc":"2.0",\ndata: "id":1,"result":${JSON.stringify(INIT)}}\n\n` }],
+    ['an event stream with several events', { status: 200, headers: SSE_TYPE, text: `data: {"jsonrpc":"2.0","method":"ping"}\n\nevent: message\ndata: ${RESULT}\n\n` }],
+  ];
+
+  it.each(accepted)('accepts %s', async (_name, answer) => {
+    const { fetchFn } = replay({ [`POST ${SERVER}`]: answer });
+    expect(await discoverMcpAuth(SERVER, fetchFn)).toEqual({ needsLogin: false });
+  });
+});
+
 describe('discoverMcpAuth on recorded servers', () => {
   it('Linear: automatic registration, resource is the server, scope from the challenge', async () => {
     const { fetchFn } = replay(tableOf(linear as Recording));

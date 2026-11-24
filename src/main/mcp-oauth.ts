@@ -84,6 +84,57 @@ const INITIALIZE_BODY = JSON.stringify({
   params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'MindsHub Cowork', version: '1' } },
 });
 
+function isInitializeResult(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const message = value as Record<string, unknown>;
+  if (message.jsonrpc !== '2.0' || message.id !== 1 || 'error' in message) return false;
+  const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+  const result = message.result;
+  if (!isObject(result)) return false;
+  const info = result.serverInfo;
+  return (
+    typeof result.protocolVersion === 'string' &&
+    !!result.protocolVersion &&
+    isObject(result.capabilities) &&
+    isObject(info) &&
+    typeof info.name === 'string' &&
+    typeof info.version === 'string'
+  );
+}
+
+function parsesAsInitializeResult(text: string): boolean {
+  try {
+    return isInitializeResult(JSON.parse(text));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * True when `body` is a JSON-RPC result for the `initialize` request, sent
+ * either as plain JSON or as a server-sent event stream. The body decides, not
+ * the content type.
+ */
+export function isInitializeAnswer(contentType: string | null, body: string): boolean {
+  if (!contentType?.toLowerCase().includes('text/event-stream')) return parsesAsInitializeResult(body);
+  // WHATWG SSE: lines end in CRLF, LF or CR individually; only a blank line
+  // dispatches an event, so a final event without one is discarded.
+  let data: string[] = [];
+  const lines = body.split(/\r\n|\n|\r/);
+  lines.pop(); // text after the last line ending is an unterminated line
+  for (const line of lines) {
+    if (line === '') {
+      if (data.length && parsesAsInitializeResult(data.join('\n'))) return true;
+      data = [];
+    } else if (line.startsWith('data:')) {
+      data.push(line.slice(5).replace(/^ /, ''));
+    } else if (line === 'data') {
+      data.push('');
+    }
+  }
+  return false;
+}
+
 /**
  * Asks the MCP server at `serverUrl` whether it needs a login, and if so,
  * where and for which resource. `serverUrl` is the canonical URL the server
@@ -97,7 +148,14 @@ export async function discoverMcpAuth(serverUrl: string, fetchFn: GuardedFetch):
     headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
     body: INITIALIZE_BODY,
   });
-  if (probe.ok) return { needsLogin: false };
+  if (probe.ok) {
+    // A 200 alone proves nothing: web pages and plain APIs answer it too.
+    const body = await probe.text();
+    if (!isInitializeAnswer(probe.headers.get('content-type'), body)) {
+      throw new McpOAuthError('not_mcp', 'the server answered 200 but not with an MCP response');
+    }
+    return { needsLogin: false };
+  }
   if (probe.status !== 401) {
     throw new McpOAuthError('not_mcp', `the server answered ${probe.status} instead of an MCP response`);
   }
