@@ -181,10 +181,10 @@ electronFuses:
   # Ignore --inspect and its variants, and SIGUSR1, so no debugger attaches to
   # the main process.
   enableNodeCliInspectArguments: false
-  # Give file:// pages only the privileges a browser gives them. The main
-  # window keeps loading its file:// renderer because webSecurity: false
-  # grants that page universal access whatever this fuse says.
-  grantFileProtocolExtraPrivileges: false
+  # grantFileProtocolExtraPrivileges stays at Electron's default (on). With it
+  # off, Electron no longer reads app.asar over file://, and the main window
+  # loads its renderer from file://.../app.asar, so the app opens blank. It can
+  # go off once the renderer loads through a custom scheme.
   # Refuse an app.asar whose header no longer matches the hash written at
   # pack time: ElectronAsarIntegrity in Info.plist on macOS, the INTEGRITY
   # resource in the .exe on Windows. Linux has no such check.

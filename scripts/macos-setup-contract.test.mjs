@@ -158,7 +158,7 @@ test('the real smoke command refuses local installation and still writes failure
 
 /* A stand-in for an Electron binary: @electron/fuses finds the wire after its
    sentinel, a version byte and a length byte, one character per fuse. Electron
-   45 ships the wire 10110001, which leaves all six release fuses unset. */
+   45 ships the wire 10110001, which leaves all five release fuses unset. */
 const ELECTRON_DEFAULTS = '10110001';
 const fuseFixtures = mkdtempSync(join(tmpdir(), 'cowork-fuse-fixtures-'));
 after(() => rmSync(fuseFixtures, { recursive: true, force: true }));
@@ -175,11 +175,11 @@ async function releaseWire(change = {}) {
   return getCurrentFuseWire(file);
 }
 
-test('a wire flipped to the release fuses passes, and an unfused Electron fails on all six', async () => {
+test('a wire flipped to the release fuses passes, and an unfused Electron fails on all five', async () => {
   assert.deepEqual(fuseMismatches(await releaseWire()), []);
   assert.deepEqual(fuseMismatches(await getCurrentFuseWire(electronBinary(ELECTRON_DEFAULTS))), [
     'RunAsNode is on, expected off', 'EnableNodeOptionsEnvironmentVariable is on, expected off', 'EnableNodeCliInspectArguments is on, expected off',
-    'EnableEmbeddedAsarIntegrityValidation is off, expected on', 'OnlyLoadAppFromAsar is off, expected on', 'GrantFileProtocolExtraPrivileges is on, expected off',
+    'EnableEmbeddedAsarIntegrityValidation is off, expected on', 'OnlyLoadAppFromAsar is off, expected on',
   ]);
 });
 
@@ -194,9 +194,9 @@ test('a fuse the wire is too short to hold, a removed fuse, and another wire ver
   const short = electronBinary('1011');
   await flipFuses(short, { version: FuseVersion.V1, [FuseV1Options.RunAsNode]: false, [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false, [FuseV1Options.EnableNodeCliInspectArguments]: false });
   assert.deepEqual(fuseMismatches(await getCurrentFuseWire(short)), [
-    'EnableEmbeddedAsarIntegrityValidation is missing, expected on', 'OnlyLoadAppFromAsar is missing, expected on', 'GrantFileProtocolExtraPrivileges is missing, expected off',
+    'EnableEmbeddedAsarIntegrityValidation is missing, expected on', 'OnlyLoadAppFromAsar is missing, expected on',
   ]);
-  assert.deepEqual(fuseMismatches(await getCurrentFuseWire(electronBinary('0000110r'))), ['GrantFileProtocolExtraPrivileges is removed, expected off']);
+  assert.deepEqual(fuseMismatches(await getCurrentFuseWire(electronBinary('00001r01'))), ['OnlyLoadAppFromAsar is removed, expected on']);
   assert.deepEqual(fuseMismatches({ ...await releaseWire(), version: '2' }), ['fuse wire version 2 is not 1']);
 });
 

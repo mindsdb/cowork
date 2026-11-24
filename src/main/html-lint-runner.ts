@@ -26,11 +26,12 @@
  *   rest). Electron grants every permission a session has no handler for, so
  *   a page that asked for the microphone here would record under this app's
  *   own system grant.
- * - A file target loads through LINT_SCHEME, not file://. A release build
- *   turns off the extra privileges Electron gives file:// pages (the
- *   GrantFileProtocolExtraPrivileges fuse), and a file:// page then can load
- *   neither a module script nor a `fetch` of a file beside it, both of which
- *   work in Cowork's viewer, which serves artifacts over http.
+ * - A file target loads through LINT_SCHEME, not file://. Without the extra
+ *   privileges Electron gives file:// pages (the GrantFileProtocolExtraPrivileges
+ *   fuse), a file:// page can load neither a module script nor a `fetch` of a
+ *   file beside it, both of which work in Cowork's viewer, which serves
+ *   artifacts over http. The scheme gives the same result with that fuse on
+ *   or off.
  * - The window runs in an in-memory session of its own (LINT_PARTITION), so
  *   its webRequest listeners and scheme handler sit on a session only it uses. */
 

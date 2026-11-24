@@ -11,12 +11,13 @@ const { FuseState } = require('@electron/fuses/dist/constants.js'); // the packa
 const execute = promisify(execFile);
 
 /* The fuses every release build sets, keyed by their place in the fuse wire.
-   Fuses not named here keep Electron's default. */
+   Fuses not named here keep Electron's default. GrantFileProtocolExtraPrivileges
+   is one of them: the main window loads its renderer from app.asar over
+   file://, which Electron serves only while that fuse is on. */
 export const RELEASE_FUSES = Object.freeze({
   [FuseV1Options.RunAsNode]: false,
   [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
   [FuseV1Options.EnableNodeCliInspectArguments]: false,
-  [FuseV1Options.GrantFileProtocolExtraPrivileges]: false,
   [FuseV1Options.EnableEmbeddedAsarIntegrityValidation]: true,
   [FuseV1Options.OnlyLoadAppFromAsar]: true,
 });
