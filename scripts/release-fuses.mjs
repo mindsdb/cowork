@@ -56,7 +56,10 @@ export async function readFuseWires(app) {
   if (!app.endsWith('.app')) return { [basename(app)]: await getCurrentFuseWire(app) };
   const framework = join(app, 'Contents/Frameworks/Electron Framework.framework/Electron Framework');
   const archs = (await execute('/usr/bin/lipo', ['-archs', framework])).stdout.trim().split(/\s+/);
-  if (archs.length === 1) return { [archs[0]]: await getCurrentFuseWire(framework) };
+  /* getCurrentFuseWire reads a path that holds `.app` but doesn't end in it as
+     the app's main executable, and looks for the framework two folders up, so
+     a single-arch app is read through its bundle path. */
+  if (archs.length === 1) return { [archs[0]]: await getCurrentFuseWire(app) };
   const folder = await mkdtemp(join(tmpdir(), 'cowork-fuses-'));
   try {
     const wires = {};
