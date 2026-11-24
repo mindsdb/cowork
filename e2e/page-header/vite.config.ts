@@ -4,6 +4,9 @@ import path from 'node:path';
 
 export default defineConfig({
   root: __dirname,
+  // Its own dependency cache: npm run test:fixtures starts every fixture's server
+  // at once, and servers sharing node_modules/.vite delete each other's files.
+  cacheDir: path.resolve(__dirname, '../../node_modules/.vite', path.basename(__dirname)),
   publicDir: path.resolve(__dirname, '../../src/renderer/public'),
   plugins: [react()],
   // Standalone fixture: supply the renderer's compile-time switches.

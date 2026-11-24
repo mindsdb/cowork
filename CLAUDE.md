@@ -63,6 +63,7 @@ npm run test:watch           # local TDD loop
 npm run test:coverage        # + enforces coverage floors (vitest.config.ts)
 npm run test:e2e             # Playwright Electron boot smoke (needs npm run build)
 npx playwright test --config playwright.document-preview.config.ts  # document preview suite (web harness + Electron; electron project needs npm run build)
+npm run test:fixtures        # every browser fixture suite (playwright.<name>.config.ts pointing at e2e/) in Chromium
 npm run check:cowork-purity  # no direct window.antontron outside platform/host.ts
 ```
 
@@ -82,7 +83,7 @@ npm run check:cowork-purity  # no direct window.antontron outside platform/host.
 - Test files never ship: production tsconfigs exclude `**/*.test.*`; keep it
   that way.
 - CI: `tests-unit.yml` gates PRs (typecheck + purity + coverage + renderer
-  build); `document-preview.yml` runs the document preview Playwright suite
+  build + the browser fixture suites); `document-preview.yml` runs the document preview Playwright suite
   (web harness in Chromium, Electron under xvfb) on every PR and on pushes to
   `main` and `staging`; `pack-smoke.yml` and `tests-e2e.yml` run nightly,
   non-blocking.
