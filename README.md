@@ -89,6 +89,8 @@ A channel's state is not all under one folder. It spreads across several locatio
 | **OS keychain** — service `cowork-oauth-<kind>` / `cowork-oauth` | Connector OAuth refresh tokens | Per-kind service name |
 | **Legacy `~/.anton`** | Pre-channel global config (`.env`, `state.json`); still read as a fallback and migrated into the prod home once | prod only |
 
+Each data home, and each account root under it, is `0700`, so another account on the same computer cannot list or read anything inside it, on macOS and on Linux. The desktop app pins every home at launch, before the sidecar starts ([`pinPrivateHomes`](src/main/cowork-home.ts)). On the first launch of a build that pins them, existing entries are also tightened once: files end `0600`, and executables and folders `0700`. That pass never follows a link, never enters Code mode's `coding/` copies, which keep their repository's modes, and writes `.private-modes` in the home when it completes ([`tightenHomeOnce`](src/main/private-files.ts)). New files need no mode of their own, because their folder is private. A prod launch also tightens the legacy `~/.anton` and its `.env` before copying it. Each repository's `.claude-mindshub` is `0700` as well. On Windows, modes do nothing: the homes rely on the profile's access list, and `.claude-mindshub` gets an owner-only access list.
+
 The packaged bundle identity (`appId`, `productName`, icon, Linux package name) is also set per kind at build time (`scripts/channel-identity.mjs`), so non-prod builds install as distinct apps beside prod.
 
 Everything under the `~/.cowork-<kind>` home — the data home, uv install, and non-prod server logs — is identical on every OS; only `~` resolves differently. The three OS-managed locations follow each platform's convention:

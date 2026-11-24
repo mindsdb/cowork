@@ -514,10 +514,11 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
      * outside their activation shell. A uv-managed standalone CPython has no
      * such dependency, and uv fetches it on demand if absent.
      */
+    const uvOverrides = writeUvOverrides(spec.overrides);
     const uvEnv: NodeJS.ProcessEnv = {
       UV_PYTHON_PREFERENCE: 'only-managed',
       // Exact requirements in the release contract enable only reviewed rc versions.
-      ...writeUvOverrides(spec.overrides),
+      ...uvOverrides.env,
     };
     sendLog(win, 'Python: uv-managed (UV_PYTHON_PREFERENCE=only-managed)\n');
 
@@ -527,7 +528,7 @@ export async function runInstaller(win: BrowserWindow, opts?: InstallerOptions):
         forgetServerCapability();
         return runCommand(uvBin, lockedServerInstallArgs(uvBin, installArgs), win, { shouldAbort, env: uvEnv });
       },
-    );
+    ).finally(() => uvOverrides.remove());
     if (abortIfRequested()) return false;
 
     if (installResult.code !== 0) {

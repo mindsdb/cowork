@@ -20,6 +20,7 @@ import { mindsApiRoot } from '../shared/minds-endpoint';
 import { detectClaudeCode, revealMindsApiKey, revealMindsBaseUrl } from './coding-mode';
 import { ensureTaskWorktree, removeTaskWorktree } from './coding-workspace';
 import { getEnvPath } from './uv-paths';
+import { pinPrivateDir, restrictToOwnerOnWindows, type PlatformOption } from './private-files';
 
 // Last-resort fallback only — real requests use revealMindsBaseUrl(), the
 // actual host the stored key was minted against (dev/preview/stable builds
@@ -68,8 +69,25 @@ function readJsonFile(filePath: string): Record<string, unknown> {
  *  tmp means a raw, unresolved key silently never matches. Merges into
  *  whatever's already there so later CLI-managed state (other trust
  *  records, migration flags, etc.) is never clobbered. Best-effort: a
- *  filesystem error here just means the CLI falls back to prompting. */
-function ensureClaudeConfigDefaults(configDir: string, cwd: string): void {
+ *  filesystem error here just means the CLI falls back to prompting.
+ *
+ *  The `.claude-mindshub` folder above the config dir holds the CLI's
+ *  transcripts and the task worktrees, inside a repository other accounts may
+ *  be able to read. It is pinned to 0700, and on Windows, where modes do
+ *  nothing, it gets an owner-only access list once. A failure there logs and
+ *  the config is still written. */
+export function ensureClaudeConfigDefaults(
+  configDir: string,
+  cwd: string,
+  { platform = process.platform }: PlatformOption = {},
+): void {
+  const mindshubDir = path.dirname(configDir);
+  try {
+    pinPrivateDir(mindshubDir, { platform });
+    restrictToOwnerOnWindows(mindshubDir, { platform });
+  } catch (err) {
+    diagnostic("main.coding-terminal", "WARNING", "coding_terminal_could_not_make_the_mindshub_folder_private", '[coding-terminal] could not make the .claude-mindshub folder private', err);
+  }
   try {
     fs.mkdirSync(configDir, { recursive: true });
 

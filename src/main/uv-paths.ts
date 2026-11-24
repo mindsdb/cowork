@@ -1,3 +1,4 @@
+import { diagnostic } from '../shared/diagnostics';
 // Shared uv / path / version helpers used by installer, server-updater,
 // and server-process. Single source of truth — no more copy-paste.
 
@@ -123,17 +124,41 @@ export function getEnvPath(): string {
   return parts.join(path.delimiter);
 }
 
-/** Materialize uv dependency overrides into a temp requirements file and
- *  return the env fragment (`{ UV_OVERRIDE }`) that points uv at it. Overrides
+/** A uv overrides file and the env fragment (`{ UV_OVERRIDE }`) that points
+ *  uv at it. `remove` deletes the file's folder; callers run it once uv has
+ *  exited. */
+export interface UvOverrides {
+  env: NodeJS.ProcessEnv;
+  remove(): void;
+}
+
+/** Materialize uv dependency overrides into a temp requirements file. Overrides
  *  let us repoint a single `[tool.uv.sources]` pin (anton-agent) at another ref
  *  without uv's version-gated `--no-sources-package` flag, which older uv
- *  builds reject. Returns `{}` when there are no overrides, so callers can
- *  spread it unconditionally into the install env. */
-export function writeUvOverrides(overrides: string[]): NodeJS.ProcessEnv {
-  if (!overrides.length) return {};
-  const file = path.join(os.tmpdir(), `cowork-uv-override-${process.pid}.txt`);
-  fs.writeFileSync(file, overrides.join('\n') + '\n', 'utf8');
-  return { UV_OVERRIDE: file };
+ *  builds reject. With no overrides the env is `{}`, so callers can spread it
+ *  unconditionally into the install env.
+ *
+ *  On Linux os.tmpdir() is the shared /tmp, where another account could create
+ *  a fixed name first. The file therefore goes in a fresh folder from mkdtemp,
+ *  which only this user can enter, and is created there exclusively at 0600. */
+export function writeUvOverrides(overrides: string[]): UvOverrides {
+  if (!overrides.length) return { env: {}, remove: () => {} };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cowork-uv-'));
+  const remove = () => {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch (err) {
+      diagnostic("main.uv-paths", "WARNING", "uv_paths_could_not_remove_the_uv_overrides_folder", '[uv-paths] could not remove the uv overrides folder', err);
+    }
+  };
+  const file = path.join(dir, 'overrides.txt');
+  try {
+    fs.writeFileSync(file, overrides.join('\n') + '\n', { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+  } catch (err) {
+    remove();
+    throw err;
+  }
+  return { env: { UV_OVERRIDE: file }, remove };
 }
 
 export function getCoworkServerBinary(): string {

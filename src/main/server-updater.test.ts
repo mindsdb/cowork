@@ -77,6 +77,8 @@ function mockAuthProbe(statusCode: number) {
 beforeEach(() => {
   vi.stubEnv("LOG_LEVEL", "INFO");
   mockAuthProbe(200);
+  // fs is automocked, and the uv overrides file goes in a folder mkdtemp names.
+  vi.mocked(fs.mkdtempSync).mockImplementation(((prefix: string) => `${prefix}test`) as never);
 });
 
 afterEach(() => {
@@ -247,6 +249,12 @@ describe('maybeUpdateServer (orchestration)', () => {
         c.includes(`anton-agent @ git+https://github.com/mindsdb/anton.git@${OLD_ANTON}`),
       ),
     ).toBe(antonFromGit);
+    // Each overrides folder is removed once its uv install has exited.
+    const overrideFolders = vi.mocked(fs.mkdtempSync).mock.results.map((r) => r.value as string);
+    expect(overrideFolders).toHaveLength(antonFromGit ? 2 : 1);
+    for (const folder of overrideFolders) {
+      expect(fs.rmSync).toHaveBeenCalledWith(folder, { recursive: true, force: true });
+    }
 
     // And the rolled-back server was started again (recovery, not a dead app).
     expect(vi.mocked(startServer)).toHaveBeenCalledTimes(2);

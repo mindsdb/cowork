@@ -78,7 +78,8 @@ import {
   settleOwnership,
   sweepStaleQuarantineRoots,
 } from './account-data';
-import { accountDataRoot, carryTermsConsentToFreshRoot, coworkHome, coworkEnvPath, coworkEnvPathIn, coworkStatePathIn, ensureAccountDataRoot, migrateLegacyHome, readEnvFile, buildKind, buildKindStrict } from './cowork-home';
+import { accountDataRoot, carryTermsConsentToFreshRoot, coworkHome, coworkEnvPath, coworkEnvPathIn, coworkStatePathIn, ensureAccountDataRoot, migrateLegacyHome, pinPrivateHomes, readEnvFile, buildKind, buildKindStrict, tightenPrivateHomes } from './cowork-home';
+import { writeEnvFileAtomic } from './private-files';
 import { usageEventsOn, writeUsageEventsPref } from './analytics-env';
 import { checkChannelConsistency } from './channels';
 import { loadDesktopBrandImages, loadOrgIconDataUris } from './org-branding';
@@ -1519,7 +1520,7 @@ function setupIPC() {
       if (eq > 0) merged.set(line.slice(0, eq), line.slice(eq + 1));
     }
     const out = [...merged.entries()].map(([k, v]) => `${k}=${v}`).join('\n') + '\n';
-    fs.writeFileSync(envPath, out, 'utf-8');
+    await writeEnvFileAtomic(envPath, out);
 
     // Analytics — fire-and-forget, never blocks
     if (content.includes('ANTON_TERMS_CONSENT=true')) {
@@ -1544,7 +1545,7 @@ function setupIPC() {
     if (typeof enabled !== 'boolean') return { ok: false };
     try {
       ensureAccountDataRoot();
-      writeUsageEventsPref(coworkEnvPath(), enabled);
+      await writeUsageEventsPref(coworkEnvPath(), enabled);
       return { ok: true };
     } catch (error) {
       diagnostic("main.app", "ERROR", "usage_events_failed_to_set_preference", '[usage-events] failed to set preference', error);
@@ -1574,7 +1575,7 @@ function setupIPC() {
       // Only write the key when disabling; absence means "enabled" (the default).
       if (!enabled) lines.push('COWORK_KEYCHAIN=false');
       const out = lines.filter((l) => l.length > 0).join('\n') + '\n';
-      fs.writeFileSync(envPath, out, 'utf-8');
+      await writeEnvFileAtomic(envPath, out);
 
       // Move any existing token into the newly-chosen store.
       migrateRefreshTokenStore(enabled);
@@ -1752,6 +1753,14 @@ app.whenReady().then(async () => {
   // Consolidate the legacy ~/.anton global config into ~/.cowork before
   // anything reads the env or starts the server. Best-effort + idempotent.
   migrateLegacyHome();
+
+  diagnostic("main.app", "INFO", "boot_private_home_modes", '[boot] private home modes');
+  /* Every Cowork home and account root is owner-only before any sidecar can
+   * start and write into one. The pin is synchronous and is what keeps other
+   * accounts out. The one-time pass that strips group and other bits from the
+   * entries already inside takes seconds on a large home, so it runs after
+   * boot; it never rejects and logs its own failures. */
+  void tightenPrivateHomes(pinPrivateHomes());
 
   diagnostic("main.app", "INFO", "boot_account_data_root", '[boot] account data root');
   // Answer, once and before anything can create a database, whether this

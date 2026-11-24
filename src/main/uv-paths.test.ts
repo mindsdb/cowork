@@ -12,6 +12,15 @@ vi.mock('./cowork-home', () => ({
   buildKind: () => h.kind,
 }));
 
+/* The uv override tests get their own temp folder in place of os.tmpdir(), so
+ * they can plant a file at the old fixed name without touching the real one. */
+const tmpState = vi.hoisted(() => ({ dir: '' }));
+vi.mock('os', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('os')>();
+  const tmpdir = () => tmpState.dir || actual.tmpdir();
+  return { ...actual, tmpdir, default: { ...actual, tmpdir } };
+});
+
 import {
   writeUvOverrides,
   getCoworkServerBinary,
@@ -24,20 +33,55 @@ import {
 } from './uv-paths';
 
 describe('writeUvOverrides', () => {
-  it('returns {} for no overrides (nothing to force)', () => {
-    expect(writeUvOverrides([])).toEqual({});
+  const overrides = [
+    'anton-agent @ git+https://github.com/mindsdb/anton.git@feat/x',
+    'other-pkg @ /local/other',
+  ];
+
+  beforeEach(() => {
+    tmpState.dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uv-overrides-test-'));
+  });
+  afterEach(() => {
+    fs.rmSync(tmpState.dir, { recursive: true, force: true });
+    tmpState.dir = '';
+  });
+
+  it('returns an empty env for no overrides (nothing to force)', () => {
+    const result = writeUvOverrides([]);
+    expect(result.env).toEqual({});
+    expect(() => result.remove()).not.toThrow();
   });
 
   it('writes the requirement lines to a file and points UV_OVERRIDE at it', () => {
-    const overrides = [
-      'anton-agent @ git+https://github.com/mindsdb/anton.git@feat/x',
-      'other-pkg @ /local/other',
-    ];
-    const env = writeUvOverrides(overrides);
+    const { env } = writeUvOverrides(overrides);
 
     expect(env.UV_OVERRIDE).toBeTruthy();
     const contents = fs.readFileSync(env.UV_OVERRIDE as string, 'utf8');
     expect(contents).toBe(overrides.join('\n') + '\n');
+  });
+
+  it('puts the file at 0600 in a fresh 0700 folder, never at the old fixed name', () => {
+    // On Linux the shared /tmp lets another account create this name first.
+    const oldFixedName = path.join(tmpState.dir, `cowork-uv-override-${process.pid}.txt`);
+    fs.writeFileSync(oldFixedName, 'planted by another account\n');
+
+    const result = writeUvOverrides(overrides);
+
+    expect(fs.readFileSync(oldFixedName, 'utf8')).toBe('planted by another account\n');
+    const file = result.env.UV_OVERRIDE as string;
+    expect(file).not.toBe(oldFixedName);
+    expect(path.dirname(path.dirname(file))).toBe(tmpState.dir);
+    expect(path.basename(path.dirname(file))).toMatch(/^cowork-uv-/);
+    if (process.platform !== 'win32') {
+      expect(fs.statSync(path.dirname(file)).mode & 0o777).toBe(0o700);
+      expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+    }
+  });
+
+  it('removes its folder once the caller is done with uv', () => {
+    const { env, remove } = writeUvOverrides(overrides);
+    remove();
+    expect(fs.existsSync(path.dirname(env.UV_OVERRIDE as string))).toBe(false);
   });
 });
 

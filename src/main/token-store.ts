@@ -62,9 +62,13 @@ function decryptToken(data: Buffer): string {
 
 // ── Read / write per platform ───────────────────────────────────────
 
+/* Node applies a write's mode only when it creates the file, so each token
+ * file is also set to 0600 after the write: a copy an older build left at 0644
+ * is otherwise rewritten in place and stays 0644. */
 function writeEncryptedFile(refreshToken: string): void {
   fs.mkdirSync(coworkHome(), { recursive: true });
   fs.writeFileSync(ENCRYPTED_FILE, encryptToken(refreshToken), { mode: 0o600 });
+  fs.chmodSync(ENCRYPTED_FILE, 0o600);
 }
 
 // ENOENT is the expected case (nothing to remove); anything else means a
@@ -84,7 +88,8 @@ function writeToken(refreshToken: string): void {
     return;
   }
   if (safeStorage.isEncryptionAvailable()) {
-    fs.writeFileSync(KEYCHAIN_FILE, safeStorage.encryptString(refreshToken));
+    fs.writeFileSync(KEYCHAIN_FILE, safeStorage.encryptString(refreshToken), { mode: 0o600 });
+    fs.chmodSync(KEYCHAIN_FILE, 0o600);
     // Refresh the encrypted-file copy too rather than deleting it: on
     // machines where DPAPI/libsecret flaps, the fallback is the only store
     // readable during the next outage, and keeping it fresh means a stale

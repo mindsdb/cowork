@@ -130,7 +130,8 @@ vi.mock('./server-process', () => ({
 // Regression coverage for ENG-1209 (Windows EPERM saving MindsHub creds):
 // writeEnvFileAtomic must write atomically (never truncate the user's other
 // creds) and ride out a transient lock on the rename instead of throwing.
-import { writeEnvFileAtomic, commitMindsSignIn } from './minds-auth';
+import { commitMindsSignIn } from './minds-auth';
+import { writeEnvFileAtomic } from './private-files';
 import { saveTokens, clearTokens } from './token-store';
 import { observePreExistingData } from './account-data';
 import { getServerAuthToken, resetServerAuthTokenCache } from './server-auth';

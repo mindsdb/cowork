@@ -3,7 +3,7 @@
 
 import * as fs from 'fs';
 import { CREDENTIAL_ENV_KEYS } from './credential-env-keys';
-import { writeEnvFileAtomic } from './minds-auth';
+import { writeEnvFileAtomic } from './private-files';
 
 // Keys stripped from the .env on sign-out — for the standalone anton CLI and
 // the next-boot migration. Preserving a model on sign-in but deleting it on

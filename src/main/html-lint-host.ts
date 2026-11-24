@@ -15,14 +15,23 @@ const STALE_PROFILE_MS = 60 * 60 * 1000;
 
 /* The runner ends the process with `app.exit()`, which skips every exit hook,
  * so profiles are collected on the next run instead of after their own. The
- * age cut keeps a concurrent run's profile (seconds old) out of the sweep. */
-function sweepStaleProfiles(): void {
+ * age cut keeps a concurrent run's profile (seconds old) out of the sweep.
+ *
+ * On Linux os.tmpdir() is the shared /tmp, so an entry with the prefix may
+ * belong to another account. Only a real folder this user owns is removed:
+ * never a link, which the removal could follow into the user's own files, and
+ * never another account's folder, whose contents that account controls.
+ * Windows reports no user id, and its temp folder is per user anyway. */
+export function sweepStaleProfiles(platform: NodeJS.Platform = process.platform): void {
   const now = Date.now();
   for (const name of fs.readdirSync(os.tmpdir())) {
     if (!name.startsWith(PROFILE_PREFIX)) continue;
     const dir = path.join(os.tmpdir(), name);
     try {
-      if (now - fs.statSync(dir).mtimeMs > STALE_PROFILE_MS) {
+      const seen = fs.lstatSync(dir);
+      if (!seen.isDirectory()) continue;
+      if (platform !== 'win32' && seen.uid !== process.getuid?.()) continue;
+      if (now - seen.mtimeMs > STALE_PROFILE_MS) {
         fs.rmSync(dir, { recursive: true, force: true });
       }
     } catch {

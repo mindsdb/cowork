@@ -146,6 +146,41 @@ describe('token-store persistence', () => {
 });
 
 // ─── ENG-761: renderer must hear every auth transition ───────────────
+/* Node applies a write's mode only when it creates the file, so a token file an
+ * older build left at 0644 stayed 0644 through every later write. */
+describe('token files are owner-only', () => {
+  const bin = () => path.join(h.userData, 'mindshub-refresh.bin');
+  const dat = () => path.join(h.home, 'refresh-token.dat');
+  const modeOf = (file: string) => fs.statSync(file).mode & 0o777;
+  const leaveReadable = (file: string) => {
+    fs.writeFileSync(file, 'older-build');
+    fs.chmodSync(file, 0o644);
+  };
+
+  it('sets existing 0644 copies to 0600 on Linux with safeStorage available', async () => {
+    leaveReadable(bin());
+    leaveReadable(dat());
+    const store = await loadStore('linux');
+
+    store.saveTokens('at', 3600, 'linux-refresh-token');
+
+    expect(modeOf(bin())).toBe(0o600);
+    expect(modeOf(dat())).toBe(0o600);
+    expect(store.getRefreshToken()).toBe('linux-refresh-token');
+  });
+
+  it('sets an existing 0644 encrypted file to 0600 on Linux with no keyring (basic_text)', async () => {
+    h.safeStorageAvailable.value = false;
+    leaveReadable(dat());
+    const store = await loadStore('linux');
+
+    store.saveTokens('at', 3600, 'basic-text-refresh-token');
+
+    expect(modeOf(dat())).toBe(0o600);
+    expect(store.getRefreshToken()).toBe('basic-text-refresh-token');
+  });
+});
+
 describe('token-store auth-changed broadcast', () => {
   it('broadcasts authenticated:true on saveTokens', async () => {
     const store = await loadStore('win32');

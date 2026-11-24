@@ -10,7 +10,7 @@ import { getInstallationId } from './installation-id';
 import { authHeader } from './server-auth';
 import { hasUserSuppliedMindsCredential, isMindsCredentialSidecarReachable, syncMindsCredential, syncMindsCredentialSelection, syncUsableMindsCredential } from './minds-credential';
 import { beginMindsResumeCredentialGate, settleMindsResumeCredentialGate } from './minds-resume-gate';
-import { retryOnTransientLock } from './fs-retry';
+import { writeEnvFileAtomic } from './private-files';
 import { isMindsBaseUrl } from '../shared/minds-endpoint';
 import { describeFetchError } from './fetch-error';
 import {
@@ -35,7 +35,6 @@ import {
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import * as crypto from 'crypto';
 
 const KEYCLOAK_BASE = MINDS_KEYCLOAK_BASE;
 const KEYCLOAK_REALM = 'mindsdb';
@@ -1374,51 +1373,6 @@ export function mindsSignInSettingWrites(
   ];
 }
 
-
-// Durable `.env` write for Windows: at sign-in finalize this runs while the old
-// server still holds the file open, which EPERM'd onboarding (ENG-1209). The fix
-// is the temp-write-then-atomic-rename with retry — the write lands on a fresh,
-// unlocked path and only the rename contends with the lock. Two things matter:
-//   1. Atomic — a torn/failed write must never truncate `.env` (it holds the
-//      user's OTHER credentials/consent flags), so it's data loss, not a lost key.
-//   2. mode 0o600 on the temp — it holds the full plaintext key and lives at
-//      that mode through every retry and any crash, so it must be owner-only from
-//      creation, not just after the trailing chmod on the final path. `mode` is
-//      accepted on Windows (it just has limited POSIX semantics) and the temp is
-//      unlocked, so it can't reintroduce the EPERM this write class hit.
-export async function writeEnvFileAtomic(
-  targetPath: string,
-  content: string,
-  opts: { attempts?: number; baseDelayMs?: number } = {},
-): Promise<void> {
-  const dir = path.dirname(targetPath);
-  const base = path.basename(targetPath);
-  // Sweep only STALE orphaned temps from a prior hard-kill / power-loss between
-  // the write and the rename — they hold the full plaintext key, so they must
-  // never linger. The age threshold is what lets this coexist with the random
-  // suffix below: a concurrent writer's in-flight temp is fresh and spared, so
-  // the sweep can't yank it out from under a live rename.
-  const STALE_TMP_MS = 5 * 60 * 1000;
-  try {
-    const now = Date.now();
-    for (const name of fs.readdirSync(dir)) {
-      if (!name.startsWith(`${base}.tmp-`)) continue;
-      const p = path.join(dir, name);
-      try {
-        if (now - fs.statSync(p).mtimeMs > STALE_TMP_MS) fs.rmSync(p, { force: true });
-      } catch { /* best-effort — gone already or unreadable */ }
-    }
-  } catch { /* dir unreadable — nothing to sweep */ }
-  // Random suffix (not pid alone) so two writers can never collide on the name.
-  const tmpPath = path.join(dir, `${base}.tmp-${process.pid}-${crypto.randomBytes(6).toString('hex')}`);
-  fs.writeFileSync(tmpPath, content, { encoding: 'utf-8', mode: 0o600 });
-  try {
-    await retryOnTransientLock(() => fs.renameSync(tmpPath, targetPath), opts);
-  } catch (err) {
-    try { fs.rmSync(tmpPath, { force: true }); } catch { /* best-effort cleanup */ }
-    throw err;
-  }
-}
 
 /**
  * Commit a MindsHub sign-in: the non-credential config to disk and the DB, and
