@@ -88,7 +88,7 @@ describe('classifyStart', () => {
   });
 
   it('knows the other onboarding steps and the habit tracker', () => {
-    expect(classifyStart("I want to connect my Google Drive so you can work with my real files. Walk me through linking it, then once it's connected, help me pick a file with \"Add files from Google Drive\", do something useful with it, and show me what you found."))
+    expect(classifyStart("I want to connect my Google Drive so you can work with my real files. Walk me through linking it, then once it's connected, find one of my files, do something useful with it, and show me what you found."))
       .toEqual({ start_kind: 'onboarding_step', example_id: 'connect-app' });
     expect(classifyStart(HABIT_TRACKER_PROMPT)).toMatchObject({ start_kind: 'example', example_id: 'build-a-habit-tracker' });
     // A lightly edited habit tracker no longer matches the catalog entry, so it takes the prefix route.
