@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+// Reporting is offered only in the mobile app.
+vi.mock('../../lib/mobileShell', async (importOriginal) => ({ ...(await importOriginal()), isMobileShell: true }));
 vi.mock('../../platform/host', () => ({
   host: {
     isElectron: false,

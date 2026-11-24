@@ -72,3 +72,8 @@ describe('TurnActions', () => {
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
 });
+
+it('keeps extra actions in the row that hides until hover', () => {
+  render(<TurnActions text="Answer"><button type="button">Report content</button></TurnActions>);
+  expect(screen.getByRole('button', { name: 'Report content' }).closest('.turn-actions')).not.toBeNull();
+});
