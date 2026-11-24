@@ -92,14 +92,23 @@ function isInitializeResult(value: unknown): boolean {
   const result = message.result;
   if (!isObject(result)) return false;
   const info = result.serverInfo;
-  return (
-    typeof result.protocolVersion === 'string' &&
-    !!result.protocolVersion &&
-    isObject(result.capabilities) &&
-    isObject(info) &&
-    typeof info.name === 'string' &&
-    typeof info.version === 'string'
-  );
+  if (
+    typeof result.protocolVersion !== 'string' ||
+    !result.protocolVersion ||
+    !isObject(result.capabilities) ||
+    !isObject(info) ||
+    typeof info.name !== 'string' ||
+    typeof info.version !== 'string'
+  ) {
+    return false;
+  }
+  const capabilities = result.capabilities;
+  for (const key of ['tools', 'resources', 'prompts', 'logging', 'completions']) {
+    if (capabilities[key] !== undefined && !isObject(capabilities[key])) return false;
+  }
+  if (result.instructions !== undefined && typeof result.instructions !== 'string') return false;
+  if (info.title !== undefined && typeof info.title !== 'string') return false;
+  return true;
 }
 
 function parsesAsInitializeResult(text: string): boolean {
@@ -110,29 +119,54 @@ function parsesAsInitializeResult(text: string): boolean {
   }
 }
 
+function isEventStream(contentType: string | null): boolean {
+  return !!contentType?.toLowerCase().includes('text/event-stream');
+}
+
+/**
+ * Incremental WHATWG SSE reader: fed each chunk once, it keeps only the
+ * unfinished line and the current event's data, so the work is linear in the
+ * bytes received. Lines end in CRLF, LF or CR; only a blank line dispatches an
+ * event, so a final event without one is discarded. Returns true as soon as a
+ * dispatched event is an initialize answer.
+ */
+export function initializeEventFeeder(): (text: string) => boolean {
+  let data: string[] = [];
+  let pending = '';
+  let skipLf = false;
+  return (input) => {
+    let text = input;
+    if (skipLf && text.startsWith('\n')) text = text.slice(1);
+    if (text !== '') skipLf = false;
+    let start = 0;
+    const ending = /\r\n|\n|\r/g;
+    for (let match = ending.exec(text); match; match = ending.exec(text)) {
+      const line = pending + text.slice(start, match.index);
+      pending = '';
+      start = match.index + match[0].length;
+      if (match[0] === '\r' && start === text.length) skipLf = true;
+      if (line === '') {
+        if (data.length && parsesAsInitializeResult(data.join('\n'))) return true;
+        data = [];
+      } else if (line.startsWith('data:')) {
+        data.push(line.slice(5).replace(/^ /, ''));
+      } else if (line === 'data') {
+        data.push('');
+      }
+    }
+    pending += text.slice(start);
+    return false;
+  };
+}
+
 /**
  * True when `body` is a JSON-RPC result for the `initialize` request, sent
  * either as plain JSON or as a server-sent event stream. The body decides, not
  * the content type.
  */
 export function isInitializeAnswer(contentType: string | null, body: string): boolean {
-  if (!contentType?.toLowerCase().includes('text/event-stream')) return parsesAsInitializeResult(body);
-  // WHATWG SSE: lines end in CRLF, LF or CR individually; only a blank line
-  // dispatches an event, so a final event without one is discarded.
-  let data: string[] = [];
-  const lines = body.split(/\r\n|\n|\r/);
-  lines.pop(); // text after the last line ending is an unterminated line
-  for (const line of lines) {
-    if (line === '') {
-      if (data.length && parsesAsInitializeResult(data.join('\n'))) return true;
-      data = [];
-    } else if (line.startsWith('data:')) {
-      data.push(line.slice(5).replace(/^ /, ''));
-    } else if (line === 'data') {
-      data.push('');
-    }
-  }
-  return false;
+  if (!isEventStream(contentType)) return parsesAsInitializeResult(body);
+  return initializeEventFeeder()(body);
 }
 
 /**
@@ -147,6 +181,11 @@ export async function discoverMcpAuth(serverUrl: string, fetchFn: GuardedFetch):
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
     body: INITIALIZE_BODY,
+    // An event stream may stay open after the answer; stop reading once an
+    // event is dispatched whole. Plain JSON is judged only at end of body.
+    settleEarly: ({ contentType }) => (isEventStream(contentType) ? initializeEventFeeder() : null),
+    // Only a 2xx body is read; an error reply is judged by status and headers.
+    decodeBody: (status) => status >= 200 && status < 300,
   });
   if (probe.ok) {
     // A 200 alone proves nothing: web pages and plain APIs answer it too.

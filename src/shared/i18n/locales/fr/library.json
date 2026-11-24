@@ -708,6 +708,7 @@
       "invalidRequest": "Cette demande n'est pas valide : {reason}",
       "tokenRejected": "Le serveur n'accepte plus cette connexion. Reconnectez-vous pour vous identifier à nouveau.",
       "unreachable": "Le serveur est injoignable. Réessayez plus tard.",
+      "notMcp": "Cette adresse ne répond pas comme un serveur MCP. Vérifiez l'URL et réessayez.",
       "notHandedOver": "L'application n'a pas encore transmis ses réglages à ce serveur. Redémarrez l'application et réessayez.",
       "missing": "Cette connexion n'existe plus.",
       "unreadable": "L'enregistrement de cette connexion est illisible pour le moment. Réessayez plus tard."

@@ -16,6 +16,8 @@ import * as https from 'node:https';
 import type { IncomingMessage, RequestOptions } from 'node:http';
 import type { LookupAddress } from 'node:dns';
 import { isIP } from 'node:net';
+import { StringDecoder } from 'node:string_decoder';
+import { brotliDecompressSync, gunzipSync, inflateSync } from 'node:zlib';
 import { isIpLiteralHost, isPublicAddress } from './public-address';
 
 export type GuardedFetchErrorCode =
@@ -42,6 +44,15 @@ export interface GuardedRequestInit {
   method?: string;
   headers?: Record<string, string> | Headers;
   body?: string | URLSearchParams;
+  /** Called once with the head of a 2xx, uncompressed answer. It may return a
+   *  feeder, which is handed each chunk's text once, in order; when the feeder
+   *  returns true the answer resolves at once and the rest of the stream is
+   *  dropped, for answers that arrive whole on a response that stays open. */
+  settleEarly?: (head: { status: number; contentType: string | null }) => ((text: string) => boolean) | null;
+  /** Whether to decode a compressed body for this status. When false the body
+   *  comes back empty (the caller reads only the headers), so an encoding this
+   *  app cannot read does not mask the status. Default: always decode. */
+  decodeBody?: (status: number) => boolean;
 }
 
 export type GuardedFetch = (input: string | URL, init?: GuardedRequestInit) => Promise<Response>;
@@ -178,6 +189,9 @@ function send(
   const host = bare(url.hostname);
   const body = init.body === undefined ? undefined : String(init.body);
   const headers: Record<string, string> = { ...headerRecord(init.headers), host: url.host };
+  if (!Object.keys(headers).some((name) => name.toLowerCase() === 'accept-encoding')) {
+    headers['accept-encoding'] = 'identity';
+  }
   if (body !== undefined && !Object.keys(headers).some((name) => name.toLowerCase() === 'content-length')) {
     headers['content-length'] = String(Buffer.byteLength(body));
   }
@@ -205,7 +219,32 @@ function send(
     const req = request(requestOptions, (res: IncomingMessage) => {
       const chunks: Buffer[] = [];
       let size = 0;
+      const settle = (buffer: Buffer) => {
+        // Node's parser passes any three-digit status, and `Response` throws
+        // outside 200-599; thrown here it would escape every handler.
+        try {
+          const decode = init.decodeBody?.(res.statusCode ?? 0) ?? true;
+          const bytes = decode ? decodeBody(res, buffer, maxBytes) : isEncoded(res) ? Buffer.alloc(0) : buffer;
+          resolve(toResponse(res, bytes, isEncoded(res)));
+        } catch (err) {
+          reject(
+            err instanceof GuardedFetchError
+              ? err
+              : new GuardedFetchError('bad_response', 'the server sent a response that is not valid HTTP'),
+          );
+        }
+      };
+      let feeder: ((text: string) => boolean) | null = null;
+      if (init.settleEarly && (res.statusCode ?? 0) >= 200 && (res.statusCode ?? 0) < 300 && !isEncoded(res)) {
+        try {
+          feeder = init.settleEarly({ status: res.statusCode ?? 0, contentType: headerValue(res.headers['content-type']) });
+        } catch {
+          feeder = null;
+        }
+      }
+      const textDecoder = new StringDecoder('utf8');
       res.on('data', (chunk: Buffer) => {
+        if (settled) return;
         size += chunk.length;
         if (size > maxBytes) {
           req.destroy();
@@ -213,18 +252,19 @@ function send(
           return;
         }
         chunks.push(chunk);
+        if (!feeder) return;
+        let done = false;
+        try {
+          done = feeder(textDecoder.write(chunk));
+        } catch {
+          done = false;
+        }
+        if (done) {
+          finish(() => settle(Buffer.concat(chunks)));
+          req.destroy();
+        }
       });
-      res.on('end', () =>
-        finish(() => {
-          // Node's parser passes any three-digit status, and `Response` throws
-          // outside 200-599; thrown here it would escape every handler.
-          try {
-            resolve(toResponse(res, Buffer.concat(chunks)));
-          } catch {
-            reject(new GuardedFetchError('bad_response', 'the server sent a response that is not valid HTTP'));
-          }
-        }),
-      );
+      res.on('end', () => finish(() => settle(Buffer.concat(chunks))));
       res.on('error', () => finish(() => reject(new GuardedFetchError('network', 'the connection failed'))));
     });
     const timer = setTimeout(() => {
@@ -237,9 +277,49 @@ function send(
   });
 }
 
-function toResponse(res: IncomingMessage, body: Buffer): Response {
+function headerValue(value: string | string[] | undefined): string | null {
+  if (value === undefined) return null;
+  return Array.isArray(value) ? value.join(', ') : value;
+}
+
+function contentEncoding(res: IncomingMessage): string {
+  return (headerValue(res.headers['content-encoding']) ?? '').trim().toLowerCase();
+}
+
+function isEncoded(res: IncomingMessage): boolean {
+  const encoding = contentEncoding(res);
+  return encoding !== '' && encoding !== 'identity';
+}
+
+/* Decodes a body the server compressed despite `accept-encoding: identity`.
+   An encoding this cannot decode is an error, never raw bytes read as text. */
+function decodeBody(res: IncomingMessage, body: Buffer, maxBytes: number): Buffer {
+  if (!isEncoded(res) || NO_BODY_STATUSES.has(res.statusCode ?? 0) || body.length === 0) return body;
+  const encoding = contentEncoding(res);
+  const options = { maxOutputLength: maxBytes };
+  try {
+    switch (encoding) {
+      case 'gzip':
+      case 'x-gzip':
+        return gunzipSync(body, options);
+      case 'deflate':
+        return inflateSync(body, options);
+      case 'br':
+        return brotliDecompressSync(body, options);
+    }
+  } catch (err) {
+    if ((err as { code?: string }).code === 'ERR_BUFFER_TOO_LARGE') {
+      throw new GuardedFetchError('too_large', 'the server sent more than the allowed size');
+    }
+    throw new GuardedFetchError('bad_response', 'the server sent a body that could not be decoded');
+  }
+  throw new GuardedFetchError('bad_response', 'the server used an encoding this app does not read');
+}
+
+function toResponse(res: IncomingMessage, body: Buffer, decoded = false): Response {
   const headers = new Headers();
   for (const [name, value] of Object.entries(res.headers)) {
+    if (decoded && (name === 'content-encoding' || name === 'content-length')) continue;
     if (Array.isArray(value)) value.forEach((item) => headers.append(name, item));
     else if (value !== undefined) headers.set(name, value);
   }

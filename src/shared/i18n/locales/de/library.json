@@ -708,6 +708,7 @@
       "invalidRequest": "Diese Anfrage ist ungültig: {reason}",
       "tokenRejected": "Der Server akzeptiert diese Anmeldung nicht mehr. Verbinde dich neu, um dich wieder anzumelden.",
       "unreachable": "Der Server war nicht erreichbar. Versuche es später erneut.",
+      "notMcp": "Diese Adresse antwortet nicht als MCP-Server. Prüfe die URL und versuche es erneut.",
       "notHandedOver": "Die App hat diesem Server seine Einstellungen noch nicht übergeben. Starte die App neu und versuche es erneut.",
       "missing": "Diese Verbindung gibt es nicht mehr.",
       "unreadable": "Der Eintrag dieser Verbindung kann gerade nicht gelesen werden. Versuche es später erneut."

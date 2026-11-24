@@ -247,12 +247,16 @@ describe('connectCustomMcp', () => {
     const page: Record<string, Answer> = {
       [`POST ${SERVER_URL}`]: { status: 200, headers: { 'content-type': 'text/html' }, text: '<html><body>Hello</body></html>' },
     };
-    const { deps: d, authorize } = deps(page);
+    const { deps: d, authorize, mcp } = deps(page);
 
     const result = await connectCustomMcp({ label: 'Docs', url: SERVER_URL }, d);
 
     expect(result).toMatchObject({ ok: false, code: 'not_mcp' });
     expect(authorize).not.toHaveBeenCalled();
+    // Nothing was created on the server, and no tool list was asked for.
+    expect(server.calls.some((call) => call.startsWith('POST') && !call.endsWith('/check-url'))).toBe(false);
+    expect(server.calls.some((call) => call.includes('/tools'))).toBe(false);
+    expect(mcp.requests.map((r) => `${r.init.method ?? 'GET'} ${r.url}`)).toEqual([`POST ${SERVER_URL}`]);
     expect(server.held.size).toBe(0);
     expect(await listConnectionIds(store.root!)).toEqual([]);
     expect(await readPart(store.root!, ID, 'settings')).toBeNull();

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
+import { gzipSync } from 'node:zlib';
 import * as http from 'node:http';
 import * as https from 'node:https';
 import * as net from 'node:net';
@@ -9,7 +10,7 @@ import cases from './__fixtures__/public-address-cases.json';
 import { checkPublicHttpsUrl, createGuardedFetch, GuardedFetchError, type GuardedFetchOptions } from './guarded-fetch';
 
 type Responder = (options: https.RequestOptions & { servername?: string }, body: string) =>
-  | { status: number; headers?: Record<string, string>; chunks?: string[] }
+  | { status: number; headers?: Record<string, string>; chunks?: Array<string | Buffer>; open?: boolean }
   | 'error'
   | 'hang';
 
@@ -17,6 +18,15 @@ type Responder = (options: https.RequestOptions & { servername?: string }, body:
    plays back what `responder` returns, without opening a socket. */
 function fakeRequest(responder: Responder) {
   const calls: Array<https.RequestOptions & { servername?: string }> = [];
+  let current: EventEmitter | undefined;
+  // Like a real socket, destroying emits late error and close events.
+  const destroy = vi.fn(() => {
+    const res = current;
+    queueMicrotask(() => {
+      res?.emit('error', new Error('aborted'));
+      res?.emit('close');
+    });
+  });
   const request = ((options: https.RequestOptions & { servername?: string }, onResponse: (res: unknown) => void) => {
     calls.push(options);
     const req = new EventEmitter() as EventEmitter & { write: (c: string) => void; end: () => void; destroy: () => void };
@@ -24,7 +34,7 @@ function fakeRequest(responder: Responder) {
     req.write = (chunk: string) => {
       written += chunk;
     };
-    req.destroy = () => {};
+    req.destroy = destroy;
     req.end = () => {
       const outcome = responder(options, written);
       queueMicrotask(() => {
@@ -38,14 +48,15 @@ function fakeRequest(responder: Responder) {
           statusMessage: '',
           headers: outcome.headers ?? {},
         });
+        current = res;
         onResponse(res);
         for (const chunk of outcome.chunks ?? []) res.write(chunk);
-        res.end();
+        if (!outcome.open) res.end();
       });
     };
     return req;
   }) as unknown as typeof https.request;
-  return { request, calls };
+  return { request, calls, destroy };
 }
 
 function answers(...addresses: string[]): (hostname: string) => Promise<LookupAddress[]> {
@@ -55,7 +66,7 @@ function answers(...addresses: string[]): (hostname: string) => Promise<LookupAd
 function guarded(responder: Responder, options: Partial<GuardedFetchOptions> = {}) {
   const fake = fakeRequest(responder);
   const fetchFn = createGuardedFetch({ lookupAll: answers('93.184.215.14'), request: fake.request, ...options });
-  return { fetchFn, calls: fake.calls };
+  return { fetchFn, calls: fake.calls, destroy: fake.destroy };
 }
 
 const ok: Responder = () => ({ status: 200, headers: { 'content-type': 'application/json' }, chunks: ['{"ok":true}'] });
@@ -187,6 +198,133 @@ describe('createGuardedFetch', () => {
   it('gives up on a server that does not answer in time', async () => {
     const { fetchFn } = guarded(() => 'hang', { timeoutMs: 20 });
     expect(await refusal(fetchFn('https://mcp.example.com/'))).toBe('timeout');
+  });
+
+  it('sends accept-encoding: identity unless the caller chose one', async () => {
+    const { fetchFn, calls } = guarded(ok);
+    await fetchFn('https://mcp.example.com/');
+    await fetchFn('https://mcp.example.com/', { headers: { 'Accept-Encoding': 'gzip' } });
+    expect((calls[0].headers as Record<string, string>)['accept-encoding']).toBe('identity');
+    const second = calls[1].headers as Record<string, string>;
+    expect(second['Accept-Encoding']).toBe('gzip');
+    expect(second['accept-encoding']).toBeUndefined();
+  });
+
+  describe('an answer on a stream that stays open', () => {
+    const event = 'data: {"jsonrpc":"2.0","id":1,"result":{}}\n\n';
+    const open: Responder = () => ({ status: 200, headers: { 'content-type': 'text/event-stream' }, chunks: [event], open: true });
+
+    it('resolves with the body once settleEarly accepts it, and drops the stream', async () => {
+      const { fetchFn, destroy } = guarded(open, { timeoutMs: 50 });
+      const response = await fetchFn('https://mcp.example.com/', {
+        settleEarly: ({ contentType, status }) =>
+          status === 200 && contentType === 'text/event-stream' ? (text) => text === event : null,
+      });
+      expect(await response.text()).toBe(event);
+      expect(destroy).toHaveBeenCalledTimes(1);
+      await new Promise((done) => setTimeout(done, 80)); // the timer must not fire a late rejection or a second destroy
+      expect(destroy).toHaveBeenCalledTimes(1);
+    });
+
+    it('hands each chunk to the feeder once, never the accumulated prefix', async () => {
+      const seen: string[] = [];
+      const { fetchFn } = guarded(() => ({ status: 200, chunks: ['a', 'b', 'c'], open: true }), { timeoutMs: 30 });
+      await refusal(fetchFn('https://mcp.example.com/', { settleEarly: () => (text) => (seen.push(text), false) }));
+      expect(seen).toEqual(['a', 'b', 'c']);
+    });
+
+    it('reassembles a multi-byte character split across chunks', async () => {
+      const bytes = Buffer.from('é');
+      const seen: string[] = [];
+      const { fetchFn } = guarded(() => ({ status: 200, chunks: [bytes.subarray(0, 1), bytes.subarray(1)], open: true }), { timeoutMs: 30 });
+      await refusal(fetchFn('https://mcp.example.com/', { settleEarly: () => (text) => (seen.push(text), false) }));
+      expect(seen.join('')).toBe('é');
+    });
+
+    it('does not read the body of an error reply when decodeBody says no, whatever its encoding', async () => {
+      const { fetchFn } = guarded(() => ({ status: 401, headers: { 'content-encoding': 'compress', 'www-authenticate': 'Bearer' }, chunks: ['junk'] }));
+      const response = await fetchFn('https://mcp.example.com/', { decodeBody: (status) => status < 300 });
+      expect(response.status).toBe(401);
+      expect(response.headers.get('www-authenticate')).toBe('Bearer');
+      expect(await response.text()).toBe('');
+    });
+
+    it('still refuses an undecodable body when decodeBody says yes', async () => {
+      const { fetchFn } = guarded(() => ({ status: 200, headers: { 'content-encoding': 'compress' }, chunks: ['junk'] }));
+      expect(await refusal(fetchFn('https://mcp.example.com/', { decodeBody: () => true }))).toBe('bad_response');
+    });
+
+    it('does not settle early on a non-2xx status', async () => {
+      const { fetchFn } = guarded(() => ({ status: 500, chunks: [event], open: true }), { timeoutMs: 20 });
+      expect(await refusal(fetchFn('https://mcp.example.com/', { settleEarly: () => () => true }))).toBe('timeout');
+    });
+
+    it.each([
+      ['without a predicate', undefined],
+      ['when the predicate says no', () => false],
+      ['when the predicate throws', () => {
+        throw new Error('boom');
+      }],
+    ])('still times out %s', async (_name, feeder) => {
+      const settleEarly = feeder && (() => feeder);
+      const { fetchFn } = guarded(open, { timeoutMs: 20 });
+      expect(await refusal(fetchFn('https://mcp.example.com/', { settleEarly }))).toBe('timeout');
+    });
+
+    it('still enforces the size limit before asking', async () => {
+      const feeder = vi.fn(() => true);
+      const settleEarly = () => feeder;
+      const { fetchFn } = guarded(() => ({ status: 200, chunks: ['x'.repeat(2000)], open: true }), { maxBytes: 1000 });
+      expect(await refusal(fetchFn('https://mcp.example.com/', { settleEarly }))).toBe('too_large');
+      expect(feeder).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('compressed answers', () => {
+    const text = '{"hello":"world"}';
+    const encoded = (encoding: string, body: Buffer): Responder => () => ({
+      status: 200,
+      headers: { 'content-type': 'application/json', 'content-encoding': encoding, 'content-length': String(body.length) },
+      chunks: [body],
+    });
+
+    it.each(['gzip', 'GZIP', ' x-gzip '])('decodes %s and drops the encoding headers', async (encoding) => {
+      const { fetchFn } = guarded(encoded(encoding, gzipSync(text)));
+      const response = await fetchFn('https://mcp.example.com/');
+      expect(await response.text()).toBe(text);
+      expect(response.headers.get('content-encoding')).toBeNull();
+      expect(response.headers.get('content-length')).toBeNull();
+    });
+
+    it('does not settle early on a compressed stream, but decodes at the end', async () => {
+      const settleEarly = vi.fn(() => () => true);
+      const { fetchFn } = guarded(encoded('gzip', gzipSync(text)));
+      const response = await fetchFn('https://mcp.example.com/', { settleEarly });
+      expect(await response.text()).toBe(text);
+      expect(settleEarly).not.toHaveBeenCalled();
+    });
+
+    it('rejects a decompression bomb as too_large', async () => {
+      const bomb = gzipSync('a'.repeat(10_000));
+      expect(bomb.length).toBeLessThan(1000);
+      const { fetchFn } = guarded(encoded('gzip', bomb), { maxBytes: 1000 });
+      expect(await refusal(fetchFn('https://mcp.example.com/'))).toBe('too_large');
+    });
+
+    it.each(['compress', 'gzip, br', 'zstd'])('rejects the encoding %s as bad_response', async (encoding) => {
+      const { fetchFn } = guarded(encoded(encoding, Buffer.from(text)));
+      expect(await refusal(fetchFn('https://mcp.example.com/'))).toBe('bad_response');
+    });
+
+    it('rejects a corrupt gzip body as bad_response', async () => {
+      const { fetchFn } = guarded(encoded('gzip', Buffer.from('not gzip at all')));
+      expect(await refusal(fetchFn('https://mcp.example.com/'))).toBe('bad_response');
+    });
+
+    it('accepts a bodiless response that carries a content-encoding header', async () => {
+      const { fetchFn } = guarded(() => ({ status: 204, headers: { 'content-encoding': 'gzip' } }));
+      expect((await fetchFn('https://mcp.example.com/')).status).toBe(204);
+    });
   });
 
   it('reports a failed connection on a proxy-only network as its own error', async () => {

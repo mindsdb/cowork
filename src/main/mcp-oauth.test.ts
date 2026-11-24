@@ -1,13 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
+import { gzipSync } from 'node:zlib';
+import type * as https from 'node:https';
 import linear from './__fixtures__/mcp-oauth/linear.json';
 import notion from './__fixtures__/mcp-oauth/notion.json';
 import github from './__fixtures__/mcp-oauth/github.json';
 import deepwiki from './__fixtures__/mcp-oauth/deepwiki.json';
-import { GuardedFetchError, type GuardedFetch, type GuardedRequestInit } from './guarded-fetch';
+import { createGuardedFetch, GuardedFetchError, type GuardedFetch, type GuardedRequestInit } from './guarded-fetch';
 import {
   discoverMcpAuth,
   exchangeCode,
   givenClient,
+  initializeEventFeeder,
   McpOAuthError,
   refreshTokens,
   registerClient,
@@ -112,6 +117,11 @@ describe('discoverMcpAuth on a 200 answer', () => {
     ['a JSON-RPC answer for another id', { status: 200, headers: JSON_TYPE, text: '{"jsonrpc":"2.0","id":2,"result":{}}' }],
     ['a result that is not an object', { status: 200, headers: JSON_TYPE, text: '{"jsonrpc":"2.0","id":1,"result":"x"}' }],
     ['an event stream with data that is not JSON', { status: 200, headers: SSE_TYPE, text: 'event: message\r\ndata: hello\r\n\r\n' }],
+    ['capabilities.tools that is not an object', { status: 200, headers: JSON_TYPE, text: JSON.stringify({ jsonrpc: '2.0', id: 1, result: { ...INIT, capabilities: { tools: true } } }) }],
+    ['capabilities.prompts that is null', { status: 200, headers: JSON_TYPE, text: JSON.stringify({ jsonrpc: '2.0', id: 1, result: { ...INIT, capabilities: { prompts: null } } }) }],
+    ['capabilities.logging that is an array', { status: 200, headers: JSON_TYPE, text: JSON.stringify({ jsonrpc: '2.0', id: 1, result: { ...INIT, capabilities: { logging: [] } } }) }],
+    ['instructions that is not a string', { status: 200, headers: JSON_TYPE, text: JSON.stringify({ jsonrpc: '2.0', id: 1, result: { ...INIT, instructions: 123 } }) }],
+    ['a serverInfo.title that is not a string', { status: 200, headers: JSON_TYPE, text: JSON.stringify({ jsonrpc: '2.0', id: 1, result: { ...INIT, serverInfo: { name: 's', version: '1', title: 5 } } }) }],
     ['an HTML page claiming to be an event stream', { status: 200, headers: SSE_TYPE, text: '<html></html>' }],
   ];
 
@@ -122,6 +132,7 @@ describe('discoverMcpAuth on a 200 answer', () => {
 
   const accepted: Array<[string, Answer]> = [
     ['JSON', { status: 200, headers: JSON_TYPE, text: RESULT }],
+    ['a full result with capabilities, instructions and title', { status: 200, headers: JSON_TYPE, text: JSON.stringify({ jsonrpc: '2.0', id: 1, result: { ...INIT, capabilities: { tools: { listChanged: true }, logging: {}, experimental: 1 }, instructions: 'hi', serverInfo: { name: 's', version: '1', title: 'S' } } }) }],
     ['an event stream with CRLF line endings', { status: 200, headers: SSE_TYPE, text: `event: message\r\ndata: ${RESULT}\r\n\r\n` }],
     ['an event stream with mixed line endings', { status: 200, headers: SSE_TYPE, text: `data: {"jsonrpc":"2.0","method":"ping"}\r\n\ndata: ${RESULT}\n\r\n` }],
     ['an event stream with multi-line data', { status: 200, headers: SSE_TYPE, text: `data: {"jsonrpc":"2.0",\ndata: "id":1,"result":${JSON.stringify(INIT)}}\n\n` }],
@@ -487,5 +498,94 @@ describe('revokeToken', () => {
     const { fetchFn, requests } = replay({});
     expect(await revokeToken({ ...AS, revocationEndpoint: undefined }, { clientId: 'id', authMethod: 'none' }, { token: 'rt', hint: 'refresh_token' }, fetchFn)).toBe(false);
     expect(requests).toEqual([]);
+  });
+});
+
+describe('discoverMcpAuth through the guarded fetch', () => {
+  const RESULT = JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 's', version: '1' } },
+  });
+
+  function guardedFetch(headers: Record<string, string>, chunks: Array<string | Buffer>, open: boolean, statusCode = 200) {
+    const destroy = vi.fn();
+    const request = ((_options: unknown, onResponse: (res: unknown) => void) => {
+      const req = new EventEmitter() as EventEmitter & { write: () => void; end: () => void; destroy: () => void };
+      req.write = () => {};
+      req.destroy = destroy;
+      req.end = () =>
+        queueMicrotask(() => {
+          const res = Object.assign(new PassThrough(), { statusCode, statusMessage: '', headers });
+          onResponse(res);
+          for (const chunk of chunks) res.write(chunk);
+          if (!open) res.end();
+        });
+      return req;
+    }) as unknown as typeof https.request;
+    const fetchFn = createGuardedFetch({
+      request,
+      lookupAll: async () => [{ address: '93.184.215.14', family: 4 }],
+      timeoutMs: 100,
+    });
+    return { fetchFn, destroy };
+  }
+
+  it('accepts an event stream that stays open after the answer', async () => {
+    const { fetchFn, destroy } = guardedFetch({ 'content-type': 'text/event-stream' }, [`event: message\ndata: ${RESULT}\n\n`], true);
+    expect(await discoverMcpAuth(SERVER, fetchFn)).toEqual({ needsLogin: false });
+    expect(destroy).toHaveBeenCalled();
+  });
+
+  it('accepts an answer split across chunks on an open stream', async () => {
+    const data = `data: ${RESULT}\n\n`;
+    const { fetchFn } = guardedFetch({ 'content-type': 'text/event-stream' }, [data.slice(0, 20), data.slice(20)], true);
+    expect(await discoverMcpAuth(SERVER, fetchFn)).toEqual({ needsLogin: false });
+  });
+
+  it('accepts a gzip-compressed JSON answer', async () => {
+    const { fetchFn } = guardedFetch({ 'content-type': 'application/json', 'content-encoding': 'gzip' }, [gzipSync(RESULT)], false);
+    expect(await discoverMcpAuth(SERVER, fetchFn)).toEqual({ needsLogin: false });
+  });
+
+  it.each([
+    ['one chunk', (t: string) => [t]],
+    ['split before the suffix', (t: string) => [t.slice(0, t.length - 5), t.slice(-5)]],
+    ['byte by byte', (t: string) => t.split('')],
+  ])('refuses a JSON answer followed by junk the same way in %s', async (_name, split) => {
+    const { fetchFn } = guardedFetch({ 'content-type': 'application/json' }, split(`${RESULT} <junk>`), false);
+    expect(await failure(discoverMcpAuth(SERVER, fetchFn))).toBe('not_mcp');
+  });
+
+  it('does not settle on plain JSON before the body ends', async () => {
+    const { fetchFn } = guardedFetch({ 'content-type': 'application/json' }, [RESULT], true);
+    expect(await failure(discoverMcpAuth(SERVER, fetchFn))).toBe('timeout');
+  });
+
+  it('does not read an undecodable error body: a 500 is not_mcp and a 401 keeps its challenge', async () => {
+    const h = guardedFetch({ 'content-encoding': 'compress' }, ['junk'], false, 500);
+    expect(await failure(discoverMcpAuth(SERVER, h.fetchFn))).toBe('not_mcp');
+    const u = guardedFetch({ 'content-encoding': 'compress', 'www-authenticate': 'Bearer' }, ['junk'], false, 401);
+    // the 401 gets past its body to metadata discovery; stop there with a marker
+    const seen: string[] = [];
+    const stop = (input: string | URL, init?: Parameters<typeof u.fetchFn>[1]) => {
+      seen.push(String(input));
+      return seen.length === 1 ? u.fetchFn(input, init) : Promise.reject(new Error('reached discovery'));
+    };
+    await expect(discoverMcpAuth(SERVER, stop as typeof u.fetchFn)).rejects.toThrow('reached discovery');
+  });
+
+  it('feeds a large fragmented stream in linear time', () => {
+    const feed = initializeEventFeeder();
+    const started = Date.now();
+    for (let i = 0; i < 8192; i++) expect(feed(': ' + 'x'.repeat(126) + '\n')).toBe(false);
+    expect(feed(`data: ${RESULT}\r`)).toBe(false);
+    expect(feed('\n\r\n')).toBe(true);
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  it('times out on an open stream that never completes an answer', async () => {
+    const { fetchFn } = guardedFetch({ 'content-type': 'text/event-stream' }, ['data: {"jsonrpc"'], true);
+    expect(await failure(discoverMcpAuth(SERVER, fetchFn))).toBe('timeout');
   });
 });

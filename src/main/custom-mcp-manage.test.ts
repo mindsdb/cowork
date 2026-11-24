@@ -41,6 +41,9 @@ const AS = {
 };
 const SETTINGS = { serverUrl: SERVER_URL, label: 'Tracker', resource: SERVER_URL, authorizationServer: AS, clientId: 'client-1', authMethod: 'none' };
 
+/** What connect stores when the server needs no login. */
+const NO_LOGIN_SETTINGS = { serverUrl: SERVER_URL, label: 'Tracker' };
+
 /** cowork-server's custom MCP routes and the generic DELETE. */
 const server = vi.hoisted(() => ({
   records: new Set<string>(),
@@ -111,10 +114,10 @@ function loginServer(table: Record<string, Answer> = LOGIN_SERVER) {
   return { requests, authorize, deps };
 }
 
-async function seed(parts: { tools?: string[]; refresh?: string | null } = {}) {
+async function seed(parts: { tools?: string[]; refresh?: string | null; settings?: Record<string, unknown> } = {}) {
   server.records.add(ID);
   server.held.set(ID, { allowed_tools: parts.tools ?? ['search'] });
-  await writePart(ROOT, ID, 'settings', JSON.stringify(SETTINGS));
+  await writePart(ROOT, ID, 'settings', JSON.stringify(parts.settings ?? SETTINGS));
   await writePart(ROOT, ID, 'tools', JSON.stringify(parts.tools ?? ['search']));
   if (parts.refresh !== null) await writePart(ROOT, ID, 'refresh', parts.refresh ?? 'RT-old');
 }
@@ -253,11 +256,29 @@ describe('reconnect', () => {
     expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-old');
   });
 
+  it('reports a failure for a seeded no-login record whose address stopped answering as MCP', async () => {
+    await seed({ refresh: null, settings: NO_LOGIN_SETTINGS });
+    const before = await readPart(ROOT, ID, 'settings');
+    const { deps, authorize } = loginServer({
+      [`POST ${SERVER_URL}`]: { status: 200, headers: { 'content-type': 'text/html' }, text: '<html></html>' },
+    });
+
+    expect(await reconnectCustom({ id: ID }, deps)).toMatchObject({ ok: false, code: 'not_mcp' });
+
+    expect(authorize).not.toHaveBeenCalled();
+    expect(await readPart(ROOT, ID, 'settings')).toBe(before);
+    expect(await readPart(ROOT, ID, 'refresh')).toBeNull();
+    expect(await readPart(ROOT, ID, 'tools')).toBe(JSON.stringify(['search']));
+  });
+
   it('reconnects a server with no login that still answers as MCP', async () => {
-    await seed();
+    await seed({ refresh: null, settings: NO_LOGIN_SETTINGS });
+    const before = await readPart(ROOT, ID, 'settings');
     const { deps } = loginServer({ [`POST ${SERVER_URL}`]: { status: 200, json: { jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 's', version: '1' } } } } });
 
     expect(await reconnectCustom({ id: ID }, deps)).toEqual({ ok: true });
+    expect(await readPart(ROOT, ID, 'settings')).toBe(before);
+    expect(await readPart(ROOT, ID, 'refresh')).toBeNull();
   });
 
   it('logs in with the connection\'s own client, keeps the tool switches and replaces the refresh token', async () => {
