@@ -59,10 +59,17 @@ describe('observeActiveOrg', () => {
 
   it('does not credit a later move to a refused switch', () => {
     observeActiveOrg('user-1', PERSONAL);
-    noteOrgSwitchIntent('user-1', ACME.id, 'menu');
-    // The switch was refused: the next look still finds the personal one.
-    expect(observeActiveOrg('user-1', PERSONAL)).toBeNull();
+    const discard = noteOrgSwitchIntent('user-1', ACME.id, 'menu');
+    discard();
     expect(observeActiveOrg('user-1', ACME)?.cause).toBe('outside_app');
+  });
+
+  it('keeps a newer intent when an older request is refused', () => {
+    observeActiveOrg('user-1', PERSONAL);
+    const discard = noteOrgSwitchIntent('user-1', ACME.id, 'menu');
+    noteOrgSwitchIntent('user-1', ACME.id, 'landing');
+    discard();
+    expect(observeActiveOrg('user-1', ACME)?.cause).toBe('landing');
   });
 
   it('does not credit a move to a stale intent', () => {

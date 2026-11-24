@@ -342,6 +342,26 @@ describe('UserMenu — organization picker', () => {
     };
   };
 
+  it('attributes the reload after automatic landing to the landing switch', () => {
+    localStorage.clear();
+    sessionStorage.clear();
+    withOrgs([ACME, PERSONAL], ACME);
+    renderMenu(<UserMenu user={user} />).unmount();
+    analyticsMock.trackOrganizationChanged.mockClear();
+    withOrgs([ACME, PERSONAL], PERSONAL);
+    const source = renderMenu(<UserMenu user={user} />);
+    expect(orgsMock.switchOrg).toHaveBeenCalledWith(ACME.id);
+    source.unmount();
+    withOrgs([ACME, PERSONAL], ACME);
+    renderMenu(<UserMenu user={user} />);
+    expect(analyticsMock.trackOrganizationChanged.mock.calls).toEqual([
+      [{ fromKind: 'company', toKind: 'personal', cause: 'outside_app' }],
+      [{ fromKind: 'personal', toKind: 'company', cause: 'landing' }],
+    ]);
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+
   it('names the active organization from the listing, not from the token claim', () => {
     // A company organization is where the listing genuinely knows more than the
     // claim: the claim carries no display name, so without the listing there is
@@ -572,7 +592,7 @@ describe('UserMenu — organization picker', () => {
     try {
       withOrgs([ACME, PERSONAL], ACME);
       orgsMock.switchOrg.mockResolvedValue({ ok: false, error: 'MindsHub would not switch. Nothing changed.' });
-      renderMenu(<UserMenu user={user} />);
+      const source = renderMenu(<UserMenu user={user} />);
       // Landing records the company organization in use.
       await waitFor(() => expect(readLastOrgId(user.sub)).toBe('org-acme'));
 
@@ -581,6 +601,14 @@ describe('UserMenu — organization picker', () => {
 
       expect(await screen.findByText('MindsHub would not switch. Nothing changed.')).toBeInTheDocument();
       expect(readLastOrgId(user.sub)).toBe('org-acme');
+
+      source.unmount();
+      analyticsMock.trackOrganizationChanged.mockClear();
+      withOrgs([ACME, PERSONAL], PERSONAL);
+      renderMenu(<UserMenu user={user} />);
+      expect(analyticsMock.trackOrganizationChanged).toHaveBeenCalledExactlyOnceWith({
+        fromKind: 'company', toKind: 'personal', cause: 'outside_app',
+      });
     } finally {
       localStorage.clear();
     }

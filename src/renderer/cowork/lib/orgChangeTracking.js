@@ -53,7 +53,14 @@ const kindOf = (isPersonal) => (isPersonal ? 'personal' : 'company');
  * @param {'menu' | 'landing'} cause
  */
 export function noteOrgSwitchIntent(sub, orgId, cause) {
-  if (sub && orgId) writeJson(INTENT_KEY + sub, { to: orgId, cause, at: Date.now() });
+  if (!sub || !orgId) return () => {};
+  const key = INTENT_KEY + sub;
+  const id = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+  writeJson(key, { id, to: orgId, cause, at: Date.now() });
+  // A slow refusal must not clear a newer attempt from another tab.
+  return () => {
+    if (readJson(key)?.id === id) remove(key);
+  };
 }
 
 /**
@@ -70,8 +77,8 @@ export function observeActiveOrg(sub, activeOrg, now = Date.now()) {
   if (seen?.id !== activeOrg.id || seen?.personal !== personal) {
     writeJson(LAST_SEEN_KEY + sub, { id: activeOrg.id, personal });
   }
-  if (intent) remove(INTENT_KEY + sub);
   if (!seen?.id || seen.id === activeOrg.id) return null;
+  if (intent) remove(INTENT_KEY + sub);
   const intended = intent?.to === activeOrg.id && now - Number(intent.at) <= INTENT_MAX_AGE_MS;
   return {
     fromKind: kindOf(seen.personal),
