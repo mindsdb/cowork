@@ -157,6 +157,51 @@ describe('the .claude-mindshub folder a coding terminal uses', () => {
     expect(fs.existsSync(path.join(mindshub, OWNER_ONLY_ACCESS_MARKER))).toBe(true);
   });
 
+  describe('when it is a link, which a repository can commit', () => {
+    let outer: string;
+    let parent: string;
+    let elsewhere: string;
+
+    beforeEach(() => {
+      fs.rmSync(repo, { recursive: true, force: true });
+      outer = fs.mkdtempSync(path.join(os.tmpdir(), 'cowork-outer-'));
+      parent = path.join(outer, 'parent');
+      repo = path.join(parent, 'repo');
+      elsewhere = path.join(outer, 'elsewhere');
+      for (const dir of [parent, repo, elsewhere]) {
+        fs.mkdirSync(dir, { recursive: true });
+        fs.chmodSync(dir, 0o755);
+      }
+      mindshub = path.join(repo, '.claude-mindshub');
+    });
+
+    afterEach(() => {
+      fs.rmSync(outer, { recursive: true, force: true });
+    });
+
+    it.skipIf(process.platform === 'win32').each([
+      ['the folder above the repository', '..'],
+      ['the repository itself', '.'],
+      ['a folder outside the repository', '../../elsewhere'],
+    ])('leaves %s at its mode', async (_where, target) => {
+      fs.symlinkSync(target, mindshub);
+
+      await ensureTaskWorktree(repo, 'task-link', { platform: 'linux' }).catch(() => undefined);
+
+      expect(fs.lstatSync(mindshub).isSymbolicLink()).toBe(true);
+      expect([modeOf(parent), modeOf(repo), modeOf(elsewhere)]).toEqual([0o755, 0o755, 0o755]);
+    });
+
+    it.skipIf(process.platform === 'win32')('gives the link target no access list on win32', async () => {
+      fs.symlinkSync(elsewhere, mindshub);
+
+      await ensureTaskWorktree(repo, 'task-link', { platform: 'win32' }).catch(() => undefined);
+
+      expect(icaclsCalls()).toEqual([]);
+      expect(fs.existsSync(path.join(elsewhere, OWNER_ONLY_ACCESS_MARKER))).toBe(false);
+    });
+  });
+
   it('still checks the worktree out when icacls fails, and tries again next time', async () => {
     fake.icaclsFails = true;
 
