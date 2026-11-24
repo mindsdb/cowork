@@ -2,12 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, resolve, win32 } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { runInNewContext } from 'node:vm';
-import { assertSetupPassed, packageIdentity, validateManifest } from './macos-setup-contract.mjs';
+import { assertSetupPassed, inspectableCopy, packageIdentity, validateManifest } from './macos-setup-contract.mjs';
 import { appEnvironment, assertRemoved, assertTrimmed, installedExecutable, removalPlan, rootsToRemove, ROOT_AUTO_UPDATE_BACKUP, ROOT_BACKUP } from './windows-setup-contract.mjs';
 
 const R3 = 'D69B561148F01C77C54578C10926DF5B856976AD';
@@ -98,6 +98,18 @@ test('the installed executable comes from the channel\'s own uninstall registrat
   assert.throws(() => installedExecutable([prod, { ...prod }], 'MindsHub Cowork', programs), /found 2/);
   for (const displayIcon of ['C:\\Windows\\System32\\cmd.exe,0', `${programs}\\MindsHub Cowork\\icon.ico`, `${programs}\\MindsHub Cowork.exe`, `${programs}\\a\\b\\MindsHub Cowork.exe`, 'C:\\Users\\other\\MindsHub Cowork\\MindsHub Cowork.exe']) {
     assert.throws(() => installedExecutable([{ ...prod, displayIcon }], 'MindsHub Cowork', programs), /per-user Programs folder/, displayIcon);
+  }
+});
+
+test('the inspectable copy keeps the install folder\'s name in a fresh folder and launches the executable inside it', () => {
+  const staging = registration('MindsHub Cowork (Staging) 2.261023.1-722.ge5d59fbb', `${programs}\\anton\\MindsHub Cowork (Staging).exe,0`);
+  const { installLocation, executable } = installedExecutable([staging], 'MindsHub Cowork (Staging)', programs);
+  assert.deepEqual(inspectableCopy(installLocation, executable, 'D:\\a\\_temp\\cowork-app-x', win32), {
+    root: 'D:\\a\\_temp\\cowork-app-x\\anton',
+    executable: 'D:\\a\\_temp\\cowork-app-x\\anton\\MindsHub Cowork (Staging).exe',
+  });
+  for (const outside of [installLocation, `${programs}\\MindsHub Cowork\\MindsHub Cowork.exe`, `${programs}\\anton-old\\MindsHub Cowork (Staging).exe`]) {
+    assert.throws(() => inspectableCopy(installLocation, outside, 'D:\\a\\_temp\\cowork-app-x', win32), /not inside the installed app/, outside);
   }
 });
 
