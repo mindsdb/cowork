@@ -78,8 +78,7 @@ export function useGoogleDrivePicker({
 
   // Opens the Google Picker for an already-connected google_drive
   // connection and adds the chosen files as reference-only chips to
-  // whichever composer is currently visible (composerAttachments is shared
-  // across Home/Task/Projects — see resolveComposerAttachmentsForSend).
+  // the draft of the composer it was opened from (see useDraftAttachments).
   //
   // Shared by both entry points below (composer chips + project files):
   // resolves the google_drive connection's account email and opens the
