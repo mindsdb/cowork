@@ -60655,6 +60655,40 @@
       "text": "ce1262325c3f"
     }
   },
+  "code:composerNotices.zdrRestricted.body": {
+    "de": {
+      "from": "d8470900cf18",
+      "text": "2a936e249366"
+    },
+    "es": {
+      "from": "d8470900cf18",
+      "text": "d7789ec23ebd"
+    },
+    "fr": {
+      "from": "d8470900cf18",
+      "text": "f61fefc06246"
+    },
+    "it": {
+      "from": "d8470900cf18",
+      "text": "e59890d91492"
+    },
+    "ja": {
+      "from": "d8470900cf18",
+      "text": "9876a7badaaf"
+    },
+    "ko": {
+      "from": "d8470900cf18",
+      "text": "b0b14b01b3b3"
+    },
+    "pt-BR": {
+      "from": "d8470900cf18",
+      "text": "cb6aa84dbb70"
+    },
+    "zh-CN": {
+      "from": "d8470900cf18",
+      "text": "7e4eb37c052a"
+    }
+  },
   "code:connectors.addAccount": {
     "de": {
       "from": "ee7ee5830f09",

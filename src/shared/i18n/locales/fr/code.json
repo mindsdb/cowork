@@ -1437,6 +1437,9 @@
       "title": "{model} n’est pas disponible",
       "body": "Choisissez un autre modèle, puis continuez dans cette tâche."
     },
+    "zdrRestricted": {
+      "body": "La conservation zéro des données est activée pour votre organisation, ce modèle n'est donc pas disponible. Choisissez un autre modèle, puis poursuivez cette tâche."
+    },
     "rateLimited": {
       "title": "MindsHub reçoit trop de requêtes à la fois",
       "body": "Ce tour s’est arrêté. Patientez un instant, puis continuez dans cette tâche."

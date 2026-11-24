@@ -1437,6 +1437,9 @@
       "title": "{model} não está disponível",
       "body": "Escolha outro modelo e continue nesta tarefa."
     },
+    "zdrRestricted": {
+      "body": "A retenção zero de dados está ativada na sua organização, então este modelo não está disponível. Escolha outro modelo e continue nesta tarefa."
+    },
     "rateLimited": {
       "title": "O MindsHub está recebendo solicitações rápido demais",
       "body": "Este turno parou. Aguarde um momento e continue nesta tarefa."

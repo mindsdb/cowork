@@ -1437,6 +1437,9 @@
       "title": "{model} ist nicht verfügbar",
       "body": "Wählen Sie ein anderes Modell und fahren Sie dann in dieser Aufgabe fort."
     },
+    "zdrRestricted": {
+      "body": "Zero Data Retention ist für Ihre Organisation aktiviert, daher ist dieses Modell nicht verfügbar. Wählen Sie ein anderes Modell und fahren Sie dann mit dieser Aufgabe fort."
+    },
     "rateLimited": {
       "title": "MindsHub erhält zu viele Anfragen",
       "body": "Dieser Durchlauf wurde gestoppt. Warten Sie einen Moment und fahren Sie dann in dieser Aufgabe fort."

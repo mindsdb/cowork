@@ -1437,6 +1437,9 @@
       "title": "{model} is not available",
       "body": "Choose another model, then continue in this task."
     },
+    "zdrRestricted": {
+      "body": "Zero data retention is on for your organization, so this model isn't available. Choose another model, then continue in this task."
+    },
     "rateLimited": {
       "title": "MindsHub is receiving requests too quickly",
       "body": "This turn stopped. Wait a moment, then continue in this task."

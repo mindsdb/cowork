@@ -1437,6 +1437,9 @@
       "title": "{model} non è disponibile",
       "body": "Scegli un altro modello, poi continua in questa attività."
     },
+    "zdrRestricted": {
+      "body": "La conservazione zero dei dati è attiva per la tua organizzazione, quindi questo modello non è disponibile. Scegline un altro, poi continua in questa attività."
+    },
     "rateLimited": {
       "title": "MindsHub sta ricevendo troppe richieste",
       "body": "Questo turno si è interrotto. Attendi un momento, poi continua in questa attività."
