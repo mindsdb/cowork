@@ -59,7 +59,7 @@ import { useKnownPeople, useMindsHubTeams, useSharingCapabilities, useSharingOrg
 import { artifactOwnerUserId } from '../lib/artifactAuthorship';
 import { LOAD_STATUS, readAudienceAnswer, readAudienceRequest } from '../lib/sharingContract';
 import {
-  isDatasourceApprovalError, publishFailureReason, publishRefusalMessage, unapprovedDatasourcesNotice,
+  isDatasourceApprovalError, pendingDatasourcesFromError, publishFailureReason, publishRefusalMessage, unapprovedDatasourcesNotice,
 } from '../components/artifact/publish/publishErrors';
 import { DatasourceApprovalNotice } from '../components/artifact/publish/DatasourceApprovalNotice';
 import {
@@ -210,10 +210,10 @@ export function titleCompare(a, b) {
 // Password / Restricted UI and its validation live in one place now.
 // On confirm it hands back the access payload. Re-publishing pre-fills
 // the existing selection.
-function PublishDialog({ artifact, onCancel, onConfirm }) {
+function PublishDialog({ artifact, initialDraft, initialPending, onCancel, onConfirm }) {
   const { t } = useTranslation('artifacts');
-  const [draft, setDraft] = useState(() => accessDraftFromArtifact(artifact));
-  const [pending, setPending] = useState([]);
+  const [draft, setDraft] = useState(() => initialDraft || accessDraftFromArtifact(artifact));
+  const [pending, setPending] = useState(() => initialPending || []);
   useEffect(() => {
     let live = true;
     if (artifact?.path) {
@@ -228,7 +228,7 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
   }, [artifact]);
   if (!artifact) return null;
   const canConfirm = isAccessDraftValid(draft);
-  const submit = () => { if (canConfirm) onConfirm(buildAccessPayload(draft), pending); };
+  const submit = () => { if (canConfirm) onConfirm(buildAccessPayload(draft), pending, draft); };
 
   return (
     <Modal open onClose={onCancel} size="sm" width="min(440px, 94vw)" maxHeight="min(600px, 90vh)" labelledBy="publish-dialog-title">
@@ -918,6 +918,9 @@ export default function ArtifactsView({
   // Artifact awaiting the publish visibility choice (public vs password).
   // Null when the chooser is closed.
   const [publishTarget, setPublishTarget] = useState(null);
+  // The choice and connection list to restore when the dialog reopens after
+  // the server asked for connection approval.
+  const [publishRetry, setPublishRetry] = useState(null);
   // Resolver for the promise returned by `handlePublish`, so a delegated
   // caller (the preview's Publish button) can await the whole dialog +
   // POST flow for its busy state. Settled when the chooser confirms,
@@ -995,14 +998,17 @@ export default function ArtifactsView({
     // Settle any prior unresolved flow before starting a new one so a
     // delegated awaiter is never left hanging.
     settlePublish();
+    setPublishRetry(null);
     setPublishTarget(artifact);
     reportShareOpened(artifact, { entry: 'list', isShared: shareSnapshot(artifact).shared });
     return new Promise((resolve) => { publishResolveRef.current = resolve; });
   };
 
-  const confirmPublish = async (access, approvedDatasources = []) => {
+  const confirmPublish = async (access, approvedDatasources = [], draft = null) => {
     const artifact = publishTarget;
+    let reopened = false;
     setPublishTarget(null);
+    setPublishRetry(null);
     if (!artifact?.path || busyPaths.has(artifact.path)) { settlePublish(); return; }
     setBusy(artifact.path, true);
     setPhase(artifact.path, 'publishing');
@@ -1048,7 +1054,12 @@ export default function ArtifactsView({
         showToast({ kind: 'error', message: t('publish.errors.noUrl') });
       }
     } catch (e) {
-      if (isDatasourceApprovalError(e)) setPublishTarget(artifact);
+      if (isDatasourceApprovalError(e)) {
+        // The dialog is open again, so the caller keeps waiting for it.
+        reopened = true;
+        setPublishRetry({ draft, pending: pendingDatasourcesFromError(e) });
+        setPublishTarget(artifact);
+      }
       reportAccessChangeFailed(artifact, { entry: 'list', reason: publishFailureReason(e) });
       const msg = e?.message || String(e);
       // Map the failures a user can act on to a clearer message.
@@ -1064,7 +1075,7 @@ export default function ArtifactsView({
       showToast({ kind: 'error', message: friendly });
     } finally {
       setBusy(artifact.path, false);
-      settlePublish();
+      if (!reopened) settlePublish();
     }
   };
 
@@ -1497,7 +1508,9 @@ export default function ArtifactsView({
         <PublishDialog
           key={publishTarget.path}
           artifact={publishTarget}
-          onCancel={() => { setPublishTarget(null); settlePublish(); }}
+          initialDraft={publishRetry?.draft}
+          initialPending={publishRetry?.pending}
+          onCancel={() => { setPublishTarget(null); setPublishRetry(null); settlePublish(); }}
           onConfirm={confirmPublish}
         />
       )}

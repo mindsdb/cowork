@@ -86,6 +86,27 @@ describe('connection approval on the Artifacts page', () => {
     expect(await within(again).findByText(/mysql\/late/)).toBeTruthy();
   });
 
+  it('keeps the chosen access and the 409 list when the dialog reopens, and publishes them', async () => {
+    api.fetchPendingDatasources.mockResolvedValueOnce(PENDING).mockReturnValue(new Promise(() => {}));
+    api.publishArtifact
+      .mockRejectedValueOnce(approvalError(CHANGED))
+      .mockResolvedValueOnce({ url: 'https://share/a1', accessMode: 'public' });
+    render(<ArtifactsView artifacts={[app]} />);
+    openMenuItem('Share');
+    const first = screen.getByRole('dialog');
+    await within(first).findByText(/postgres\/scm/);
+    shareFrom(first);
+    const again = await screen.findByRole('dialog');
+    // The re-fetch never answers, so the list can only come from the 409 body.
+    expect(within(again).getByText(/mysql\/late/)).toBeTruthy();
+    expect(within(again).getByRole('radio', { name: /Public/ }).getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(within(again).getByRole('button', { name: 'Share' }));
+    await waitFor(() => expect(api.publishArtifact).toHaveBeenCalledTimes(2));
+    expect(api.publishArtifact).toHaveBeenLastCalledWith(
+      app.path, expect.objectContaining({ mode: 'public' }), { approvedDatasources: CHANGED },
+    );
+  });
+
   it('warns about connections published without credentials', async () => {
     api.fetchPendingDatasources.mockResolvedValue([]);
     api.publishArtifact.mockResolvedValue({
