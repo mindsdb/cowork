@@ -21,6 +21,7 @@ import {
 import { takeSignupWelcome, SIGNUP_FROM_DESKTOP } from '../lib/signupWelcome';
 import { productName } from '../../lib/deploymentBrand';
 import { getDraft, setDraft } from '../lib/draftStore';
+import { sendsAtOnce } from '../components/gallery/galleryRules';
 import i18n, { useTranslation } from '../../lib/i18n';
 
 // ── Boot choreography ───────────────────────────────────────────────────
@@ -668,7 +669,9 @@ export default function HomeView({
 
   // An example started from the gallery is placed once the composer is usable,
   // exactly as one picked under the composer: its mode selected, its prompt in
-  // the box, nothing sent. The person chose it, so it replaces what is there.
+  // the box. One that needs nothing from the person is then sent as if Send
+  // were pressed; one that can take their file waits for them. The person
+  // chose it, so it replaces what is there.
   useEffect(() => {
     if (!galleryPick || !composerUsable || codingModeEnabled || !onPrefill) return;
     const { entry } = galleryPick;
@@ -676,9 +679,10 @@ export default function HomeView({
     setTaskMode(entry.mode);
     setPickedSample(entry.sample);
     setHandoffHint(false);
-    setGalleryHint(entry.title);
+    const send = sendsAtOnce(entry);
+    setGalleryHint(send ? null : entry.title);
     trackExamplePicked(entry.id, 'gallery');
-    onPrefill(entry.sample.prompt);
+    onPrefill(entry.sample.prompt, undefined, send);
     onGalleryPickConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [galleryPick, composerUsable, codingModeEnabled]);

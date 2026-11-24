@@ -78,7 +78,7 @@ describe('useHomeGallery', () => {
     act(() => result.current.start(entry));
     expect(result.current.pick.entry).toBe(entry);
     expect(result.current.open).toBe(false);
-    expect(trackGalleryExampleStarted).toHaveBeenCalledWith('celestial-merge-2048');
+    expect(trackGalleryExampleStarted).toHaveBeenCalledWith('celestial-merge-2048', false);
     expect(trackGalleryClosed).toHaveBeenCalledWith('started');
   });
 

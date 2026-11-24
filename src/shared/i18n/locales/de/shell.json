@@ -517,7 +517,9 @@
     "sampleInput": "Das Beispiel, das wir ihm gegeben haben",
     "playInBrowser": "Im Browser öffnen",
     "start": "Mit diesem Beispiel starten",
+    "tryIt": "Dieses Beispiel ausprobieren",
     "startNote": "Setzt die Nachricht ins Feld. Nichts läuft, bis du auf Senden drückst.",
+    "tryItNote": "Führt es jetzt mit Beispieldaten als neue Aufgabe aus.",
     "ownFile": "Eigene Datei verwenden"
   }
 }

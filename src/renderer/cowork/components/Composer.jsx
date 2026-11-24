@@ -734,6 +734,8 @@ export default function Composer({
     taRef.current?.focus();
   }, [taskMode]);
 
+  const pendingSendRef = useRef(null);
+  const [sendTick, setSendTick] = useState(0);
   // Edit-and-resend: when ChatView bumps `prefill`, drop the supplied
   // text into the composer and focus the textarea so the user can
   // immediately tweak + send. Guarded on `bump > 0` so the initial
@@ -783,8 +785,22 @@ export default function Composer({
       setValue(text);
       ta?.focus();
     }
+    // `prefill.send` sends the text as if Send were pressed, once it is the
+    // composer's value and onSend is this render's, so the model and the
+    // caller's state ride along as on any send. The tick re-renders even when
+    // the text was already there.
+    if (prefill.send && text.trim()) {
+      pendingSendRef.current = text;
+      setSendTick((n) => n + 1);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefill?.bump]);
+  useEffect(() => {
+    if (pendingSendRef.current === null || value !== pendingSendRef.current) return;
+    pendingSendRef.current = null;
+    handleSend();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, sendTick]);
 
   // Close the open meta-pill menu on any press that isn't on the menu
   // popup itself or a trigger pill. The previous version only closed on

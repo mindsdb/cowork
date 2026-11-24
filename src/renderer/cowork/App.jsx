@@ -7589,7 +7589,7 @@ function AppCore() {
             onShowServerHelp={() => openSettings('backend')}
             skipIntro={bootIntroDone}
             prefill={composerPrefill}
-            onPrefill={(text, select) => setComposerPrefill({ text, bump: Date.now(), select })}
+            onPrefill={(text, select, send) => setComposerPrefill({ text, bump: Date.now(), select, send })}
             onPrefillConsumed={() => setComposerPrefill(null)}
             examplesRequest={examplesRequest}
             onExamplesRequestConsumed={() => setExamplesRequest(0)}

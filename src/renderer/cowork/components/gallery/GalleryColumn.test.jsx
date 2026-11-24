@@ -150,8 +150,18 @@ describe('GalleryColumn example', () => {
     await user.click(rows()[1]);
     expect(screen.getByText('The brief is done.')).toBeInTheDocument();
     expect(screen.getByText(/Built with MindsHub Air · About 3 minutes/)).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Start from this example' }));
+    expect(screen.getByText('Runs it now on sample data, as a new task.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try this example' }));
     expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ id: 'research-a-prospect-and-draft-outreach' }));
+  });
+
+  it('only fills the box for an example that can take the person\'s file', async () => {
+    const { user, onStart } = setup();
+    await user.click(rows()[2]);
+    expect(screen.queryByRole('button', { name: 'Try this example' })).not.toBeInTheDocument();
+    expect(screen.getByText('Puts the message in the box. Nothing runs until you press Send.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Start from this example' }));
+    expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ id: 'turn-a-bank-statement-into-a-spreadsheet' }));
   });
 
   it('opens a live example in the browser and frames nothing', async () => {

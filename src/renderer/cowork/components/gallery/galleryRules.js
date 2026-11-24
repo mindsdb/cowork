@@ -2,6 +2,16 @@
 
 const STORAGE_KEY = 'anton.gallery.settled';
 
+// An example that takes the person's own material says so in `needs`:
+// "Nothing" runs on a sample alone, "Nothing, or your …" can take one,
+// anything else needs one.
+export const takesOwnFile = (needs) => Boolean(needs) && needs !== 'Nothing';
+
+// Starting an example that needs nothing sends it at once; one that can take
+// the person's file, or says nothing of what it needs, fills the box instead,
+// since its prompt may wait for one.
+export const sendsAtOnce = (entry) => entry?.needs === 'Nothing';
+
 /**
  * Where the column exists at all: Desktop and hosted Cowork Web. Not the
  * mobile app (no room beside Home), and not a self-hosted web build, which has

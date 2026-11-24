@@ -517,7 +517,9 @@
     "sampleInput": "Il campione che gli abbiamo dato",
     "playInBrowser": "Apri nel browser",
     "start": "Parti da questo esempio",
+    "tryIt": "Prova questo esempio",
     "startNote": "Mette il messaggio nella casella. Non parte nulla finché non premi Invia.",
+    "tryItNote": "Lo esegue subito con dati di esempio, come una nuova attività.",
     "ownFile": "Usa il mio file"
   }
 }

@@ -4,7 +4,7 @@ import { Button } from '../ui';
 import { useTranslation } from '../../../lib/i18n';
 import { productName } from '../../../lib/deploymentBrand';
 import { ALL_CATEGORIES, filterGallery } from './galleryFilter';
-import { runMinutes } from './galleryRules';
+import { runMinutes, sendsAtOnce, takesOwnFile } from './galleryRules';
 import { trackGalleryExampleOpened, trackGallerySearched } from '../../lib/analytics';
 
 // How long a typed search must hold before it is recorded, so one search is
@@ -12,11 +12,6 @@ import { trackGalleryExampleOpened, trackGallerySearched } from '../../lib/analy
 const SEARCH_SETTLE_MS = 1000;
 
 const iconButton = 'w-8 h-8 shrink-0 rounded-md inline-grid place-items-center bg-transparent border border-line text-ink-3 hover:text-ink hover:bg-surface-2 cursor-pointer';
-
-// A file that takes the person's own material says so in `needs`: "Nothing"
-// runs on a sample alone, "Nothing, or your …" can take one, anything else
-// needs one.
-const takesOwnFile = (needs) => Boolean(needs) && needs !== 'Nothing';
 
 function Thumbnail({ src, className }) {
   const [failed, setFailed] = useState(false);
@@ -160,10 +155,10 @@ function Detail({ entry, position, total, query, onBack, onStep, onCategory, onS
       </div>
       <div className={`px-4 py-3 border-t border-line flex flex-col gap-2 ${reserveCorner ? 'pr-12' : ''}`}>
         <div className="flex gap-2">
-          <Button variant="primary" className="flex-1" onClick={() => onStart(entry)}>{t('gallery.start')}</Button>
+          <Button variant="primary" className="flex-1" onClick={() => onStart(entry)}>{t(sendsAtOnce(entry) ? 'gallery.tryIt' : 'gallery.start')}</Button>
           {takesOwnFile(entry.needs) && onOwnWork && <Button variant="default" onClick={onOwnWork}>{t('gallery.ownFile')}</Button>}
         </div>
-        <p className="m-0 text-[12px] text-ink-3 text-center">{t('gallery.startNote')}</p>
+        <p className="m-0 text-[12px] text-ink-3 text-center">{t(sendsAtOnce(entry) ? 'gallery.tryItNote' : 'gallery.startNote')}</p>
       </div>
     </div>
   );

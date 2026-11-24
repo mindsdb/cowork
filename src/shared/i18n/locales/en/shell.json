@@ -517,7 +517,9 @@
     "sampleInput": "The sample we gave it",
     "playInBrowser": "Open it in your browser",
     "start": "Start from this example",
+    "tryIt": "Try this example",
     "startNote": "Puts the message in the box. Nothing runs until you press Send.",
+    "tryItNote": "Runs it now on sample data, as a new task.",
     "ownFile": "Use my own file"
   }
 }

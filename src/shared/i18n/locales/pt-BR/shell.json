@@ -517,7 +517,9 @@
     "sampleInput": "A amostra que demos",
     "playInBrowser": "Abrir no seu navegador",
     "start": "Começar com este exemplo",
+    "tryIt": "Testar este exemplo",
     "startNote": "Coloca a mensagem na caixa. Nada é executado até você clicar em Enviar.",
+    "tryItNote": "Executa agora com dados de exemplo, como uma nova tarefa.",
     "ownFile": "Usar meu próprio arquivo"
   }
 }

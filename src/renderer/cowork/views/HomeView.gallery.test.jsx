@@ -1,6 +1,7 @@
 // An example started from the Use Case Gallery column lands in the composer
-// like a picked example: its mode on, its prompt editable, nothing sent, and
-// the send credited to the gallery.
+// like a picked example, its mode on and the send credited to the gallery. One
+// that needs nothing is sent at once; one that can take the person's file
+// waits, editable, for them to press Send.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useState } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
@@ -21,13 +22,13 @@ vi.mock('../api', async (importOriginal) => {
 });
 
 const found = findSample('wide-research', 'research-a-prospect-and-draft-outreach');
-const entry = { id: 'research-a-prospect-and-draft-outreach', mode: found.mode, sample: found.sample, title: 'Research a prospect and draft outreach' };
+const entry = { id: 'research-a-prospect-and-draft-outreach', mode: found.mode, sample: found.sample, title: 'Research a prospect and draft outreach', needs: 'Nothing, or your notes' };
 
 let pickFromGallery;
 function Home({ onSend, onOpenGallery = null, ownWorkRequest = 0 }) {
   const [prefill, setPrefill] = useState(null);
   const [pick, setPick] = useState(null);
-  pickFromGallery = () => setPick({ entry, bump: Date.now() });
+  pickFromGallery = (over = {}) => setPick({ entry: { ...entry, ...over }, bump: Date.now() });
   return (
     <HomeView
       onSend={onSend}
@@ -43,7 +44,7 @@ function Home({ onSend, onOpenGallery = null, ownWorkRequest = 0 }) {
       serverOnline
       skipIntro
       prefill={prefill}
-      onPrefill={(text, select) => setPrefill({ text, bump: Date.now(), select })}
+      onPrefill={(text, select, send) => setPrefill({ text, bump: Date.now(), select, send })}
       onPrefillConsumed={() => setPrefill(null)}
       galleryPick={pick}
       onGalleryPickConsumed={() => setPick(null)}
@@ -72,6 +73,29 @@ describe('HomeView gallery start', () => {
     expect(screen.getByText('From the example Research a prospect and draft outreach. Change anything, then press Send.')).toBeInTheDocument();
     expect(trackExamplePicked).toHaveBeenCalledWith('research-a-prospect-and-draft-outreach', 'gallery');
 
+    await new Promise((r) => setTimeout(r, 50));
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('sends an example that needs nothing at once, in its mode, credited to the gallery', async () => {
+    const onSend = vi.fn(async () => true);
+    render(<Home onSend={onSend} />);
+    pickFromGallery({ needs: 'Nothing' });
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    const [message, meta] = onSend.mock.calls[0];
+    expect(message).toContain(found.sample.prompt);
+    expect(meta.startVia).toBe('gallery');
+    expect(meta.taskMode).toMatchObject({ task_mode: 'wide-research', example_placed: true });
+    expect(trackExamplePicked).toHaveBeenCalledWith('research-a-prospect-and-draft-outreach', 'gallery');
+    expect(screen.queryByText(/Change anything, then press Send/)).not.toBeInTheDocument();
+  });
+
+  it('places but does not send an example that does not say what it needs', async () => {
+    const onSend = vi.fn(async () => true);
+    render(<Home onSend={onSend} />);
+    pickFromGallery({ needs: undefined });
+    await screen.findByDisplayValue(found.sample.prompt);
     await new Promise((r) => setTimeout(r, 50));
     expect(onSend).not.toHaveBeenCalled();
   });

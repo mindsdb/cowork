@@ -997,8 +997,8 @@ export function trackGalleryExampleOpened(exampleId, from) {
   capture(EVENTS.HOME_GALLERY_EXAMPLE_OPENED, { example_id: exampleId, from });
 }
 
-export function trackGalleryExampleStarted(exampleId) {
-  capture(EVENTS.HOME_GALLERY_EXAMPLE_STARTED, { example_id: exampleId });
+export function trackGalleryExampleStarted(exampleId, sendsAtOnce) {
+  capture(EVENTS.HOME_GALLERY_EXAMPLE_STARTED, { example_id: exampleId, sends_at_once: Boolean(sendsAtOnce) });
 }
 
 export function trackGallerySearched(queryLength, results) {

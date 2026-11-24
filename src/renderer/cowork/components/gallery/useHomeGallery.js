@@ -3,7 +3,7 @@ import { host } from '../../../platform/host';
 import { PLATFORM_UI } from '../../../lib/deployment';
 import { MINDS_API_BASE, MINDS_CONSOLE_URL } from '../../../lib/mindsUrls';
 import { fetchGalleryManifest } from './galleryManifest';
-import { galleryOffered, opensByItself, readGallerySettled, markGallerySettled, takeFirstRunPreview, clearFirstRunPreview } from './galleryRules';
+import { galleryOffered, opensByItself, readGallerySettled, markGallerySettled, takeFirstRunPreview, clearFirstRunPreview, sendsAtOnce } from './galleryRules';
 import {
   trackGalleryShown, trackGalleryClosed, trackGalleryExampleStarted, trackGalleryUnavailable,
 } from '../../lib/analytics';
@@ -110,7 +110,7 @@ export function useHomeGallery({ onHome, tasks, tasksStatus, consoleUrl = MINDS_
   }, []);
 
   const start = useCallback((entry) => {
-    trackGalleryExampleStarted(entry.id);
+    trackGalleryExampleStarted(entry.id, sendsAtOnce(entry));
     setPick({ entry, bump: Date.now() });
     hide('started');
   }, [hide]);

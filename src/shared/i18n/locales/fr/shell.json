@@ -517,7 +517,9 @@
     "sampleInput": "L'exemple que nous lui avons donné",
     "playInBrowser": "Ouvrir dans votre navigateur",
     "start": "Partir de cet exemple",
+    "tryIt": "Essayer cet exemple",
     "startNote": "Place le message dans la zone. Rien ne s'exécute tant que vous n'avez pas appuyé sur Envoyer.",
+    "tryItNote": "Le lance maintenant avec des données d’exemple, comme une nouvelle tâche.",
     "ownFile": "Utiliser mon propre fichier"
   }
 }
