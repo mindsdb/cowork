@@ -43,7 +43,7 @@ npm run dev:web
 npm run build:web   # → dist/renderer-web/
 ```
 
-`dev:web` hands the server its launch values the way desktop main does (`scripts/start-server.mjs`, which only `scripts/dev-web.mjs` uses), and Vite's `/api` proxy adds the bearer token and the window proof to requests from Vite's own pages (`src/renderer/dev-api-proxy.ts`). The sibling cowork-server checkout must report `app_secret_protocol: 2` at `/api/v1/health/`, or `dev:web` stops with an error naming it.
+`dev:web` hands the server its launch values the way desktop main does (`scripts/start-server.mjs`, which only `scripts/dev-web.mjs` uses), and Vite's `/api` proxy adds the bearer token and the window proof to requests from Vite's own pages (`src/renderer/dev-api-proxy.ts`). The sibling cowork-server checkout must report `app_secret_protocol: 2` at `/api/v1/health/` and prove it holds the launch's app secret. Otherwise `dev:web` stops with an error that says something else holds the port, or that the checkout predates the launch hand-off.
 
 ### Type checking
 
@@ -113,7 +113,7 @@ FastAPI runs loopback-only at `127.0.0.1:26866`. CORS defaults to localhost orig
 
 The session's one `onBeforeSendHeaders` listener (`src/main/server-token-listener.ts`, registered in `app.ts`) adds `Authorization: Bearer <token>` to the renderer's loopback requests. It leaves the token off requests from the document preview frame, from frames inside it, and requests with no frame (`src/main/document-preview-guard.ts`). It adds `X-Cowork-Window-Proof` only to a fetch or XMLHttpRequest (Electron's `xhr` resource type) from the main window's own top-level frame, and removes that header from every other request to the local server. Desktop main's own requests spread `authHeader()`, which carries both headers. The `/api/v1/health/` endpoint is always exempt. `settings:read` never returns a `COWORK_AUTH_TOKEN` line.
 
-The embedded Claude Code terminal and the git calls in a task's repository run with this app's environment minus `CLAUDE_CODE_*`, `CLAUDECODE`, `ANTHROPIC_*`, `COWORK_*`, `MINDSHUB_*` and `OPENAI_*` (`src/main/agent-env.ts`).
+The embedded Claude Code terminal runs with this app's environment minus `COWORK_*`, `MINDSHUB_*`, `CLAUDE_CODE_*`, `CLAUDECODE` and `ANTHROPIC_*`. The git calls in a task's repository run with it minus `COWORK_*` and `MINDSHUB_*` only. Desktop main sets no `OPENAI_*` or `ANTHROPIC_*` variable, so the user's own `OPENAI_*` values reach both, and their `ANTHROPIC_*` values reach the git calls. On Windows, where variable names ignore case, these names match in any case (`src/main/agent-env.ts`).
 
 #### Install source & channel
 

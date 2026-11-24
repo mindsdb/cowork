@@ -1,26 +1,64 @@
 import { EventEmitter } from 'node:events';
 import type { IncomingHttpHeaders } from 'node:http';
+import * as path from 'node:path';
+import type { ResolvedConfig } from 'vite';
 import { describe, expect, it } from 'vitest';
 
-import { DEV_PROXY_AUTH_TOKEN_ENV, DEV_PROXY_WINDOW_PROOF_ENV, WINDOW_PROOF_HEADER } from '../shared/server-launch';
-import { addDevProxyCredentials, devProxyCredentials, isFromDevOrigin, type ProxiedRequest } from './dev-api-proxy';
+import { WINDOW_PROOF_HEADER } from '../shared/server-launch';
+import {
+  addDevProxyCredentials,
+  DEV_PROXY_PLUGIN,
+  devApiProxyHook,
+  devProxyCredentials,
+  isFromDevOrigin,
+  type ProxiedRequest,
+} from './dev-api-proxy';
 
 const VITE_PORT = 5173;
 const CREDENTIALS = { authToken: 'a1'.repeat(32), windowProof: 'b2'.repeat(32) };
 
 describe("the proxy's credentials", () => {
-  it('are read from the two dev-web variables', () => {
-    expect(devProxyCredentials({ [DEV_PROXY_AUTH_TOKEN_ENV]: CREDENTIALS.authToken, [DEV_PROXY_WINDOW_PROOF_ENV]: CREDENTIALS.windowProof }))
-      .toEqual(CREDENTIALS);
+  it("are read from the dev-web plugin's api", () => {
+    expect(devProxyCredentials([{ name: 'vite:react' }, { name: DEV_PROXY_PLUGIN, api: CREDENTIALS }])).toEqual(CREDENTIALS);
   });
 
   it.each([
-    ['neither is set, as under npm run dev', {}],
-    ['only the token is set', { [DEV_PROXY_AUTH_TOKEN_ENV]: CREDENTIALS.authToken }],
-    ['only the proof is set', { [DEV_PROXY_WINDOW_PROOF_ENV]: CREDENTIALS.windowProof }],
-    ['the token is empty', { [DEV_PROXY_AUTH_TOKEN_ENV]: '', [DEV_PROXY_WINDOW_PROOF_ENV]: CREDENTIALS.windowProof }],
-  ])('are none when %s', (_label, env) => {
-    expect(devProxyCredentials(env)).toBeNull();
+    ['no plugin carries them, as under npm run dev', [{ name: 'vite:react' }]],
+    ['the plugin has no api', [{ name: DEV_PROXY_PLUGIN }]],
+    ['only the token is set', [{ name: DEV_PROXY_PLUGIN, api: { authToken: CREDENTIALS.authToken } }]],
+    ['only the proof is set', [{ name: DEV_PROXY_PLUGIN, api: { windowProof: CREDENTIALS.windowProof } }]],
+    ['the token is empty', [{ name: DEV_PROXY_PLUGIN, api: { authToken: '', windowProof: CREDENTIALS.windowProof } }]],
+    ['a value is not a string', [{ name: DEV_PROXY_PLUGIN, api: { authToken: 1, windowProof: CREDENTIALS.windowProof } }]],
+    ['another plugin carries them', [{ name: 'someone-else', api: CREDENTIALS }]],
+  ])('are none when %s', (_label, plugins) => {
+    expect(devProxyCredentials(plugins)).toBeNull();
+  });
+
+  it("go by the name scripts/dev-web-vite.mjs gives its plugin", async () => {
+    const script = await import(/* @vite-ignore */ path.resolve('scripts/dev-web-vite.mjs'));
+
+    expect(script.DEV_PROXY_PLUGIN).toBe(DEV_PROXY_PLUGIN);
+  });
+});
+
+describe("vite.config.ts's hook on the /api proxy", () => {
+  /* What the hook registers on the proxy once Vite's config resolved with `plugins`. */
+  function registered(plugins: ResolvedConfig['plugins']): number {
+    const hook = devApiProxyHook(VITE_PORT);
+    const resolved = hook.plugin.configResolved;
+    if (typeof resolved !== 'function') throw new Error('the hook plugin has no configResolved function');
+    resolved.call({} as never, { plugins } as ResolvedConfig);
+    const events = new EventEmitter();
+    hook.configure(events);
+    return events.listenerCount('proxyReq');
+  }
+
+  it('adds the header rule when the dev-web plugin carries the credentials', () => {
+    expect(registered([{ name: DEV_PROXY_PLUGIN, api: CREDENTIALS }])).toBe(1);
+  });
+
+  it('adds nothing without them, so desktop main\'s headers pass unchanged', () => {
+    expect(registered([{ name: 'vite:react' }])).toBe(0);
   });
 });
 

@@ -5,7 +5,7 @@ import path from 'path';
 import { readFileSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
 import { isSpaNavigation } from './web-spa-fallback';
-import { addDevProxyCredentials, devProxyCredentials } from './dev-api-proxy';
+import { devApiProxyHook } from './dev-api-proxy';
 import { platformUiEnabled } from '../shared/ui-capabilities';
 import { withDeploymentBrand } from '../shared/deployment-brand';
 import { withDraftLinkFrameSources } from '../shared/draft-link-origins';
@@ -56,11 +56,11 @@ const WEB_ENTRY = 'index-web.html';
 const SERVER_PORT = Number(process.env.COWORK_SERVER_PORT || 26866);
 const VITE_PORT = Number(process.env.VITE_RENDERER_PORT || 5173);
 
-// Set only under `npm run dev:web` (scripts/dev-web.mjs): the server's bearer
-// token and window proof, which the /api proxy adds to requests from Vite's
-// own pages (dev-api-proxy.ts). Read from process.env under names without the
-// VITE_ prefix, so neither value reaches the client bundle.
-const devCredentials = devProxyCredentials(process.env);
+/* Under `npm run dev:web` only, the /api proxy adds the server's bearer token
+   and window proof to requests from Vite's own pages. dev-web hands them to
+   this config as a plugin's `api`, never in an environment variable, so
+   neither value reaches the client bundle (dev-api-proxy.ts). */
+const devApiProxy = devApiProxyHook(VITE_PORT);
 
 // `npm run dev` boots vite before Electron spawns the sidecar, so downgrade the expected startup ECONNREFUSED proxy noise to a calm line.
 const logger = createLogger();
@@ -154,6 +154,7 @@ export default defineConfig(({ mode }) => ({
     babel({ presets: [reactCompilerPreset()] }),
     ...(IS_WEB ? [webSpaFallback, deploymentBrand] : []),
     ...(IS_WEB && platformUiFor(mode) ? [draftLinkFrameSources, orgBrandImageSourcesFor(mode)] : []),
+    devApiProxy.plugin,
   ],
   customLogger: logger,
   define: {
@@ -188,15 +189,13 @@ export default defineConfig(({ mode }) => ({
       '/api': {
         target: `http://127.0.0.1:${SERVER_PORT}`,
         changeOrigin: true,
-        // cowork-server answers a path without its trailing slash, such as
-        // POST /api/v1/responses, with a 307 to an absolute URL on its own
-        // port. Rewritten back to Vite's host, the browser follows it through
-        // this proxy, which adds the bearer and the proof, instead of going
-        // straight to the server without them.
+        /* cowork-server answers a path without its trailing slash, such as
+           POST /api/v1/responses, with a 307 to an absolute URL on its own
+           port. Rewritten back to Vite's host, the browser follows it through
+           this proxy, which adds the bearer and the proof, instead of going
+           straight to the server without them. */
         autoRewrite: true,
-        ...(devCredentials
-          ? { configure: (proxy) => addDevProxyCredentials(proxy, VITE_PORT, devCredentials) }
-          : {}),
+        configure: devApiProxy.configure,
       },
     },
   },

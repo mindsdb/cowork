@@ -223,7 +223,7 @@ export async function startCodingTerminal(
       // the CLI's own history for this cwd instead of replaying it.
       initialInput: isNewSession && opts.message ? `${opts.message}\r` : undefined,
       env: {
-        ...sanitizedParentEnv(),
+        ...sanitizedParentEnv(process.env, { forClaudeCode: true }),
         PATH: getEnvPath(),
         TERM: 'xterm-256color',
         COLORTERM: 'truecolor',

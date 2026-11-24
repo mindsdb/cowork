@@ -1115,8 +1115,8 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       });
     }
 
-    // The answer that made the start ready must prove the secret, or it gets
-    // nothing and is stopped.
+    /* The answer that made the start ready must prove the secret, or it gets
+       nothing and is stopped. */
     let untrusted = false;
     if (step.action !== 'fail' && lastProbe) {
       const verdict = judgeServer(lastProbe, lastChallenge);

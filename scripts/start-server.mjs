@@ -13,7 +13,7 @@
 // Stdlib only — no electron, no npm deps.
 
 import { spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as http from 'node:http';
 import * as os from 'node:os';
@@ -26,15 +26,21 @@ let serverProcess = null;
 let serverStarted = false;
 /** The running server's hand-off (newLaunchHandoff), or null before a start. */
 let launch = null;
+/** The callback onUnexpectedExit registered for the running server, or null. */
+let unexpectedExitCallback = null;
 
 /* The launch contract, as src/shared/server-launch.ts holds it for desktop
-   main. This script cannot import TypeScript, so it keeps a copy, and
+   main: the stdin flag, the protocol, and the hand-off line with its keys
+   app_secret, auth_token and window_proof (launchStdinLine below). This
+   script cannot import TypeScript, so it keeps a copy, and
    src/shared/server-launch.test.ts pins the two equal. cowork-server's
    cowork/app_secret.py mirrors the same values. */
 export const STDIN_FLAG = 'COWORK_APP_SECRET_STDIN';
 export const HANDOFF_PROTOCOL = 2;
-export const DEV_PROXY_AUTH_TOKEN_ENV = 'COWORK_DEV_PROXY_AUTH_TOKEN';
-export const DEV_PROXY_WINDOW_PROOF_ENV = 'COWORK_DEV_PROXY_WINDOW_PROOF';
+/* The /health challenge header, as APP_CHALLENGE_HEADER in
+   src/main/app-secret.ts holds it (cowork-server's CHALLENGE_HEADER).
+   src/main/dev-server-launch.test.ts pins the two equal. */
+export const APP_CHALLENGE_HEADER = 'X-Cowork-App-Challenge';
 
 /** Fresh values for one launch, as desktop main makes them: the app secret,
  *  the bearer token and the window proof, each 32 random bytes in hex. */
@@ -43,7 +49,8 @@ export function newLaunchHandoff() {
   return { appSecret: hex(), authToken: hex(), windowProof: hex() };
 }
 
-/** The one stdin line the server reads at startup. */
+/** The one stdin line the server reads at startup: a JSON object with exactly
+ *  the keys app_secret, auth_token and window_proof. */
 export function launchStdinLine(handoff) {
   return `${JSON.stringify({
     app_secret: handoff.appSecret,
@@ -145,35 +152,71 @@ function getEnvPath() {
   return parts.join(path.delimiter);
 }
 
-/** Polls /health until the server answers. Resolves 'ready' when it reports
- *  HANDOFF_PROTOCOL, 'too-old' when it answers without it, and 'down' when
- *  nothing answers within `timeoutMs`. */
-async function probeHealth(port, timeoutMs) {
+/** Whether a /health answer proves it holds `appSecret`: it reports
+ *  HANDOFF_PROTOCOL, and its app_secret_proof is the hex HMAC-SHA256 of
+ *  `challenge` under the secret. judgeServer in src/main/app-secret.ts makes
+ *  the same check for desktop main, and proof() in cowork-server's
+ *  cowork/app_secret.py computes it. */
+function provesAppSecret(payload, appSecret, challenge) {
+  const proof = payload?.app_secret_proof;
+  if (payload?.app_secret_protocol !== HANDOFF_PROTOCOL || typeof proof !== 'string' || !/^[0-9a-f]{64}$/.test(proof)) return false;
+  const expected = createHmac('sha256', appSecret).update(challenge).digest();
+  return timingSafeEqual(expected, Buffer.from(proof, 'hex'));
+}
+
+/** One /health probe with a fresh challenge. Resolves 'ready' when the answer
+ *  proves `appSecret`, 'foreign' for any other answer, and 'down' when nothing
+ *  answers. Only the server this launch started holds the app secret, so an
+ *  answer without the proof comes from something else on the port. */
+function probeHealthOnce(port, appSecret) {
+  const challenge = randomBytes(32).toString('hex');
+  return new Promise((resolve) => {
+    const req = http.get(
+      { hostname: SERVER_HOST, port, path: '/api/v1/health/', timeout: 1000, headers: { [APP_CHALLENGE_HEADER]: challenge } },
+      (res) => {
+        if (res.statusCode !== 200) { res.resume(); resolve('down'); return; }
+        let body = '';
+        res.on('data', (chunk) => { body += chunk; });
+        res.on('end', () => {
+          let payload = null;
+          try { payload = JSON.parse(body); } catch { /* not JSON: not our server */ }
+          resolve(provesAppSecret(payload, appSecret, challenge) ? 'ready' : 'foreign');
+        });
+      },
+    );
+    req.on('error', () => resolve('down'));
+    req.on('timeout', () => { req.destroy(); resolve('down'); });
+  });
+}
+
+/** Polls /health until the server this launch started answers with the proof,
+ *  racing every probe and pause against the child's exit. Resolves 'ready',
+ *  'foreign' (an answer without the proof), 'exited' (the child exited first),
+ *  or 'down' (nothing answered within `timeoutMs`). */
+async function waitForServer(port, timeoutMs, appSecret, exited) {
+  const exit = exited.then(() => 'exited');
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
-    const state = await new Promise((resolve) => {
-      const req = http.get(
-        { hostname: SERVER_HOST, port, path: '/api/v1/health/', timeout: 1000 },
-        (res) => {
-          if (res.statusCode !== 200) { res.resume(); resolve('down'); return; }
-          let body = '';
-          res.on('data', (chunk) => { body += chunk; });
-          res.on('end', () => {
-            try {
-              resolve(JSON.parse(body)?.app_secret_protocol === HANDOFF_PROTOCOL ? 'ready' : 'too-old');
-            } catch {
-              resolve('too-old');
-            }
-          });
-        },
-      );
-      req.on('error', () => resolve('down'));
-      req.on('timeout', () => { req.destroy(); resolve('down'); });
-    });
+    const state = await Promise.race([probeHealthOnce(port, appSecret), exit]);
     if (state !== 'down') return state;
-    await new Promise((r) => setTimeout(r, 250));
+    const paused = await Promise.race([new Promise((r) => setTimeout(r, 250)), exit]);
+    if (paused === 'exited') return 'exited';
   }
   return 'down';
+}
+
+/** Why start() failed, for a wait that ended in `state`. */
+function startFailure(state, { serverDir, readyTimeoutMs, exit }) {
+  if (state === 'foreign') {
+    return `Something else holds :${DEFAULT_PORT}: it answered /health without proving it holds the app secret this launch handed its server. `
+      + `Stop it, for example a cowork-server started from a terminal or another dev:web, and re-run. `
+      + `If nothing else runs there, ${serverDir} predates the launch hand-off (app_secret_protocol ${HANDOFF_PROTOCOL}).`;
+  }
+  if (state === 'exited') {
+    const how = typeof exit?.code === 'number' ? `code ${exit.code}` : `signal ${exit?.signal ?? 'unknown'}`;
+    return `cowork-server exited (${how}) before it answered /health on :${DEFAULT_PORT}. Its output above names the cause.`;
+  }
+  return `Server did not respond on /health within ${readyTimeoutMs}ms.`;
 }
 
 export const SERVER_PORT = DEFAULT_PORT;
@@ -194,8 +237,8 @@ export async function start({ readyTimeoutMs = 15000 } = {}) {
 
   const uvCmd = getUvPath();
 
-  // The bearer token reaches the server on stdin only, as server-process.ts
-  // hands it over, so an inherited COWORK_AUTH_TOKEN stays out of its env.
+  /* The bearer token reaches the server on stdin only, as server-process.ts
+     hands it over, so an inherited COWORK_AUTH_TOKEN stays out of its env. */
   const { COWORK_AUTH_TOKEN: _inheritedToken, ...inheritedEnv } = process.env;
   const env = {
     ...inheritedEnv,
@@ -225,6 +268,10 @@ export async function start({ readyTimeoutMs = 15000 } = {}) {
     stdio: ['pipe', 'pipe', 'pipe'],
     detached: true,
   });
+  let exit = null;
+  const exited = new Promise((resolve) => {
+    child.on('exit', (code, signal) => { exit = { code, signal }; resolve(); });
+  });
   // One line, then EOF, so processes the server starts inherit a closed stdin.
   child.stdin.on('error', (err) => {
     console.error(`[cowork-server] could not write the launch hand-off: ${err.message}`);
@@ -238,21 +285,25 @@ export async function start({ readyTimeoutMs = 15000 } = {}) {
     process.stderr.write(`[cowork-server] ${d.toString()}`);
   });
   child.on('exit', (code) => {
+    /* Read before clearing: the server exited unasked when start() had
+       resolved and stop() had not run, since stop() clears serverStarted. */
+    const exitedUnasked = serverStarted;
+    const callback = unexpectedExitCallback;
     serverStarted = false;
     serverProcess = null;
+    unexpectedExitCallback = null;
     if (code !== 0 && code !== null) {
       console.error(`[cowork-server] exited with code ${code}`);
     }
+    if (exitedUnasked && callback) callback(code);
   });
 
   serverProcess = child;
 
-  const health = await probeHealth(DEFAULT_PORT, readyTimeoutMs);
+  const health = await waitForServer(DEFAULT_PORT, readyTimeoutMs, handoff.appSecret, exited);
   if (health !== 'ready') {
     stop();
-    throw new Error(health === 'too-old'
-      ? `The server on :${DEFAULT_PORT} does not report app_secret_protocol ${HANDOFF_PROTOCOL}, so it never read this launch's bearer token. Update ${serverDir} to a cowork-server that reads the launch hand-off.`
-      : `Server did not respond on /health within ${readyTimeoutMs}ms.`);
+    throw new Error(startFailure(health, { serverDir, readyTimeoutMs, exit }));
   }
   launch = handoff;
   serverStarted = true;
@@ -270,12 +321,15 @@ export function stop() {
     serverProcess = null;
     serverStarted = false;
     launch = null;
+    unexpectedExitCallback = null;
   }
 }
 
-// Ensure the detached server process group is cleaned up if the parent
-// exits unexpectedly (crash, uncaught exception, SIGTERM, etc.).
-for (const sig of ['exit', 'SIGINT', 'SIGTERM', 'SIGHUP']) {
+/* Ensure the detached server process group is cleaned up if the parent exits
+   (process.exit, a crash, an uncaught exception) or its terminal hangs up.
+   SIGINT and SIGTERM are dev-web.mjs's: its shutdown closes Vite and only then
+   calls stop(), and a handler here would stop the server first. */
+for (const sig of ['exit', 'SIGHUP']) {
   process.on(sig, () => { stop(); });
 }
 
@@ -286,10 +340,7 @@ export function isRunning() {
 export function onUnexpectedExit(cb) {
   // Fires when the server child dies AFTER a successful start.
   // Used by dev-web.mjs to fail loudly instead of leaving Vite proxying
-  // into the void.
+  // into the void. start()'s exit listener calls it.
   if (!serverProcess) return;
-  const handler = (code) => {
-    if (serverStarted) cb(code);
-  };
-  serverProcess.once('exit', handler);
+  unexpectedExitCallback = cb;
 }

@@ -109,7 +109,7 @@ describe('coding-terminal', () => {
     expect(isCodingTerminalRunning('task-1')).toBe(true);
   });
 
-  it('strips inherited CLAUDE_CODE_*/ANTHROPIC_*/COWORK_*/MINDSHUB_*/OPENAI_* vars so neither a nested session nor this app\'s config leaks in', async () => {
+  it('strips inherited CLAUDE_CODE_*/ANTHROPIC_*/COWORK_*/MINDSHUB_* vars so neither a nested session nor this app\'s config leaks in, and keeps the user\'s OPENAI_*', async () => {
     // e.g. this exact scenario in dev: launching the app from inside a
     // Claude Code session's own shell inherits CLAUDE_CODE_CHILD_SESSION,
     // which makes the embedded CLI think it's a child session and disables
@@ -120,7 +120,7 @@ describe('coding-terminal', () => {
     process.env.ANTHROPIC_API_KEY = 'sk-should-not-leak';
     process.env.COWORK_AUTH_TOKEN = 'ab'.repeat(32);
     process.env.MINDSHUB_API_KEY = 'mdb_should_not_leak';
-    process.env.OPENAI_API_KEY = 'sk-should-not-leak-either';
+    process.env.OPENAI_API_KEY = 'sk-the-users-own';
     process.env.SOME_UNRELATED_VAR = 'keep-me';
     try {
       const { startCodingTerminal } = await import('./coding-terminal');
@@ -139,7 +139,8 @@ describe('coding-terminal', () => {
       expect(sentEnv.ANTHROPIC_API_KEY).toBeUndefined();
       expect(sentEnv.COWORK_AUTH_TOKEN).toBeUndefined();
       expect(sentEnv.MINDSHUB_API_KEY).toBeUndefined();
-      expect(sentEnv.OPENAI_API_KEY).toBeUndefined();
+      // Desktop main sets no OPENAI_* variable, so this one is the user's own.
+      expect(sentEnv.OPENAI_API_KEY).toBe('sk-the-users-own');
       expect(sentEnv.SOME_UNRELATED_VAR).toBe('keep-me');
       // Our own deliberate ANTHROPIC_* overrides still make it through.
       expect(sentEnv.ANTHROPIC_BASE_URL).toBe('https://api.staging.mindshub.ai');

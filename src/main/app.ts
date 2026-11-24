@@ -479,8 +479,8 @@ function createWindow() {
   // anything, so no frame is created unseen.
   const previewGuard = guardDocumentPreviewFrames(mainWindow.webContents);
 
-  // The window the listener below gives the window proof to. Captured here, so
-  // a listener registered for this window never proves a later one's requests.
+  /* The window the listener below gives the window proof to. Captured here, so
+     a listener registered for this window never proves a later one's requests. */
   const proofWindow = mainWindow;
 
   // Inject the server's bearer token into every request the renderer makes to

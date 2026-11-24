@@ -1,10 +1,12 @@
 /*
  * What the desktop hands each cowork-server it launches, and the names both
  * sides read it under. cowork-server's cowork/app_secret.py mirrors the stdin
- * flag, the protocol number, the hand-off line's keys and the proof header,
- * under the same names. scripts/start-server.mjs mirrors them for the dev
- * scripts, which cannot import TypeScript. server-launch.test.ts pins every
- * value and the script's copy.
+ * flag, the protocol number, the proof header and the refusal prefix under the
+ * same names, and the hand-off line's three keys (app_secret, auth_token and
+ * window_proof, which launchStdinLine writes) as its LaunchHandoff model's
+ * fields. scripts/start-server.mjs mirrors them for the dev scripts, which
+ * cannot import TypeScript. server-launch.test.ts pins every value and the
+ * script's copy.
  *
  * Desktop main makes the three values fresh for every launch and keeps them in
  * memory only. The server reads them from one stdin line and holds them only
@@ -25,6 +27,11 @@ export const HANDOFF_PROTOCOL = 2;
    from desktop main, and not from a frame, a page or a process on the machine. */
 export const WINDOW_PROOF_HEADER = 'X-Cowork-Window-Proof';
 
+/* The prefix on the one line cowork-server prints when it refuses to start,
+   for example over a launch hand-off that is missing, late or malformed.
+   cowork-server's cowork/app_secret.py mirrors it as SERVER_REFUSAL_PREFIX. */
+export const SERVER_REFUSAL_PREFIX = 'cowork-server: ';
+
 /* The values one launch hands the server. Each is 64 lowercase hex digits. */
 export interface LaunchHandoff {
   /* Proves desktop main's own requests on the routes that hold MCP access tokens. */
@@ -35,7 +42,8 @@ export interface LaunchHandoff {
   readonly windowProof: string;
 }
 
-/* The one stdin line the server reads at startup. */
+/* The one stdin line the server reads at startup: a JSON object with exactly
+   the keys app_secret, auth_token and window_proof. */
 export function launchStdinLine(handoff: LaunchHandoff): string {
   return `${JSON.stringify({
     app_secret: handoff.appSecret,
@@ -43,9 +51,3 @@ export function launchStdinLine(handoff: LaunchHandoff): string {
     window_proof: handoff.windowProof,
   })}\n`;
 }
-
-/* The environment variables `npm run dev:web` hands Vite the bearer token and
-   the window proof under, so Vite's /api proxy can add them. Neither starts
-   with VITE_, the prefix Vite copies into the client bundle. */
-export const DEV_PROXY_AUTH_TOKEN_ENV = 'COWORK_DEV_PROXY_AUTH_TOKEN';
-export const DEV_PROXY_WINDOW_PROOF_ENV = 'COWORK_DEV_PROXY_WINDOW_PROOF';

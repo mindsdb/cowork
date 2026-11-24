@@ -12,6 +12,7 @@
 // OTA cache-freshness / update-newer decisions below.
 import { parseCalVer, compareCalVer, newestCalVer } from '../shared/version';
 import type { ServerStartErrorKind } from '../shared/server-status';
+import { SERVER_REFUSAL_PREFIX } from '../shared/server-launch';
 import type { UpdateCheckSummary } from '../shared/update-types';
 
 // ---------------------------------------------------------------------------
@@ -550,12 +551,8 @@ function formatElapsed(ms: number): string {
   return seconds < 10 ? `${seconds.toFixed(1)}s` : `${Math.round(seconds)}s`;
 }
 
-/* The prefix cowork-server puts on the one line it prints when it refuses to
-   start, for example a launch hand-off that is missing, late or incomplete. */
-const SERVER_REFUSAL_PREFIX = 'cowork-server: ';
-
 /** The last line in one start attempt's output that carries cowork-server's
- *  refusal prefix, trimmed, or null when it printed none. */
+ *  refusal prefix (SERVER_REFUSAL_PREFIX), trimmed, or null when it printed none. */
 export function serverStartRefusal(output: string): string | null {
   const refusals = output.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.startsWith(SERVER_REFUSAL_PREFIX));
   return refusals.at(-1) ?? null;

@@ -21,8 +21,8 @@ vi.mock('./server-process', () => ({
 // buildKind reaches electron's `app`; stub it so the PyPI stream gate resolves
 // without a packaged app (mirrors server-source.test.ts).
 vi.mock('./cowork-home', () => ({ buildKind: vi.fn(() => 'prod') }));
-// The probe's headers are the running launch's, which no test here starts;
-// mocked at this boundary so probeAuthMismatch sends a fixed set.
+/* The probe's headers are the running launch's, which no test here starts;
+   mocked at this boundary so probeAuthMismatch sends a fixed set. */
 vi.mock('./server-auth', () => ({ authHeader: vi.fn(() => ({})) }));
 vi.mock('fs');
 vi.mock('child_process');

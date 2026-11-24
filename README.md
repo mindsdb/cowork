@@ -251,10 +251,10 @@ npm run dev:web
 
 Web development defaults to MindsHub UI off. In this build, Settings hides LLM Providers and Model Router, the composer hides model and reasoning-effort controls, and questions send `model: null` without a `reasoning_effort` override. The server uses its configured models and role-specific efforts. To configure providers and models in the development UI, run `VITE_PLATFORM_UI=true npm run dev:web`.
 
-This boots both processes:
+This boots both servers:
 
-1. The cowork-server FastAPI backend on `127.0.0.1:26866` (via `uv run cowork-server` from the sibling source directory). `scripts/start-server.mjs` hands it a fresh bearer token, window proof and app secret on stdin, as desktop main does (see [Loopback authentication](#loopback-authentication)), and stops with an error if the checkout does not report `app_secret_protocol: 2`.
-2. Vite dev server on `localhost:5173`, with `BUILD_TARGET=web`. `scripts/dev-web.mjs` passes it the bearer token and the window proof in `COWORK_DEV_PROXY_AUTH_TOKEN` and `COWORK_DEV_PROXY_WINDOW_PROOF`. Neither name starts with `VITE_`, so Vite never copies the values into the client bundle.
+1. The cowork-server FastAPI backend on `127.0.0.1:26866` (via `uv run cowork-server` from the sibling source directory). `scripts/start-server.mjs` hands it a fresh bearer token, window proof and app secret on stdin, as desktop main does (see [Loopback authentication](#loopback-authentication)). It takes the server as ready only when its `/api/v1/health/` answer reports `app_secret_protocol: 2` and proves it holds that app secret. Any other answer means something else holds the port, or the checkout predates the launch hand-off, and `dev:web` stops with an error that says so. It also stops as soon as the server it started exits.
+2. Vite dev server on `localhost:5173`, with `BUILD_TARGET=web`, in the `dev:web` process itself. `scripts/dev-web-vite.mjs` hands Vite's config the bearer token and the window proof as an argument to Vite's `createServer`, so neither value enters an environment variable or the client bundle.
 
 The dev server opens at `http://localhost:5173/` (a small Vite
 middleware rewrites `/` → `/index-web.html` so the bare URL is
@@ -420,7 +420,7 @@ Desktop main makes three values fresh for every launch of the sidecar, each 32 r
 - **Window proof** (`X-Cowork-Window-Proof`): the same listener adds it only to a fetch or XMLHttpRequest from the main window's own top-level frame, and removes it from every other request to the sidecar. A frame inside the window, an image, a navigation, a download, another window and a request with no frame go without it. Desktop main's own requests carry both values through `authHeader()`.
 - **App secret** (`X-Cowork-App-Secret`): only desktop main's requests on the routes that hold MCP access tokens carry it, once the sidecar has proved over `/health` that it holds the secret.
 
-The Claude Code terminal and the git calls in a task's repository run with this app's environment minus `CLAUDE_CODE_*`, `CLAUDECODE`, `ANTHROPIC_*`, `COWORK_*`, `MINDSHUB_*` and `OPENAI_*` (`src/main/agent-env.ts`).
+The Claude Code terminal runs with this app's environment minus `COWORK_*`, `MINDSHUB_*`, `CLAUDE_CODE_*`, `CLAUDECODE` and `ANTHROPIC_*`. The git calls in a task's repository run with it minus `COWORK_*` and `MINDSHUB_*` only. Desktop main sets no `OPENAI_*` or `ANTHROPIC_*` variable, so the user's own `OPENAI_*` values reach both, and their `ANTHROPIC_*` values reach the git calls. On Windows, where variable names ignore case, these names match in any case (`src/main/agent-env.ts`).
 
 ---
 

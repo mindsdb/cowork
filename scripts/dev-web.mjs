@@ -5,21 +5,15 @@
 // the renderer — the developer doesn't have to start the server in a
 // second terminal and watch a wall of ECONNREFUSED scroll past.
 //
-// Stdlib + ./start-server.mjs only. No `concurrently`, no new deps.
+// Stdlib, Vite, ./start-server.mjs and ./dev-web-vite.mjs only. No
+// `concurrently`, no new deps.
 
-import { spawn } from 'node:child_process';
-import {
-  start,
-  stop,
-  onUnexpectedExit,
-  SERVER_PORT,
-  DEV_PROXY_AUTH_TOKEN_ENV,
-  DEV_PROXY_WINDOW_PROOF_ENV,
-} from './start-server.mjs';
+import { createDevWebServer } from './dev-web-vite.mjs';
+import { start, stop, onUnexpectedExit, SERVER_PORT } from './start-server.mjs';
 
 const READY_TIMEOUT_MS = 15000;
 
-let viteChild = null;
+let vite = null;
 let shuttingDown = false;
 
 async function main() {
@@ -48,67 +42,42 @@ async function main() {
   onUnexpectedExit((code) => {
     if (shuttingDown) return;
     console.error(`✗ cowork-server exited unexpectedly (code ${code}). Re-run \`npm run dev:web\`.`);
-    if (viteChild) { try { viteChild.kill('SIGTERM'); } catch {} }
     process.exit(1);
   });
 
-  // Boot Vite. inherit stdio so HMR output, error overlays, and the
-  // "press q to quit" hint render the way developers expect.
-  // BUILD_TARGET=web activates the cowork-web-root-rewrite middleware
-  // in vite.config.ts which maps `/` to `/index-web.html` — so the
-  // bare URL is the canonical one.
-  //
-  // There is no desktop main here to add the server's bearer token and window
-  // proof, so Vite's /api proxy adds them to requests from its own pages
-  // (src/renderer/dev-api-proxy.ts). They reach Vite under names without the
-  // VITE_ prefix, so Vite never copies them into the client bundle.
-  viteChild = spawn(
-    'npx',
-    ['vite', 'dev', 'src/renderer', '--open', '/'],
-    {
-      stdio: 'inherit',
-      env: {
-        ...process.env,
-        BUILD_TARGET: 'web',
-        [DEV_PROXY_AUTH_TOKEN_ENV]: launch.authToken,
-        [DEV_PROXY_WINDOW_PROOF_ENV]: launch.windowProof,
-      },
-    },
-  );
+  /* Boot Vite in this process, as `vite dev src/renderer --open /` would.
+     BUILD_TARGET=web activates the cowork-web-root-rewrite middleware in
+     vite.config.ts, which maps `/` to `/index-web.html`, so the bare URL is
+     the canonical one.
 
-  viteChild.on('exit', async (code) => {
-    if (shuttingDown) return;
-    // Vite exited on its own (e.g. user pressed `q`). Mirror its exit
-    // code, but tear down the python child first.
-    shuttingDown = true;
-    stop();
-    process.exit(code ?? 0);
-  });
+     There is no desktop main here to add the server's bearer token and window
+     proof, so Vite's /api proxy adds them to requests from its own pages
+     (src/renderer/dev-api-proxy.ts). createDevWebServer hands them to Vite's
+     config as an argument, so they never enter an environment variable, which
+     every process Vite starts would inherit. */
+  vite = await createDevWebServer(launch, { server: { open: '/' } });
+  await vite.listen();
+  vite.printUrls();
+  /* Vite's own shortcuts, as `vite dev` binds them. Its `q` closes Vite and
+     exits, and start-server.mjs's exit handler then stops the server. */
+  vite.bindCLIShortcuts({ print: true });
 }
 
 async function shutdown() {
   if (shuttingDown) {
     // Second Ctrl-C: force-exit. Don't wait for graceful shutdown.
     console.error('\n✗ Force-quit.');
-    if (viteChild) { try { viteChild.kill('SIGKILL'); } catch {} }
     stop();
     process.exit(130);
   }
   shuttingDown = true;
 
-  // Order: vite first, then python. Vite (in our process group) gets
-  // its own SIGINT directly from the terminal and starts shutting down;
-  // we wait for it to fully exit, THEN SIGTERM the (detached) python.
-  // This avoids a window where vite is still proxying /v1/* into a
-  // dying python and the terminal fills with ECONNREFUSED.
-  if (viteChild && viteChild.exitCode === null) {
-    try { viteChild.kill('SIGTERM'); } catch {}
-    await new Promise((resolve) => {
-      viteChild.once('exit', resolve);
-      // Don't wait forever if vite hangs — 5s is generous.
-      setTimeout(resolve, 5000);
-    });
-  }
+  /* Order: Vite first, then python. Vite stops proxying once it closes, and
+     only then is the (detached) python sent SIGTERM, so the terminal does not
+     fill with ECONNREFUSED from requests still proxied to a dying server.
+     start-server.mjs leaves SIGINT and SIGTERM to this handler for that
+     reason. Five seconds bounds a Vite that hangs on close. */
+  if (vite) await Promise.race([vite.close().catch(() => {}), new Promise((resolve) => setTimeout(resolve, 5000))]);
   stop();
   process.exit(0);
 }

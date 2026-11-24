@@ -1,18 +1,22 @@
 import type { IncomingHttpHeaders } from 'http';
+import type { Plugin } from 'vite';
 
-import { DEV_PROXY_AUTH_TOKEN_ENV, DEV_PROXY_WINDOW_PROOF_ENV, WINDOW_PROOF_HEADER } from '../shared/server-launch';
+import { WINDOW_PROOF_HEADER } from '../shared/server-launch';
 
 /*
  * Vite's /api proxy under `npm run dev:web`, factored out of vite.config.ts so
  * it can be unit-tested without booting Vite.
  *
  * Under dev:web no desktop main stands between the page and the server.
- * dev-web.mjs starts the server with a launch hand-off and passes Vite the
- * bearer token and the window proof it made (DEV_PROXY_AUTH_TOKEN_ENV and
- * DEV_PROXY_WINDOW_PROOF_ENV). The proxy adds both to a request from a page
- * Vite itself served, and removes any proof header every other request
- * carries. Under `npm run dev` neither variable is set, and the proxy forwards
- * what desktop main's listener (src/main/server-token-listener.ts) added.
+ * dev-web.mjs starts the server with a launch hand-off, then starts Vite in the
+ * same Node process and hands it the bearer token and the window proof it made as
+ * the `api` of a plugin named DEV_PROXY_PLUGIN (createDevWebServer in
+ * scripts/dev-web-vite.mjs). An argument to Vite's createServer, the values
+ * never enter an environment variable or a command line. The proxy adds both
+ * to a request from a page Vite itself served, and removes any proof header
+ * every other request carries. Under `npm run dev` no such plugin exists, and
+ * the proxy forwards what desktop main's listener
+ * (src/main/server-token-listener.ts) added.
  *
  * A request comes from Vite's own page when its Origin is one of Vite's
  * origins. A browser leaves Origin off a same-origin GET, so a request without
@@ -29,12 +33,20 @@ export interface DevProxyCredentials {
   readonly windowProof: string;
 }
 
-/* The proxy's credentials from Vite's environment, or null when dev-web.mjs
-   did not set both. */
-export function devProxyCredentials(env: Readonly<Record<string, string | undefined>>): DevProxyCredentials | null {
-  const authToken = env[DEV_PROXY_AUTH_TOKEN_ENV];
-  const windowProof = env[DEV_PROXY_WINDOW_PROOF_ENV];
-  return authToken && windowProof ? { authToken, windowProof } : null;
+/* The name of the plugin whose `api` carries the proxy's credentials.
+   scripts/dev-web-vite.mjs keeps a copy, since it cannot import TypeScript,
+   and dev-api-proxy.test.ts pins the two equal. */
+export const DEV_PROXY_PLUGIN = 'cowork-dev-proxy-credentials';
+
+/* The proxy's credentials from the DEV_PROXY_PLUGIN plugin among Vite's
+   plugins, or null when dev-web added none or its `api` lacks either value. */
+export function devProxyCredentials(plugins: readonly Pick<Plugin, 'name' | 'api'>[]): DevProxyCredentials | null {
+  const api: unknown = plugins.find((plugin) => plugin.name === DEV_PROXY_PLUGIN)?.api;
+  if (typeof api !== 'object' || api === null) return null;
+  const { authToken, windowProof } = api as Partial<Record<keyof DevProxyCredentials, unknown>>;
+  return typeof authToken === 'string' && authToken && typeof windowProof === 'string' && windowProof
+    ? { authToken, windowProof }
+    : null;
 }
 
 function devOrigins(vitePort: number): string[] {
@@ -64,6 +76,25 @@ export interface ProxiedRequest {
 /* The part of Vite's proxy server the configure hook listens on. */
 export interface DevProxyEvents {
   on(event: 'proxyReq', listener: (proxyReq: ProxiedRequest, req: { readonly headers: IncomingHttpHeaders }) => void): unknown;
+}
+
+/* The /api proxy's hook for vite.config.ts: a plugin that reads the
+   credentials once Vite resolves its config, and the proxy's `configure`
+   callback, which Vite calls after that and which adds them when there are
+   any. */
+export function devApiProxyHook(vitePort: number): { plugin: Plugin; configure: (proxy: DevProxyEvents) => void } {
+  let credentials: DevProxyCredentials | null = null;
+  return {
+    plugin: {
+      name: 'cowork-dev-api-proxy',
+      configResolved(config) {
+        credentials = devProxyCredentials(config.plugins);
+      },
+    },
+    configure(proxy) {
+      if (credentials) addDevProxyCredentials(proxy, vitePort, credentials);
+    },
+  };
 }
 
 /* Registers the header rule on Vite's /api proxy. */
