@@ -196,7 +196,8 @@ const EVENTS = {
   // The web build's offers of the desktop app, opened only when the person
   // picks an entry for something the browser can't do (lib/desktopOffer).
   // feature: 'code_mode'|'local_folder'|'connector'; entry: 'sidebar_switch'|
-  // 'new_project'|'chat_context'|'connector_directory'|'connector_note'.
+  // 'mobile_drawer'|'new_project'|'chat_context'|'connector_directory'|
+  // 'connector_note'.
   // connector_id only for connectors. offer says what the dialog's main button
   // did: 'download', or for a connector a member can stand in for,
   // 'connect_custom'|'build_custom'.

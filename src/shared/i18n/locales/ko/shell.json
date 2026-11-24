@@ -209,7 +209,7 @@
     "tag": "데스크톱",
     "notNow": "나중에",
     "download": "데스크톱 앱 다운로드",
-    "platforms": "Mac 및 Windows용.",
+    "platforms": "Mac, Windows 및 Linux용.",
     "code": {
       "title": "코드 모드는 데스크톱 앱에서 사용할 수 있습니다",
       "body": "코드 모드는 내 컴퓨터의 코드로 작업하므로 데스크톱 앱이 필요합니다. 데스크톱 앱에서 Cowork는 다음을 할 수 있습니다:",
@@ -229,7 +229,7 @@
         "saved": "만든 결과물은 내 컴퓨터에 저장됩니다",
         "kept": "Cowork에서 폴더를 제거해도 파일은 그대로 남습니다"
       },
-      "note": "Mac 및 Windows용. 여기 브라우저에서도 계속 파일을 업로드할 수 있습니다."
+      "note": "Mac, Windows 및 Linux용. 여기 브라우저에서도 계속 파일을 업로드할 수 있습니다."
     }
   },
   "loadStatus": {

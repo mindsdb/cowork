@@ -209,7 +209,7 @@
     "tag": "Bureau",
     "notNow": "Plus tard",
     "download": "Télécharger l’application de bureau",
-    "platforms": "Pour Mac et Windows.",
+    "platforms": "Pour Mac, Windows et Linux.",
     "code": {
       "title": "Le mode code fonctionne dans l’application de bureau",
       "body": "Le mode code travaille sur le code de votre ordinateur : il lui faut donc l’application de bureau. Là, Cowork peut :",
@@ -229,7 +229,7 @@
         "saved": "Ce qu’il crée est enregistré sur votre ordinateur",
         "kept": "Retirer le dossier de Cowork laisse vos fichiers en place"
       },
-      "note": "Pour Mac et Windows. Ici, dans le navigateur, vous pouvez toujours importer des fichiers."
+      "note": "Pour Mac, Windows et Linux. Ici, dans le navigateur, vous pouvez toujours importer des fichiers."
     }
   },
   "loadStatus": {

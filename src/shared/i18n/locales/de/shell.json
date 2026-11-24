@@ -209,7 +209,7 @@
     "tag": "Desktop",
     "notNow": "Nicht jetzt",
     "download": "Desktop-App herunterladen",
-    "platforms": "Für Mac und Windows.",
+    "platforms": "Für Mac, Windows und Linux.",
     "code": {
       "title": "Der Code-Modus läuft in der Desktop-App",
       "body": "Der Code-Modus arbeitet mit dem Code auf Ihrem Computer und braucht daher die Desktop-App. Dort kann Cowork:",
@@ -229,7 +229,7 @@
         "saved": "Was Cowork erstellt, wird auf Ihrem Computer gespeichert",
         "kept": "Wenn Sie den Ordner aus Cowork entfernen, bleiben Ihre Dateien erhalten"
       },
-      "note": "Für Mac und Windows. Hier im Browser können Sie weiterhin Dateien hochladen."
+      "note": "Für Mac, Windows und Linux. Hier im Browser können Sie weiterhin Dateien hochladen."
     }
   },
   "loadStatus": {

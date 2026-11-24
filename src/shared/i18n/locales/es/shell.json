@@ -209,7 +209,7 @@
     "tag": "Escritorio",
     "notNow": "Ahora no",
     "download": "Descargar la app de escritorio",
-    "platforms": "Para Mac y Windows.",
+    "platforms": "Para Mac, Windows y Linux.",
     "code": {
       "title": "El modo código funciona en la app de escritorio",
       "body": "El modo código trabaja con el código de tu computadora, así que necesita la app de escritorio. Allí, Cowork puede:",
@@ -229,7 +229,7 @@
         "saved": "Lo que crea se guarda en tu computadora",
         "kept": "Quitar la carpeta de Cowork deja tus archivos donde están"
       },
-      "note": "Para Mac y Windows. Aquí en el navegador aún puedes subir archivos."
+      "note": "Para Mac, Windows y Linux. Aquí en el navegador aún puedes subir archivos."
     }
   },
   "loadStatus": {

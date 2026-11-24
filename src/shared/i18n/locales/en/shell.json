@@ -209,7 +209,7 @@
     "tag": "Desktop",
     "notNow": "Not now",
     "download": "Download the Desktop app",
-    "platforms": "For Mac and Windows.",
+    "platforms": "For Mac, Windows and Linux.",
     "code": {
       "title": "Code mode runs in the Desktop app",
       "body": "Code mode works on the code on your computer, so it needs the Desktop app. There, Cowork can:",
@@ -229,7 +229,7 @@
         "saved": "What it makes is saved on your computer",
         "kept": "Removing the folder from Cowork leaves your files in place"
       },
-      "note": "For Mac and Windows. Here in the browser, you can still upload files."
+      "note": "For Mac, Windows and Linux. Here in the browser, you can still upload files."
     }
   },
   "loadStatus": {

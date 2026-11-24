@@ -16,6 +16,19 @@ beforeEach(() => {
 });
 
 describe('DesktopOfferModal', () => {
+  // At tablet widths the sidebar is a drawer at layer 101 over a backdrop at
+  // 100, and it stays open behind an offer chosen from it.
+  it('opens above the tablet sidebar drawer and its backdrop', () => {
+    render(<DesktopOfferModal feature="code_mode" entry="sidebar_switch" onClose={vi.fn()} />);
+    const layers = [];
+    for (let el = screen.getByRole('dialog'); el; el = el.parentElement) {
+      const z = Number(el.style?.zIndex);
+      if (z) layers.push(z);
+    }
+    expect(layers.length).toBeGreaterThan(0);
+    expect(Math.min(...layers)).toBeGreaterThan(101);
+  });
+
   it('stays closed, and records nothing, without a feature', () => {
     render(<DesktopOfferModal feature={null} entry="sidebar_switch" onClose={vi.fn()} />);
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -38,7 +51,7 @@ describe('DesktopOfferModal', () => {
     unmount();
     render(<DesktopOfferModal feature="local_folder" entry="chat_context" onClose={vi.fn()} />);
     expect(screen.getByRole('dialog', { name: 'Working folders are in the Desktop app' })).toBeInTheDocument();
-    expect(screen.getByText('For Mac and Windows. Here in the browser, you can still upload files.')).toBeInTheDocument();
+    expect(screen.getByText('For Mac, Windows and Linux. Here in the browser, you can still upload files.')).toBeInTheDocument();
   });
 
   it('opens the download tagged for the feature, records the click and closes', () => {

@@ -45,7 +45,9 @@ export default function DesktopOfferModal({ feature, entry = '', onClose }) {
   }, [copy, feature, entry]);
 
   return (
-    <Modal open={!!copy} onClose={onClose} size="sm" labelledBy="desktop-offer-title">
+    // The palette layer sits above the tablet sidebar drawer (101) and its
+    // backdrop, which stay open behind an offer chosen from the drawer.
+    <Modal open={!!copy} onClose={onClose} size="sm" layer="palette" labelledBy="desktop-offer-title">
       {copy && (
         <>
           <ModalHeader id="desktop-offer-title" title={t(copy.title(entry))} onClose={onClose} />

@@ -209,7 +209,7 @@
     "tag": "Desktop",
     "notNow": "Agora não",
     "download": "Baixar o app para desktop",
-    "platforms": "Para Mac e Windows.",
+    "platforms": "Para Mac, Windows e Linux.",
     "code": {
       "title": "O modo código funciona no app para desktop",
       "body": "O modo código trabalha com o código do seu computador, então precisa do app para desktop. Lá, o Cowork pode:",
@@ -229,7 +229,7 @@
         "saved": "O que ele cria fica salvo no seu computador",
         "kept": "Remover a pasta do Cowork mantém seus arquivos no lugar"
       },
-      "note": "Para Mac e Windows. Aqui no navegador, você ainda pode enviar arquivos."
+      "note": "Para Mac, Windows e Linux. Aqui no navegador, você ainda pode enviar arquivos."
     }
   },
   "loadStatus": {

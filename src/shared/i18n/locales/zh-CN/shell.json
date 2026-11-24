@@ -209,7 +209,7 @@
     "tag": "桌面版",
     "notNow": "以后再说",
     "download": "下载桌面应用",
-    "platforms": "适用于 Mac 和 Windows。",
+    "platforms": "适用于 Mac、Windows 和 Linux。",
     "code": {
       "title": "代码模式在桌面应用中可用",
       "body": "代码模式处理的是你电脑上的代码，因此需要桌面应用。在桌面应用中，Cowork 可以：",
@@ -229,7 +229,7 @@
         "saved": "它生成的内容会保存在你的电脑上",
         "kept": "从 Cowork 中移除文件夹后，你的文件仍保留在原处"
       },
-      "note": "适用于 Mac 和 Windows。在浏览器中，你仍然可以上传文件。"
+      "note": "适用于 Mac、Windows 和 Linux。在浏览器中，你仍然可以上传文件。"
     }
   },
   "loadStatus": {

@@ -209,7 +209,7 @@
     "tag": "Desktop",
     "notNow": "Non ora",
     "download": "Scarica l’app desktop",
-    "platforms": "Per Mac e Windows.",
+    "platforms": "Per Mac, Windows e Linux.",
     "code": {
       "title": "La modalità codice funziona nell’app desktop",
       "body": "La modalità codice lavora sul codice del tuo computer, quindi serve l’app desktop. Lì Cowork può:",
@@ -229,7 +229,7 @@
         "saved": "Quello che crea viene salvato sul tuo computer",
         "kept": "Se rimuovi la cartella da Cowork, i tuoi file restano dove sono"
       },
-      "note": "Per Mac e Windows. Qui nel browser puoi comunque caricare file."
+      "note": "Per Mac, Windows e Linux. Qui nel browser puoi comunque caricare file."
     }
   },
   "loadStatus": {
