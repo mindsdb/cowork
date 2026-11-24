@@ -488,7 +488,9 @@
   "gallery": {
     "open": "Use Case Gallery",
     "title": "Use Case Gallery",
-    "intro": "Things {product} made from one message. Look at the finished result, then start from it.",
+    "welcomeTitle": "Welcome to {product}",
+    "welcomeIntro": "Not sure where to start? Here are things {product} made from one message. Open one to see the result, then start from it.",
+    "intro": "Running out of ideas? Here are things {product} made from one message. Open one to see the result, then start from it.",
     "hide": "Hide the gallery",
     "searchLabel": "Search examples",
     "searchPlaceholder": "Search: slides, spreadsheet, study…",

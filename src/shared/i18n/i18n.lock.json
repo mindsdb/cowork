@@ -183159,36 +183159,36 @@
   },
   "shell:gallery.intro": {
     "de": {
-      "from": "ee2bd5e2473e",
-      "text": "9f8278bb02d4"
+      "from": "231bce9786af",
+      "text": "e9477cab77be"
     },
     "es": {
-      "from": "ee2bd5e2473e",
-      "text": "b15230fba642"
+      "from": "231bce9786af",
+      "text": "0f7d33bbdee6"
     },
     "fr": {
-      "from": "ee2bd5e2473e",
-      "text": "8c77eb446b43"
+      "from": "231bce9786af",
+      "text": "db2d4ff07afa"
     },
     "it": {
-      "from": "ee2bd5e2473e",
-      "text": "91ff4f925e90"
+      "from": "231bce9786af",
+      "text": "4b428611b4c5"
     },
     "ja": {
-      "from": "ee2bd5e2473e",
-      "text": "94937e3ddf74"
+      "from": "231bce9786af",
+      "text": "c59b26bab0c3"
     },
     "ko": {
-      "from": "ee2bd5e2473e",
-      "text": "80ac61b409ac"
+      "from": "231bce9786af",
+      "text": "f390d430409b"
     },
     "pt-BR": {
-      "from": "ee2bd5e2473e",
-      "text": "2a522d64f761"
+      "from": "231bce9786af",
+      "text": "a43fafd4814a"
     },
     "zh-CN": {
-      "from": "ee2bd5e2473e",
-      "text": "e8c392647c21"
+      "from": "231bce9786af",
+      "text": "b377e7a66942"
     }
   },
   "shell:gallery.loading": {
@@ -183903,6 +183903,74 @@
     "zh-CN": {
       "from": "210969046898",
       "text": "88169e53d40e"
+    }
+  },
+  "shell:gallery.welcomeIntro": {
+    "de": {
+      "from": "e2b474f3e55a",
+      "text": "6f19eb11e21e"
+    },
+    "es": {
+      "from": "e2b474f3e55a",
+      "text": "22317e07623b"
+    },
+    "fr": {
+      "from": "e2b474f3e55a",
+      "text": "e505c55fcbbe"
+    },
+    "it": {
+      "from": "e2b474f3e55a",
+      "text": "7cee86e3da03"
+    },
+    "ja": {
+      "from": "e2b474f3e55a",
+      "text": "ead8c84f82d4"
+    },
+    "ko": {
+      "from": "e2b474f3e55a",
+      "text": "a7de59916a1d"
+    },
+    "pt-BR": {
+      "from": "e2b474f3e55a",
+      "text": "d3d89266cc2d"
+    },
+    "zh-CN": {
+      "from": "e2b474f3e55a",
+      "text": "6c1a381e8af2"
+    }
+  },
+  "shell:gallery.welcomeTitle": {
+    "de": {
+      "from": "ca0d8bb32df8",
+      "text": "2bb6e286fb13"
+    },
+    "es": {
+      "from": "ca0d8bb32df8",
+      "text": "ab9080473518"
+    },
+    "fr": {
+      "from": "ca0d8bb32df8",
+      "text": "332c0e2385a8"
+    },
+    "it": {
+      "from": "ca0d8bb32df8",
+      "text": "81bff5a52492"
+    },
+    "ja": {
+      "from": "ca0d8bb32df8",
+      "text": "4b0c0e38161f"
+    },
+    "ko": {
+      "from": "ca0d8bb32df8",
+      "text": "4be9253741c6"
+    },
+    "pt-BR": {
+      "from": "ca0d8bb32df8",
+      "text": "28b3f07f5ac5"
+    },
+    "zh-CN": {
+      "from": "ca0d8bb32df8",
+      "text": "736abbeb3f1e"
     }
   },
   "shell:gallery.whatItMade": {

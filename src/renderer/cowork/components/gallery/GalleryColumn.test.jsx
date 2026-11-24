@@ -84,6 +84,17 @@ describe('GalleryColumn list', () => {
     vi.useRealTimers();
   });
 
+  it('greets the person on the first run, and offers ideas when reopened', () => {
+    const { unmount } = render(<GalleryColumn manifest={manifest} onHide={vi.fn()} onStart={vi.fn()} welcome />);
+    expect(screen.getByRole('heading', { name: 'Welcome to Cowork' })).toBeInTheDocument();
+    expect(screen.getByText(/^Not sure where to start\?/)).toBeInTheDocument();
+    unmount();
+
+    render(<GalleryColumn manifest={manifest} onHide={vi.fn()} onStart={vi.fn()} />);
+    expect(screen.getByRole('heading', { name: 'Use Case Gallery' })).toBeInTheDocument();
+    expect(screen.getByText(/^Running out of ideas\?/)).toBeInTheDocument();
+  });
+
   it('narrows to a tab', async () => {
     const { user } = setup();
     await user.click(screen.getByRole('tab', { name: 'Your documents 1' }));

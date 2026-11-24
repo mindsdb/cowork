@@ -5648,6 +5648,9 @@ function AppCore() {
       isElectron={host.isElectron}
       openExternal={(url) => host.openExternal(url)}
       focusSearch={gallery.focusSearch}
+      welcome={gallery.welcome}
+      variant={isMobile ? 'sheet' : 'panel'}
+      reserveCorner={!isMobile}
     />
   );
   const galleryDocked = Boolean(galleryColumn) && !isMobile && !dockOffTask;
@@ -5655,7 +5658,8 @@ function AppCore() {
   const besideGallery = (view) => (
     <div className={`flex-1 min-h-0 ${galleryDocked ? 'grid grid-cols-[minmax(0,1fr)_minmax(340px,440px)]' : 'flex flex-col'}`}>
       <div className="min-w-0 min-h-0 flex-1 flex flex-col">{view}</div>
-      {galleryDocked && galleryColumn}
+      {/* Inset like the sidebar, so the two read as a pair of columns. */}
+      {galleryDocked && <div className="min-h-0 flex flex-col py-[9px] pr-[9px]">{galleryColumn}</div>}
     </div>
   );
   // An ended voice call only shows its card: the call button dismisses it and starts anew.

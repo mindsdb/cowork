@@ -488,7 +488,9 @@
   "gallery": {
     "open": "Galería de casos de uso",
     "title": "Galería de casos de uso",
-    "intro": "Cosas que {product} hizo a partir de un solo mensaje. Mira el resultado terminado y empieza desde ahí.",
+    "welcomeTitle": "Te damos la bienvenida a {product}",
+    "welcomeIntro": "¿No sabes por dónde empezar? Estas son cosas que {product} hizo a partir de un solo mensaje. Abre una para ver el resultado y empieza desde ahí.",
+    "intro": "¿Te faltan ideas? Estas son cosas que {product} hizo a partir de un solo mensaje. Abre una para ver el resultado y empieza desde ahí.",
     "hide": "Ocultar la galería",
     "searchLabel": "Buscar ejemplos",
     "searchPlaceholder": "Buscar: diapositivas, hoja de cálculo, estudio…",

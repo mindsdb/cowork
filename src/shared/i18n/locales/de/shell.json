@@ -488,7 +488,9 @@
   "gallery": {
     "open": "Anwendungsgalerie",
     "title": "Anwendungsgalerie",
-    "intro": "Was {product} aus einer einzigen Nachricht gemacht hat. Sieh dir das fertige Ergebnis an und starte davon aus.",
+    "welcomeTitle": "Willkommen bei {product}",
+    "welcomeIntro": "Du weißt nicht, wo du anfangen sollst? Das hat {product} aus einer einzigen Nachricht gemacht. Öffne ein Beispiel, sieh dir das Ergebnis an und starte davon aus.",
+    "intro": "Dir gehen die Ideen aus? Das hat {product} aus einer einzigen Nachricht gemacht. Öffne ein Beispiel, sieh dir das Ergebnis an und starte davon aus.",
     "hide": "Galerie ausblenden",
     "searchLabel": "Beispiele suchen",
     "searchPlaceholder": "Suchen: Folien, Tabelle, Lernen…",

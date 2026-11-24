@@ -29,6 +29,8 @@ export function useHomeGallery({ onHome, tasks, tasksStatus, consoleUrl = MINDS_
   const reportedAttemptRef = useRef(0);
   const [open, setOpen] = useState(false);
   const [focusSearch, setFocusSearch] = useState(false);
+  // How it was last opened: 'auto' is the first run, which greets the person.
+  const [openedBy, setOpenedBy] = useState(null);
   const [pick, setPick] = useState(null);
   const requestedRef = useRef(false);
   const autoTriedRef = useRef(false);
@@ -72,6 +74,7 @@ export function useHomeGallery({ onHome, tasks, tasksStatus, consoleUrl = MINDS_
     autoTriedRef.current = true;
     if (opensByItself(decide)) {
       setOpen(true);
+      setOpenedBy('auto');
       setFocusSearch(false);
       trackGalleryShown('auto');
     }
@@ -81,6 +84,7 @@ export function useHomeGallery({ onHome, tasks, tasksStatus, consoleUrl = MINDS_
     if (!offered) return;
     setNeeded(true);
     setOpen(true);
+    setOpenedBy(how);
     setFocusSearch(true);
     trackGalleryShown(how);
     if (!list.manifest && list.failure) load();
@@ -105,6 +109,8 @@ export function useHomeGallery({ onHome, tasks, tasksStatus, consoleUrl = MINDS_
     // keeps today's examples list.
     available: offered && Boolean(list.manifest),
     open: offered && open,
+    // The first run, opened by itself: the column greets the person.
+    welcome: openedBy === 'auto',
     manifest: list.manifest,
     failure: list.failure,
     retry: load,

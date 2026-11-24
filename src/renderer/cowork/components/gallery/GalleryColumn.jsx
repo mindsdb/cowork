@@ -36,7 +36,7 @@ function Row({ entry, onOpen, highlighted = false }) {
     <button
       type="button"
       onClick={onOpen}
-      className={`w-full flex items-center gap-3 p-2 rounded-lg border-0 text-left cursor-pointer font-[inherit] ${highlighted ? 'bg-surface-2' : 'bg-transparent'} hover:bg-surface-2`}
+      className={`w-full flex items-center gap-3 p-2 rounded-lg border-0 text-left cursor-pointer font-[inherit] ${highlighted ? 'bg-[var(--surface-raised)]' : 'bg-transparent'} hover:bg-[var(--surface-raised)]`}
     >
       <Thumbnail src={entry.thumbnail} className="w-[104px] h-[64px] rounded-md shrink-0" />
       <span className="min-w-0 flex flex-col gap-1">
@@ -114,7 +114,7 @@ function Example({ entry, openExternal }) {
   );
 }
 
-function Detail({ entry, position, total, query, onBack, onStep, onCategory, onStart, onOwnWork, onHide, isElectron, openExternal }) {
+function Detail({ entry, position, total, query, onBack, onStep, onCategory, onStart, onOwnWork, onHide, isElectron, openExternal, reserveCorner }) {
   const { t } = useTranslation('shell');
   const minutes = runMinutes(entry.seconds);
   const facts = [
@@ -158,7 +158,7 @@ function Detail({ entry, position, total, query, onBack, onStep, onCategory, onS
         )}
         {facts.length > 0 && <p className="m-0 text-[12px] text-ink-3">{facts.join(' · ')}</p>}
       </div>
-      <div className="px-4 py-3 border-t border-line flex flex-col gap-2">
+      <div className={`px-4 py-3 border-t border-line flex flex-col gap-2 ${reserveCorner ? 'pr-12' : ''}`}>
         <div className="flex gap-2">
           <Button variant="primary" className="flex-1" onClick={() => onStart(entry)}>{t('gallery.start')}</Button>
           {takesOwnFile(entry.needs) && onOwnWork && <Button variant="default" onClick={onOwnWork}>{t('gallery.ownFile')}</Button>}
@@ -178,6 +178,12 @@ function Detail({ entry, position, total, query, onBack, onStep, onCategory, onS
 export default function GalleryColumn({
   manifest, failure = null, onRetry, onHide, onStart, onOwnWork = null,
   isElectron = false, openExternal = () => {}, focusSearch = false, className = '',
+  // The first run, opened by itself: greets the person instead of titling the list.
+  welcome = false,
+  // 'panel' beside Home, drawn like the sidebar; 'sheet' over Home on a phone.
+  variant = 'panel',
+  // Keeps the bottom-right corner clear for the app's Appearance button.
+  reserveCorner = false,
 }) {
   const { t } = useTranslation('shell');
   const [query, setQuery] = useState('');
@@ -231,7 +237,7 @@ export default function GalleryColumn({
     <aside
       aria-labelledby="home-gallery-title"
       onKeyDown={onKeyDown}
-      className={`home-gallery flex flex-col min-h-0 h-full bg-surface border-l border-line ${className}`}
+      className={`home-gallery flex flex-col min-h-0 h-full overflow-hidden bg-[var(--sidebar-bg,var(--surface))] ${variant === 'panel' ? 'border border-solid border-line rounded-[14px] shadow-sh-2' : ''} ${className}`}
     >
       {opened ? (
         <Detail
@@ -247,6 +253,7 @@ export default function GalleryColumn({
           onHide={() => onHide('button')}
           isElectron={isElectron}
           openExternal={openExternal}
+          reserveCorner={reserveCorner}
         />
       ) : null}
       {/* The list stays mounted under an opened example, so Back returns to the
@@ -255,14 +262,19 @@ export default function GalleryColumn({
         <div className="px-4 pt-4 flex flex-col gap-3">
           <div className="flex items-start justify-between gap-3">
             <div className="flex flex-col gap-1">
-              <h2 id="home-gallery-title" className="m-0 text-[17px] font-semibold text-ink">{t('gallery.title')}</h2>
-              <p className="m-0 text-[13px] leading-snug text-ink-2">{t('gallery.intro', { product: productName('Cowork') })}</p>
+              {welcome && <span className="text-[11px] font-semibold tracking-[0.06em] uppercase text-ink-3">{t('gallery.title')}</span>}
+              <h2 id="home-gallery-title" className="m-0 text-[17px] font-semibold text-ink">
+                {welcome ? t('gallery.welcomeTitle', { product: productName('Cowork') }) : t('gallery.title')}
+              </h2>
+              <p className="m-0 text-[13px] leading-snug text-ink-2">
+                {t(welcome ? 'gallery.welcomeIntro' : 'gallery.intro', { product: productName('Cowork') })}
+              </p>
             </div>
             <button type="button" className={iconButton} aria-label={t('gallery.hide')} onClick={() => onHide('button')}>{Ico.close(14)}</button>
           </div>
           {manifest && (
             <>
-              <label className="flex items-center gap-2 h-10 px-3 rounded-lg border border-line bg-surface-2 focus-within:border-accent">
+              <label className="flex items-center gap-2 h-10 px-3 rounded-lg border border-line bg-[var(--surface-raised)] focus-within:border-accent">
                 <span className="text-ink-3 inline-flex" aria-hidden="true">{Ico.search(14)}</span>
                 <span className="sr-only">{t('gallery.searchLabel')}</span>
                 <input
@@ -295,7 +307,7 @@ export default function GalleryColumn({
             </>
           )}
         </div>
-        <div className="flex-1 min-h-0 overflow-y-auto px-2 py-3 flex flex-col gap-1">
+        <div className={`flex-1 min-h-0 overflow-y-auto px-2 pt-3 flex flex-col gap-1 ${reserveCorner ? 'pb-14' : 'pb-3'}`}>
           {!manifest && (
             <div role="status" className="px-2 flex flex-col items-start gap-2">
               <p className="m-0 text-[13px] text-ink-2">{failure ? t('gallery.unavailable') : t('gallery.loading')}</p>

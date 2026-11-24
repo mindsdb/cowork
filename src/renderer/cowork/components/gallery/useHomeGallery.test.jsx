@@ -44,6 +44,7 @@ describe('useHomeGallery', () => {
     expect(result.current.manifest.entries).toHaveLength(1);
     expect(result.current.focusSearch).toBe(false);
     expect(trackGalleryShown).toHaveBeenCalledWith('auto');
+    expect(result.current.welcome).toBe(true);
   });
 
   it('waits for the task list before deciding, and stays shut for an account with tasks', async () => {
@@ -89,6 +90,7 @@ describe('useHomeGallery', () => {
     expect(result.current.open).toBe(true);
     expect(result.current.focusSearch).toBe(true);
     expect(trackGalleryShown).toHaveBeenCalledWith('button');
+    expect(result.current.welcome).toBe(false);
   });
 
   it('records a list that cannot load, does not open by itself, and tries again when opened', async () => {
