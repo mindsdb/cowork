@@ -306,6 +306,12 @@
   },
   "publish": {
     "ownedByOther": "This artifact was published by another owner.",
+    "datasources": {
+      "notice": "Publishing uploads the credentials of these connections: {list}",
+      "review": "This app sends the credentials of connections you haven't approved. Review them in Share and publish again.",
+      "updateApp": "Update the app to publish this app with its connections. You can also ask the agent to publish it from the chat.",
+      "unapproved": "Published without the credentials of: {list}"
+    },
     "linkLeftLive": {
       "unrecorded": "This link was shared before {product} recorded who shares each page, so {product} can’t update it or take it down. Update shares a new link, and Stop sharing or deleting the artifact leaves this one open to anyone who has it. Ask your administrator to remove it.",
       "otherArtifact": "Nothing was taken down: this artifact’s record pointed at another artifact’s page, {link}.",
