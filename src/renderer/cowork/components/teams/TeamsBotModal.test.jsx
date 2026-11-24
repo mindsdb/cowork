@@ -58,6 +58,24 @@ describe('TeamsBotModal', () => {
     expect(screen.getByRole('button', { name: 'Connect' })).toBeTruthy();
   });
 
+  it('says it is connected when the Teams sign-in name is not known', async () => {
+    fetchTeamsBotConnection.mockResolvedValue({ state: 'connected', teams_name: null });
+    render(<TeamsBotModal open onClose={vi.fn()} />);
+
+    expect(await screen.findByText('Connected. Ask MindsHub in Teams.')).toBeInTheDocument();
+    expect(screen.queryByText(/\{name\}/)).toBeNull();
+  });
+
+  it('offers only Close when the state cannot be read', async () => {
+    fetchTeamsBotConnection.mockRejectedValue(new Error('API /teams-connection returned 502'));
+    render(<TeamsBotModal open onClose={vi.fn()} />);
+
+    expect(await screen.findByText('API /teams-connection returned 502')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Connect' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Disconnect' })).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Close' }).length).toBeGreaterThan(0);
+  });
+
   it('asks nothing while closed', () => {
     render(<TeamsBotModal open={false} onClose={vi.fn()} />);
 
