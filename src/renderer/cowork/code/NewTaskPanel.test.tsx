@@ -562,7 +562,7 @@ describe('NewTaskPanel', () => {
     expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
   });
 
-  it('says a project default model is blocked by ZDR, and never mentions credits or an admin', async () => {
+  it('skips a project default ZDR rules out and starts on an allowed model', async () => {
     const user = userEvent.setup();
     const zdrProject = { ...project, default_model: 'fable' };
     render(
@@ -583,12 +583,11 @@ describe('NewTaskPanel', () => {
 
     await user.type(screen.getByRole('textbox', { name: 'Coding task' }), 'Build it');
 
-    expect(await screen.findByText(
+    expect(screen.queryByText(
       'Zero data retention is on and this model is not ZDR-compliant. Choose another model.',
-    )).toBeInTheDocument();
+    )).not.toBeInTheDocument();
     expect(screen.queryByText('Add credits or choose an available model.')).not.toBeInTheDocument();
-    expect(screen.queryByText('An admin restricted this model. Choose another model.')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /start task/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /start task/i })).toBeEnabled();
   });
 
   it.each(['local', 'shared'])('preserves the draft, project, attachments, permissions and chosen model during %s catalogue refresh', async (source) => {

@@ -382,7 +382,8 @@ export function useNewTaskDraft({
     const configuredProjectModel = selectedProject?.default_model;
     setModel((current) => (
       ids.includes(current) ? current
-        : configuredProjectModel && modelOptions.some((option) => option.value === configuredProjectModel)
+        // A project default zero data retention rules out is skipped for an allowed model.
+        : configuredProjectModel && modelOptions.some((option) => option.value === configuredProjectModel && !option.zdr)
         ? configuredProjectModel
         : preferredCodingModel(current, ids, configuredProjectModel || defaultModel)
     ));
