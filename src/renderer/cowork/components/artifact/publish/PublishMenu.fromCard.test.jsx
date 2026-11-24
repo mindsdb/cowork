@@ -47,7 +47,7 @@ describe('a first share opened from the chat card', () => {
     expect(ctrl.publish).toHaveBeenCalledWith(expect.objectContaining({ mode: 'restricted' }));
   });
 
-  it('hands back to the header once that panel closes: a reopen starts on Public, as the header does', () => {
+  it('hands back to the header once that panel closes: a reopen starts on Only me, as the header does', () => {
     const onRequestClosed = vi.fn();
     render(<PublishMenu openRequest={{}} onRequestClosed={onRequestClosed} controller={makeController()} />);
 
@@ -55,18 +55,18 @@ describe('a first share opened from the chat card', () => {
     expect(onRequestClosed).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByText('Share'));
 
-    expect(screen.getByRole('radio', { name: /Public/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: /Only me/ })).toHaveAttribute('aria-checked', 'true');
     fireEvent.mouseDown(screen.getByTestId('publish-menu-outside-dismiss'));
     expect(onRequestClosed).toHaveBeenCalledTimes(1);
   });
 });
 
 describe('the viewer\'s own Share', () => {
-  it('keeps starting a first share on Public', () => {
+  it('starts a first share on Only me', () => {
     render(<PublishMenu controller={makeController({ entry: 'viewer' })} />);
     fireEvent.click(screen.getByText('Share'));
 
-    expect(screen.getByRole('radio', { name: /Public/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: /Only me/ })).toHaveAttribute('aria-checked', 'true');
     expect(footerShare()).toBeEnabled();
   });
 });
