@@ -5555,6 +5555,10 @@ function AppCore() {
   );
   // An ended voice call only shows its card: the call button dismisses it and starts anew.
   const noCallRunning = !voiceCallRunning(voiceCall.phase);
+  // The composers' dictate mic (ENG-4630): the call's lane, so only where live
+  // voice is served through MindsHub, and not during a call, which holds the
+  // microphone. Not tied to the voice agent setting: it only types.
+  const dictationAvailable = voiceAvailable && llmViaMindsHub(settings) && noCallRunning;
   // Voice calls only where the LLM provider is MindsHub: the call runs on
   // MindsHub. With another provider every call button is hidden.
   const voiceOffered = llmViaMindsHub(settings) && voicePrefs.enabled;
@@ -7370,6 +7374,7 @@ function AppCore() {
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
             onStartVoiceCall={startVoiceCall}
+            dictationAvailable={dictationAvailable}
             topShortcuts={offTaskShortcuts}
             browserSwitch={composerBrowserSwitch}
             onCreateProject={(args) => handleCreateProject({ ...args, _inline: true })}
@@ -7456,6 +7461,7 @@ function AppCore() {
             onRemoveAttachment={handleRemoveAttachment}
             onUpdateConnectorMute={(connector, useInChat) => handleTaskConnectorMute(currentTask?.id, connector, useInChat)}
             onStartVoiceCall={startVoiceCall}
+            dictationAvailable={dictationAvailable}
             browserRequest={browserRequest}
             projectTasks={projectTasksForBrowsers}
             onOpenTaskBrowser={(id, sessionId) => { selectTask(id); setBrowserRequest({ taskId: id, sessionId, at: Date.now() }); }}
@@ -7591,6 +7597,7 @@ function AppCore() {
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
             onStartVoiceCall={startVoiceCall}
+            dictationAvailable={dictationAvailable}
             topShortcuts={offTaskShortcuts}
             browserSwitch={composerBrowserSwitch}
             onOpenSchedule={(task) => {

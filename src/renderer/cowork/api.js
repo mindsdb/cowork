@@ -3415,13 +3415,20 @@ function localTimeZone() {
   }
 }
 
-export async function startVoiceSession(sdp, voice) {
+/* `mode` 'dictation' is the composer's mic (ENG-4630): a session that only
+   listens, for its live transcript. */
+export async function startVoiceSession(sdp, voice, mode) {
   return req('/voice/session', {
     method: 'POST',
     timeoutMs: 40_000,
     headers: await hubHeaders(),
     // The person's time zone, so the call knows their date and time.
-    body: JSON.stringify({ sdp, ...(voice ? { voice } : {}), ...(localTimeZone() ? { timezone: localTimeZone() } : {}) }),
+    body: JSON.stringify({
+      sdp,
+      ...(voice ? { voice } : {}),
+      ...(localTimeZone() ? { timezone: localTimeZone() } : {}),
+      ...(mode && mode !== 'call' ? { mode } : {}),
+    }),
   });
 }
 

@@ -309,7 +309,11 @@
       "none": "Nessun progetto"
     },
     "chooseHarness": "Scegli ambiente di esecuzione",
-    "voiceCall": "Chiamata vocale"
+    "voiceCall": "Modalità vocale",
+    "dictation": {
+      "start": "Detta",
+      "stop": "Interrompi la dettatura"
+    }
   },
   "attachmentThumbnail": {
     "open": "Apri immagine",
@@ -753,7 +757,7 @@
     "talkTo": "Parla con {agent}"
   },
   "voiceCall": {
-    "dialogLabel": "Chiamata vocale con {agent}",
+    "dialogLabel": "Modalità vocale",
     "connecting": "Connessione…",
     "ending": "Chiusura…",
     "working": "Ci sto lavorando…",
