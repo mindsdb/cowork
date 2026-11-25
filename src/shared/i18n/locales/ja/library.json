@@ -378,7 +378,8 @@
     "custom": "カスタム",
     "legacy": "古いバージョンで保存されています。接続を解除してから、もう一度接続してください。",
     "activateLabel": "{title}を{action, select, view {表示} reconnect {再接続} other {管理}}：{subtitle}{hint}",
-    "removing": "削除中…"
+    "removing": "削除中…",
+    "settingsLabel": "{title}の設定: {subtitle}"
   },
   "datasource": {
     "failed": "うまくいきませんでした。",
