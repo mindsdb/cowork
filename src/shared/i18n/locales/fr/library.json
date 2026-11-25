@@ -707,6 +707,8 @@
       "loginCancelled": "La connexion a été annulée.",
       "loginTimedOut": "La connexion dans le navigateur n'est pas revenue à temps. Réessayez.",
       "loginRefused": "Le serveur de connexion a refusé la connexion. Réessayez, ou vérifiez les réglages du serveur avec son responsable.",
+      "loginDenied": "La connexion a été refusée. Si ce n'est pas vous qui l'avez refusée, demandez au responsable du serveur si votre compte peut utiliser cette application.",
+      "loginUnavailable": "Le serveur de connexion a rencontré un problème. Réessayez plus tard.",
       "unavailable": "Les serveurs MCP par URL ne sont pas disponibles pour le moment. Redémarrez l'application et réessayez.",
       "keychain": "Le trousseau du système n'est pas disponible, donc la connexion ne peut pas être enregistrée en sécurité.",
       "serverChanged": "L'application a changé de compte ou redémarré pendant la connexion. Réessayez.",

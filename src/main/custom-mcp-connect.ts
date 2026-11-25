@@ -20,7 +20,7 @@ import { appSecretGeneration, isCustomMcpAvailable } from './app-secret';
 import { checkPublicHttpsUrl, GuardedFetchError, type GuardedFetch } from './guarded-fetch';
 import { customMcpFetch, keepAccessWithoutRefresh, type StoredSettings } from './custom-mcp-tokens';
 import {
-  discoverMcpAuth, exchangeCode, givenClient, McpOAuthError, OAUTH_ERROR_CODES, registerClient, revokeToken,
+  AUTHORIZE_ERROR_CODES, discoverMcpAuth, exchangeCode, givenClient, McpOAuthError, registerClient, revokeToken,
   type AuthorizationServer, type OAuthClient, type TokenSet,
 } from './mcp-oauth';
 import { authorizeInBrowser, base64UrlEncode, buildAuthorizeUrl, loopbackRedirectUri, CUSTOM_MCP_REDIRECT_PORT, CUSTOM_MCP_REDIRECT_URI, type BrowserAuthorizeOpts, type BrowserAuthorizeResult } from './oauth-service';
@@ -222,8 +222,8 @@ export async function logIn(
 const CANCELLED = { ok: false as const, code: 'login_cancelled', reason: 'The connection was cancelled.' };
 
 /** The result for a browser login that ended without a code. Only a
- *  registered OAuth error code from the provider is kept; its description
- *  never is. Other failures (a busy port, a broken callback) stay `login_failed`. */
+ *  registered authorize error code from the provider is kept; its
+ *  description never is. Other failures (a busy port, a broken callback) stay `login_failed`. */
 function browserFailure(browser: Extract<BrowserAuthorizeResult, { ok: false }>): { ok: false; code: string; reason: string } {
   switch (browser.code) {
     case 'cancelled':
@@ -231,7 +231,12 @@ function browserFailure(browser: Extract<BrowserAuthorizeResult, { ok: false }>)
     case 'timed_out':
       return { ok: false, code: 'login_timed_out', reason: 'The browser login did not come back in time.' };
     case 'provider_error': {
-      const known = browser.oauthError && OAUTH_ERROR_CODES.has(browser.oauthError) ? browser.oauthError : undefined;
+      const known = browser.oauthError && AUTHORIZE_ERROR_CODES.has(browser.oauthError) ? browser.oauthError : undefined;
+      // access_denied comes from the person or from the login server's own policy.
+      if (known === 'access_denied') return { ok: false, code: 'login_denied', reason: 'The login was declined.' };
+      if (known === 'server_error' || known === 'temporarily_unavailable') {
+        return { ok: false, code: 'login_unavailable', reason: `The login server had a problem: ${known}` };
+      }
       return { ok: false, code: 'login_refused', reason: known ? `The login server refused the login: ${known}` : 'The login server refused the login.' };
     }
     default:

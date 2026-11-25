@@ -707,6 +707,8 @@
       "loginCancelled": "The login was cancelled.",
       "loginTimedOut": "The browser login didn't come back in time. Try again.",
       "loginRefused": "The login server refused the login. Try again, or check the server's settings with its owner.",
+      "loginDenied": "The login was declined. If you didn't decline it, ask the server's owner whether your account may use this app.",
+      "loginUnavailable": "The login server had a problem. Try again later.",
       "unavailable": "MCP servers by URL aren't available right now. Restart the app and try again.",
       "keychain": "The system keychain isn't available, so the connection can't be stored safely.",
       "serverChanged": "The app switched accounts or restarted during the login. Try again.",

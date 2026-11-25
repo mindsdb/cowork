@@ -707,6 +707,8 @@
       "loginCancelled": "L'accesso è stato annullato.",
       "loginTimedOut": "L'accesso nel browser non è tornato in tempo. Riprova.",
       "loginRefused": "Il server di accesso ha rifiutato l'accesso. Riprova o verifica le impostazioni del server con il suo responsabile.",
+      "loginDenied": "L'accesso è stato rifiutato. Se non l'hai rifiutato tu, chiedi al responsabile del server se il tuo account può usare questa app.",
+      "loginUnavailable": "Il server di accesso ha avuto un problema. Riprova più tardi.",
       "unavailable": "I server MCP tramite URL non sono disponibili al momento. Riavvia l'app e riprova.",
       "keychain": "Il portachiavi di sistema non è disponibile, quindi la connessione non può essere salvata in modo sicuro.",
       "serverChanged": "L'app ha cambiato account o si è riavviata durante l'accesso. Riprova.",

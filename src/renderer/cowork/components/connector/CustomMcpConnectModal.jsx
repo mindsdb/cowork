@@ -52,6 +52,10 @@ export function connectErrorMessage(t, result) {
       return t('customMcp.error.loginTimedOut');
     case 'login_refused':
       return t('customMcp.error.loginRefused');
+    case 'login_denied':
+      return t('customMcp.error.loginDenied');
+    case 'login_unavailable':
+      return t('customMcp.error.loginUnavailable');
     case 'unavailable':
       return t('customMcp.error.unavailable');
     case 'keychain_unavailable':

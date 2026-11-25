@@ -707,6 +707,8 @@
       "loginCancelled": "Se canceló el inicio de sesión.",
       "loginTimedOut": "El inicio de sesión en el navegador no volvió a tiempo. Inténtalo de nuevo.",
       "loginRefused": "El servidor de inicio de sesión rechazó el inicio de sesión. Inténtalo de nuevo o revisa la configuración del servidor con su responsable.",
+      "loginDenied": "Se rechazó el inicio de sesión. Si no lo rechazaste tú, pregunta al responsable del servidor si tu cuenta puede usar esta app.",
+      "loginUnavailable": "El servidor de inicio de sesión tuvo un problema. Inténtalo más tarde.",
       "unavailable": "Los servidores MCP por URL no están disponibles ahora. Reinicia la app e inténtalo de nuevo.",
       "keychain": "El llavero del sistema no está disponible, así que la conexión no se puede guardar de forma segura.",
       "serverChanged": "La app cambió de cuenta o se reinició durante el inicio de sesión. Inténtalo de nuevo.",

@@ -112,6 +112,8 @@ describe('CustomMcpConnectModal', () => {
     [{ code: 'login_cancelled', reason: 'The connection was cancelled.' }, 'The login was cancelled.'],
     [{ code: 'login_timed_out', reason: 'x' }, "The browser login didn't come back in time. Try again."],
     [{ code: 'login_refused', reason: 'The login server refused the login: invalid_scope' }, "The login server refused the login. Try again, or check the server's settings with its owner."],
+    [{ code: 'login_denied', reason: 'The login was declined.' }, "The login was declined. If you didn't decline it, ask the server's owner whether your account may use this app."],
+    [{ code: 'login_unavailable', reason: 'The login server had a problem: server_error' }, 'The login server had a problem. Try again later.'],
     [{ code: 'client_refused', reason: 'x' }, `The login server refused this client ID or its redirect URI. Check the client ID, and that ${CUSTOM_MCP_REDIRECT_URI} is registered for it.`],
     [{ code: 'grant_refused', reason: 'the token endpoint answered 400: invalid_grant' }, "The login didn't finish: the token endpoint answered 400: invalid_grant"],
     [{ code: 'keychain_unavailable', reason: 'x' }, "The system keychain isn't available, so the connection can't be stored safely."],

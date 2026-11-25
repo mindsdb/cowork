@@ -65,13 +65,27 @@ export interface TokenSet {
 // The registered error codes (RFC 6749 5.2, RFC 8707): only these reach
 // messages, which may land in logs and on screen; any other text a server
 // sends could carry a token.
-export const OAUTH_ERROR_CODES: ReadonlySet<string> = new Set([
+const OAUTH_ERROR_CODES = new Set([
   'invalid_request',
   'invalid_client',
   'invalid_grant',
   'unauthorized_client',
   'unsupported_grant_type',
   'invalid_scope',
+  'invalid_target',
+]);
+// The codes an authorize endpoint sends back to the redirect (RFC 6749
+// 4.1.2.1, RFC 8707), plus invalid_client, which providers also send there.
+// Same rule as above: only these reach messages.
+export const AUTHORIZE_ERROR_CODES: ReadonlySet<string> = new Set([
+  'access_denied',
+  'invalid_request',
+  'invalid_client',
+  'unauthorized_client',
+  'unsupported_response_type',
+  'invalid_scope',
+  'server_error',
+  'temporarily_unavailable',
   'invalid_target',
 ]);
 const REFUSED_GRANT_CODES = new Set(['invalid_grant', 'invalid_client', 'unauthorized_client']);

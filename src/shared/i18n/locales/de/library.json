@@ -707,6 +707,8 @@
       "loginCancelled": "Die Anmeldung wurde abgebrochen.",
       "loginTimedOut": "Die Anmeldung im Browser kam nicht rechtzeitig zurück. Versuche es erneut.",
       "loginRefused": "Der Anmeldeserver hat die Anmeldung abgelehnt. Versuche es erneut oder kläre die Servereinstellungen mit dem Betreiber.",
+      "loginDenied": "Die Anmeldung wurde abgelehnt. Wenn du sie nicht abgelehnt hast, frag den Betreiber des Servers, ob dein Konto diese App nutzen darf.",
+      "loginUnavailable": "Beim Anmeldeserver ist ein Problem aufgetreten. Versuche es später erneut.",
       "unavailable": "MCP-Server per URL sind gerade nicht verfügbar. Starte die App neu und versuche es erneut.",
       "keychain": "Der Systemschlüsselbund ist nicht verfügbar, daher kann die Verbindung nicht sicher gespeichert werden.",
       "serverChanged": "Die App hat während der Anmeldung das Konto gewechselt oder neu gestartet. Versuche es erneut.",

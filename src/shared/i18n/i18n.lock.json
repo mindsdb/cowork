@@ -103053,6 +103053,40 @@
       "text": "ab8a20746b35"
     }
   },
+  "library:customMcp.error.loginDenied": {
+    "de": {
+      "from": "3ee196fe5307",
+      "text": "9f6a79b62229"
+    },
+    "es": {
+      "from": "3ee196fe5307",
+      "text": "1d4700ddae77"
+    },
+    "fr": {
+      "from": "3ee196fe5307",
+      "text": "94983f50739a"
+    },
+    "it": {
+      "from": "3ee196fe5307",
+      "text": "bd7690a179b7"
+    },
+    "ja": {
+      "from": "3ee196fe5307",
+      "text": "b0e74856ceb9"
+    },
+    "ko": {
+      "from": "3ee196fe5307",
+      "text": "1440e3fa9635"
+    },
+    "pt-BR": {
+      "from": "3ee196fe5307",
+      "text": "8399d0e58caa"
+    },
+    "zh-CN": {
+      "from": "3ee196fe5307",
+      "text": "fe1dbbf52c6c"
+    }
+  },
   "library:customMcp.error.loginFailed": {
     "de": {
       "from": "59da8d14132a",
@@ -103153,6 +103187,40 @@
     "zh-CN": {
       "from": "2c880368861c",
       "text": "99a45fe9376d"
+    }
+  },
+  "library:customMcp.error.loginUnavailable": {
+    "de": {
+      "from": "54302c83a3b4",
+      "text": "18a4275a1ad1"
+    },
+    "es": {
+      "from": "54302c83a3b4",
+      "text": "ad4797ff4d32"
+    },
+    "fr": {
+      "from": "54302c83a3b4",
+      "text": "c957da0e593e"
+    },
+    "it": {
+      "from": "54302c83a3b4",
+      "text": "3856010d32d2"
+    },
+    "ja": {
+      "from": "54302c83a3b4",
+      "text": "6b153c703687"
+    },
+    "ko": {
+      "from": "54302c83a3b4",
+      "text": "dc92a033add2"
+    },
+    "pt-BR": {
+      "from": "54302c83a3b4",
+      "text": "c119dadb681b"
+    },
+    "zh-CN": {
+      "from": "54302c83a3b4",
+      "text": "6eeae42dc4c5"
     }
   },
   "library:customMcp.error.missing": {

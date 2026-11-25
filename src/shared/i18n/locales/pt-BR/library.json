@@ -707,6 +707,8 @@
       "loginCancelled": "O login foi cancelado.",
       "loginTimedOut": "O login no navegador não voltou a tempo. Tente de novo.",
       "loginRefused": "O servidor de login recusou o login. Tente de novo ou confira as configurações do servidor com o responsável por ele.",
+      "loginDenied": "O login foi recusado. Se não foi você quem recusou, pergunte ao responsável pelo servidor se sua conta pode usar este app.",
+      "loginUnavailable": "O servidor de login teve um problema. Tente de novo mais tarde.",
       "unavailable": "Servidores MCP por URL não estão disponíveis agora. Reinicie o app e tente de novo.",
       "keychain": "O chaveiro do sistema não está disponível, então a conexão não pode ser guardada com segurança.",
       "serverChanged": "O app trocou de conta ou reiniciou durante o login. Tente de novo.",

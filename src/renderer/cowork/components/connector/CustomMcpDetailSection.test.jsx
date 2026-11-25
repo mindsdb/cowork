@@ -106,6 +106,18 @@ describe('CustomMcpDetailSection', () => {
     expect(await screen.findByText('Reconnected. Your tool choices are kept.')).toBeTruthy();
   });
 
+  it('says a reconnect login was declined', async () => {
+    bridge.customMcpReconnect
+      .mockResolvedValueOnce({ ok: false, code: 'confirm_login_hosts', loginHosts: ['auth.example.com'] })
+      .mockResolvedValueOnce({ ok: false, code: 'login_denied', reason: 'The login was declined.' });
+    renderSection();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Reconnect' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+
+    expect(await screen.findByText("The login was declined. If you didn't decline it, ask the server's owner whether your account may use this app.")).toBeTruthy();
+  });
+
   it('says a reconnect login ran out of time, with no client ID advice', async () => {
     bridge.customMcpReconnect
       .mockResolvedValueOnce({ ok: false, code: 'confirm_login_hosts', loginHosts: ['auth.example.com'] })
