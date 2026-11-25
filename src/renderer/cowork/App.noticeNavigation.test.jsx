@@ -134,4 +134,16 @@ describe('notice navigation', () => {
     act(() => spies.openNotice({ target: { scheduleId: 'schedule-1', runId: 'setup-failure', conversationId: null } }));
     await waitFor(() => expect(window.location.pathname).toBe('/scheduled/schedule-1'));
   });
+
+  it('opens a supported destination for an unfamiliar notice kind', async () => {
+    window.history.replaceState(null, '', '/projects');
+    render(<App />);
+    await settle();
+    act(() => spies.openNotice({
+      kind: 'approval.requested',
+      target: { approvalId: 'approval-1' },
+      fallback: { summary: 'A task is waiting for approval.', destination: { kind: 'schedule', id: 'schedule-1' } },
+    }));
+    await waitFor(() => expect(window.location.pathname).toBe('/scheduled/schedule-1'));
+  });
 });

@@ -54,6 +54,16 @@ describe('NoticeBell', () => {
     expect(openNotice).toHaveBeenCalledWith(notices[0]);
   });
 
+  it('shows the supplied summary for an unfamiliar notice kind', async () => {
+    const user = userEvent.setup();
+    renderBell({ notices: [{
+      ...notices[2],
+      fallback: { summary: 'A task is waiting for approval.' },
+    }] });
+    await user.click(screen.getByRole('button', { name: /Notifications/ }));
+    expect((await screen.findAllByRole('menuitem'))[0]).toHaveTextContent('A task is waiting for approval.');
+  });
+
   it('marks all read', async () => {
     const user = userEvent.setup();
     const { markAllRead } = renderBell();

@@ -6811,7 +6811,15 @@ function AppCore() {
   const notices = useNotices({
     routeKey: `${effectiveWorkspaceMode}:${route}:${activeTaskId || ''}:${selectedScheduleId || ''}`,
     onOpen: (notice) => {
-      const { conversationId, scheduleId } = notice?.target || {};
+      const destination = notice?.fallback?.destination;
+      const supported = typeof destination?.id === 'string'
+        && (destination.kind === 'schedule' || destination.kind === 'conversation');
+      const { conversationId, scheduleId } = supported
+        ? {
+          conversationId: destination.kind === 'conversation' ? destination.id : null,
+          scheduleId: destination.kind === 'schedule' ? destination.id : null,
+        }
+        : notice?.target || {};
       if (!conversationId && !scheduleId) return;
       setWorkspaceMode('cowork');
       if (conversationId) {

@@ -1,5 +1,4 @@
-// How a notice reads. The server stores no display text: the client words
-// each notice from its kind and subject, in the reader's language.
+// Known notice kinds use localized client copy. Other kinds use the fallback.
 
 import i18n from '../../lib/i18n';
 
@@ -17,9 +16,6 @@ export function runKind(notice) {
 
 export const msg = (key, vars) => i18n.t(`scheduleRunNotice.${key}`, { ns: 'projects', ...vars });
 
-// The words for a notice, from its kind and subject only. The server stores no
-// display text, and a failure's reason is never shown: notifications show on
-// the lock screen. A kind this client doesn't know reads generically.
 export function noticeText(notice) {
   const kind = runKind(notice);
   if (kind) {
@@ -31,7 +27,8 @@ export function noticeText(notice) {
       line: msg(`${kind}Toast`, { title }),
     };
   }
-  const subject = notice?.subject || '';
+  const summary = notice?.fallback?.summary;
+  const subject = typeof summary === 'string' && summary.trim() ? summary : notice?.subject || '';
   return {
     kind: null,
     title: msg('genericTitle'),
