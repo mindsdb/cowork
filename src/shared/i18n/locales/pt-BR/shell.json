@@ -190,17 +190,47 @@
     }
   },
   "comingSoon": {
-    "cloudTitle": "Em breve no Cloud",
+    "cloudTitle": "Isto funciona no app para desktop",
+    "cloudTitleNamed": "{feature} funciona no app para desktop",
     "unavailableTitle": "Recurso indisponível",
-    "cloudBodyNamed": "{feature} ainda não está disponível no Cloud. Enquanto isso, você pode usá-lo no app para desktop.",
-    "cloudBody": "Este recurso ainda não está disponível no Cloud. Enquanto isso, você pode usá-lo no app para desktop.",
-    "cloudBodyCustom": "{feature} ainda não está disponível no Cloud. Você já pode conectá-lo como um conector personalizado.",
+    "cloudBodyNamed": "Hoje {feature} funciona no app para desktop. Baixe o app para conectar {feature} lá.",
+    "cloudBody": "Hoje isto funciona no app para desktop. Baixe o app para usar lá.",
+    "mobileBodyNamed": "{feature} funciona no app para desktop, em um computador.",
+    "mobileBody": "Isto funciona no app para desktop, em um computador.",
+    "cloudBodyCustom": "Hoje {feature} funciona no app para desktop. Aqui, você já pode conectá-lo como um conector personalizado.",
     "unavailableBodyNamed": "{feature} não está disponível nesta implantação.",
     "unavailableBody": "Este recurso não está disponível nesta implantação.",
     "notNow": "Agora não",
-    "download": "Baixar o app",
+    "download": "Baixar o app para desktop",
     "connectCustom": "Conectar seu conector personalizado de {feature}",
     "buildCustom": "Criar um conector personalizado"
+  },
+  "desktopOffer": {
+    "tag": "Desktop",
+    "notNow": "Agora não",
+    "download": "Baixar o app para desktop",
+    "platforms": "Para Mac, Windows e Linux.",
+    "code": {
+      "title": "O modo código funciona no app para desktop",
+      "body": "O modo código trabalha com o código do seu computador, então precisa do app para desktop. Lá, o Cowork pode:",
+      "points": {
+        "files": "Ler e alterar código nas suas próprias pastas e repositórios",
+        "commands": "Executar comandos e testes na sua máquina",
+        "agents": "Passar uma tarefa para o Claude Code ou o Codex"
+      }
+    },
+    "folder": {
+      "projectTitle": "Use uma pasta do seu computador no app para desktop",
+      "chatTitle": "As pastas de trabalho ficam no app para desktop",
+      "projectBody": "O navegador não consegue acessar os arquivos do seu computador. O app para desktop pode iniciar um projeto em uma pasta que você já tem, e o Cowork trabalha com os arquivos dela.",
+      "chatBody": "O navegador não consegue acessar os arquivos do seu computador. No app para desktop, você pode adicionar pastas do seu computador a um chat, e o Cowork trabalha nelas.",
+      "points": {
+        "inPlace": "Sem upload: usa os arquivos onde eles estão",
+        "saved": "O que ele cria fica salvo no seu computador",
+        "kept": "Remover a pasta do Cowork mantém seus arquivos no lugar"
+      },
+      "note": "Para Mac, Windows e Linux. Aqui no navegador, você ainda pode enviar arquivos."
+    }
   },
   "loadStatus": {
     "retry": "Tentar novamente",

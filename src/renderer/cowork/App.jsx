@@ -2269,6 +2269,7 @@ function AppCore() {
   const [comingSoonFeature, setComingSoonFeature] = useState(null);
   // The custom route the "Coming soon" dialog offers for a connector cloud doesn't run.
   const [comingSoonOffer, setComingSoonOffer] = useState(null);
+  const [comingSoonConnectorId, setComingSoonConnectorId] = useState(null);
   const [customConnectors, setCustomConnectors] = useState([]);
   const composerConnectors = useMemo(
     () => composerConnectorList(connectors, datasourceConnectors, customConnectors),
@@ -3644,6 +3645,7 @@ function AppCore() {
       // The SharePoint routes are refused in org mode; offer the desktop app.
       if (orgMode) {
         setComingSoonOffer(null);
+        setComingSoonConnectorId(connector.id);
         setComingSoonFeature(connector.label || 'SharePoint');
       }
       else setSharePointSetupOpen(true);
@@ -7991,6 +7993,7 @@ function AppCore() {
             connect: (connector) => { void handleConnectorPicked(connector); },
             build: (name) => sendFromApp(buildCustomConnectorRequest(name)),
           }));
+          setComingSoonConnectorId(c?.id || null);
           setComingSoonFeature(label);
         }}
         onAddMcpUrl={() => {
@@ -8016,7 +8019,8 @@ function AppCore() {
       <ComingSoonModal
         feature={comingSoonFeature}
         offer={comingSoonOffer}
-        onClose={() => { setComingSoonFeature(null); setComingSoonOffer(null); }}
+        connectorId={comingSoonConnectorId}
+        onClose={() => { setComingSoonFeature(null); setComingSoonOffer(null); setComingSoonConnectorId(null); }}
       />
 
       {!host.isWeb && (

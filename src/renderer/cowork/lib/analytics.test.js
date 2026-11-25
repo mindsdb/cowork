@@ -2619,3 +2619,24 @@ describe('next steps under an answer', () => {
     expect(event.properties).toMatchObject({ step: 'schedule', result_kind: 'research', position: 1 });
   });
 });
+
+describe('offers of the desktop app on the web', () => {
+  it('desktop_offer_shown names the feature, the entry and what the main button does', async () => {
+    const fetchMock = mockFetch();
+    const analytics = await importAnalytics();
+    analytics.trackDesktopOfferShown({ feature: 'local_folder', entry: 'chat_context' });
+    const event = await sentEvent(fetchMock, 'desktop_offer_shown');
+    expect(event.properties).toMatchObject({ feature: 'local_folder', entry: 'chat_context', offer: 'download' });
+    expect(event.properties).not.toHaveProperty('connector_id');
+  });
+
+  it('desktop_offer_download_clicked carries the connector and the download link tag', async () => {
+    const fetchMock = mockFetch();
+    const analytics = await importAnalytics();
+    analytics.trackDesktopOfferDownloadClicked({ feature: 'connector', entry: 'connector_directory', connectorId: 'jira' });
+    const event = await sentEvent(fetchMock, 'desktop_offer_download_clicked');
+    expect(event.properties).toMatchObject({
+      feature: 'connector', entry: 'connector_directory', connector_id: 'jira', from: 'cowork-web-connector',
+    });
+  });
+});
