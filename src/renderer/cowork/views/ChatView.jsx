@@ -2266,6 +2266,7 @@ export default function ChatView({
   disabledConnections,
   onUpdateConnectorMute,
   onStartVoiceCall = null,
+  dictationAvailable = false,
   // A voice call asked to show this task's browser: {taskId, sessionId, at}.
   browserRequest = null,
   // The project's tasks ({id, title}), for the browser pane's list of the
@@ -4411,6 +4412,7 @@ export default function ChatView({
             disabledConnections={disabledConnections ?? task.disabledConnections ?? []}
             onUpdateConnectorMute={onUpdateConnectorMute}
             onStartVoiceCall={onStartVoiceCall}
+            dictationAvailable={dictationAvailable}
             browserSwitch={browserSwitch}
             onRemoveAttachment={onRemoveAttachment}
             placeholder={t('chatView.composer.replyPlaceholder')}

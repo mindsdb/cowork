@@ -261,6 +261,7 @@ export default function HomeView({
   disabledConnections = [],
   onUpdateConnectorMute,
   onStartVoiceCall = null,
+  dictationAvailable = false,
   // The browser and call icons, at the top right (TopShortcuts).
   topShortcuts = null,
   browserSwitch = null,
@@ -845,6 +846,7 @@ export default function HomeView({
               disabledConnections={disabledConnections}
               onUpdateConnectorMute={onUpdateConnectorMute}
               onStartVoiceCall={onStartVoiceCall}
+              dictationAvailable={dictationAvailable}
               browserSwitch={browserSwitch}
               onCreateProject={onCreateProject}
               onTypingChange={(typing) => {
