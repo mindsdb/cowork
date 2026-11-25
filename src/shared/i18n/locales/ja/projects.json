@@ -321,6 +321,7 @@
       "sections": {
         "mine": "自分のもの",
         "sharedWithMe": "自分と共有",
+        "sharedByOthers": "他のユーザーが共有",
         "team": "自分のチーム",
         "builtin": "組み込み"
       },

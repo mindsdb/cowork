@@ -321,6 +321,7 @@
       "sections": {
         "mine": "내 항목",
         "sharedWithMe": "나와 공유됨",
+        "sharedByOthers": "다른 사람이 공유함",
         "team": "내 팀",
         "builtin": "기본 제공"
       },

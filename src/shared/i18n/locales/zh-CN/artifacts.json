@@ -48,8 +48,9 @@
   },
   "status": {
     "badge": {
+      "onlyYou": "仅自己",
       "public": "公开",
-      "password": "密码",
+      "publicPassword": "公开 · 密码",
       "restricted": "受限"
     },
     "hint": {
@@ -57,6 +58,7 @@
       "notShareable": "未分享。只有网页和 Markdown 文档可以通过链接分享。",
       "orgRestricted": "受限。打开“分享”可查看谁能打开此链接。",
       "ownerOnly": "已分享，但只有你能打开此链接。",
+      "password": "任何拥有链接和密码的人都可以打开。",
       "chosenPeople": "已分享。只有你选择的人能打开此链接。",
       "unknown": "已分享。无法确认谁能打开此链接，因此按受限处理。",
       "sharedWith": "已与 {names} 共享",
@@ -70,7 +72,6 @@
     "stoppingSharing": "正在停止分享…",
     "deleting": "正在删除…",
     "notShared": "未分享",
-    "draft": "草稿",
     "unsharedChanges": "有未分享的更改"
   },
   "liveAppShare": {
@@ -552,11 +553,9 @@
       "noMatch": "没有符合这些筛选条件的工件。",
       "clear": "清除筛选",
       "status": "状态",
-      "allStatuses": "所有状态"
-    },
-    "owner": {
-      "you": "你",
-      "youHint": "你的内容，已与他人共享。"
+      "allStatuses": "所有状态",
+      "access": "访问权限",
+      "allAccess": "所有访问级别"
     },
     "openComments": "{count, plural, other {# 条未解决评论}}",
     "openCommentsHint": "打开预览并查看评论"

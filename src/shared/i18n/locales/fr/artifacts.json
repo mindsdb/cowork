@@ -48,8 +48,9 @@
   },
   "status": {
     "badge": {
+      "onlyYou": "Vous uniquement",
       "public": "Public",
-      "password": "Mot de passe",
+      "publicPassword": "Public · mot de passe",
       "restricted": "Restreint"
     },
     "hint": {
@@ -57,6 +58,7 @@
       "notShareable": "Non partagé. Seuls les pages web et les documents Markdown peuvent être partagés sous forme de lien.",
       "orgRestricted": "Restreint. Ouvrez Partager pour voir qui peut ouvrir le lien.",
       "ownerOnly": "Partagé, mais vous seul pouvez ouvrir le lien.",
+      "password": "Toute personne disposant du lien et du mot de passe peut l’ouvrir.",
       "chosenPeople": "Partagé. Seules les personnes que vous avez choisies peuvent ouvrir le lien.",
       "unknown": "Partagé. Impossible de confirmer qui peut ouvrir le lien : il est donc considéré comme restreint.",
       "sharedWith": "Partagé avec {names}",
@@ -70,7 +72,6 @@
     "stoppingSharing": "Arrêt du partage…",
     "deleting": "Suppression…",
     "notShared": "Non partagé",
-    "draft": "Brouillon",
     "unsharedChanges": "Modifications non partagées"
   },
   "liveAppShare": {
@@ -552,11 +553,9 @@
       "noMatch": "Aucun artefact ne correspond à ces filtres.",
       "clear": "Effacer les filtres",
       "status": "Statut",
-      "allStatuses": "Tous les statuts"
-    },
-    "owner": {
-      "you": "Vous",
-      "youHint": "À vous, partagé avec d'autres personnes."
+      "allStatuses": "Tous les statuts",
+      "access": "Accès",
+      "allAccess": "Tous les niveaux d’accès"
     },
     "openComments": "{count, plural, one {# commentaire ouvert} other {# commentaires ouverts}}",
     "openCommentsHint": "Ouvrir l’aperçu sur ses commentaires"

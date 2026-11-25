@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('../../platform/host', () => ({ host: { isWeb: true } }));
 
 import {
+  ACCESS_LEVEL,
+  ACCESS_LEVELS,
+  artifactAccessLevel,
   artifactSection,
   groupArtifactsBySection,
   artifactShareState,
@@ -453,43 +456,93 @@ describe('Share or Shared', () => {
 
 
 // Artifacts are grouped as skills are, by the server's skill rule (ENG-4455).
-describe('artifactSection and groupArtifactsBySection', () => {
+describe('artifactSection and groupArtifactsBySection (ENG-4647)', () => {
   const art = (id, extra = {}) => ({ id, title: id, capabilities: { role: 'owner' }, ...extra });
   const theirs = { capabilities: { role: 'reviewer' } };
-  const TEAMS = [{ id: 't-all', display_name: 'All members', is_default: true }, { id: 't-1', display_name: 'Platform' }];
 
-  it('puts the caller\'s own by audience (everyone or default team, a team, else theirs) and anyone else\'s as shared with them', () => {
-    expect(artifactSection(art('a', { orgAllowed: true }))).toBe('org');
-    expect(artifactSection(art('b', { allowedTeamIds: ['t-all'] }), { teams: TEAMS })).toBe('org');
-    expect(artifactSection(art('c', { allowedTeamIds: ['t-1'] }), { teams: TEAMS })).toBe('team');
+  it('groups by whose an artifact is, whoever it reaches', () => {
+    // The caller's own, at every access level: Yours.
+    expect(artifactSection(art('a', { orgAllowed: true }))).toBe('mine');
+    expect(artifactSection(art('b', { allowedTeamIds: ['t-all'] }))).toBe('mine');
+    expect(artifactSection(art('c', { allowedTeamIds: ['t-1'] }))).toBe('mine');
     expect(artifactSection(art('d', { accessEmails: ['x@example.com'] }))).toBe('mine');
-    expect(artifactSection(art('e', { ...theirs, accessEmails: ['me@example.com'] }))).toBe('shared_with_me');
-    expect(artifactSection(art('f', { capabilities: { role: 'reviewer', ownerUnknown: true } }))).toBe('shared_with_me');
-    // Someone else's, shared with a team or everyone: still shared with me.
-    expect(artifactSection(art('g', { ...theirs, allowedTeamIds: ['t-1'] }), { teams: TEAMS })).toBe('shared_with_me');
+    expect(artifactSection(art('e', { publishedUrl: 'https://x', accessMode: 'public' }))).toBe('mine');
+    // Someone else's, however it reached the caller: Shared by others.
+    expect(artifactSection(art('f', { ...theirs, accessEmails: ['me@example.com'] }))).toBe('shared_with_me');
+    expect(artifactSection(art('g', { capabilities: { role: 'reviewer', ownerUnknown: true } }))).toBe('shared_with_me');
     expect(artifactSection(art('h', { ...theirs, orgAllowed: true }))).toBe('shared_with_me');
   });
 
-  it('counts an audience the card does not know by its owner alone', () => {
-    expect(artifactSection(art('g', { allowedTeamIds: null }))).toBe('mine');
-    expect(artifactSection(art('h', { ...theirs, allowedTeamIds: null }))).toBe('shared_with_me');
-  });
-
-  it('lists the caller\'s own first, then what they share, and what others shared last', () => {
+  it('puts every artifact in exactly one of two groups, the caller\'s own first', () => {
     const groups = groupArtifactsBySection([
       art('theirs-1', theirs),
       art('org-1', { orgAllowed: true }),
       art('mine-1'),
       art('team-1', { allowedTeamIds: ['t-1'] }),
-      art('mine-2'),
-    ], { orgName: 'Acme', teams: TEAMS });
-
-    expect(groups.map((g) => [g.id, g.artifacts.map((a) => a.id)])).toEqual([
-      ['mine', ['mine-1', 'mine-2']],
-      ['team', ['team-1']],
-      ['org', ['org-1']],
-      ['shared_with_me', ['theirs-1']],
+      art('public-1', { publishedUrl: 'https://x', accessMode: 'public' }),
     ]);
+
+    expect(groups.map((g) => [g.id, g.title, g.artifacts.map((a) => a.id)])).toEqual([
+      ['mine', 'Yours', ['org-1', 'mine-1', 'team-1', 'public-1']],
+      ['shared_with_me', 'Shared by others', ['theirs-1']],
+    ]);
+  });
+
+  it('leaves out an empty group', () => {
+    expect(groupArtifactsBySection([art('mine-1')]).map((g) => g.id)).toEqual(['mine']);
+    expect(groupArtifactsBySection([])).toEqual([]);
   });
 });
 
+describe('artifactAccessLevel (ENG-4647)', () => {
+  const TEAMS = [{ id: 't-all', display_name: 'All members', is_default: true }, { id: 't-1', display_name: 'Platform' }];
+  const live = { publishedUrl: 'https://x.test/a' };
+  const mine = (extra = {}) => ({ capabilities: { role: 'owner' }, ...extra });
+  const theirs = (extra = {}) => ({ capabilities: { role: 'reviewer' }, ...extra });
+  const restricted = (extra = {}) => ({
+    ...live, accessMode: 'restricted', ownerOnly: false, orgAllowed: false, allowedTeamIds: [], allowedUserIds: [], accessEmails: [], ...extra,
+  });
+
+  it('counts the caller\'s own artifact not shared yet as only theirs, whatever its kind', () => {
+    expect(artifactAccessLevel(mine({ kind: 'html' }))).toBe(ACCESS_LEVEL.ONLY_ME);
+    expect(artifactAccessLevel(mine({ kind: 'xlsx' }))).toBe(ACCESS_LEVEL.ONLY_ME);
+  });
+
+  it('reads public and password-protected links from their mode', () => {
+    expect(artifactAccessLevel(mine({ ...live, accessMode: 'public' }))).toBe(ACCESS_LEVEL.PUBLIC);
+    expect(artifactAccessLevel(mine({ ...live, accessMode: 'password' }))).toBe(ACCESS_LEVEL.PASSWORD);
+    expect(artifactAccessLevel(mine({ ...live, accessProtected: true }))).toBe(ACCESS_LEVEL.PASSWORD);
+  });
+
+  it('tells a restricted link apart by who it reaches', () => {
+    expect(artifactAccessLevel(mine(restricted({ ownerOnly: true })))).toBe(ACCESS_LEVEL.ONLY_ME);
+    expect(artifactAccessLevel(mine(restricted({ orgAllowed: true })))).toBe(ACCESS_LEVEL.ORG);
+    expect(artifactAccessLevel(mine(restricted({ allowedTeamIds: ['t-all'] })), { teams: TEAMS })).toBe(ACCESS_LEVEL.ORG);
+    expect(artifactAccessLevel(mine(restricted({ allowedTeamIds: ['t-1'] })), { teams: TEAMS })).toBe(ACCESS_LEVEL.RESTRICTED);
+    expect(artifactAccessLevel(mine(restricted({ accessEmails: ['a@b.com'] })))).toBe(ACCESS_LEVEL.RESTRICTED);
+  });
+
+  it('uses the same rule for someone else\'s artifact, which is never "only you"', () => {
+    expect(artifactAccessLevel(theirs({ ...live, accessMode: 'public' }))).toBe(ACCESS_LEVEL.PUBLIC);
+    expect(artifactAccessLevel(theirs(restricted({ orgAllowed: true })))).toBe(ACCESS_LEVEL.ORG);
+    expect(artifactAccessLevel(theirs(restricted({ ownerOnly: true })))).toBe(ACCESS_LEVEL.RESTRICTED);
+    expect(artifactAccessLevel(theirs())).toBe(ACCESS_LEVEL.RESTRICTED);
+  });
+
+  it('fails closed: an unknown mode or audience is restricted, never wider', () => {
+    expect(artifactAccessLevel(mine({ ...live }))).toBe(ACCESS_LEVEL.RESTRICTED);
+    expect(artifactAccessLevel(mine({ ...live, accessMode: 'org' }))).toBe(ACCESS_LEVEL.RESTRICTED);
+    expect(artifactAccessLevel(mine({ ...live, accessMode: 'restricted', ownerOnly: null, orgAllowed: null, allowedTeamIds: null, allowedUserIds: null })))
+      .toBe(ACCESS_LEVEL.RESTRICTED);
+  });
+
+  it('in MindsHub mode, trusts only an audience the page read from the access route', () => {
+    const card = mine(restricted({ ownerOnly: true }));
+    expect(artifactAccessLevel(card, { orgMode: true })).toBe(ACCESS_LEVEL.RESTRICTED);
+    expect(artifactAccessLevel({ ...card, audienceRead: true }, { orgMode: true })).toBe(ACCESS_LEVEL.ONLY_ME);
+  });
+
+  it('lists the levels narrowest first', () => {
+    expect(ACCESS_LEVELS).toEqual(['only_me', 'restricted', 'org', 'password', 'public']);
+  });
+});

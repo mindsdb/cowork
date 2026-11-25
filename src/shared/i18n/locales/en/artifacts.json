@@ -48,8 +48,9 @@
   },
   "status": {
     "badge": {
+      "onlyYou": "Only you",
       "public": "Public",
-      "password": "Password",
+      "publicPassword": "Public · password",
       "restricted": "Restricted"
     },
     "hint": {
@@ -57,6 +58,7 @@
       "notShareable": "Not shared. Only web pages and Markdown documents can be shared as a link.",
       "orgRestricted": "Restricted. Open Share to see who can open the link.",
       "ownerOnly": "Shared, but only you can open the link.",
+      "password": "Anyone with the link and the password can open it.",
       "chosenPeople": "Shared. Only the people you chose can open the link.",
       "unknown": "Shared. Who can open the link could not be confirmed, so it is treated as restricted.",
       "sharedWith": "Shared with {names}",
@@ -70,7 +72,6 @@
     "stoppingSharing": "Stopping sharing…",
     "deleting": "Deleting…",
     "notShared": "Not shared",
-    "draft": "Draft",
     "unsharedChanges": "Unshared changes"
   },
   "liveAppShare": {
@@ -552,11 +553,9 @@
       "noMatch": "No artifacts match these filters.",
       "clear": "Clear filters",
       "status": "Status",
-      "allStatuses": "All statuses"
-    },
-    "owner": {
-      "you": "You",
-      "youHint": "Yours, shared with others."
+      "allStatuses": "All statuses",
+      "access": "Access",
+      "allAccess": "All access levels"
     },
     "openComments": "{count, plural, one {# open comment} other {# open comments}}",
     "openCommentsHint": "Open the preview on its comments"
