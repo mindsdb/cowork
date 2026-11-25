@@ -7,11 +7,14 @@
  *
  * The record is per account and per browser, so a pick holds in every tab
  * and window. Landing tries at most once per session, so a refused switch
- * can't loop through reloads.
+ * can't loop through reloads, and not at all once the person has started
+ * work in the page.
  */
 
 import { useEffect } from 'react';
 import { PLATFORM_UI } from '../../lib/deployment';
+import { sharedTranslator } from '../../lib/i18n';
+import { hasWorkStarted } from './documentWork';
 
 /**
  * The organization to land in: the one used last while it is still listed,
@@ -81,6 +84,32 @@ function claimLandingAttempt(sub) {
   return true;
 }
 
+// A native modal makes the whole document inert synchronously, including the
+// currently focused composer. Keep it across menu remounts and queued reloads.
+async function landInOrganization(targetId, switchOrg) {
+  const dialog = document.createElement('dialog');
+  const label = sharedTranslator('shell')('userMenu.changingOrg');
+  dialog.textContent = label;
+  dialog.setAttribute('aria-label', label);
+  dialog.className = 'm-auto rounded-lg p-4';
+  dialog.addEventListener('cancel', (event) => event.preventDefault());
+  document.body.append(dialog);
+  const release = () => {
+    dialog.close();
+    dialog.remove();
+    window.removeEventListener('pagehide', release);
+  };
+  let reloading = false;
+  try {
+    dialog.showModal();
+    window.addEventListener('pagehide', release);
+    const result = await switchOrg(targetId);
+    reloading = result?.reloadRequired === true && result.reloadQueued !== false;
+  } finally {
+    if (!reloading) release();
+  }
+}
+
 /**
  * Remembers the company organization in use and, once the list is in, moves
  * a person who sits in their personal organization to a company one.
@@ -96,8 +125,12 @@ export function useOrgLanding({ sub, orgs, activeOrg, switchOrg }) {
       return;
     }
     const target = landingSwitchTarget(orgs, { activeOrgId, lastOrgId: readLastOrgId(sub) });
-    if (!target || !claimLandingAttempt(sub)) return;
-    switchOrg(target.id);
+    // The list can arrive late (its read retries for up to 40 s), and the
+    // switch reloads into the other organization: a task already started here
+    // would vanish from view and a draft would be cleared. Stay put, without
+    // claiming the attempt, so the next load lands instead.
+    if (!target || hasWorkStarted() || !claimLandingAttempt(sub)) return;
+    void landInOrganization(target.id, switchOrg);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sub, orgs, activeOrgId]);
 }

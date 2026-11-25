@@ -32,6 +32,7 @@ import { liveAppAvailabilityFrom } from './lib/liveAppAvailability';
 import { getOrgMode } from '../lib/orgMode';
 import { isTaskBrowserOff } from './lib/taskBrowser';
 import { SHARING_OFF } from './lib/orgSharing';
+import { markWorkStarted } from './lib/documentWork';
 import {
   MINDSHUB_ERROR_CODE, PEOPLE_LOOKUP, PUBLISH_SHELL_TOO_OLD_CODE, firstMindsHubFailure, readMindsHubFailure, readSharingCapabilities,
 } from './lib/sharingContract';
@@ -819,6 +820,7 @@ export function sendablePicks(model, reasoningEffort) {
 }
 
 function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, resetPicks = [], attachmentIds = [], disabledConnections, browserOff = false, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
+  markWorkStarted();
   const ctrl = turnStreamController(onEvent);
   let userMessageId = null;
   /** @param {string} message @param {StreamFailure} event */
