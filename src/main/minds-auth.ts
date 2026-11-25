@@ -13,6 +13,7 @@ import { beginMindsResumeCredentialGate, settleMindsResumeCredentialGate } from 
 import { retryOnTransientLock } from './fs-retry';
 import { isMindsBaseUrl } from '../shared/minds-endpoint';
 import { describeFetchError } from './fetch-error';
+import type { OAuthConnectOpts } from './oauth-service';
 import {
   type MindsOrg,
   type MindsOrgList,
@@ -296,10 +297,10 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
     const expiresAt = Date.now() + expiresInSeconds * 1000;
     // Persist BEFORE the cancellation fence. Keycloak has already rotated the
     // refresh token and invalidated the one we sent, so returning without
-    // writing hands `endKeycloakSession` a token the IdP rejects: the SSO
-    // session survives sign-out and the next sign-in silently reuses the same
-    // account with no picker. `getRevokeToken` reads the fresh access token
-    // back through `getAccessToken()` on this path.
+    // writing hands `endKeycloakSession` a token the IdP rejects: the live
+    // rotated refresh token survives sign-out un-revoked. `getRevokeToken`
+    // reads the fresh access token back through `getAccessToken()` on this
+    // path.
     //
     // Sign-out still has to stop everything AFTER this write — handoff, retry,
     // timer, gate — which is what the fence below does. Only the write escapes,
@@ -396,17 +397,45 @@ async function doRefreshTokens(): Promise<TokenRefreshResult> {
   }
 }
 
-// RP-initiated Keycloak logout. Local clearTokens() is not enough on
-// its own — Keycloak keeps an SSO session cookie in the IdP, so the
-// next "Sign in" silently re-authenticates with the same account.
-// Calling the end-session endpoint revokes the refresh token and
-// kills the IdP-side session so the next login forces a fresh
-// account picker. Must be called BEFORE clearTokens().
+// Extra authorize-request params for desktop sign-in and sign-up.
+// `prompt=login` makes Keycloak ask for credentials instead of silently
+// reusing whatever SSO session the system browser already holds (typically
+// the web console's). That is what gives every desktop sign-in a fresh
+// account picker — sign-out no longer kills the IdP session to get one,
+// because that session may be the console's (ENG-4571).
+export const KEYCLOAK_SIGN_IN_AUTH_PARAMS: Readonly<Record<string, string>> = Object.freeze({
+  prompt: 'login',
+});
+
+// The loopback PKCE options for desktop sign-in (KEYCLOAK_AUTH_URL) and
+// sign-up (KEYCLOAK_REGISTRATION_URL). `anton-desktop` is the only Keycloak
+// client in the realm that allows loopback (127.0.0.1) redirect URIs.
+// Built here rather than inline in the IPC handler so the authorize-request
+// shape — notably `prompt=login` — is unit-testable.
+export function mindsAuthConnectOpts(authUrl: string, callbackTimeoutMs?: number): OAuthConnectOpts {
+  return {
+    clientId: KEYCLOAK_CLIENT_ID,
+    authUrl,
+    tokenUrl: TOKEN_URL,
+    scopes: ['openid', 'profile', 'email', 'organization', 'offline_access'],
+    extraAuthParams: { ...KEYCLOAK_SIGN_IN_AUTH_PARAMS },
+    callbackTimeoutMs,
+  };
+}
+
+// Desktop sign-out on the IdP side: revoke ONLY this client's refresh token
+// (RFC 7009) via /protocol/openid-connect/revoke. Never RP-initiated
+// /logout — that ends the whole Keycloak user session, and when the same
+// account is signed in to the web console in the same browser that session
+// is shared, so desktop sign-out would sign the console out too (ENG-4571,
+// concurrent sessions 6.10). The fresh account picker on the next desktop
+// sign-in comes from `prompt=login` (KEYCLOAK_SIGN_IN_AUTH_PARAMS), not from
+// destroying the IdP session.
 //
 // Hard 3-second timeout: if the IdP is slow or unreachable (the dev
 // gateway has had intermittent outages), the local logout must not
 // hang on the network. Local state cleanup is the user-visible part;
-// the SSO revocation is best-effort.
+// the token revocation is best-effort and never throws.
 // ENG-498: logout passes the token explicitly — the detached revoke chain
 // runs after clearTokens() has wiped the store.
 export async function endKeycloakSession(refreshToken: string | null = getRefreshToken()): Promise<void> {
@@ -414,17 +443,21 @@ export async function endKeycloakSession(refreshToken: string | null = getRefres
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 3000);
   try {
-    await timedFetch(`${KEYCLOAK_BASE}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/logout`, {
+    const res = await timedFetch(`${KEYCLOAK_BASE}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/revoke`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
+        token: refreshToken,
+        token_type_hint: 'refresh_token',
         client_id: KEYCLOAK_CLIENT_ID,
-        refresh_token: refreshToken,
       }).toString(),
       signal: controller.signal,
     });
+    if (!res.ok) {
+      diagnostic("main.minds-auth", "WARNING", "logout_keycloak_token_revoke_rejected", '[logout] Keycloak token revoke rejected');
+    }
   } catch (error) {
-    diagnostic("main.minds-auth", "WARNING", "logout_keycloak_end_session_failed_or_timed_out", '[logout] Keycloak end-session failed or timed out', error);
+    diagnostic("main.minds-auth", "WARNING", "logout_keycloak_token_revoke_failed_or_timed_out", '[logout] Keycloak token revoke failed or timed out', error);
   } finally {
     clearTimeout(timer);
   }
@@ -879,16 +912,17 @@ async function revokeAntonApiKeys(accessToken: string): Promise<void> {
 // Bounds the revoke phase of logout. Without this, a black-holed
 // auth-service delays endKeycloakSession by up to 30-90s (list + several
 // sequential deletes, each carrying the 30s timedFetch deadline) — long
-// enough that the IdP SSO session outlives the moment the user already
-// saw "signed out": clicking Sign in during that window silently
-// re-authenticates, the exact bug end-session exists to prevent. On
-// timeout we abandon the revoke and fall through to end-session; the
-// un-revoked key still falls to the server-side TTL.
+// enough that this device's refresh token outlives the moment the user
+// already saw "signed out". On timeout we abandon the key revoke and fall
+// through to the token revoke; the un-revoked key still falls to the
+// server-side TTL.
 const LOGOUT_REVOKE_TIMEOUT_MS = 5_000;
 
 // Detached logout cleanup: revoke this device's key while the session is
-// still valid, then end the IdP session. Ordering matters — end-session
-// first would leave the revoke racing an invalidated session. Both are
+// still valid, then revoke this client's refresh token at the IdP (never
+// the shared SSO session — see endKeycloakSession). Ordering matters —
+// revoking the token first would leave the key revoke racing an
+// invalidated grant. Both are
 // best-effort; the caller (AUTH_LOGOUT) deliberately does not await this,
 // so failures may not block sign-out. Exported (rather than inlined in
 // the handler) so the ordering is unit-testable.
