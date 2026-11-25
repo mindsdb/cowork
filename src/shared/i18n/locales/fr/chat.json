@@ -755,8 +755,8 @@
     "phoneDone": "Terminé. Réduisez pour voir la réponse.",
     "phoneMinimize": "Réduire",
     "overlayQuestion": "{agent} a une question qui attend dans le chat.",
-    "overlayHandOver": "À vous : {reason}.",
-    "overlayHandOverWatching": "À vous : {reason}. {agent} reprend de lui-même une fois que c’est fait.",
+    "overlayHandOver": "À vous de jouer sur {site} : {reason}.",
+    "overlayHandOverWatching": "À vous de jouer sur {site} : {reason}. {agent} reprend de lui-même une fois que c’est fait.",
     "overlayGoToQuestion": "Aller à la question",
     "talkTo": "Parler à {agent}"
   },

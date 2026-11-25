@@ -795,7 +795,22 @@ describe("ChatView shared browser pane, shown only when the person is needed (th
     setWidth(800);
     render(<ChatView task={task('ov-2', [asked, live(HAND_OVER_REAL)])} onSend={vi.fn()} browserOn />);
     await act(async () => {});
-    expect(waitStrip()?.querySelector('p')?.textContent).toBe('Your turn: sign in.');
+    expect(waitStrip()?.querySelector('p')?.textContent).toBe('Your turn on example.com: sign in.');
+    expect(within(waitStrip()).queryByRole('button')).toBeNull();
+  });
+
+  it('at 800px a watching hand-over card says the agent carries on by itself', async () => {
+    const HAND_OVER_WATCHING = {
+      ...HAND_OVER,
+      data: {
+        ...HAND_OVER.data,
+        prompt: "Your turn on example.com: sign in\n\nUse the browser beside the chat. I'll carry on by myself once that's done, or click Done in the browser.",
+      },
+    };
+    setWidth(800);
+    render(<ChatView task={task('ov-2b', [asked, live(HAND_OVER_WATCHING)])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    expect(waitStrip()?.querySelector('p')?.textContent).toBe("Your turn on example.com: sign in. Anton carries on by itself once it's done.");
     expect(within(waitStrip()).queryByRole('button')).toBeNull();
   });
 
@@ -829,7 +844,7 @@ describe("ChatView shared browser pane, shown only when the person is needed (th
     expect(waitStrip()).toBeNull();
   });
 
-  it('the Electron panel carries the overlay strip too, at 800px', async () => {
+  it('the Electron panel carries the overlay strip too, at 800px, and its button closes it', async () => {
     shell.isWeb = false;
     shell.inApp = true;
     stageHasArea();
@@ -837,5 +852,21 @@ describe("ChatView shared browser pane, shown only when the person is needed (th
     render(<ChatView task={task('ov-6', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
     await act(async () => {});
     expect(waitStrip()?.querySelector('p')?.textContent).toBe('Anton has a question waiting in the chat.');
+    fireEvent.click(within(waitStrip()).getByRole('button', { name: 'Go to the question' }));
+    expect(pane()).toBeNull();
+  });
+
+  /* The blank pane (no browser open yet) gets the same footer, with its own
+     close: a wrong-panel swap (the blank pane's button closing the real
+     pane's session instead of its own `blankBrowser` state) would leave this
+     pane open, since nothing here clears `blankBrowser`. */
+  it('the blank pane carries the overlay strip too, and its own button closes it', async () => {
+    setWidth(800);
+    render(<ChatView task={task('ov-7', [asked, live(HELD)])} onSend={vi.fn()} openBrowserSignal={1} />);
+    await act(async () => {});
+    expect(pane()).not.toBeNull();
+    expect(waitStrip()?.querySelector('p')?.textContent).toBe('Anton has a question waiting in the chat.');
+    fireEvent.click(within(waitStrip()).getByRole('button', { name: 'Go to the question' }));
+    expect(pane()).toBeNull();
   });
 });

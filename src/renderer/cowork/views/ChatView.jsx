@@ -2695,18 +2695,33 @@ export default function ChatView({
      card's own prompt; this is deliberately narrower than `askingUser` above,
      which lets an auto-approved card through. */
   const browserWaitNeed = browserPaneOverlay ? openNeeds(streamingMsg?.steps)[0] || null : null;
+  /* Whether the step is the person's turn in the browser, by its id prefix
+     (isPersonsBrowserTurn's own test), not by whether `openNeed` managed to
+     parse its prompt into a hand-over: the button must stay off a hand-over
+     even when the prompt doesn't match the shape anton writes (changed
+     wording, a multi-line reason), where `openNeed` falls back to `kind:
+     'question'`. */
+  const browserWaitIsHandOver = Boolean(browserWaitNeed) && /^browser:(?!approve:)/.test(browserWaitNeed.questionId);
   const browserWaitMessage = !browserWaitNeed ? ''
     : browserWaitNeed.kind === 'handOver'
+    // The page's own host leads the reason, so a lookalike page can't pass
+    // its words off as the app's (LocalBrowserStage's own hint, the same way).
     ? (browserWaitNeed.watching
-      ? tc('browser.overlayHandOverWatching', { reason: browserWaitNeed.text, agent: harnessLabel(task?.harness) || 'Anton' })
-      : tc('browser.overlayHandOver', { reason: browserWaitNeed.text }))
+      ? tc('browser.overlayHandOverWatching', { site: browserWaitNeed.site || tc('browser.aNewTab'), reason: browserWaitNeed.text, agent: harnessLabel(task?.harness) || 'Anton' })
+      : tc('browser.overlayHandOver', { site: browserWaitNeed.site || tc('browser.aNewTab'), reason: browserWaitNeed.text }))
     : tc('browser.overlayQuestion', { agent: harnessLabel(task?.harness) || 'Anton' });
   /* The live region announces content CHANGES, so its text is held in state
      and written from an effect rather than rendered straight from
      `browserWaitMessage`: a region whose first commit already has the text
-     is silent (AskUserCard.jsx's own announcement does the same). */
+     is silent (AskUserCard.jsx's own announcement does the same). Gated on
+     the panel actually being mounted: the card and the panel's own open
+     often land in the same commit (the default "only when needed" path),
+     and filling the announcement in that same commit would mean the
+     region's first commit, once the footer mounts, already has the text. */
   const [browserWaitAnnouncement, setBrowserWaitAnnouncement] = useState('');
-  useEffect(() => { setBrowserWaitAnnouncement(browserWaitMessage); }, [browserWaitMessage]);
+  useEffect(() => {
+    setBrowserWaitAnnouncement(browserPaneOpen ? browserWaitMessage : '');
+  }, [browserWaitMessage, browserPaneOpen]);
   const phoneBrowserExpanded = Boolean(browserDock) && browserPaneOpen && !browserMinimized;
   // While it is expanded the page under it stays put: no scroll, so typing in
   // the address row can't move the screen.
@@ -2825,7 +2840,7 @@ export default function ChatView({
       {browserWaitMessage && (
         <div className="browser-panel__wait-strip">
           <p>{browserWaitMessage}</p>
-          {browserWaitNeed?.kind !== 'handOver' && (
+          {!browserWaitIsHandOver && (
             <Button size="sm" onClick={() => { closePane(); scrollToBottom(); }}>
               {tc('browser.overlayGoToQuestion')}
             </Button>

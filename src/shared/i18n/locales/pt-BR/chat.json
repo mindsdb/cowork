@@ -755,8 +755,8 @@
     "phoneDone": "Pronto. Minimize para ver a resposta.",
     "phoneMinimize": "Minimizar",
     "overlayQuestion": "{agent} tem uma pergunta esperando no chat.",
-    "overlayHandOver": "Sua vez: {reason}.",
-    "overlayHandOverWatching": "Sua vez: {reason}. {agent} continua sozinho quando estiver feito.",
+    "overlayHandOver": "Sua vez em {site}: {reason}.",
+    "overlayHandOverWatching": "Sua vez em {site}: {reason}. {agent} continua sozinho quando estiver feito.",
     "overlayGoToQuestion": "Ir para a pergunta",
     "talkTo": "Falar com {agent}"
   },

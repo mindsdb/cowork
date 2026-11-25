@@ -755,8 +755,8 @@
     "phoneDone": "完了しました。最小化して回答を確認してください。",
     "phoneMinimize": "最小化",
     "overlayQuestion": "{agent} からの質問がチャットで待っています。",
-    "overlayHandOver": "操作をお願いします: {reason}。",
-    "overlayHandOverWatching": "操作をお願いします: {reason}。完了すると {agent} が自動で再開します。",
+    "overlayHandOver": "{site}であなたの操作が必要です：{reason}。",
+    "overlayHandOverWatching": "{site}であなたの操作が必要です：{reason}。完了すると {agent} が自動で再開します。",
     "overlayGoToQuestion": "質問に移動",
     "talkTo": "{agent} と話す"
   },
