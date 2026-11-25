@@ -55,17 +55,33 @@ export function isBackendArtifact(a) {
 }
 
 /**
+ * Files that share as a read-only page of their own (ENG-4687): what the
+ * file says, with a link to download it. cowork-server renders the page
+ * (file_page.PUBLISHABLE_FILE_SUFFIXES); keep the two lists the same.
+ */
+export const PUBLISHABLE_FILE_EXTS = new Set(['.pdf', '.docx', '.xlsx', '.pptx', '.csv', '.txt']);
+
+/** A file that shares as a page of its own (PUBLISHABLE_FILE_EXTS). */
+export function isFilePageArtifact(a) {
+  if (!a) return false;
+  const path = _path(a);
+  return PUBLISHABLE_FILE_EXTS.has(_ext(a)) || [...PUBLISHABLE_FILE_EXTS].some((e) => path.endsWith(e));
+}
+
+/**
  * Artifact types the user can publish to a 4nton.ai page. HTML is served
  * as-is; Markdown is rendered to a styled HTML page server-side (see
- * cowork-server PUBLISHABLE_STATIC_SUFFIXES). Broader than isHtmlArtifact()
- * — Markdown is publishable but NOT live-previewable as an iframe.
+ * cowork-server PUBLISHABLE_STATIC_SUFFIXES), and so are the files in
+ * PUBLISHABLE_FILE_EXTS. Broader than isHtmlArtifact(): those are
+ * publishable but NOT live-previewable as an iframe.
  */
 export function isPublishableArtifact(a) {
   if (!a) return false;
   const ext = _ext(a);
   const path = _path(a);
   return ext === '.html' || path.endsWith('.html')
-    || ext === '.md' || path.endsWith('.md');
+    || ext === '.md' || path.endsWith('.md')
+    || isFilePageArtifact(a);
 }
 
 /*

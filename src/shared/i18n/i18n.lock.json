@@ -7855,36 +7855,36 @@
   },
   "artifacts:artifactsView.onlyHtmlMd": {
     "de": {
-      "from": "a4d79cd66864",
-      "text": "fd0eb6d83fb4"
+      "from": "5df7f4c83bd1",
+      "text": "8c68456dc538"
     },
     "es": {
-      "from": "a4d79cd66864",
-      "text": "1150b2c579e5"
+      "from": "5df7f4c83bd1",
+      "text": "3877f060dfdd"
     },
     "fr": {
-      "from": "a4d79cd66864",
-      "text": "27b4cf86cf6f"
+      "from": "5df7f4c83bd1",
+      "text": "a256bcb12e1a"
     },
     "it": {
-      "from": "a4d79cd66864",
-      "text": "cdf7e10696bf"
+      "from": "5df7f4c83bd1",
+      "text": "1fabeb035103"
     },
     "ja": {
-      "from": "a4d79cd66864",
-      "text": "a65e1db65f1a"
+      "from": "5df7f4c83bd1",
+      "text": "b6486f428c59"
     },
     "ko": {
-      "from": "a4d79cd66864",
-      "text": "c63027aa2170"
+      "from": "5df7f4c83bd1",
+      "text": "99fb41a98092"
     },
     "pt-BR": {
-      "from": "a4d79cd66864",
-      "text": "3c5f13f2c9be"
+      "from": "5df7f4c83bd1",
+      "text": "c147c7e1a6d1"
     },
     "zh-CN": {
-      "from": "a4d79cd66864",
-      "text": "6b852a40b5bd"
+      "from": "5df7f4c83bd1",
+      "text": "2902c28bce8e"
     }
   },
   "artifacts:artifactsView.openComments": {
@@ -29649,36 +29649,36 @@
   },
   "artifacts:status.hint.notShareable": {
     "de": {
-      "from": "bcae7c1c6df5",
-      "text": "3f78ebea6045"
+      "from": "d0df27408970",
+      "text": "7c876c9fa06a"
     },
     "es": {
-      "from": "bcae7c1c6df5",
-      "text": "d2eb9cd62d88"
+      "from": "d0df27408970",
+      "text": "90c9ecaea80e"
     },
     "fr": {
-      "from": "bcae7c1c6df5",
-      "text": "c102e0386091"
+      "from": "d0df27408970",
+      "text": "41cf4ec8d535"
     },
     "it": {
-      "from": "bcae7c1c6df5",
-      "text": "d9a623061930"
+      "from": "d0df27408970",
+      "text": "b0c37d1ae4eb"
     },
     "ja": {
-      "from": "bcae7c1c6df5",
-      "text": "7ee28a222fbd"
+      "from": "d0df27408970",
+      "text": "8564e31a5bd0"
     },
     "ko": {
-      "from": "bcae7c1c6df5",
-      "text": "d15c906f04fd"
+      "from": "d0df27408970",
+      "text": "ba7e3aec9bf7"
     },
     "pt-BR": {
-      "from": "bcae7c1c6df5",
-      "text": "698084265485"
+      "from": "d0df27408970",
+      "text": "2576a16395b8"
     },
     "zh-CN": {
-      "from": "bcae7c1c6df5",
-      "text": "0528ffa10d13"
+      "from": "d0df27408970",
+      "text": "9bdb93feb0f8"
     }
   },
   "artifacts:status.hint.notSharedYet": {

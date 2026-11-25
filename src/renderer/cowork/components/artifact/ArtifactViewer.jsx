@@ -57,7 +57,7 @@ import { trackArtifactStatsOpened } from '../../lib/analytics';
 import { UNKNOWN_SHARE_SNAPSHOT, reportWithdrawal, shareSnapshot } from '../../lib/artifactShareAnalytics';
 import { diagnostic } from '../../../../shared/diagnostics';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
-import { isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
+import { isFilePageArtifact, isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
 import { useBlobImageSrc } from '../AttachmentThumbnail';
 import { Modal } from '../ui/Modal';
 import { ConfirmModal } from '../ConfirmModal';
@@ -1443,7 +1443,10 @@ export function ArtifactViewer({
   // workspace load names (`publishedRevision`).
   const unsharedFrom = workspace.publishedRevision?.id || null;
   const unsharedTo = workspace.currentRevision?.id || null;
-  const canReviewUnshared = open && canManage && publishable && !!pub.publishedUrl && !!pub.modified
+  // A file shared as a page of its own (a PDF, a spreadsheet: ENG-4687) has no
+  // page text to compare, so its changes go live from Share's Update instead.
+  const canReviewUnshared = open && canManage && publishable && !isFilePageArtifact(artifact)
+    && !!pub.publishedUrl && !!pub.modified
     && !!unsharedFrom && !!unsharedTo && unsharedFrom !== unsharedTo;
   const reviewUnshared = useCallback(() => {
     if (!canReviewUnshared || workspace.comparison) return;

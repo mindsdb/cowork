@@ -135,7 +135,7 @@ describe('ArtifactStatus hints (ENG-2177)', () => {
 
   it('explains Draft as a file type that cannot become a web link', () => {
     expect(artifactStatusHint({}, false))
-      .toBe('Not shared. Only web pages and Markdown documents can be shared as a link.');
+      .toBe("Not shared. Web pages, documents, spreadsheets, decks, PDFs, CSV and text files can be shared as a link; this kind of file can't.");
   });
 
   it('tells the user how to share a Not shared artifact', () => {
@@ -163,7 +163,7 @@ describe('ArtifactStatus hints (ENG-2177)', () => {
   it('says on hover that a kind which can\'t be a link isn\'t shared', async () => {
     render(<ArtifactStatus artifact={{}} publishable={false} />);
     await userEvent.hover(screen.getByText('Only you'));
-    expect(await screen.findByText(/Only web pages and Markdown documents/)).toBeInTheDocument();
+    expect(await screen.findByText(/this kind of file can't/)).toBeInTheDocument();
   });
 
   it('shows the Restricted hint on hover', async () => {

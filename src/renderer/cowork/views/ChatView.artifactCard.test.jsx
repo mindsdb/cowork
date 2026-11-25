@@ -1119,7 +1119,16 @@ describe('Share on the inline artifact card', () => {
     expect(share()).not.toBeNull();
   });
 
-  it.each(['.csv', '.png', '.xlsx'])('offers no Share on a %s file, which has no link to share', (ext) => {
+  // ENG-4687: a CSV, spreadsheet, PDF, Word or PowerPoint file shares as a page of its own.
+  it.each(['.csv', '.xlsx', '.pdf', '.docx'])('offers Share on a %s file, which shares as a page of its own', (ext) => {
+    const path = `/proj/.anton/artifacts/data/file${ext}`;
+    setOrgMode(true);
+    hostIsWeb = true;
+    render(<ChatView task={taskWithArtifact(artifactStep({ ext, file_path: path, path }))} />);
+    expect(share()).not.toBeNull();
+  });
+
+  it.each(['.png', '.zip'])('offers no Share on a %s file, which has no page to share', (ext) => {
     const path = `/proj/.anton/artifacts/data/file${ext}`;
     setOrgMode(true);
     hostIsWeb = true;

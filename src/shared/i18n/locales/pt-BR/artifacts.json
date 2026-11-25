@@ -55,7 +55,7 @@
     },
     "hint": {
       "notSharedYet": "Ainda não compartilhado. Abra e escolha Compartilhar para obter um link da web.",
-      "notShareable": "Não compartilhado. Só páginas web e documentos Markdown podem ser compartilhados como link.",
+      "notShareable": "Não compartilhado. Páginas web, documentos, planilhas, apresentações, PDFs, CSV e arquivos de texto podem ser compartilhados como link; este tipo de arquivo não.",
       "orgRestricted": "Restrito. Abra Compartilhar para ver quem pode abrir o link.",
       "ownerOnly": "Compartilhado, mas só você pode abrir o link.",
       "password": "Qualquer pessoa com o link e a senha pode abrir.",
@@ -526,7 +526,7 @@
     "openViewer": "Abrir visualizador",
     "showInExplorer": "Mostrar no Explorador",
     "deleteItem": "Excluir artefato",
-    "onlyHtmlMd": "Só artefatos HTML e Markdown podem ser compartilhados.",
+    "onlyHtmlMd": "Só páginas web, documentos, planilhas, apresentações, PDFs, CSV e arquivos de texto podem ser compartilhados.",
     "sharedToast": "{mode, select, password {Compartilhado (protegido por senha): {url}} restricted {Compartilhado (restrito): {url}} other {Compartilhado: {url}}}",
     "mindsApiKey": "Defina sua chave de API do Minds em Configurações para compartilhar artefatos.",
     "stoppedOnMindsHub": "Compartilhamento interrompido no MindsHub.",
