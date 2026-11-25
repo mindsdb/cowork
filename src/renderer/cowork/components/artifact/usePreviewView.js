@@ -93,6 +93,20 @@ export function normalizePreviewView(data) {
 
 // The parent's tag on a `restore` sent down to the shim (preview_shim.js).
 export const PREVIEW_PARENT_SOURCE = 'anton-preview-parent';
+
+/**
+ * Tells the page in a preview frame which theme the app shows, so a page
+ * that follows it (an inline chart, ENG-4684) can match: the shim sets
+ * `data-theme` and `color-scheme` on the page's root. Same channel and tag
+ * as `restore`. A frame with no window yet is skipped.
+ *
+ * @param {Window | null | undefined} win
+ * @param {'light' | 'dark'} mode
+ */
+export function postPreviewTheme(win, mode) {
+  if (!win || typeof win.postMessage !== 'function') return;
+  win.postMessage({ source: PREVIEW_PARENT_SOURCE, type: 'theme', mode: mode === 'dark' ? 'dark' : 'light' }, '*');
+}
 // A place kept for a reload that never produced a new document (the reload
 // failed, the viewer moved on) is not applied to some later one.
 export const KEEP_PLACE_MS = 60000;

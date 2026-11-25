@@ -39,6 +39,7 @@ import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import ContextFileModal from '../components/project/ContextFileModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
+import { ArtifactInlinePreview } from '../components/artifact/ArtifactInlinePreview';
 import SkillCard from '../components/SkillCard';
 import ConnectorDraftCard from '../components/ConnectorDraftCard';
 import AskUserCard from '../components/AskUserCard';
@@ -51,7 +52,7 @@ import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth, provis
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { GeneratedImageCard } from '../components/GeneratedImageCard';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
-import { BACKEND_ARTIFACT_TYPES, canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact, isPublishableArtifact } from '../lib/artifactKinds';
+import { BACKEND_ARTIFACT_TYPES, canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isBackendArtifact, isHtmlArtifact, isImageArtifact, isInlineArtifact, isPublishableArtifact } from '../lib/artifactKinds';
 import { useLiveApps } from '../../lib/liveApps';
 import { canPreviewDocument } from '../preview/kinds';
 import { downloadArtifactFile } from '../lib/artifactDownload';
@@ -79,6 +80,7 @@ import { host, isWeb } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useIntersection } from '../hooks/useIntersection';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
 import { artifactOpenTarget, noPreviewDownloadedNote } from '../lib/artifactActions';
@@ -1162,6 +1164,19 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
     && (orgMode || canAct)
     ? { label: t('chatView.artifactCard.share'), onClick: () => onShare(artifact), tooltip: t('chatView.artifactCard.shareTooltip') }
     : null;
+  /*
+   * An artifact the agent marked to show inline (ENG-4684) shows its live page
+   * in the card body, under the same head and actions: Preview still opens it
+   * full size in the viewer. Only where this card would preview that page
+   * anyway: an HTML page, not a fullstack app (it needs the viewer's proxy),
+   * that this deployment can render and that is still there.
+   */
+  const showInline = isInlineArtifact(artifact)
+    && isHtmlArtifact(artifact)
+    && !isBackendArtifact(artifact)
+    && !canPreviewDoc
+    && openTarget === 'preview'
+    && canActivate;
   const primaryDisabled = needsLocalPath && !canAct;
   const primaryReason = primaryDisabled ? (disabledReason || t('chatView.artifactCard.noFilePath')) : '';
   const openAction = !deleted && primaryAction
@@ -1183,16 +1198,23 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
           It mounts empty because `status` starts null, which is what lets
           aria-live see a content CHANGE when an action fills it. */}
       <div className="sr-only" role="status" aria-live="polite">{status?.text ?? ''}</div>
+    {/* Inline, the card is a group, not a button: a live page cannot sit
+        inside a role="button" (its content would leave the accessibility
+        tree), and its clicks belong to the page. The title and Preview still
+        open the viewer. */}
     <Card
       as="div"
-      interactive={canActivate}
+      interactive={canActivate && !showInline}
       flat
       padding="none"
-      onActivate={canActivate ? handleOpen : undefined}
+      onActivate={canActivate && !showInline ? handleOpen : undefined}
+      role={showInline ? 'group' : undefined}
       aria-label={deleted
         ? t('chatView.artifactCard.deletedAriaLabel', { title: artifact.title })
-        : (canActivate ? t('chatView.artifactCard.actionTarget', { action: activateLabel, target: artifact.title }) : noDestinationReason)}
-      className="railed chat-artifact-card"
+        : showInline
+          ? artifact.title
+          : (canActivate ? t('chatView.artifactCard.actionTarget', { action: activateLabel, target: artifact.title }) : noDestinationReason)}
+      className={cn('railed chat-artifact-card', showInline && 'is-inline')}
     >
       <div
         className={cn(
@@ -1258,6 +1280,11 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
           <ActionBar size="sm" align="start" className="flex-wrap" primary={openAction} />
         )}
       </div>
+      {showInline && (
+        <div className="chat-artifact-card__frame">
+          <ArtifactInlinePreview artifact={artifact} title={artifact.title || ''} />
+        </div>
+      )}
       {/* The footer is the artifact's location bar: the path at rest, and the
           result of an action for the moment it is on screen. One or the
           other, so a long message never crushes the path beside it. */}
@@ -3013,21 +3040,14 @@ export default function ChatView({
   // load. Re-running once a load settles re-checks a reader who is still
   // parked at the top and needs the page after this one.
   const loadEarlierSentinelRef = useRef(null);
-  useEffect(() => {
-    if (!task.hasMoreMessages || !onLoadEarlierMessages) return undefined;
-    if (typeof IntersectionObserver === 'undefined') return undefined;
-    const root = scrollRef.current;
-    const sentinel = loadEarlierSentinelRef.current;
-    if (!root || !sentinel) return undefined;
-    const observer = new IntersectionObserver(
-      (entries) => { if (entries.some((e) => e.isIntersecting)) onLoadEarlierMessages({ auto: true }); },
-      // Start the fetch slightly before the top is actually reached, so the
-      // page is usually already there by the time the reader gets there.
-      { root, rootMargin: '200px 0px 0px 0px' },
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [task.hasMoreMessages, task.id, onLoadEarlierMessages, loadingEarlierMessages]);
+  useIntersection(
+    loadEarlierSentinelRef,
+    (intersecting) => { if (intersecting) onLoadEarlierMessages({ auto: true }); },
+    // Start the fetch slightly before the top is actually reached, so the
+    // page is usually already there by the time the reader gets there.
+    { rootRef: scrollRef, rootMargin: '200px 0px 0px 0px', enabled: !!(task.hasMoreMessages && onLoadEarlierMessages) },
+    [task.id, onLoadEarlierMessages, loadingEarlierMessages],
+  );
 
   // Outer ref + conv-column ref. The orb canvas binds to the conv
   // column so the floating orb is naturally clipped to that area

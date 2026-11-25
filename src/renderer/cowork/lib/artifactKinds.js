@@ -27,6 +27,21 @@ export function isHtmlArtifact(a) {
   return _ext(a) === '.html' || _path(a).endsWith('.html');
 }
 
+/**
+ * An artifact the agent marked to show live inside the chat reply (ENG-4684):
+ * metadata `display: "inline"`, a small interactive chart or diagram rather
+ * than a page the person opens. Anton writes the field and cowork-server
+ * passes it through; it may arrive at the top level of the card or nested
+ * under `metadata`, so both are read here and nowhere else. Absent means the
+ * usual card. Says nothing about whether the card can render it: callers
+ * still ask isHtmlArtifact and the deployment's own preview gate.
+ */
+export function isInlineArtifact(a) {
+  if (!a) return false;
+  const display = a.display ?? a.metadata?.display;
+  return typeof display === 'string' && display.trim().toLowerCase() === 'inline';
+}
+
 // Raster/vector image extensions a `create_artifact(type="image")` output
 // can carry (anton/core/tools/tool_defs.py). Matched against both the
 // declared `ext` and the path, same convention as isHtmlArtifact.
