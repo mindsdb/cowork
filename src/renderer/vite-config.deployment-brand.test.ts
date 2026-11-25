@@ -84,6 +84,13 @@ describe('the deployment brand in the web page', () => {
     expect(imgSrc).not.toContain('https://console.mindshub.ai');
   }, 30_000);
 
+  it('names the dev wildcard once in a development page, for brand and gallery pictures alike', async () => {
+    const dev = await startServer({ BUILD_TARGET: 'web', VITE_PLATFORM_UI: 'true', VITE_BRAND_ENV: 'development' });
+    const html = await dev.transformIndexHtml('/index-web.html', page('index-web.html'));
+    const imgSrc = cspOf(html).split(';').map((d) => d.trim().split(/\s+/)).find((d) => d[0] === 'img-src') ?? [];
+    expect(imgSrc.filter((source) => source === 'https://*.dev.mindshub.ai')).toHaveLength(1);
+  }, 30_000);
+
   it('stays out of other pages the web dev server serves', async () => {
     const dev = await startServer({ BUILD_TARGET: 'web', VITE_PLATFORM_UI: 'true' });
 
