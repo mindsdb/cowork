@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { GuardedFetch, GuardedRequestInit } from './guarded-fetch';
+import { buildAuthorizeUrl, loopbackRedirectUri, type BrowserAuthorizeOpts } from './oauth-service';
 
 const store = vi.hoisted(() => ({ root: '/home/user/.cowork' as string | null }));
 vi.mock('./server-process', () => ({ getServerPort: () => 4000, activeStoreRoot: () => store.root }));
@@ -689,6 +690,13 @@ describe('checking a typed client ID before the browser opens', () => {
     expect(sent.get('client_id')).toBe('mine');
     expect(sent.get('response_type')).toBe('code');
     expect(sent.get('redirect_uri')).toBe('http://127.0.0.1:47295/callback');
+    // The whole URL, PKCE included, is what the browser step builds from the same options.
+    const opened = (authorize.mock.calls as unknown as Array<[BrowserAuthorizeOpts]>)[0][0];
+    expect(checks[0].href).toBe(buildAuthorizeUrl(opened, {
+      redirectUri: loopbackRedirectUri(opened.redirectHost, opened.redirectPort!),
+      state: sent.get('state')!,
+      codeChallenge: sent.get('code_challenge')!,
+    }));
     expect(sent.get('code_challenge_method')).toBe('S256');
     expect(sent.get('code_challenge')).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(sent.get('state')).toBeTruthy();

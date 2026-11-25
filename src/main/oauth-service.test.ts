@@ -14,6 +14,8 @@ vi.mock('electron', () => ({
 import { shell, net } from 'electron';
 import {
   authorizeInBrowser,
+  buildAuthorizeUrl,
+  loopbackRedirectUri,
   oauthConnect,
   cancelCurrentOAuth,
   CUSTOM_MCP_REDIRECT_PORT,
@@ -465,6 +467,40 @@ describe('oauthConnect', () => {
     await nextAuthUrl();
     cancelCurrentOAuth();
     await expect(second).resolves.toMatchObject({ ok: false, reason: 'cancelled' });
+  });
+});
+
+describe('buildAuthorizeUrl', () => {
+  const FLOW = { redirectUri: 'http://127.0.0.1:47295/callback', state: 'st', codeChallenge: 'ch' };
+
+  it('adds the code-flow and PKCE parameters to the endpoint', () => {
+    const url = new URL(buildAuthorizeUrl({ authUrl: 'https://auth.example.com/authorize', clientId: 'c1', scopes: ['read', 'write'] }, FLOW));
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      response_type: 'code', client_id: 'c1', redirect_uri: FLOW.redirectUri, scope: 'read write',
+      state: 'st', code_challenge: 'ch', code_challenge_method: 'S256',
+    });
+  });
+
+  it('keeps the endpoint\'s own query and joins scopes with the given separator', () => {
+    const url = new URL(buildAuthorizeUrl({ authUrl: 'https://auth.example.com/authorize?tenant=a', clientId: 'c1', scopes: ['a', 'b'], scopeSeparator: ',' }, FLOW));
+    expect(url.searchParams.get('tenant')).toBe('a');
+    expect(url.searchParams.get('scope')).toBe('a,b');
+  });
+
+  it('applies extra parameters last, so they win over the flow\'s own', () => {
+    const url = new URL(buildAuthorizeUrl({
+      authUrl: 'https://auth.example.com/authorize', clientId: 'c1', scopes: [],
+      extraAuthParams: { resource: 'https://mcp.example.com/mcp', prompt: 'consent', response_type: 'code id_token' },
+    }, FLOW));
+    expect(url.searchParams.get('resource')).toBe('https://mcp.example.com/mcp');
+    expect(url.searchParams.get('prompt')).toBe('consent');
+    expect(url.searchParams.get('response_type')).toBe('code id_token');
+    expect(url.searchParams.has('scope')).toBe(false);
+  });
+
+  it('brackets an IPv6 loopback host in the redirect URI', () => {
+    expect(loopbackRedirectUri('::1', 47295)).toBe('http://[::1]:47295/callback');
+    expect(loopbackRedirectUri(undefined, 47295)).toBe('http://127.0.0.1:47295/callback');
   });
 });
 

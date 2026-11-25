@@ -135,6 +135,38 @@ export type BrowserAuthorizeResult =
   /** `oauthError` is the provider's `error` parameter as sent; unchecked. */
   | { ok: false; reason: string; code?: BrowserLoginEnd; oauthError?: string };
 
+/** The loopback redirect URI for `host` (default 127.0.0.1) and `port`;
+ *  an IPv6 host is bracketed. */
+export function loopbackRedirectUri(host: BrowserAuthorizeOpts['redirectHost'], port: number): string {
+  const redirectHost = host || '127.0.0.1';
+  return `http://${redirectHost.includes(':') ? `[${redirectHost}]` : redirectHost}:${port}/callback`;
+}
+
+/**
+ * The authorize URL the browser opens for `opts`: the endpoint's own query
+ * kept (RFC 6749 3.1), then the code-flow and PKCE parameters, then
+ * `extraAuthParams`, which are applied last and so win over any of them.
+ * Pure: the caller draws `state` and the PKCE challenge.
+ */
+export function buildAuthorizeUrl(
+  opts: Pick<BrowserAuthorizeOpts, 'authUrl' | 'clientId' | 'scopes' | 'scopeSeparator' | 'extraAuthParams'>,
+  flow: { redirectUri: string; state: string; codeChallenge: string },
+): string {
+  const authParams = new URLSearchParams({
+    response_type: 'code',
+    client_id: opts.clientId,
+    redirect_uri: flow.redirectUri,
+    ...(opts.scopes.length ? { scope: opts.scopes.join(opts.scopeSeparator ?? ' ') } : {}),
+    state: flow.state,
+    code_challenge: flow.codeChallenge,
+    code_challenge_method: 'S256',
+    ...(opts.extraAuthParams || {}),
+  });
+  const authorizeUrl = new URL(opts.authUrl);
+  authParams.forEach((value, name) => authorizeUrl.searchParams.set(name, value));
+  return authorizeUrl.href;
+}
+
 /* A rejection of the callback wait that names how the login ended. */
 class BrowserLoginError extends Error {
   constructor(readonly end: BrowserLoginEnd, message: string, readonly oauthError?: string) {
@@ -268,24 +300,8 @@ async function browserStep(opts: BrowserAuthorizeOpts, attempt: Attempt): Promis
   }
   if (attempt.cancelled) return { ok: false, reason: 'cancelled', code: 'cancelled' };
 
-  const redirectHost = opts.redirectHost || '127.0.0.1';
-  const redirectUri = `http://${redirectHost.includes(':') ? `[${redirectHost}]` : redirectHost}:${port}/callback`;
-
-  // Build the authorize URL.
-  const authParams = new URLSearchParams({
-    response_type: 'code',
-    client_id: opts.clientId,
-    redirect_uri: redirectUri,
-    ...(opts.scopes.length ? { scope: opts.scopes.join(opts.scopeSeparator ?? ' ') } : {}),
-    state,
-    code_challenge: challenge,
-    code_challenge_method: 'S256',
-    ...(opts.extraAuthParams || {}),
-  });
-  // Added to the endpoint's own query (RFC 6749 3.1), not appended after it.
-  const authorizeUrl = new URL(opts.authUrl);
-  authParams.forEach((value, name) => authorizeUrl.searchParams.set(name, value));
-  const authUrl = authorizeUrl.href;
+  const redirectUri = loopbackRedirectUri(opts.redirectHost, port);
+  const authUrl = buildAuthorizeUrl(opts, { redirectUri, state, codeChallenge: challenge });
 
   // Wait for the redirect — server stays up until either the
   // callback fires, the safety timeout elapses, or the renderer
