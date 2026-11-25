@@ -2,7 +2,7 @@
 // usePublish hook (viewer, rail) and the Artifacts view toast. A module of its
 // own so the view does not pull in the hook.
 
-import { SHARE_ORG_REQUIRED_CODE } from '../../../lib/sharingContract';
+import { PUBLISH_SHELL_TOO_OLD_CODE, SHARE_ORG_REQUIRED_CODE } from '../../../lib/sharingContract';
 import i18n from '../../../../lib/i18n';
 
 // The upload service answers HTTP 409 with this code when the artifact's report
@@ -24,6 +24,32 @@ export function isOwnedByOtherUserError(e) {
    message. Asking again gets the same answer. */
 export function isShareOrgRequiredError(e) {
   return e?.code === SHARE_ORG_REQUIRED_CODE;
+}
+
+// A full-stack publish would send credentials of connections the person
+// hasn't approved; `detail.pending` lists them.
+export const DATASOURCE_APPROVAL_REQUIRED_CODE = 'datasource_approval_required';
+
+export function isDatasourceApprovalError(e) {
+  return e?.code === DATASOURCE_APPROVAL_REQUIRED_CODE;
+}
+
+export function pendingDatasourcesFromError(e) {
+  const pending = e?.body?.detail?.pending;
+  return Array.isArray(pending) ? pending : [];
+}
+
+/** Connections as the server labels them, for a sentence. */
+export function datasourceList(items) {
+  return items.map((d) => d.label || `${d.engine}/${d.name}`).join(', ');
+}
+
+/** The warning for an app published without some connections' credentials, or ''. */
+export function unapprovedDatasourcesNotice(r) {
+  const items = Array.isArray(r?.unapprovedDatasources) ? r.unapprovedDatasources : [];
+  return items.length
+    ? i18n.t('publish.datasources.unapproved', { ns: 'artifacts', list: datasourceList(items) })
+    : '';
 }
 
 /**
@@ -51,5 +77,7 @@ export function publishFailureReason(e) {
 export function publishRefusalMessage(e) {
   if (isOwnedByOtherUserError(e)) return i18n.t('publish.ownedByOther', { ns: 'artifacts' });
   if (isShareOrgRequiredError(e)) return e.message;
+  if (isDatasourceApprovalError(e)) return i18n.t('publish.datasources.review', { ns: 'artifacts' });
+  if (e?.code === PUBLISH_SHELL_TOO_OLD_CODE) return i18n.t('publish.datasources.updateApp', { ns: 'artifacts' });
   return null;
 }

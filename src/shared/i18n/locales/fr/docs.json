@@ -15,6 +15,8 @@
     "expand": "Agrandir",
     "close": "Fermer",
     "closeDoc": "Fermer le document",
+    "renameDoc": "Renommer le document : {title}",
+    "docName": "Nom du document",
     "loading": "Chargement du document",
     "gone": "Ce document n’existe plus.",
     "openFailed": "Impossible d’ouvrir ce document. {reason}",
@@ -80,6 +82,7 @@
   "tabs": {
     "label": "Onglets",
     "add": "Ajouter un onglet",
+    "addHint": "Ajouter un nouvel onglet à ce document",
     "hide": "Masquer les onglets",
     "changed": "Modifié",
     "showChanged": "Afficher l’onglet modifié",
@@ -186,6 +189,11 @@
     "placeholderWrite": "Que doit écrire l’agent ici ?",
     "placeholderChange": "Que faut-il changer ?",
     "send": "Envoyer"
+  },
+  "comments": {
+    "edit": "Modifier",
+    "editHint": "Écrire dans le document",
+    "commentHint": "Commenter — cliquez sur un bloc ou sélectionnez des mots"
   },
   "chart": {
     "label": "Graphique",

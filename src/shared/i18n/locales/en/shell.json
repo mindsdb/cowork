@@ -135,6 +135,27 @@
       "haveCopyTitle": "You have a copy. Delete it to duplicate the app again.",
       "duplicateAriaLabel": "Duplicate {name}",
       "duplicatedToast": "Duplicated into this project."
+    },
+    "workingFolders": {
+      "title": "Working folders",
+      "add": "Add a folder to this chat",
+      "adding": "Adding…",
+      "emptyHint": "Add a folder for the agent to work in.",
+      "loadingFiles": "Loading files…",
+      "emptyFolder": "No files in this folder.",
+      "showFiles": "Show files in {name}",
+      "hideFiles": "Hide files in {name}",
+      "unavailable": "Folder not available",
+      "removeTooltip": "Remove from this chat",
+      "removeAriaLabel": "Remove {name} from this chat",
+      "removeTitle": "Remove \"{name}\" from this chat?",
+      "fallbackName": "folder",
+      "removeMessage": "The agent will no longer work in this folder. The folder and its files stay on your computer.",
+      "loadFailed": "Could not load working folders.",
+      "listFailed": "Could not list this folder.",
+      "pickerFailed": "Could not open the folder picker.",
+      "addFailed": "Could not add this folder.",
+      "removeFailed": "Could not remove this folder."
     }
   },
   "confirm": {
@@ -169,17 +190,47 @@
     }
   },
   "comingSoon": {
-    "cloudTitle": "Coming soon to Cloud",
+    "cloudTitle": "This runs in the Desktop app",
+    "cloudTitleNamed": "{feature} runs in the Desktop app",
     "unavailableTitle": "Feature unavailable",
-    "cloudBodyNamed": "{feature} isn’t available on Cloud just yet. In the meantime, you can use it in the desktop app.",
-    "cloudBody": "This feature isn’t available on Cloud just yet. In the meantime, you can use it in the desktop app.",
-    "cloudBodyCustom": "{feature} isn’t available on Cloud just yet. You can connect it now as a custom connector.",
+    "cloudBodyNamed": "{feature} runs in the Desktop app today. Download it to connect {feature} there.",
+    "cloudBody": "This runs in the Desktop app today. Download it to use it there.",
+    "mobileBodyNamed": "{feature} runs in the Desktop app on a computer.",
+    "mobileBody": "This runs in the Desktop app on a computer.",
+    "cloudBodyCustom": "{feature} runs in the Desktop app today. Here, you can connect it now as a custom connector.",
     "unavailableBodyNamed": "{feature} isn’t available in this deployment.",
     "unavailableBody": "This feature isn’t available in this deployment.",
     "notNow": "Not now",
-    "download": "Download the app",
+    "download": "Download the Desktop app",
     "connectCustom": "Connect your custom {feature}",
     "buildCustom": "Build a custom connector"
+  },
+  "desktopOffer": {
+    "tag": "Desktop",
+    "notNow": "Not now",
+    "download": "Download the Desktop app",
+    "platforms": "For Mac, Windows and Linux.",
+    "code": {
+      "title": "Code mode runs in the Desktop app",
+      "body": "Code mode works on the code on your computer, so it needs the Desktop app. There, Cowork can:",
+      "points": {
+        "files": "Read and change code in your own folders and repositories",
+        "commands": "Run commands and tests on your machine",
+        "agents": "Hand a task to Claude Code or Codex"
+      }
+    },
+    "folder": {
+      "projectTitle": "Use a folder on your computer in the Desktop app",
+      "chatTitle": "Working folders are in the Desktop app",
+      "projectBody": "The browser can't reach the files on your computer. The Desktop app can start a project in a folder you already have, and Cowork works on the files in it.",
+      "chatBody": "The browser can't reach the files on your computer. In the Desktop app you can add folders from your computer to a chat, and Cowork works in them.",
+      "points": {
+        "inPlace": "No uploading: it uses the files where they are",
+        "saved": "What it makes is saved on your computer",
+        "kept": "Removing the folder from Cowork leaves your files in place"
+      },
+      "note": "For Mac, Windows and Linux. Here in the browser, you can still upload files."
+    }
   },
   "loadStatus": {
     "retry": "Retry",
@@ -187,6 +238,8 @@
     "loading": "Loading {what}…"
   },
   "upToDate": "Up to date",
+  "upToDateSaving": "Saving…",
+  "upToDateSaved": "Saved",
   "usageBar": {
     "hideAllowance": "Hide allowance",
     "hide": "Hide"
@@ -414,7 +467,8 @@
     "signupWelcome": {
       "fromDesktop": "Your account is ready. You can start right here, or go back to the {product} app and sign in.",
       "dismiss": "Dismiss"
-    }
+    },
+    "ownWorkHeading": "What should {product} work on?"
   },
   "logout": {
     "title": "Sign out of {product}?",

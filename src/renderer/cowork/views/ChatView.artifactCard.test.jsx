@@ -53,6 +53,8 @@ vi.mock('../lib/artifactsStore', () => ({
   useArtifactCardBySlug: (slug) => (slug ? listedCard(slug) : null),
   setArtifactsScope: vi.fn(),
   revalidate: (...a) => revalidate(...a),
+  noteArtifactRenamed: vi.fn(),
+  onArtifactRenamed: () => () => {},
 }));
 
 vi.mock('../../platform/host', () => ({

@@ -24,6 +24,7 @@ import i18n, { useTranslation } from '../../../../lib/i18n';
 import { copyText } from '../../../lib/clipboard';
 import { reportLinkCopied, reportShareOpened } from '../../../lib/artifactShareAnalytics';
 import {
+  ACCESS_LABELS,
   AccessChooser,
   accessDraftFromArtifact,
   addedIndividuals,
@@ -39,7 +40,10 @@ import { LOAD_STATUS } from '../../../lib/sharingContract';
 import { LoadStatus, RetryAlert } from '../../LoadStatus';
 import { useArtifactShareState } from './useArtifactShareState';
 import { shareStateIcon } from '../../ShareStateLabel';
-import { UpToDateTag } from '../../UpToDateTag';
+import { UpToDateTag, useSaveStatus } from '../../UpToDateTag';
+import { useArtifactStats } from '../stats/useArtifactStats';
+import { ViewerAnalyticsSettings } from './ViewerAnalyticsSettings';
+import { DatasourceApprovalNotice } from './DatasourceApprovalNotice';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
@@ -72,7 +76,7 @@ const SCROLL_BODY = 'min-h-0 overflow-y-auto overscroll-contain';
 // warning next to an error must not push the footer out of the popup.
 const ALERT_ROW = 'mx-4 mb-3 min-h-0 overflow-y-auto';
 
-function PanelHeader({ title }) {
+export function PanelHeader({ title }) {
   // .s-h3 already sets color:var(--ink); it does not set padding/border, so
   // those move safely to utilities. Directional border zeroes its off-axis
   // sides (preflight-off box-paint footgun).
@@ -81,7 +85,7 @@ function PanelHeader({ title }) {
   );
 }
 
-function SectionLabel({ children, action }) {
+export function SectionLabel({ children, action }) {
   return (
     <div className="flex items-baseline justify-between gap-2 mb-2">
       <span className="font-body font-semibold text-sm text-ink">{children}</span>
@@ -135,12 +139,26 @@ function UrlField({ url, onCopied }) {
   );
 }
 
-// Read-only "current access" card (summary view). Shared with specific
-// teams and people, it lists them right away (the first few, then "+N
-// more"), so seeing who has access never takes a click on Change.
-function AccessSummaryCard({ pub, sharing, orgName }) {
+// The "current access" card (summary view). Shared with specific teams and
+// people, it lists them right away (the first few, then "+N more"), so seeing
+// who has access never takes a click. `picker`, when given, takes the card's
+// place: `(desc) => the access dropdown`, which switches the access from
+// here, given the card's line (how many are on a list); the list then
+// follows it in a box of its own.
+//
+// `readOnly`: shown to someone who doesn't own the artifact (SharedWithMenu,
+// ENG-4455), so its words are about the owner's choice, not the reader's:
+// "Only its owner" for an owner-only link, and, when the lists are withheld
+// (the reader is outside the org), what kind of list it is without one.
+export function AccessSummaryCard({ pub, sharing, orgName, picker = null, readOnly = false }) {
+  const { t } = useTranslation('artifacts');
   const orgSharing = !!sharing;
-  const m = accessSummaryLabel(pub, { orgSharing, orgName });
+  const summary = accessSummaryLabel(pub, { orgSharing, orgName });
+  const m = readOnly && pub?.accessMode === 'restricted' && pub?.ownerOnly
+    ? { icon: Ico.lock, title: t('publish.sharedWith.ownerOnlyTitle'), desc: t('publish.sharedWith.ownerOnlyDesc') }
+    : readOnly && (summary === ACCESS_LABELS.specific || summary === ACCESS_LABELS.specificPeople)
+      ? { icon: summary.icon, title: summary.title, desc: t('publish.sharedWith.listWithheld') }
+      : summary;
   const draft = accessDraftFromArtifact(pub, { orgSharing, teams: sharing?.teams?.teams || [] });
   const listed = draft.mode === AUDIENCE_CHOICE.SPECIFIC;
   const emails = listed ? parseEmailList(draft.emailsText).valid : [];
@@ -150,6 +168,24 @@ function AccessSummaryCard({ pub, sharing, orgName }) {
   const desc = count > 0
     ? recipientSummary({ teamIds, userIds, emails }, { orgName, emailsOnly: !orgSharing })
     : m.desc;
+  const list = count > 0 && (
+    <SharedWithList
+      teamIds={teamIds}
+      userIds={userIds}
+      emails={emails}
+      orgName={orgName}
+      teamsState={sharing?.teams || null}
+      emailsOnly={!orgSharing}
+    />
+  );
+  if (picker) {
+    return (
+      <div className="flex flex-col gap-2" data-testid="access-summary">
+        {picker(desc)}
+        {list && <div className="rounded-card border border-solid border-line bg-surface-2 py-1 px-1">{list}</div>}
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col rounded-card bg-surface-2 border border-solid border-line" data-testid="access-summary">
       <div className="flex items-center gap-[10px] py-[10px] px-3">
@@ -315,6 +351,11 @@ export function PublishMenu({
   };
   // summary | access | password | versions — only meaningful while published.
   const [view, setView] = useState('summary');
+  // Viewer analytics settings (ENG-4455), read with the stats while the panel
+  // is open on a published artifact.
+  const analytics = useArtifactStats(pub.artifact, { enabled: open && isPublished && !!pub.artifact });
+  // The analytics switches save as they flip; the footer says so.
+  const analyticsSave = useSaveStatus(!!analytics.trackingBusy, !!analytics.error);
   // Which reads the panel waits on, and whether it may claim "Shared"
   // (useArtifactShareState).
   const {
@@ -393,7 +434,7 @@ export function PublishMenu({
     return commitAccess(d, null);
   };
   const commitAccess = async (d, notify) => {
-    const ok = await pub.publish(accessPayload(d, notify));
+    const ok = await pub.publish(accessPayload(d, notify), { approvedDatasources: pub.pendingDatasources });
     if (ok) setView('summary');
     return ok;
   };
@@ -435,7 +476,7 @@ export function PublishMenu({
   const doSavePassword = async () => {
     const value = pwd.value.trim();
     if (!value || value === (pub.accessPassword || '')) return;
-    const ok = await pub.publish({ mode: 'password', password: value });
+    const ok = await pub.publish({ mode: 'password', password: value }, { approvedDatasources: pub.pendingDatasources });
     if (ok) { setView('summary'); setPwd({ value: '', reveal: false }); }
   };
   const doUnpublish = async () => {
@@ -560,6 +601,7 @@ export function PublishMenu({
                       </>
                     )}
                   </div>
+                  <DatasourceApprovalNotice pending={pub.pendingDatasources} className={ALERT_ROW} />
                   <NoticeRow message={pub.notice} />
                   <ErrorRow message={pub.error} />
                   <div className="flex justify-end py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line">
@@ -590,10 +632,40 @@ export function PublishMenu({
                     <div className="py-3 px-4">
                       {view === 'summary' && (
                         <>
-                          <SectionLabel action={<LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setView('access'); }}>{t('publish.change')}</LinkButton>}>
+                          {/* The card is a dropdown: picking another access
+                              opens the change, with Update to save it. The
+                              people on a list are edited from Edit list. */}
+                          <SectionLabel action={current.mode === AUDIENCE_CHOICE.SPECIFIC && sharingReady && pub.accessLoaded && (
+                            <LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setView('access'); }}>{t('publish.editList')}</LinkButton>
+                          )}>
                             {whoCanAccess}
                           </SectionLabel>
-                          {accessLoadStatus || <AccessSummaryCard pub={pub} sharing={sharing} orgName={orgName} />}
+                          {accessLoadStatus || sharingSettingsStatus || (<>
+                            {permissionsNotice}
+                            <AccessSummaryCard
+                              pub={pub}
+                              sharing={sharing}
+                              orgName={orgName}
+                              // Not before the real list is in: a pick drafts
+                              // over it, and would not be re-seeded (ENG-931).
+                              picker={current.mode && pub.accessLoaded ? (desc) => (
+                                <AccessChooser
+                                  layout="dropdown"
+                                  showEditor={false}
+                                  chosenDesc={desc}
+                                  ariaLabel={whoCanAccess}
+                                  value={current}
+                                  sharing={sharing}
+                                  onChange={(d) => {
+                                    if (d.mode === current.mode) return;
+                                    editDraft(d);
+                                    setDraftDirty(true);
+                                    setView('access');
+                                  }}
+                                />
+                              ) : null}
+                            />
+                          </>)}
                           {pub.accessMode === 'password' && (
                             <div className="mt-2 flex justify-end">
                               <LinkButton onClick={() => { setPwd({ value: '', reveal: false }); setView('password'); }}>{t('publish.changePassword')}</LinkButton>
@@ -615,7 +687,7 @@ export function PublishMenu({
                           {sharingSettingsStatus || accessLoadStatus || (
                             <>
                               {permissionsNotice}
-                              <AccessChooser value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} ariaLabel={whoCanAccess} />
+                              <AccessChooser layout="dropdown" value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} ariaLabel={whoCanAccess} />
                             </>
                           )}
                         </>
@@ -662,8 +734,20 @@ export function PublishMenu({
                         </>
                       )}
                     </div>
+
+                    {/* Whatever access is picked or being changed: analytics
+                        is its own setting, saved as it flips. Not for Only
+                        me, which nobody else opens. */}
+                    {pub.artifact && view !== 'versions'
+                      && (view === 'access' ? draft.mode : current.mode) !== AUDIENCE_CHOICE.PRIVATE && (
+                      <div className="py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line">
+                        <SectionLabel>{t('analytics.title')}</SectionLabel>
+                        <ViewerAnalyticsSettings controller={analytics} />
+                      </div>
+                    )}
                   </div>
   
+                  <DatasourceApprovalNotice pending={pub.pendingDatasources} className={ALERT_ROW} />
                   <NoticeRow message={pub.notice || (pub.linkOwnerRecorded === false ? unrecordedLinkWarning() : '')} />
                   <ErrorRow message={pub.error} />
   
@@ -708,13 +792,13 @@ export function PublishMenu({
                       )
                     ) : followsEdits ? (
                       <UpToDateTag label={t('publish.updatesAsYouEdit')} />
-                    ) : (pub.modified && !orgMode) ? (
-                      <FooterButton primary onClick={pub.update} disabled={pub.busy}
+                    ) : pub.modified ? (
+                      <FooterButton primary onClick={() => pub.update({ approvedDatasources: pub.pendingDatasources })} disabled={pub.busy}
                         busy={pub.phase === 'updating'} busyLabel={t('status.updating')}>
                         {t('publish.update')}
                       </FooterButton>
                     ) : (
-                      <UpToDateTag />
+                      <UpToDateTag state={analyticsSave} />
                     )}
                     </>)}
                   </div>

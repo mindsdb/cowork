@@ -25,9 +25,10 @@ import {
 import ProviderIcon from './ProviderIcon.jsx';
 import { useFileDrop, FileDropOverlay, extractClipboardFiles } from '../lib/useFileDrop';
 import { renameClipboardImages } from '../lib/clipboardImageName';
-import { AttachmentThumbnail } from './AttachmentThumbnail';
+import { AttachmentChip } from './AttachmentChip';
 import { useSkills } from '../lib/skillsStore';
 import { useDraft } from '../hooks/useDraft';
+import { joinDictated, useDictation } from '../lib/voice/useDictation';
 import { host } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { modelPickerMode, operatorEffortLevels } from '../../lib/modelPicker';
@@ -36,6 +37,7 @@ import { HubUsageContext } from '../lib/hubUsageContext';
 import { deriveComposerWarning, countsAsWarning } from '../lib/usageWarnings';
 import { connectionMuteKey } from '../lib/connectionMutes';
 import { useTranslation } from '../../lib/i18n';
+import { useDocsEnabled } from '../../lib/docsEnabled';
 
 // Marks where an inline element (a link) sits inside a translated sentence.
 const INLINE_SLOT = '\u2063';
@@ -82,47 +84,6 @@ function TaskModeChip({ mode, onClear }) {
   );
 }
 
-function AttachmentChip({ attachment, onRemove }) {
-  const { t } = useTranslation('chat');
-  const src = attachment.source || attachment.kind || 'file';
-  const isImage = attachment.mime && String(attachment.mime).startsWith('image/');
-  const label = src === 'connector' ? t('composer.attachment.connector')
-    : src === 'gdrive' ? 'Google Drive'
-      : src === 'notion' ? 'Notion'
-        : isImage ? t('composer.attachment.image') : t('composer.attachment.file');
-  const status = attachment.pendingFile
-    ? t('composer.attachment.queued')
-    : (attachment.extractionStatus && attachment.extractionStatus !== 'ready'
-      ? attachment.extractionStatus.replace('_', ' ')
-      : null);
-  // Pending image uploads carry the original File, so preview it straight
-  // from a local object URL (no fetch). Other attachments keep the glyph.
-  const showThumb = isImage && attachment.pendingFile;
-  return (
-    <div className="attachment-chip" title={attachment.note || attachment.textPreview || attachment.name}>
-      <span className="attachment-chip-icon">
-        {showThumb ? <AttachmentThumbnail file={attachment.pendingFile} cover size={30} alt={attachment.name || t('composer.attachment.image')} />
-          : src === 'connector' ? Ico.link(14)
-            : src === 'gdrive' ? Ico.googleDrive(14)
-              : src === 'notion' ? Ico.notion(14)
-                : isImage ? Ico.image(14)
-                  : Ico.doc(14)}
-      </span>
-      <span className="attachment-chip-body">
-        <span className="attachment-chip-name">{attachment.name || label}</span>
-        <span className="attachment-chip-meta">{status || label}</span>
-      </span>
-      {onRemove && (
-        <Tooltip content={t('composer.attachment.remove')}>
-          <button className="attachment-chip-remove" aria-label={t('composer.attachment.remove')} onClick={() => onRemove(attachment.id)}>
-            x
-          </button>
-        </Tooltip>
-      )}
-    </div>
-  );
-}
-
 export default function Composer({
   onSend,
   project,
@@ -160,6 +121,9 @@ export default function Composer({
   onUpdateConnectorMute,
   /** Starts a voice call with the agent (prototype); null hides it from the + menu. */
   onStartVoiceCall = null,
+  /** Shows the dictate mic beside Send (ENG-4630): it fills the box with what
+      the person says, through the voice call's lane. */
+  dictationAvailable = false,
   /**
    * The shared browser for this task or the next one, shown as a Browser
    * switch in the + menu. Null hides it.
@@ -169,6 +133,13 @@ export default function Composer({
   onRemoveAttachment,
   placeholder: placeholderProp,
   disabled = false,
+  /** Whether the draft can be sent. Defaults to "has text"; a mode that
+      sends an attachment alone, or needs more than its own starter text,
+      passes its own rule. */
+  canSend = null,
+  /** Told the text after each change, typed, pasted or placed, for a caller
+      whose guidance depends on it (the own-work mode's "Now add…" hint). */
+  onValueChange,
   metaReadOnly = false,
   // Whether the model pill is a fixed label rather than a picker. Defaults
   // to metaReadOnly (ChatView's prior behavior: "model is fixed once a task
@@ -252,7 +223,10 @@ export default function Composer({
   // chats, so a pick made in one chat went out with the next chat's message.
   const [docPick, setDocPick] = useState(null);
   if (docPick && docPick !== surface) setDocPick(null);
-  const docOutput = docPick === surface;
+  // A deployment without doc tools offers no doc output, and a pick made
+  // before /health said so is not sent.
+  const docsEnabled = useDocsEnabled();
+  const docOutput = docsEnabled && docPick === surface;
   const setDocOutput = (on) => setDocPick(on ? surface : null);
   const [codingHarness, setCodingHarness] = useState('anton');
   // Detected but not gating: shown as a non-blocking hint on the Claude Code
@@ -362,6 +336,9 @@ export default function Composer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const recognitionRef = useRef(null);
+  const dictation = useDictation({
+    onText: (delta, fresh) => setValue((v) => joinDictated(v, delta, fresh)),
+  });
 
   // All fence-context lookups in this component MUST consume this memoized result.
   // Never call parseFences(value) directly — it walks the full string on every call.
@@ -933,8 +910,15 @@ export default function Composer({
     }
   }
 
+  const sendable = canSend ? canSend(value) : Boolean(value.trim());
+  useEffect(() => {
+    onValueChange?.(value);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
   const handleSend = async () => {
-    if (disabled || !value.trim()) return;
+    // What is sent is what is in the box: dictation stops with it.
+    if (dictation.active) dictation.stop();
+    if (disabled || !sendable) return;
     setBusy(true);
     try {
       // Model selection always rides along (it applies to Anton too, not
@@ -978,9 +962,14 @@ export default function Composer({
   // polled usage; the pick decides whether free Air tokens or the paid
   // balance is what the next turn spends.
   const hubUsage = useContext(HubUsageContext);
+  // On Plus or Pro, a pick the plan does not cover runs on the wallet, so its
+  // bar speaks of the wallet rather than the plan's windows (ENG-4186).
+  const pickCoveredByTier = modelMeta?.modelCoveredByTier?.[model?.id ?? model] ?? null;
   const usageWarning = useMemo(
-    () => (hubUsage ? deriveComposerWarning(hubUsage.usage, { providerType: hubUsage.providerType, model }) : null),
-    [hubUsage, model],
+    () => (hubUsage ? deriveComposerWarning(hubUsage.usage, {
+      providerType: hubUsage.providerType, model, coveredByTier: pickCoveredByTier,
+    }) : null),
+    [hubUsage, model, pickCoveredByTier],
   );
   // What the bar would say for ANY pick, not just the current one. Two things
   // read it: "healthy" for forgetting closed bars, and the height reservation
@@ -1309,16 +1298,18 @@ export default function Composer({
                   <button className="menu-item" onClick={() => fileRef.current?.click()}>
                     {Ico.attach(14)} {t('composer.menu.attachFiles')}
                   </button>
-                  <button
-                    className="menu-item"
-                    role="menuitemcheckbox"
-                    aria-checked={docOutput}
-                    onClick={() => { setDocOutput(!docOutput); setOpenMenu(null); }}
-                  >
-                    {Ico.doc(14)}
-                    <span className="flex-1">{t('composer.menu.writeAsDoc')}</span>
-                    {docOutput && <span className="inline-flex text-accent">{Ico.check(12)}</span>}
-                  </button>
+                  {docsEnabled && (
+                    <button
+                      className="menu-item"
+                      role="menuitemcheckbox"
+                      aria-checked={docOutput}
+                      onClick={() => { setDocOutput(!docOutput); setOpenMenu(null); }}
+                    >
+                      {Ico.doc(14)}
+                      <span className="flex-1">{t('composer.menu.writeAsDoc')}</span>
+                      {docOutput && <span className="inline-flex text-accent">{Ico.check(12)}</span>}
+                    </button>
+                  )}
                   {onAddGoogleDriveFiles && (
                     <button
                       className="menu-item"
@@ -1575,10 +1566,27 @@ export default function Composer({
                 menuLabel={t('composer.model.effort')}
               />
             )}
-            {/* Mic / voice input intentionally hidden — voice flow isn't
-                wired through anton yet. We keep speechSupported state
-                around so we can reinstate later by re-rendering the
-                button (e.g. behind a `showMic` prop). */}
+            {/* Dictate (ENG-4630): between the model picker and Send. It
+                only fills the box; the voice call is the sidebar's button.
+                Shown while dictating even if it stops being offered, so it
+                can always be stopped. */}
+            {dictation.error && !dictation.active && dictationAvailable && (
+              <span className="dictate-error" role="alert" title={dictation.error}>{dictation.error}</span>
+            )}
+            {(dictationAvailable || dictation.active) && (
+              <Tooltip content={dictation.active ? t('composer.dictation.stop') : t('composer.dictation.start')}>
+                <button
+                  type="button"
+                  className={`dictate-btn${dictation.active ? ' is-live' : ''}`}
+                  onClick={dictation.toggle}
+                  disabled={dictation.phase === 'finishing'}
+                  aria-pressed={dictation.active}
+                  aria-label={dictation.active ? t('composer.dictation.stop') : t('composer.dictation.start')}
+                >
+                  {dictation.phase === 'starting' ? <span className="dictate-btn__dot" aria-hidden="true" /> : Ico.mic(16)}
+                </button>
+              </Tooltip>
+            )}
             {streaming && onStop ? (
               <Tooltip content={t('composer.stop')}>
               <button
@@ -1621,10 +1629,10 @@ export default function Composer({
               <Tooltip content={t('composer.send')}>
                 <button
                   className="send-btn"
-                  disabled={disabled || !value.trim() || busy}
+                  disabled={disabled || !sendable || busy}
                   onClick={handleSend}
                   aria-label={t('composer.send')}
-                  title={(disabled || !value.trim() || busy) ? t('composer.send') : undefined}
+                  title={(disabled || !sendable || busy) ? t('composer.send') : undefined}
                 >
                   {Ico.send(16)}
                 </button>

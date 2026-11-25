@@ -10,6 +10,8 @@ import DocPane, { deletionNotice, exportChoices, headerCorner, writeErrorText } 
 import * as api from './docApi';
 import { host } from '../../../platform/host';
 import { COMMIT_MS } from './EditableText';
+import { setDocsEnabled } from '../../../lib/docsEnabled';
+import { onArtifactRenamed } from '../../lib/artifactsStore';
 
 const doc = (rev = 2, extra = []) => ({
   schema: 'cowork.doc/1',
@@ -153,6 +155,22 @@ describe('DocPane', () => {
     api.fetchDoc.mockRejectedValue(Object.assign(new Error('gone'), { status: 404 }));
     render(<DocPane projectRef="p1" artifactId="a1" />);
     expect(await screen.findByText('This doc no longer exists.')).toBeInTheDocument();
+  });
+});
+
+describe('DocPane and the title the lists show', () => {
+  it('tells every list the doc\'s title, and again once the doc is renamed', async () => {
+    const heard = vi.fn();
+    const stop = onArtifactRenamed(heard);
+    try {
+      render(<DocPane projectRef="p1" artifactId="a1" />);
+      await screen.findByRole('textbox', { name: 'Title' });
+      expect(heard).toHaveBeenLastCalledWith({ id: 'a1', title: 'Vendor shortlist' });
+      act(() => api.stream.handlers.onEvent({ type: 'doc.updated', by: 'agent', rev: 3, doc: { ...doc(3), title: 'Vendors 2027' } }));
+      await waitFor(() => expect(heard).toHaveBeenLastCalledWith({ id: 'a1', title: 'Vendors 2027' }));
+    } finally {
+      stop();
+    }
   });
 });
 
@@ -320,6 +338,105 @@ describe('DocPane adding a tab', () => {
 });
 
 
+describe('DocPane renaming the doc from its header', () => {
+  const twoTabs = () => ({ ...doc(), tabs: [...doc().tabs, { id: 't_2', title: 'Risks', blocks: [] }] });
+  beforeEach(() => {
+    api.fetchDoc.mockResolvedValue({ doc: twoTabs() });
+    api.postDocOps.mockImplementation(async (_p, _a, { ops }) => {
+      const next = { ...twoTabs(), rev: 3 };
+      if (ops[0]?.op === 'rename_doc') next.title = ops[0].title;
+      return { doc: next, rev: 3, results: [] };
+    });
+  });
+
+  async function startRenaming(user) {
+    await user.click(await screen.findByRole('button', { name: 'Rename doc: Vendor shortlist' }));
+    const field = screen.getByRole('textbox', { name: 'Doc name' });
+    expect(field).toHaveFocus();
+    expect(field.selectionStart).toBe(0);
+    expect(field.selectionEnd).toBe('Vendor shortlist'.length);
+    return field;
+  }
+
+  it('renames the doc, not the tab, in a doc of two tabs, and tells the lists', async () => {
+    const heard = vi.fn();
+    const stop = onArtifactRenamed(heard);
+    try {
+      const user = userEvent.setup();
+      render(<DocPane projectRef="p1" artifactId="a1" />);
+      const field = await startRenaming(user);
+      await user.clear(field);
+      await user.keyboard('  Vendors 2027  {Enter}');
+      await waitFor(() => expect(api.postDocOps).toHaveBeenCalled());
+      expect(api.postDocOps.mock.calls[0][2].ops).toEqual([{ op: 'rename_doc', title: 'Vendors 2027' }]);
+      const renamed = await screen.findByRole('button', { name: 'Rename doc: Vendors 2027' });
+      expect(renamed).toHaveFocus();
+      expect(heard).toHaveBeenLastCalledWith({ id: 'a1', title: 'Vendors 2027' });
+      // The page's title still names the tab.
+      expect(screen.getByRole('textbox', { name: 'Title' })).toHaveTextContent('Vendor shortlist');
+    } finally {
+      stop();
+    }
+  });
+
+  it('renames on leaving the field too', async () => {
+    const user = userEvent.setup();
+    render(<DocPane projectRef="p1" artifactId="a1" />);
+    const field = await startRenaming(user);
+    await user.clear(field);
+    await user.keyboard('Shortlist');
+    await user.click(screen.getByRole('textbox', { name: 'Title' }));
+    await waitFor(() => expect(api.postDocOps).toHaveBeenCalled());
+    expect(api.postDocOps.mock.calls[0][2].ops).toEqual([{ op: 'rename_doc', title: 'Shortlist' }]);
+  });
+
+  it('puts the name back on Escape, without closing what the doc is open in', async () => {
+    const outside = vi.fn();
+    document.addEventListener('keydown', outside);
+    try {
+      const user = userEvent.setup();
+      render(<DocPane projectRef="p1" artifactId="a1" />);
+      const field = await startRenaming(user);
+      await user.clear(field);
+      await user.keyboard('Something else{Escape}');
+      expect(await screen.findByRole('button', { name: 'Rename doc: Vendor shortlist' })).toHaveFocus();
+      expect(outside.mock.calls.map(([e]) => e.key)).not.toContain('Escape');
+      expect(api.postDocOps).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener('keydown', outside);
+    }
+  });
+
+  it('sends nothing for an emptied or unchanged name', async () => {
+    const user = userEvent.setup();
+    render(<DocPane projectRef="p1" artifactId="a1" />);
+    await user.clear(await startRenaming(user));
+    await user.keyboard('   {Enter}');
+    await startRenaming(user);
+    await user.keyboard('{Enter}');
+    expect(screen.getByRole('button', { name: 'Rename doc: Vendor shortlist' })).toBeInTheDocument();
+    expect(api.postDocOps).not.toHaveBeenCalled();
+  });
+
+  it('keeps a rename the agent made while the field was open and left as it was', async () => {
+    const user = userEvent.setup();
+    render(<DocPane projectRef="p1" artifactId="a1" />);
+    await startRenaming(user);
+    act(() => api.stream.handlers.onEvent({ type: 'doc.updated', by: 'agent', rev: 3, doc: { ...twoTabs(), rev: 3, title: 'Vendors 2027' } }));
+    await user.keyboard('{Enter}');
+    expect(await screen.findByRole('button', { name: 'Rename doc: Vendors 2027' })).toBeInTheDocument();
+    expect(api.postDocOps).not.toHaveBeenCalled();
+  });
+
+  it('is plain text for a viewer who cannot edit', async () => {
+    api.fetchDoc.mockResolvedValue({ doc: twoTabs(), capabilities: { canEdit: false } });
+    render(<DocPane projectRef="p1" artifactId="a1" />);
+    await screen.findByLabelText('Title');
+    expect(document.querySelector('.doc-header__title')).toHaveTextContent('Vendor shortlist');
+    expect(screen.queryByRole('button', { name: /^Rename doc/ })).toBeNull();
+  });
+});
+
 describe('DocPane folding the tabs away', () => {
   const twoTabs = (rev = 2, extra = []) => ({
     ...doc(rev),
@@ -331,7 +448,7 @@ describe('DocPane folding the tabs away', () => {
   });
   afterEach(() => localStorage.removeItem('cowork:doc-tabs-hidden:v1'));
 
-  it('folds the rail away and brings it back from the header, and keeps the choice for the next doc', async () => {
+  it('folds the rail away and brings it back from the page, and keeps the choice for the next doc', async () => {
     const user = userEvent.setup();
     const { unmount } = render(<DocPane projectRef="p1" artifactId="a1" />);
     await user.click(await screen.findByRole('button', { name: 'Hide tabs' }));
@@ -356,6 +473,21 @@ describe('DocPane folding the tabs away', () => {
       doc: twoTabs(3, [{ id: 'b_new', type: 'paragraph', text: 'New risk.', v: 3, by: 'agent' }]),
     }));
     expect(await screen.findByRole('button', { name: 'Show tabs (a tab has changed)' })).toBeInTheDocument();
+  });
+
+  it('puts Show tabs on the page where Hide tabs was, and keeps the doc icon in the header', async () => {
+    const user = userEvent.setup();
+    render(<DocPane projectRef="p1" artifactId="a1" />);
+    const hide = await screen.findByRole('button', { name: 'Hide tabs' });
+    expect(document.querySelector('.doc-header__icon')).toBeInTheDocument();
+    expect(document.querySelector('.doc-body')).not.toHaveAttribute('data-tabs-hidden');
+    await user.click(hide);
+    const show = screen.getByRole('button', { name: 'Show tabs' });
+    expect(show.closest('.doc-header')).toBeNull();
+    expect(show.closest('.doc-tabs')).toBeNull();
+    expect(show.closest('.doc-tabs-show').parentElement).toHaveClass('doc-body');
+    expect(document.querySelector('.doc-body')).toHaveAttribute('data-tabs-hidden');
+    expect(document.querySelector('.doc-header__icon')).toBeInTheDocument();
   });
 });
 
@@ -454,6 +586,20 @@ describe('DocPane undo, notices and shortcuts', () => {
     await user.keyboard('{Meta>}z{/Meta}');
     await waitFor(() => expect(api.postDocOps).toHaveBeenCalledTimes(2));
     expect(api.postDocOps.mock.calls[1][2].ops).toEqual(undo);
+  });
+
+  it('leaves Cmd+Z to a text box of its own in the pane (the ask bar, a comment)', async () => {
+    const user = userEvent.setup();
+    api.postDocOps.mockImplementation(answered({ undo: [{ op: 'update', tab: 't_1', id: 'b_task', set: { done: false } }] }));
+    render(<DocPane projectRef="p1" artifactId="a1" />);
+    await user.click(await screen.findByRole('checkbox', { name: 'Mark done' }));
+    await waitFor(() => expect(api.postDocOps).toHaveBeenCalledTimes(1));
+    const box = document.createElement('textarea');
+    screen.getByRole('region').appendChild(box);
+    box.focus();
+    await user.keyboard('{Meta>}z{/Meta}');
+    expect(api.postDocOps).toHaveBeenCalledTimes(1);
+    expect(box).toHaveFocus();
   });
 
   it('takes the Edit menu\'s Undo (a historyUndo input) the same way, not the browser\'s', async () => {
@@ -560,5 +706,92 @@ describe('DocPane undo, notices and shortcuts', () => {
     await user.click(await screen.findByRole('menuitem', { name: 'Copy as Markdown' }));
     expect(await screen.findByText('Copied as Markdown')).toBeInTheDocument();
     expect(document.execCommand).toHaveBeenCalledWith('copy');
+  });
+});
+
+describe('DocPane "Edit with agent"', () => {
+  /** Picks the first `n` letters of `el`'s first words, as the person dragging over them. */
+  function pick(el, n) {
+    const range = document.createRange();
+    range.setStart(el.firstChild, 0);
+    range.setEnd(el.firstChild, n);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    act(() => { document.dispatchEvent(new Event('selectionchange')); });
+  }
+  /** Waits until the pane has seen the pick: it reports it for the chat in the same frame as the bar. */
+  const pickSeen = (onViewChange) => waitFor(() => expect(onViewChange.mock.calls.at(-1)[0].selection)
+    .toEqual({ blockIds: ['b_lead'], quote: 'Acme' }));
+  const openLeadMenu = async (user) => user.click(
+    await screen.findByRole('button', { name: 'Options for Paragraph “Acme is the pick.”' }),
+  );
+
+  afterEach(() => {
+    window.getSelection().removeAllRanges();
+    act(() => setDocsEnabled(true));
+  });
+
+  // A server that does not send the capability keeps the entry, as it keeps
+  // editing for a missing canEdit.
+  it.each([
+    ['says the agent may address it', { canEdit: true, canAddressWithAgent: true }],
+    ['does not say', { canEdit: true }],
+  ])('is offered when the server %s', async (_label, capabilities) => {
+    api.fetchDoc.mockResolvedValue({ doc: doc(), capabilities });
+    const user = userEvent.setup();
+    const onViewChange = vi.fn();
+    render(<DocPane projectRef="p1" artifactId="a1" onAskAgent={() => {}} onViewChange={onViewChange} />);
+    await openLeadMenu(user);
+    expect(await screen.findByRole('menuitem', { name: 'Edit with agent…' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    pick((await screen.findByText('pick')).parentElement, 4);
+    await pickSeen(onViewChange);
+    expect(await screen.findByRole('button', { name: /Edit with agent/ })).toBeInTheDocument();
+  });
+
+  it('is not offered on a doc the person cannot edit', async () => {
+    // Another member's doc: the server lowers both capabilities.
+    api.fetchDoc.mockResolvedValue({ doc: doc(), capabilities: { canEdit: false, canAddressWithAgent: false } });
+    const onViewChange = vi.fn();
+    render(<DocPane projectRef="p1" artifactId="a1" onAskAgent={() => {}} onViewChange={onViewChange} />);
+    pick((await screen.findByText('pick')).parentElement, 4);
+    await pickSeen(onViewChange);
+    expect(screen.queryByRole('button', { name: /Edit with agent/ })).toBeNull();
+  });
+
+  it('is not offered on a doc the person can edit but not run the agent on', async () => {
+    // Org mode without product.execute: editing by hand stays, the agent entry goes.
+    api.fetchDoc.mockResolvedValue({ doc: doc(), capabilities: { canEdit: true, canAddressWithAgent: false } });
+    const user = userEvent.setup();
+    const onViewChange = vi.fn();
+    render(<DocPane projectRef="p1" artifactId="a1" onAskAgent={() => {}} onViewChange={onViewChange} />);
+    await openLeadMenu(user);
+    expect(await screen.findByRole('menuitem', { name: 'Duplicate' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Edit with agent…' })).toBeNull();
+    await user.keyboard('{Escape}');
+    pick((await screen.findByText('pick')).parentElement, 4);
+    await pickSeen(onViewChange);
+    expect(await screen.findByRole('toolbar', { name: 'Format' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Edit with agent/ })).toBeNull();
+  });
+
+  it('is not in the block menu when the deployment gives the agent no doc tools', async () => {
+    setDocsEnabled(false);
+    const user = userEvent.setup();
+    render(<DocPane projectRef="p1" artifactId="a1" onAskAgent={() => {}} />);
+    await openLeadMenu(user);
+    expect(await screen.findByRole('menuitem', { name: 'Duplicate' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Edit with agent…' })).toBeNull();
+  });
+
+  it('is not on the selection bar when the deployment gives the agent no doc tools', async () => {
+    setDocsEnabled(false);
+    const onViewChange = vi.fn();
+    render(<DocPane projectRef="p1" artifactId="a1" onAskAgent={() => {}} onViewChange={onViewChange} />);
+    pick((await screen.findByText('pick')).parentElement, 4);
+    await pickSeen(onViewChange);
+    // Formatting stays: only the agent's entry goes.
+    expect(await screen.findByRole('toolbar', { name: 'Format' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Edit with agent/ })).toBeNull();
   });
 });

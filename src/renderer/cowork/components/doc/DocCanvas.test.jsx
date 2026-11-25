@@ -223,6 +223,38 @@ describe('DocCanvas selection bar', () => {
     expect(onAskAgent).toHaveBeenCalledWith({ blockIds: ['b_1'], quote: 'Acme', request: 'Say why', tabId: 't_1', mode: 'edit' });
   });
 
+  it('closes an open request box when the agent handler goes away', async () => {
+    const user = userEvent.setup();
+    const initial = docWith([{ id: 'b_1', type: 'paragraph', text: 'Acme is the pick' }]);
+    const { rerender } = render(<Live initial={initial} onAskAgent={vi.fn()} />);
+    select(screen.getByText('Acme is the pick'), 0, 4);
+    await screen.findByRole('toolbar', { name: 'Format' });
+    await user.click(screen.getByRole('button', { name: /Edit with agent/ }));
+    expect(screen.getByRole('textbox', { name: 'Request for the agent' })).toBeInTheDocument();
+
+    rerender(<Live initial={initial} />);
+    expect(screen.queryByRole('textbox', { name: 'Request for the agent' })).toBeNull();
+  });
+
+  it('forgets the request when the handler goes away, so nothing stale returns with it', async () => {
+    const user = userEvent.setup();
+    const initial = docWith([{ id: 'b_1', type: 'paragraph', text: 'Acme is the pick' }]);
+    const { rerender } = render(<Live initial={initial} onAskAgent={vi.fn()} />);
+    const p = screen.getByText('Acme is the pick');
+    select(p, 0, 4);
+    await screen.findByRole('toolbar', { name: 'Format' });
+    await user.click(screen.getByRole('button', { name: /Edit with agent/ }));
+    expect(document.querySelector('.doc-block--selected')).not.toBeNull();
+
+    rerender(<Live initial={initial} />);
+    expect(document.querySelector('.doc-block--selected')).toBeNull();
+    select(p, 0, 4);
+    expect(await screen.findByRole('toolbar', { name: 'Format' })).toBeInTheDocument();
+
+    rerender(<Live initial={initial} onAskAgent={vi.fn()} />);
+    expect(screen.queryByRole('textbox', { name: 'Request for the agent' })).toBeNull();
+  });
+
   it('links the selected words', async () => {
     const user = userEvent.setup();
     render(<Live initial={docWith([{ id: 'b_1', type: 'paragraph', text: 'See the brief' }])} />);
@@ -267,6 +299,89 @@ describe('DocCanvas selection bar', () => {
     window.getSelection().removeAllRanges();
     act(() => { document.dispatchEvent(new Event('selectionchange')); });
     await waitFor(() => expect(screen.queryByRole('toolbar')).toBeNull());
+  });
+});
+
+describe('DocCanvas comment mode', () => {
+  const table = {
+    id: 'b_t', type: 'table', v: 1,
+    columns: [{ id: 'c_task', name: 'Task', kind: 'text' }],
+    rows: [{ id: 'r_1', cells: { c_task: 'Post roles' } }],
+  };
+  const commentBox = () => document.querySelector('.doc-ask input');
+
+  it('comments on the whole block a click lands on, a table included', async () => {
+    const user = userEvent.setup();
+    const onComment = vi.fn().mockResolvedValue(true);
+    render(<Live initial={docWith([{ id: 'b_1', type: 'paragraph', text: 'Intro' }, table])}
+      editable={false} commenting onComment={onComment} />);
+    await user.click(screen.getByText('Post roles'));
+    expect(document.querySelector('[data-block-id="b_t"]')).toHaveClass('doc-block--selected');
+    expect(document.querySelector('.doc-ask__quote')).toBeNull();
+
+    await user.type(commentBox(), 'Add owners{Enter}');
+    expect(onComment).toHaveBeenCalledWith({ tab: 't_1', blockIds: ['b_t'], quote: '', text: 'Add owners' });
+    await waitFor(() => expect(commentBox()).toBeNull());
+  });
+
+  it('comments on the words selected when the click ends a selection', async () => {
+    const user = userEvent.setup();
+    const onComment = vi.fn().mockResolvedValue(true);
+    render(<Live initial={docWith([{ id: 'b_1', type: 'paragraph', text: 'Acme is the pick' }])}
+      editable={false} commenting onComment={onComment} onAskAgent={vi.fn()} />);
+    const p = screen.getByText('Acme is the pick');
+    select(p, 0, 4);
+    fireEvent.click(p);
+    expect(document.querySelector('.doc-ask__quote')).toHaveTextContent('Acme');
+    // No formatting bar and no "Edit with agent" over the words in comment mode.
+    expect(screen.queryByRole('toolbar', { name: 'Format' })).toBeNull();
+
+    await user.type(commentBox(), 'Which Acme?{Enter}');
+    expect(onComment).toHaveBeenCalledWith({ tab: 't_1', blockIds: ['b_1'], quote: 'Acme', text: 'Which Acme?' });
+  });
+
+  it('moves the comment box to the next block clicked', async () => {
+    const user = userEvent.setup();
+    render(<Live initial={docWith([{ id: 'b_1', type: 'paragraph', text: 'One' }, { id: 'b_2', type: 'paragraph', text: 'Two' }])}
+      editable={false} commenting onComment={vi.fn()} />);
+    await user.click(screen.getByText('One'));
+    await user.click(screen.getByText('Two'));
+    // The first box, left empty, closes itself a moment later and must not take the second with it.
+    await new Promise((r) => setTimeout(r, 200));
+    expect(commentBox()).not.toBeNull();
+    expect(document.querySelector('[data-block-id="b_2"]')).toHaveClass('doc-block--selected');
+    expect(document.querySelector('[data-block-id="b_1"]')).not.toHaveClass('doc-block--selected');
+  });
+
+  it('does not follow a link in the page', () => {
+    const onComment = vi.fn();
+    render(<Live initial={docWith([{ id: 'b_1', type: 'paragraph', text: 'See [the brief](https://example.com)' }])}
+      editable={false} commenting onComment={onComment} />);
+    const link = screen.getByRole('link', { name: 'the brief' });
+    const clicked = fireEvent.click(link);
+    expect(clicked).toBe(false); // default prevented
+    expect(commentBox()).not.toBeNull();
+  });
+
+  it('leaves a click alone outside comment mode', async () => {
+    const user = userEvent.setup();
+    render(<Live initial={docWith([{ id: 'b_1', type: 'paragraph', text: 'Intro' }])} onComment={vi.fn()} />);
+    await user.click(screen.getByRole('textbox', { name: 'Paragraph' }));
+    expect(commentBox()).toBeNull();
+  });
+
+  it('saves typed text when comment mode starts', async () => {
+    const user = userEvent.setup();
+    const onOps = vi.fn();
+    const initial = docWith([{ id: 'b_1', type: 'paragraph', text: 'Intro' }]);
+    const { rerender } = render(<Live initial={initial} onOps={onOps} onComment={vi.fn()} />);
+    const p = screen.getByRole('textbox', { name: 'Paragraph' });
+    await user.click(p);
+    caretAt(p, 5);
+    await user.keyboard('!!');
+    rerender(<Live initial={initial} onOps={onOps} onComment={vi.fn()} editable={false} commenting />);
+    expect(onOps).toHaveBeenCalledWith([{ op: 'update', id: 'b_1', set: { text: 'Intro!!' } }]);
+    expect(screen.queryByRole('textbox', { name: 'Paragraph' })).toBeNull();
   });
 });
 

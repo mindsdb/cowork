@@ -18,7 +18,7 @@
 
 import { MINDS_API_BASE } from '../../lib/mindsUrls';
 import { mindsServesOpenAiCompatible, endpointHost, mindsApiRoot } from '../../../shared/minds-endpoint';
-import { isModelLocked, knownModelDisabledReasons, latestAliasIds, orderByFamily, unavailableModelFields } from './modelCatalog';
+import { isModelLocked, knownModelCoveredByTier, knownModelDisabledReasons, latestAliasIds, orderByFamily, unavailableModelFields } from './modelCatalog';
 import i18n from '../../lib/i18n';
 
 /* User-facing copy, translated when it is read (never at import). */
@@ -90,6 +90,8 @@ export const SETTINGS_KEY_MAP = {
   act_first: 'actFirst',
   // Off sends every MindsHub turn to the agent: no Jev routing or checks.
   jev_decisions_enabled: 'jevDecisionsEnabled',
+  // Off takes the scratchpad's classify() and classify_yes_no() from the agent.
+  jev_classify_enabled: 'jevClassifyEnabled',
   // The organization's own decision model (admins set it): with it, or with
   // Jev on MindsHub, the shared browser has a decisions model to pick its steps.
   decision_model_url: 'decisionModelUrl',
@@ -366,6 +368,10 @@ export function mergeRecommendedModels(prev, rec, { keepOrder = false } = {}) {
     modelEfforts: { ...(base.modelEfforts || {}), ...(overlayMap(null, rec.modelEfforts)) },
     modelEnabled: overlayMap(base.modelEnabled, rec.modelEnabled),
     modelDisabledReasons: hasEntries(rec.modelEnabled) ? liveReasons : (base.modelDisabledReasons || {}),
+    // The cheapest plan covering each MindsHub model (ENG-4186). Same rule as
+    // the other maps: an empty or missing one (older server, gate off, failed
+    // fetch) keeps what we hold.
+    modelCoveredByTier: overlayMap(base.modelCoveredByTier, knownModelCoveredByTier(rec.modelCoveredByTier)),
     modelLabels: overlayMap(base.modelLabels, rec.modelLabels),
     // Picker grouping metadata, same rule: an empty map from the server (older
     // cowork-server, BYOK provider, failed fetch) must not wipe what we hold.
@@ -413,6 +419,19 @@ export function showRouterRoleRow(routing, gate) {
 export function showJevSwitch(routing, codingProviderType) {
   if (!routing || typeof routing !== 'object') return false;
   return routing.mode === 'jev' || routing.mode === 'off' || codingProviderType === 'minds-cloud';
+}
+
+/**
+ * The "Use Jev for classification" switch. Shown when the server has the
+ * setting (a server always sends every setting it knows). The agent's
+ * classify() runs on Jev, which only MindsHub serves, so the switch is usable,
+ * and on unless turned off, only while the coding model runs on MindsHub;
+ * elsewhere it shows off and locked.
+ */
+export function jevClassifySwitch(settings, codingProviderType) {
+  const shown = typeof settings?.jevClassifyEnabled === 'boolean';
+  const available = codingProviderType === 'minds-cloud';
+  return { shown, available, checked: available && settings?.jevClassifyEnabled !== false };
 }
 
 // ─── Role row copy ──────────────────────────────────────────────────
@@ -564,7 +583,7 @@ export function resolveModelPickerValue(curModel, modelList, allowOther, forceCu
  *   tag comes from `unavailableModelFields`: "Needs credits" and `locked` (so
  *   the picker puts an "Add credits" button on the row), or "Restricted" and
  *   `restricted` when `meta.modelDisabledReasons` names an admin's model rule,
- *   or "Budget reached" and `budgetReached` when it names the org's spent budget.
+ *   or "Budget reached" and `budgetReached` when it names a spent budget.
  * @param {Record<string, string>} modelLabels per-model display label
  *   (settings.modelLabels, MindsHub-supplied). Display-only — the id/alias
  *   passed as `value` is still what's saved/resolved everywhere else. A
@@ -574,6 +593,7 @@ export function resolveModelPickerValue(curModel, modelList, allowOther, forceCu
  *   modelProviders?: Record<string, string>,
  *   modelFamilies?: Record<string, string>,
  *   modelDisabledReasons?: Record<string, string>,
+ *   modelCoveredByTier?: Record<string, string>,
  * }} meta picker metadata from the settings blob
  */
 export function buildModelOptions(
@@ -589,7 +609,9 @@ export function buildModelOptions(
   const isLocked = (m) => isModelLocked(modelEnabled, m);
   const labelFor = (m) => displayModelLabel(m, modelLabels);
 
-  const { modelProviders = {}, modelFamilies = {}, modelDisabledReasons = {} } = meta || {};
+  const {
+    modelProviders = {}, modelFamilies = {}, modelDisabledReasons = {}, modelCoveredByTier = {},
+  } = meta || {};
 
   // Display-only ordering: a frozen version is listed directly under the alias it
   // froze. Total by construction — see orderByFamily; a dropped id would give
@@ -630,7 +652,9 @@ export function buildModelOptions(
       // closed trigger and filters on it. The "latest" note stays out of
       // `label` for the same reason. lib/modelPickerOptions builds both the same
       // way, so the pickers agree.
-      ...unavailableModelFields(modelEnabled, modelDisabledReasons, m),
+      ...unavailableModelFields(modelEnabled, modelDisabledReasons, m, modelCoveredByTier),
+      // Which plan covers it (ENG-4186); ModelSelect shows it on a paid plan.
+      ...(modelCoveredByTier?.[m] ? { coveredByTier: modelCoveredByTier[m] } : {}),
       ...(latest.has(m) ? { note: tr('latestNote') } : {}),
       // MindsHub's authoritative serving-vendor field, which decides the picker
       // section. Absent for every BYOK provider, where it falls back to inference.

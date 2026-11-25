@@ -378,7 +378,8 @@
     "custom": "Personalizado",
     "legacy": "Guardada por una versión anterior. Desconéctala y vuelve a conectarla.",
     "activateLabel": "{action, select, view {Ver} reconnect {Reconectar} other {Administrar}} {title}: {subtitle}{hint}",
-    "removing": "Quitando…"
+    "removing": "Quitando…",
+    "settingsLabel": "Configuración de {title}: {subtitle}"
   },
   "datasource": {
     "failed": "Eso no funcionó.",
@@ -456,6 +457,8 @@
     },
     "buildCustom": "Crear un conector personalizado",
     "buildCustomDescription": "Conecta un sistema que no está en la lista. Anton lo configura contigo.",
+    "addMcpUrl": "Agregar un servidor MCP por URL",
+    "addMcpUrlDescription": "Conecta un servidor MCP remoto y elige qué herramientas puede usar Anton.",
     "loadFailed": "No se pudieron cargar los conectores",
     "title": "Directorio de conectores",
     "searchPlaceholder": "Buscar conectores: gmail, postgres, slack…",
@@ -669,5 +672,58 @@
     "checkFields": "Verificar campos",
     "saving": "Guardando",
     "saveConnection": "Guardar conexión"
+  },
+  "customMcp": {
+    "title": "Agregar un servidor MCP",
+    "subtitle": "Cuando el servidor pide iniciar sesión, lo haces en su propia página de inicio de sesión.",
+    "name": "Nombre",
+    "nameHelp": "Cómo aparece esta conexión en Anton.",
+    "url": "URL del servidor",
+    "urlHelp": "La dirección https del servidor.",
+    "advanced": "Avanzado",
+    "clientId": "ID de cliente",
+    "clientIdHelp": "Solo para un servidor que no registra apps por sí mismo.",
+    "clientSecret": "Secreto de cliente",
+    "redirectUri": "URI de redirección para registrar en el servidor:",
+    "connect": "Conectar",
+    "connecting": "Conectando…",
+    "continue": "Continuar",
+    "back": "Atrás",
+    "confirmHosts": "Tu inicio de sesión y su código irán a:",
+    "confirmHostsHelp": "Continúa solo si confías en estas direcciones.",
+    "connected": "{count, plural, =0 {Conectado. El servidor no marca ninguna herramienta como de solo lectura, así que todas están desactivadas.} one {Conectado. # herramienta de solo lectura está activada.} other {Conectado. # herramientas de solo lectura están activadas.}}",
+    "toolsUnavailable": "Conectado, pero no se pudieron listar las herramientas del servidor. Todas siguen desactivadas hasta que las actives.",
+    "done": "Listo",
+    "error": {
+      "invalidUrl": "Esta URL no se puede usar. Ingresa la dirección https del servidor.",
+      "notPublic": "Esta dirección no está en internet público, así que Anton no se conectará a ella.",
+      "unresolved": "El nombre del servidor no se resuelve. Revisa la URL.",
+      "proxyNetwork": "Esta red solo permite conexiones a través de un proxy, que los servidores MCP agregados por URL no pueden usar.",
+      "needsClientId": "Este servidor necesita un ID de cliente. Agrégalo en Avanzado.",
+      "timeout": "El servidor tardó demasiado en responder. Inténtalo de nuevo.",
+      "loginFailed": "El inicio de sesión no terminó: {reason}",
+      "unavailable": "Los servidores MCP por URL no están disponibles ahora. Reinicia la app e inténtalo de nuevo.",
+      "keychain": "El llavero del sistema no está disponible, así que la conexión no se puede guardar de forma segura.",
+      "serverChanged": "La app cambió de cuenta o se reinició durante el inicio de sesión. Inténtalo de nuevo.",
+      "generic": "No se pudo conectar el servidor: {reason}",
+      "invalidRequest": "Esa solicitud no es válida: {reason}",
+      "tokenRejected": "El servidor ya no acepta este inicio de sesión. Reconecta para iniciar sesión de nuevo.",
+      "unreachable": "No se pudo contactar con el servidor. Inténtalo más tarde.",
+      "notHandedOver": "La app aún no le ha pasado su configuración a este servidor. Reinicia la app e inténtalo de nuevo.",
+      "missing": "Esta conexión ya no existe.",
+      "unreadable": "El registro de esta conexión no se puede leer ahora. Inténtalo más tarde."
+    },
+    "detail": {
+      "server": "Servidor",
+      "tools": "Herramientas",
+      "toolsIntro": "Anton usa solo las herramientas activadas aquí. Las herramientas que el servidor agregue después siguen desactivadas hasta que las actives.",
+      "noTools": "Este servidor no lista herramientas.",
+      "toolSwitch": "Permitir que Anton use {name}",
+      "reconnect": "Reconectar",
+      "reconnected": "Reconectado. Tus herramientas elegidas se mantienen.",
+      "disconnect": "Desconectar",
+      "disconnectTitle": "¿Desconectar {name}?",
+      "disconnectMessage": "Anton deja de usar este servidor, su inicio de sesión se revoca cuando el servidor lo permite y su configuración se elimina de esta computadora."
+    }
   }
 }

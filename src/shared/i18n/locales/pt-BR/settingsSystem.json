@@ -142,6 +142,16 @@
     "cancel": "Cancelar",
     "signingOut": "Saindo…",
     "signOut": "Sair",
+    "delete": {
+      "title": "Excluir conta",
+      "subtitle": "Solicite a exclusão permanente da sua conta MindsHub.",
+      "button": "Excluir conta",
+      "confirmTitle": "Excluir sua conta MindsHub?",
+      "confirmBody": "A equipe de suporte verificará sua solicitação e providenciará a exclusão da conta e dos seus dados pessoais em até 30 dias. Alguns registros de conta, cobrança e suporte podem ser mantidos. Se você for titular de uma organização com outros membros, o suporte ajudará primeiro a transferir a titularidade. Os demais membros manterão a organização e os dados compartilhados. A exclusão é irreversível.",
+      "sending": "Enviando…",
+      "requested": "Solicitação feita em {requestedOn}. Data prevista para exclusão: {deleteBy}.",
+      "error": "Não foi possível confirmar sua solicitação. Você pode tentar novamente com segurança."
+    },
     "web": {
       "title": "Gerenciada pelo MindsHub",
       "body": "Na versão web, a conta é gerenciada pelo MindsHub."
@@ -211,6 +221,21 @@
       "tryAgain": "Tentar novamente",
       "bodyMobile": "O MindsHub não respondeu."
     },
-    "empty": "Ainda não há uso para mostrar nesta conta."
+    "empty": "Ainda não há uso para mostrar nesta conta.",
+    "plan": {
+      "title": "{tier, select, plus {Plano Plus} pro {Plano Pro} other {Plano}}",
+      "renewsOn": "Renova em {date}",
+      "endsOn": "Termina em {date}",
+      "ending": "Terminando",
+      "pastDue": "Falha no pagamento",
+      "pastDueBody": "Não foi possível renovar seu plano. Atualize seu cartão em Gerenciar para mantê-lo.",
+      "windowName": "{window, select, 7d {Cota semanal} other {Cota de 5 horas}}",
+      "windowUsed": "{percent} usados",
+      "windowUsedResets": "{percent} usados · renova às {time}",
+      "windowMeterLabel": "{window, select, 7d {Cota semanal usada} other {Cota de 5 horas usada}}",
+      "afterCap": "Ao esgotar qualquer uma das cotas, as tarefas usam seu saldo a preços de API ou ficam pausadas até a renovação.",
+      "upgrade": "{tier, select, plus {Assinar Plus} pro {Mudar para Pro} other {Fazer upgrade}}",
+      "manage": "Gerenciar"
+    }
   }
 }

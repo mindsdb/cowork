@@ -40,13 +40,13 @@ body[data-theme="dark"] .doc-root {
 
 /* One reset for the doc's own controls and fields; each rule below adds its
    look. It comes first so those rules win at the same specificity. */
-:is(.doc-iconbtn, .doc-tab, .doc-tab__title, .doc-tabs__add, .doc-tabs__hide, .doc-tabstrip__add, .doc-tabstrip__more, .doc-byline__add, .doc-gutter__btn,
+:is(.doc-iconbtn, .doc-header__title--editable, .doc-tab, .doc-tab__title, .doc-tabs__add, .doc-tabs__hide, .doc-tabs-show__btn, .doc-tabstrip__add, .doc-tabstrip__more, .doc-byline__add, .doc-gutter__btn,
   .doc-check, .doc-cellbtn, .doc-addbtn, .doc-float__btn, .doc-slash__item) {
   all: unset;
   box-sizing: border-box;
   cursor: pointer;
 }
-:is(.doc-tab__input, .doc-code__lang, .doc-code__text, .doc-date-input, .doc-float__input, .doc-ask__input) {
+:is(.doc-header__title-input, .doc-tab__input, .doc-code__lang, .doc-code__text, .doc-date-input, .doc-float__input, .doc-ask__input) {
   all: unset;
   box-sizing: border-box;
 }
@@ -109,13 +109,33 @@ body[data-theme="dark"] .doc-root {
   text-transform: uppercase;
   color: var(--ink-4);
 }
-.doc-tabs__hide {
+.doc-tabs__hide, .doc-tabs-show__btn {
   display: inline-grid; place-items: center;
   width: 26px; height: 26px; margin: -6px 0; border-radius: var(--r);
   color: var(--ink-4);
 }
-.doc-tabs__hide:hover { background: var(--doc-hover); color: var(--ink); }
-.doc-tabs__hide:focus-visible { box-shadow: 0 0 0 2px var(--accent-glow); }
+:is(.doc-tabs__hide, .doc-tabs-show__btn):hover { background: var(--doc-hover); color: var(--ink); }
+:is(.doc-tabs__hide, .doc-tabs-show__btn):focus-visible { box-shadow: 0 0 0 2px var(--accent-glow); }
+/* Show tabs, over the folded rail's place: the rail's top padding, and a line
+   as tall as the rail's label (the zero-width space), centre the button where
+   Hide tabs was. It stays put while the page scrolls under it. */
+.doc-tabs-show {
+  position: absolute; z-index: 1; top: 14px; left: 8px;
+  display: flex; align-items: center;
+  font-size: var(--text-2xs);
+}
+.doc-tabs-show::before { content: '\200b'; }
+.doc-tabs-show__btn { position: relative; animation: doc-tabs-show-in var(--dur-layout) var(--ease-out); }
+.doc-tabs-show__dot {
+  position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 2px var(--surface);
+}
+@keyframes doc-tabs-show-in { from { opacity: 0; transform: scale(0.85); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .doc-tabs-show__btn { animation: none; } }
+/* The page keeps clear of Show tabs: its left margin never drops below the
+   button's width, so neither the text nor the block handles in the page's
+   left padding pass under it. A wide pane's centred margin is already more. */
+.doc-body[data-tabs-hidden] .doc-page { margin-left: max(40px, calc((100% - var(--doc-page-max)) / 2)); }
 .doc-tab {
   display: flex; align-items: center; gap: 6px;
   min-height: 30px;
@@ -203,8 +223,18 @@ body[data-theme="dark"] .doc-root {
   border-radius: var(--r);
   transition: background-color 900ms var(--ease-out);
 }
+/* A block an open comment is on, while the comments panel is open; an agent's
+   write still flashes over it. */
+.doc-block--commented { background: color-mix(in srgb, var(--warning-border) 30%, transparent); }
 .doc-block--flash { background: var(--doc-flash); transition: none; }
 .doc-block--selected { background: var(--doc-select); }
+/* Comment mode: the block under the pointer is what a click comments on. */
+.doc-page--commenting .doc-block:hover { background: var(--doc-select); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
+/* The artifact viewer's comment cursor (a pin with a plus; cowork-server
+   services/comments_layer.py CURSOR_CSS), everywhere on the page but the
+   comment box and the format bar. */
+.doc-page--commenting, .doc-page--commenting * { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M0.75 12C0.75 5.79 5.79 0.75 12 0.75C18.21 0.75 23.25 5.79 23.25 12C23.25 18.21 18.21 23.25 12 23.25H2.9C1.71 23.25 0.75 22.29 0.75 21.1V12Z' fill='white' stroke='rgba(0,0,0,0.3)' stroke-width='1.25'/%3E%3Cpath d='M12 7.8v8.4M7.8 12h8.4' stroke='%23202021' stroke-width='1.75' stroke-linecap='round'/%3E%3C/svg%3E") 1 23, crosshair !important; }
+.doc-page--commenting .doc-float, .doc-page--commenting .doc-float * { cursor: auto !important; }
 .doc-gutter {
   position: absolute;
   /* Sits in the page's own left padding, whatever its width, so the handles are

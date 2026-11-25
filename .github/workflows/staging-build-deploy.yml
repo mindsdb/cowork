@@ -33,9 +33,12 @@ jobs:
     needs: [run-unit-tests]
     permissions:
       contents: read
+      id-token: write # the build's ECR role, assumed over OIDC
+      statuses: write # the argocd/staging/cowork-frontend commit status the Argo CD deploy sets
     uses: ./.github/workflows/build-deploy.yml
     with:
       build-environment: staging
+      deploy-through-argocd: true
     secrets: inherit
 
   build-installers:

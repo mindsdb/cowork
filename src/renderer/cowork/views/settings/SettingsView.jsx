@@ -4,7 +4,7 @@ import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
 import { isModelLocked, isModelRestricted, isModelBudgetReached } from '../../lib/modelCatalog';
-import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, resolveImageModel, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, budgetSpec, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle, showJevSwitch, showRouterRoleRow } from '../../lib/settingsTransform';
+import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, resolveImageModel, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, budgetSpec, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle, showJevSwitch, showRouterRoleRow, jevClassifySwitch } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
@@ -24,6 +24,7 @@ import { STOCK_GREETING } from '../../../lib/orgBranding';
 import { MINDS_API_BASE, MINDS_API_KEY_URL, mindsRegisterUrl, consoleUrlFor } from '../../../lib/mindsUrls';
 import { useBudgetsUrl } from '../../hooks/useBudgetsUrl';
 import { useAccountUser } from '../../hooks/useAccountUser';
+import { useConsoleLink } from '../../hooks/useConsoleLink';
 import { useOrgMode } from '../../../lib/orgMode';
 import { isElectron } from '../../../platform/host';
 import ChannelsView from '../ChannelsView';
@@ -99,7 +100,11 @@ export const APPEARANCE_ANCHORS = {
    refill time, or the no-grant sentence). */
 export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false, providerTestsAvailable = true }) {
   const { t } = useTranslation('settings');
+  const consoleLink = useConsoleLink();
   if (!PLATFORM_UI || !providerTestsAvailable) {
+    return <div className="text-[12px] text-ink-3">{t('providers.unavailable')}</div>;
+  }
+  if (!offersBilling() && ['no_credits', 'budget_reached', 'billing_unavailable'].includes(notice.kind)) {
     return <div className="text-[12px] text-ink-3">{t('providers.unavailable')}</div>;
   }
   const byok = <div className="text-ink-3">{t('probe.byok')}</div>;
@@ -118,7 +123,7 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
             // an unhardened window if it ever had run.
             onClick={() => {
               trackBillingOpened('no_credits_notice');
-              return host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+              return host.openExternal(consoleLink(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner })));
             }}
             className={LINK_BTN}
           >{t('probe.topUp')}</button>}
@@ -144,7 +149,7 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
             onClick={() => {
               // Literal triggers inline, so the analytics vocabulary sweep sees them.
               trackBillingOpened(allowance ? 'allowance_used_notice' : 'free_air_paused_notice');
-              return host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+              return host.openExternal(consoleLink(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner })));
             }}
             className={LINK_BTN}
           >{t('probe.addFunds')}</button>}
@@ -159,7 +164,8 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
       <div className="text-[12px] leading-[1.6] grid gap-px">
         <div>
           <span className="text-danger">{t('probe.budgetReached', { detail: budgetExceededCopy({ usage }) })} </span>
-          <ViewBudgetsLink>{t('probe.viewBudgetsArrow')}</ViewBudgetsLink>
+          {/* The test call itself was refused, so this is a denial's link. */}
+          <ViewBudgetsLink fromDenial>{t('probe.viewBudgetsArrow')}</ViewBudgetsLink>
         </div>
         {byok}
       </div>
@@ -182,9 +188,10 @@ export function MindsProbeNotice({ notice, usage = null, isBillingOwner = false,
   return null;
 }
 
-/** The Budgets tab for this session's organization; credits do not lift a budget. */
-function ViewBudgetsLink({ children }) {
-  const budgetsUrl = useBudgetsUrl();
+/** The Budgets tab for this session's organization; credits do not lift a budget.
+    `fromDenial` when a call was refused, not when a spent budget is only foreseen. */
+function ViewBudgetsLink({ children, fromDenial = false }) {
+  const budgetsUrl = useBudgetsUrl({ fromDenial });
   if (!offersBilling()) return null;
   return (
     <button
@@ -206,6 +213,7 @@ function ViewBudgetsLink({ children }) {
    for the visual fixture. */
 export function UnavailableModelHint({ label, restricted, budgetReached = false, isBillingOwner = false }) {
   const { t } = useTranslation('settings');
+  const consoleLink = useConsoleLink();
   if (!PLATFORM_UI) {
     return <div className="text-[11.5px] text-ink-3">{t('agent.modelUnavailable', { model: label })}</div>;
   }
@@ -216,6 +224,9 @@ export function UnavailableModelHint({ label, restricted, budgetReached = false,
       </div>
     );
   }
+  if (!offersBilling()) {
+    return <div className="text-[11.5px] text-ink-3">{t('agent.modelUnavailable', { model: label })}</div>;
+  }
   if (budgetReached) {
     return (
       <div className="text-[11.5px] text-ink-3">
@@ -224,9 +235,6 @@ export function UnavailableModelHint({ label, restricted, budgetReached = false,
       </div>
     );
   }
-  if (!offersBilling()) {
-    return <div className="text-[11.5px] text-ink-3">{t('agent.modelNeedsCreditsNoLink', { model: label })}</div>;
-  }
   return (
     <div className="text-[11.5px] text-ink-3">
       {withLink(t('agent.modelNeedsCredits', { model: label, link: LINK_TOKEN }), (
@@ -234,7 +242,7 @@ export function UnavailableModelHint({ label, restricted, budgetReached = false,
           type="button"
           onClick={() => {
             trackBillingOpened('locked_model_hint');
-            return host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+            return host.openExternal(consoleLink(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner })));
           }}
           className={LINK_BTN}
         >{t('agent.topUpBalance')}</button>
@@ -898,7 +906,7 @@ export default function SettingsView({
     host.isWeb,
     codeModeAccess.available,
     codeModeAccess.enabled,
-    { branding: canEditBranding },
+    { branding: canEditBranding, mobileShell: host.isMobileShell },
   );
   // Branding is for org admins; anyone else sent there (a deep link, a
   // stale section) lands on Appearance, where their own look is.
@@ -1066,6 +1074,7 @@ export default function SettingsView({
   const roleModelValue = (role, fallback = '') => canonicalModelForRole(role) || fallback || '';
   // effectiveRoleProvider already falls back to MindsHub, as the server does.
   const jevSwitchShown = showJevSwitch(settings?.routing, roleProviderType('coding'));
+  const jevClassify = jevClassifySwitch(settings, roleProviderType('coding'));
   const setRoleDriver = (role, providerType, model) => {
     const normalizedType = providerValueToType(providerType) || 'minds-cloud';
     // null is a tombstone ("clear the stored row so the server's enabled-aware
@@ -1929,6 +1938,7 @@ export default function SettingsView({
                                 modelProviders: settings.modelProviders,
                                 modelFamilies: settings.modelFamilies,
                                 modelDisabledReasons: settings.modelDisabledReasons,
+                                modelCoveredByTier: settings.modelCoveredByTier,
                               },
                             );
                             return (
@@ -2053,6 +2063,7 @@ export default function SettingsView({
                       modelProviders: settings.modelProviders,
                       modelFamilies: settings.modelFamilies,
                       modelDisabledReasons: settings.modelDisabledReasons,
+                      modelCoveredByTier: settings.modelCoveredByTier,
                     },
                   );
                   return (
@@ -2154,7 +2165,7 @@ export default function SettingsView({
         {/* Voice calls run on MindsHub: only when it is the LLM provider. */}
         {llmViaMindsHub(settings) && <VoiceSettingsSection agentLabel={agentLabel || 'Anton'} />}
 
-        {(hasBudgetSettings || jevSwitchShown) && (
+        {(hasBudgetSettings || jevSwitchShown || jevClassify.shown) && (
           <SettingsGroup title={t('advanced.title')} collapsible defaultCollapsed>
             {hasBudgetSettings && <>
             {hasLimitsSwitch && (
@@ -2234,6 +2245,21 @@ export default function SettingsView({
                   checked={settings.jevDecisionsEnabled ?? true}
                   onCheckedChange={(v) => setSetting('jevDecisionsEnabled', v)}
                   aria-label={t('advanced.jev.title')}
+                />
+              </Section>
+            )}
+            {jevClassify.shown && (
+              <Section
+                title={t('advanced.jevClassify.title')}
+                subtitle={jevClassify.available
+                  ? t('advanced.jevClassify.subtitle', { agent: agentLabel || 'Anton' })
+                  : t('advanced.jevClassify.unavailable')}
+              >
+                <Switch
+                  checked={jevClassify.checked}
+                  disabled={!jevClassify.available}
+                  onCheckedChange={(v) => setSetting('jevClassifyEnabled', v)}
+                  aria-label={t('advanced.jevClassify.title')}
                 />
               </Section>
             )}

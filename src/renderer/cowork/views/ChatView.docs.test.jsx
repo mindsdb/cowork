@@ -10,6 +10,8 @@ vi.mock('../lib/artifactsStore', () => ({
   useArtifactLiveness: () => false,
   setArtifactsScope: vi.fn(),
   revalidate: vi.fn(() => Promise.resolve()),
+  noteArtifactRenamed: vi.fn(),
+  onArtifactRenamed: () => () => {},
 }));
 
 vi.mock('../../platform/host', () => ({

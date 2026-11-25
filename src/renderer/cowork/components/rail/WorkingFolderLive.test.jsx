@@ -60,11 +60,22 @@ vi.mock('../artifact', () => ({
     )
     : null),
 }));
-vi.mock('../../lib/artifactsStore', () => ({ deleteArtifactAndSync: vi.fn() }));
-// The doc editor is tested on its own; here it only has to be what opens.
-vi.mock('../doc/DocPane', () => ({
-  default: ({ title }) => <div role="region" aria-label={`Doc editor: ${title}`} />,
+vi.mock('../../lib/artifactsStore', async (importOriginal) => ({
+  ...(await importOriginal()),
+  deleteArtifactAndSync: vi.fn(),
 }));
+// The doc editor is tested on its own; here it only has to be what opens.
+// It draws the real rail's actions (Open chat).
+vi.mock('../doc/DocPane', async () => {
+  const { ViewerModeRail } = await import('../artifact/ViewerModeRail');
+  return {
+    default: ({ title, railActions = [] }) => (
+      <div role="region" aria-label={`Doc editor: ${title}`}>
+        <ViewerModeRail label="Viewer panels" tabs={[]} actions={railActions} />
+      </div>
+    ),
+  };
+});
 vi.mock('../../lib/artifactDownload', () => ({
   downloadArtifactFile: (...a) => downloadArtifactFile(...a),
 }));
@@ -85,8 +96,9 @@ vi.mock('../../preview/kinds', () => ({
 import { WorkingFolderLive } from './WorkingFolderLive';
 import { fetchArtifacts, unpublishArtifact } from '../../api';
 import { setOrgMode } from '../../../lib/orgMode';
+import { OriginChatContext } from '../../lib/originChat';
 import { NO_PREVIEW_DOWNLOADED_NOTE } from '../../lib/artifactActions';
-import { deleteArtifactAndSync } from '../../lib/artifactsStore';
+import { deleteArtifactAndSync, noteArtifactRenamed } from '../../lib/artifactsStore';
 
 const PROJECT = { id: 'proj-1', name: 'general', path: '/proj' };
 const SHARED_URL = 'https://view.mindshub.ai/r/abc';
@@ -1061,10 +1073,11 @@ describe('deleting from the rail on Web', () => {
 });
 
 describe('a doc in the artifacts rail (desktop)', () => {
-  const doc = () => draft({
+  const doc = (overrides = {}) => draft({
     title: 'Q4 Hiring Plan', format: 'doc', ext: '.json', primary: 'doc.cdoc.json',
     path: '/proj/.anton/artifacts/q4-hiring-plan-36623b3b/doc.cdoc.json',
     htmlPath: '/proj/.anton/artifacts/q4-hiring-plan-36623b3b/doc.html',
+    ...overrides,
   });
   beforeEach(() => { hostState.isWeb = false; hostState.isElectron = true; hostState.localApi = true; });
 
@@ -1077,6 +1090,13 @@ describe('a doc in the artifacts rail (desktop)', () => {
     expect(openPath).not.toHaveBeenCalled();
   });
 
+  it('retitles its row when the doc is renamed in its editor, wherever that was opened', async () => {
+    await renderRail(doc());
+    act(() => noteArtifactRenamed(doc().id, 'Hiring plan 2027'));
+    expect(await screen.findByText('Hiring plan 2027')).toBeInTheDocument();
+    expect(screen.queryByText('Q4 Hiring Plan')).toBeNull();
+  });
+
   it('opens beside the chat when the rail is in one, as from its card', async () => {
     // Found in review: inside a chat the rail opened a doc as a modal, without
     // "Edit with agent" or the doc riding on the chat's messages.
@@ -1087,6 +1107,25 @@ describe('a doc in the artifacts rail (desktop)', () => {
     expect(onOpenDoc).toHaveBeenCalledWith(expect.objectContaining({ title: 'Q4 Hiring Plan', format: 'doc' }));
     expect(screen.queryByRole('region', { name: 'Doc editor: Q4 Hiring Plan' })).toBeNull();
     expect(openPath).not.toHaveBeenCalled();
+  });
+
+  it('closes the doc and opens the chat it was made in from Open chat', async () => {
+    const chats = { open: vi.fn(), check: vi.fn().mockResolvedValue('ok') };
+    fetchArtifacts.mockResolvedValue([doc({ originConversationId: 'conv-origin' })]);
+    render(
+      <OriginChatContext.Provider value={chats}>
+        <WorkingFolderLive project={PROJECT} isStreaming={false} />
+      </OriginChatContext.Provider>,
+    );
+    fireEvent.click(await screen.findByText('Q4 Hiring Plan'));
+    const editor = await screen.findByRole('region', { name: 'Doc editor: Q4 Hiring Plan' });
+    const button = within(editor).getByRole('button', { name: 'Open chat' });
+    await vi.waitFor(() => expect(button).not.toHaveAttribute('aria-disabled'));
+
+    fireEvent.click(button);
+
+    expect(chats.open).toHaveBeenCalledWith('conv-origin');
+    expect(screen.queryByRole('region', { name: 'Doc editor: Q4 Hiring Plan' })).toBeNull();
   });
 
   it('opens outside the app as its rendered page', async () => {

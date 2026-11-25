@@ -15,6 +15,8 @@
     "expand": "拡大表示",
     "close": "閉じる",
     "closeDoc": "ドキュメントを閉じる",
+    "renameDoc": "ドキュメント名を変更: {title}",
+    "docName": "ドキュメント名",
     "loading": "ドキュメントを読み込み中",
     "gone": "このドキュメントはもう存在しません。",
     "openFailed": "このドキュメントを開けませんでした。{reason}",
@@ -80,6 +82,7 @@
   "tabs": {
     "label": "タブ",
     "add": "タブを追加",
+    "addHint": "このドキュメントに新しいタブを追加",
     "hide": "タブを非表示",
     "changed": "変更あり",
     "showChanged": "変更されたタブを表示",
@@ -186,6 +189,11 @@
     "placeholderWrite": "エージェントにここで何を書いてもらいますか？",
     "placeholderChange": "何を変更しますか？",
     "send": "送信"
+  },
+  "comments": {
+    "edit": "編集",
+    "editHint": "ドキュメントに入力",
+    "commentHint": "コメント — ブロックをクリックするか、語句を選択"
   },
   "chart": {
     "label": "グラフ",

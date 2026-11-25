@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent, within, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // Spies asserted on must be reachable inside the hoisted vi.mock factories.
@@ -211,11 +211,16 @@ vi.mock('./lib/analytics', () => ({
   trackAddonOverridden: vi.fn(),
   trackNextStepsShown: vi.fn(),
   trackNextStepClicked: vi.fn(),
+  trackOnboardingRowClicked: vi.fn(),
+  trackOnboardingStepCompleted: vi.fn(),
 }));
 
 import App, { unsavedRefusedQuestions } from './App';
 import { trackTurnFailed, classifyFirstResponse, trackNewTaskMessageSent, trackAgentSessionStarted } from './lib/analytics';
-import { OWN_WORK_PROMPT } from './components/onboarding/steps';
+import { completeStep, dismiss as dismissOnboarding, reset as resetOnboarding } from './components/onboarding/onboardingStore';
+import { composeOwnWorkMessage } from './components/taskmodes/taskModes';
+
+const OWN_WORK_SEND = composeOwnWorkMessage('Weekly ops notes');
 import { markOptimisticConversation, clearOptimisticConversation, isOptimisticConversation } from './CoworkRouter';
 import {
   fetchSessions,
@@ -327,6 +332,9 @@ beforeEach(() => {
   spies.cancelResponse.mockImplementation(async () => ({}));
   trackTurnFailed.mockClear();
   spies.submitAnswer.mockImplementation(async () => ({ accepted: true }));
+  // mockReset, not just a new implementation: a waitFor on its calls would
+  // otherwise pass at once on the previous test's calls.
+  spies.fetchInFlightStatus.mockReset();
   spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false }));
   spies.fetchSessionResult.mockReset();
   spies.fetchSessionResult.mockImplementation(async () => ({ status: 'unavailable', code: 0 }));
@@ -479,9 +487,11 @@ describe('composer send while a question is pending', () => {
 
     await send(user, composer, 'a brand new message');
 
+    // Released: the text is a message of its own, never an answer to the dead
+    // question. With the turn gone it starts a new one; the aborted controller
+    // left in the shared slot no longer holds it (ENG-4635).
     expect(spies.submitAnswer).not.toHaveBeenCalled();
-    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
-    expect(screen.getByText('a brand new message')).toBeInTheDocument();
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenLastCalledWith('conv-a', 'a brand new message', expect.anything()));
   });
 
   it('releases the composer when the card itself learns the question is dead', async () => {
@@ -666,11 +676,11 @@ describe('reconnected background stream (tailInFlight)', () => {
     await send(user, composer, 'a brand new message');
 
     // Released: still just the one submit from before the stream died, and the
-    // text went to the queue (the aborted controller is still parked) rather
-    // than into a dead question.
+    // text went out as a message of its own rather than into a dead question.
+    // The aborted controller left in the shared slot no longer holds it back
+    // (ENG-4635).
     expect(spies.submitAnswer).toHaveBeenCalledTimes(1);
-    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
-    expect(screen.getByText('a brand new message')).toBeInTheDocument();
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenLastCalledWith('conv-a', 'a brand new message', expect.anything()));
   });
 });
 
@@ -809,6 +819,85 @@ describe('interrupted stream recovery', () => {
     });
     expect(await screen.findByText(/interrupted before it finished/i)).toBeInTheDocument();
     expect(screen.getByText('Partial before restart')).toBeInTheDocument();
+  });
+
+  it('stops retrying history when a failed read returns after unmount', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.fetchSession.mockResolvedValue({ messages: [{ id: 'user-current', role: 'user', content: 'do something' }] });
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+    await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+    await act(async () => {
+      handle.opts.onError('connection lost', { code: 'stream_error', user_message_id: 'user-current' });
+    });
+    await waitFor(() => expect(spies.fetchSession).toHaveBeenCalled());
+    let resolveHistory;
+    spies.fetchInFlightStatus.mockResolvedValue({ in_flight: false });
+    spies.fetchSession.mockImplementationOnce(() => new Promise((resolve) => { resolveHistory = resolve; }));
+    await waitFor(() => expect(resolveHistory).toBeTypeOf('function'), { timeout: 4000 });
+
+    cleanup();
+    spies.fetchSession.mockClear();
+    resolveHistory(null);
+    // Give the 50 ms retry time to issue its request.
+    await new Promise((resolve) => { setTimeout(resolve, 250); });
+    expect(spies.fetchSession.mock.calls.filter(([cid]) => cid === 'conv-a')).toEqual([]);
+  });
+
+  it('does not reattach when the reconnect probe answers after unmount', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.fetchSession.mockResolvedValue({ messages: [{ id: 'user-current', role: 'user', content: 'do something' }] });
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+    await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+    await act(async () => {
+      handle.opts.onError('connection lost', { code: 'stream_error', user_message_id: 'user-current' });
+    });
+    await waitFor(() => expect(spies.fetchSession).toHaveBeenCalled());
+    let resolveProbe;
+    let recoverySeen = false;
+    spies.fetchInFlightStatus.mockImplementation((cid, opts) => {
+      if (opts?.strict) {
+        recoverySeen = true;
+        return Promise.resolve({ in_flight: true });
+      }
+      if (recoverySeen) return new Promise((resolve) => { resolveProbe = resolve; });
+      return Promise.resolve({ in_flight: false });
+    });
+    await waitFor(() => expect(resolveProbe).toBeTypeOf('function'), { timeout: 4000 });
+    // The recovery probe has handed off to reconnectInFlight, whose own
+    // status request is still pending when the app goes away.
+    const tails = streams.filter((s) => s.kind === 'tail').length;
+    cleanup();
+    await act(async () => { resolveProbe({ in_flight: true }); });
+    expect(streams.filter((s) => s.kind === 'tail')).toHaveLength(tails);
+  });
+
+  it('stops trying to reach a dropped turn once the app unmounts', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user);
+    spies.fetchSession.mockResolvedValue({ messages: [{ id: 'user-current', role: 'user', content: 'do something' }] });
+    await send(user, composer, 'do something');
+    const handle = await waitForStream();
+    await emit({ type: 'response.created', conversation_id: 'conv-a', user_message_id: 'user-current' });
+    await act(async () => {
+      handle.opts.onError('connection lost', { code: 'stream_error', user_message_id: 'user-current' });
+    });
+    await waitFor(() => expect(spies.fetchSession).toHaveBeenCalled());
+
+    // The first reconnect try is due a second after the drop. Its requests
+    // would land in whichever test runs next and answer that test's mocks.
+    cleanup();
+    spies.fetchSession.mockClear();
+    spies.fetchInFlightStatus.mockClear();
+    await new Promise((r) => { setTimeout(r, 1200); });
+    // Only this conversation's: under a shuffled order, another test's
+    // leftover work can still land here.
+    const forThisTurn = (fn) => fn.mock.calls.filter(([cid]) => cid === 'conv-a');
+    expect(forThisTurn(spies.fetchInFlightStatus)).toEqual([]);
+    expect(forThisTurn(spies.fetchSession)).toEqual([]);
   });
 
   it('ends the live turn when the reload shows the dropped stream actually completed', async () => {
@@ -1505,8 +1594,10 @@ describe('new-session stream (send from home)', () => {
 
     await send(user, chatComposer, 'a brand new message');
 
+    // A message of its own, not an answer to the dead question (ENG-4635: no
+    // longer held behind the aborted controller left in the shared slot).
     expect(spies.submitAnswer).toHaveBeenCalledTimes(1);
-    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenLastCalledWith('conv-new', 'a brand new message', expect.anything()));
   });
 });
 
@@ -1516,6 +1607,22 @@ describe('the first message of a new task (analytics)', () => {
   afterEach(() => {
     uploadAttachments.mockReset();
     uploadAttachments.mockResolvedValue([]);
+  });
+
+  it('carries what Home did with a task mode\'s instruction line into the event', async () => {
+    trackNewTaskMessageSent.mockClear();
+    const user = userEvent.setup();
+    await openTask(user);
+    await user.click(screen.getByRole('button', { name: /new task/i }));
+    await user.click(await screen.findByRole('button', { name: 'Create slides' }));
+    const composer = document.querySelector('textarea');
+    await user.click(composer);
+    await user.paste('Make a deck');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1));
+    expect(trackNewTaskMessageSent).toHaveBeenCalledWith(expect.objectContaining({
+      taskMode: { task_mode: 'slides', mode_line: 'appended', example_placed: false },
+    }));
   });
 
   it('is described to analytics once, before the session event, as the kind of start it was', async () => {
@@ -1531,19 +1638,19 @@ describe('the first message of a new task (analytics)', () => {
       return ta;
     });
 
-    // Paste the long onboarding prompt instead of typing it: typing renders the
+    // Paste the long own-work message instead of typing it: typing renders the
     // whole App once per character, which can push this test past its timeout
     // on a busy CI runner.
     await user.click(composer);
-    await user.paste(OWN_WORK_PROMPT);
+    await user.paste(OWN_WORK_SEND);
     await user.keyboard('{Enter}');
     await waitFor(() => expect(streams.some((x) => x.kind === 'new')).toBe(true));
 
     expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1);
     expect(trackNewTaskMessageSent).toHaveBeenCalledWith({
-      text: OWN_WORK_PROMPT,
+      text: OWN_WORK_SEND,
       attachments: 0,
-      start: { start_kind: 'own_work', added_chars: 0 },
+      start: { start_kind: 'own_work', added_chars: 16 },
     });
     // It reads the console attribution that the session event clears, so it goes first.
     expect(trackNewTaskMessageSent.mock.invocationCallOrder[0])
@@ -1567,6 +1674,61 @@ describe('the first message of a new task (analytics)', () => {
     await waitFor(() => expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1));
 
     expect(trackNewTaskMessageSent).toHaveBeenCalledWith(expect.objectContaining({ attachments: 1 }));
+  });
+});
+
+describe('the checklist\'s own-work row', () => {
+  // App dismisses an untouched checklist once the account has tasks, as this
+  // harness's does; someone who has started the steps keeps it.
+  beforeEach(() => { resetOnboarding(); completeStep('see-it-work'); });
+  afterEach(() => {
+    dismissOnboarding();
+    // The next tests count upload calls on this shared mock.
+    uploadAttachments.mockClear();
+  });
+
+  it('opens Home in the own-work mode and sends what the mode composes, labelled as the checklist\'s', async () => {
+    trackNewTaskMessageSent.mockClear();
+    const user = userEvent.setup();
+    await openTask(user);
+    await user.click(screen.getByRole('button', { name: /Start with your own work/ }));
+    await screen.findByText('What should Cowork work on?');
+    const composer = document.querySelector('textarea');
+
+    await user.click(composer);
+    await user.paste('Weekly ops notes');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(streams.some((x) => x.kind === 'new')).toBe(true));
+
+    expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1);
+    expect(trackNewTaskMessageSent).toHaveBeenCalledWith(expect.objectContaining({
+      text: OWN_WORK_SEND,
+      start: { start_kind: 'own_work', added_chars: 16 },
+      startVia: 'checklist',
+    }));
+  });
+
+  it('keeps a file already attached on Home, which is what the mode asks for', async () => {
+    trackNewTaskMessageSent.mockClear();
+    const user = userEvent.setup();
+    await openTask(user);
+    await user.click(screen.getByRole('button', { name: /new task/i }));
+    await waitFor(() => {
+      if (!document.querySelector('textarea')) throw new Error('composer not mounted');
+    });
+    await attach(user, 'customers.csv');
+
+    await user.click(screen.getByRole('button', { name: /Start with your own work/ }));
+    await screen.findByText('What should Cowork work on?');
+
+    expect(screen.getByText('customers.csv')).toBeInTheDocument();
+    uploadAttachments.mockResolvedValueOnce([{ id: 'att-1', name: 'customers.csv' }]);
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(trackNewTaskMessageSent).toHaveBeenCalledTimes(1));
+    expect(trackNewTaskMessageSent).toHaveBeenCalledWith(expect.objectContaining({
+      attachments: 1,
+      start: expect.objectContaining({ start_kind: 'own_work' }),
+    }));
   });
 });
 
@@ -1785,38 +1947,47 @@ describe('superseded data-vault stream', () => {
   });
 });
 
-describe('Stop while a sibling task is queued (ENG-1378 stop-drain)', () => {
-  it('drains another task\'s queue when the streaming task is stopped', async () => {
+describe('tasks running side by side (ENG-4635)', () => {
+  it('starts a message in an idle task at once while another task streams', async () => {
     const user = userEvent.setup();
     const composer = await openTask(user); // Alpha (conv-a)
 
-    // Alpha starts a turn and holds the single shared stream slot.
+    // Alpha starts a turn and holds the shared stream slot.
     await send(user, composer, 'alpha turn');
     await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
 
-    // Switch to Beta and fire a message — it queues behind Alpha's live slot
-    // rather than starting a second parallel turn.
+    // Beta has nothing running: its message starts its own turn now, beside
+    // Alpha's. It used to queue behind Alpha until Alpha finished.
     const betaComposer = await openByTitle(user, 'Beta task');
-    await send(user, betaComposer, 'queued for beta');
-    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
-    expect(spies.streamMessage).toHaveBeenCalledTimes(1); // still only Alpha's
-
-    // Back to Alpha and press Stop. Freeing the slot must sweep Beta's queue —
-    // Stop bumps the generation and silences Alpha's cancelled callback, so
-    // without an explicit drain Beta strands at "waiting for Anton" with no
-    // future turn to release it.
-    await openByTitle(user, 'Alpha task');
-    await user.click(await screen.findByRole('button', { name: /stop/i }));
-    await waitFor(() => expect(spies.cancelResponse).toHaveBeenCalledWith('conv-a'));
-
-    // Beta's queued message is now sent against its own conversation, and its
-    // queue chip is gone.
+    await send(user, betaComposer, 'beta now');
     await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
     expect(spies.streamMessage.mock.calls[1][0]).toBe('conv-b');
-    expect(spies.streamMessage.mock.calls[1][1]).toBe('queued for beta');
-    await waitFor(() =>
-      expect(screen.queryByLabelText('Remove from queue')).toBeNull(),
-    );
+    expect(spies.streamMessage.mock.calls[1][1]).toBe('beta now');
+    expect(screen.queryByLabelText('Remove from queue')).toBeNull();
+  });
+
+  it('sends a task\'s queued message when its own turn ends, while another task still streams', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user); // Alpha (conv-a)
+    await send(user, composer, 'alpha turn');
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
+
+    const betaComposer = await openByTitle(user, 'Beta task');
+    await send(user, betaComposer, 'beta turn');
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    const betaStream = streams[streams.length - 1];
+    // Beta is busy: a follow-up there queues behind Beta's own turn.
+    await send(user, betaComposer, 'beta follow-up');
+    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
+    expect(spies.streamMessage).toHaveBeenCalledTimes(2);
+
+    // Beta's turn ends while Alpha's still runs: the follow-up goes out now,
+    // not once Alpha finishes (the drain no longer waits on the shared slot).
+    await act(async () => { betaStream.opts.onDone('conv-b'); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(3));
+    expect(spies.streamMessage.mock.calls[2][0]).toBe('conv-b');
+    expect(spies.streamMessage.mock.calls[2][1]).toBe('beta follow-up');
+    await waitFor(() => expect(screen.queryByLabelText('Remove from queue')).toBeNull());
   });
 });
 
@@ -1858,15 +2029,19 @@ describe('Stop when the cancel request never lands (ENG-1919)', () => {
   });
 });
 
-describe('a manual send racing another task mid-reserve (ENG-1378 parallel-stream guard)', () => {
-  it('queues rather than starting a second stream while another task is between reserving the slot and its controller', async () => {
+describe('a send while a task is still setting up its turn (ENG-1378, ENG-4635)', () => {
+  beforeEach(() => uploadAttachments.mockClear());
+  afterEach(() => {
+    uploadAttachments.mockReset();
+    uploadAttachments.mockResolvedValue([]);
+  });
+
+  it('starts another task\'s message at once, and the parked send still starts after its upload', async () => {
     const user = userEvent.setup();
     const composer = await openTask(user); // Alpha (conv-a)
 
     // Beta sends with a file. Its upload is held open, parking Beta's send
-    // between reserving the shared slot (activeStreamingTaskIdRef = conv-b) and
-    // assigning its stream controller — the exact window where the old guard,
-    // keyed to `=== id`, let a different task slip through.
+    // between reserving the shared slot and its stream registering.
     let releaseUpload;
     uploadAttachments.mockImplementationOnce(
       () => new Promise((resolve) => { releaseUpload = () => resolve([]); }),
@@ -1874,58 +2049,115 @@ describe('a manual send racing another task mid-reserve (ENG-1378 parallel-strea
     const betaComposer = await openByTitle(user, 'Beta task');
     await attach(user, 'beta-notes.txt');
     await send(user, betaComposer, 'beta with file');
-    // Parked on the upload: no stream has started for anyone yet.
     await waitFor(() => expect(uploadAttachments).toHaveBeenCalledTimes(1));
     expect(spies.streamMessage).not.toHaveBeenCalled();
 
-    // A manual send to Alpha lands in that window. anton-core runs one turn at
-    // a time, so it must queue behind Beta's reservation, not launch a second
-    // parallel stream.
+    // A send to Alpha in that window is another conversation: it starts now.
     await openByTitle(user, 'Alpha task');
     await send(user, composer, 'manual alpha');
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
+    expect(spies.streamMessage.mock.calls[0][0]).toBe('conv-a');
+    expect(screen.queryByLabelText('Remove from queue')).toBeNull();
+
+    // Beta's upload completes: its own stream starts too.
+    await act(async () => { releaseUpload(); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][0]).toBe('conv-b');
+    expect(spies.streamMessage.mock.calls[1][1]).toBe('beta with file');
+  });
+
+  it('reopening a task still uploading doesn\'t attach a second stream after another task took the slot', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user); // Alpha (conv-a)
+    let releaseUpload;
+    uploadAttachments.mockImplementationOnce(
+      () => new Promise((resolve) => { releaseUpload = () => resolve([]); }),
+    );
+    await attach(user, 'notes.txt');
+    await send(user, composer, 'alpha with file');
+    await waitFor(() => expect(uploadAttachments).toHaveBeenCalledTimes(1));
+
+    // Beta's send takes the shared slot while Alpha still uploads.
+    const betaComposer = await openByTitle(user, 'Beta task');
+    await send(user, betaComposer, 'beta now');
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
+    expect(spies.streamMessage.mock.calls[0][0]).toBe('conv-b');
+
+    // The server already lists Alpha's turn. Reopening Alpha must not tail it:
+    // a second stream there would abort Alpha's own once it registers.
+    spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: true }));
+    try {
+      await openByTitle(user, 'Alpha task');
+      await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+      expect(streams.some((h) => h.kind === 'tail')).toBe(false);
+    } finally {
+      spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false }));
+    }
+
+    await act(async () => { releaseUpload(); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][0]).toBe('conv-a');
+  });
+
+  it('queues a second send into the same task instead of starting a second stream there', async () => {
+    const user = userEvent.setup();
+    const composer = await openTask(user); // Alpha (conv-a)
+    let releaseUpload;
+    uploadAttachments.mockImplementationOnce(
+      () => new Promise((resolve) => { releaseUpload = () => resolve([]); }),
+    );
+    await attach(user, 'notes.txt');
+    await send(user, composer, 'with a file');
+    await waitFor(() => expect(uploadAttachments).toHaveBeenCalledTimes(1));
+
+    // Same conversation, mid-setup: anton-core runs one turn per
+    // conversation, so this waits for that turn.
+    await send(user, composer, 'right after');
     expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
     expect(spies.streamMessage).not.toHaveBeenCalled();
 
-    // Beta's upload completes: its (single) stream starts, against its own
-    // conversation. Alpha stays queued for the next drain.
     await act(async () => { releaseUpload(); await Promise.resolve(); });
     await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
-    expect(spies.streamMessage.mock.calls[0][0]).toBe('conv-b');
-    expect(spies.streamMessage.mock.calls[0][1]).toBe('beta with file');
+    expect(spies.streamMessage.mock.calls[0][1]).toBe('with a file');
+    // Its turn ends: the queued one goes out after it. (The composer still
+    // held the first text while it uploaded, so the second carries it too.)
+    const first = streams[streams.length - 1];
+    await act(async () => { first.opts.onDone('conv-a'); await Promise.resolve(); });
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    expect(spies.streamMessage.mock.calls[1][0]).toBe('conv-a');
+    expect(spies.streamMessage.mock.calls[1][1]).toContain('right after');
   });
 });
 
-describe('a send whose upload fails while another task is queued', () => {
+describe('a send whose upload fails', () => {
   beforeEach(() => uploadAttachments.mockClear());
   afterEach(() => {
     uploadAttachments.mockReset();
     uploadAttachments.mockResolvedValue([]);
   });
 
-  it('sends the other task\'s queued message instead of leaving it queued', async () => {
+  it('lets the next send into that task start instead of queueing behind the failed one', async () => {
     const user = userEvent.setup();
     const composer = await openTask(user); // Alpha (conv-a)
-
-    // Beta's upload holds the slot, so Alpha's send queues behind it.
     let failUpload;
     uploadAttachments.mockImplementationOnce(
       () => new Promise((_resolve, reject) => { failUpload = () => reject(new Error('Upload failed (500)')); }),
     );
-    const betaComposer = await openByTitle(user, 'Beta task');
-    await attach(user, 'beta-notes.txt');
-    await send(user, betaComposer, 'beta with file');
+    await attach(user, 'notes.txt');
+    await send(user, composer, 'with a file');
     await waitFor(() => expect(uploadAttachments).toHaveBeenCalledTimes(1));
 
-    await openByTitle(user, 'Alpha task');
-    await send(user, composer, 'queued alpha');
-    expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
-    expect(spies.streamMessage).not.toHaveBeenCalled();
-
-    // No turn ever started, so no terminal will drain Alpha. The failure must.
+    // The failure ends the setup: nothing is left marking Alpha as starting a
+    // turn (ENG-4635), so the next message is not queued behind a turn that
+    // will never come.
     await act(async () => { failUpload(); await Promise.resolve(); });
+    await waitFor(() => expect(screen.queryByLabelText('Active')).toBeNull());
+    // The composer kept the failed text (and its file) for a retry.
+    await user.clear(composer);
+    await send(user, composer, 'try again without it');
     await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(1));
-    expect(spies.streamMessage.mock.calls[0][0]).toBe('conv-a');
-    expect(spies.streamMessage.mock.calls[0][1]).toBe('queued alpha');
+    expect(spies.streamMessage.mock.calls[0][1]).toContain('try again without it');
+    expect(screen.queryByLabelText('Remove from queue')).toBeNull();
   });
 
   it('clears the task\'s running dot when its upload fails', async () => {
@@ -2005,7 +2237,7 @@ describe('"Write it as a doc" on a message that waits its turn', () => {
     spies.useActualStreams = true;
     const turns = serveTurns();
     // A send into the running task is offered to its turn first; the server
-    // keeps this one for a turn of its own, so it queues like Beta's.
+    // keeps this one for a turn of its own, so it queues.
     const served = globalThis.fetch;
     vi.stubGlobal('fetch', vi.fn(async (url, init) => (String(url).endsWith('/responses/addon')
       ? new Response(JSON.stringify({ status: 'queued', reason: 'next_task' }), {
@@ -2015,24 +2247,21 @@ describe('"Write it as a doc" on a message that waits its turn', () => {
     await send(user, composer, 'alpha turn');
     await waitFor(() => expect(turns.bodies).toHaveLength(1));
 
-    // Beta asks for a doc while Alpha's turn holds the slot: it queues.
-    await openByTitle(user, 'Beta task');
+    // Alpha asks for a doc while its own turn runs: it queues.
     await user.click(screen.getByRole('button', { name: 'Add context' }));
     await user.click(await screen.findByRole('menuitemcheckbox', { name: 'Write it as a doc' }));
-    await send(user, composer, 'beta as a doc');
+    await send(user, composer, 'alpha as a doc');
     expect(await screen.findByLabelText('Remove from queue')).toBeInTheDocument();
-    // So does a plain follow-up in Alpha, which drains first.
-    await openByTitle(user, 'Alpha task');
-    await send(user, composer, 'alpha follow-up');
-
-    await turns.finish(0);
+    // Beta, idle, starts its plain message at once, before Alpha's drains.
+    await openByTitle(user, 'Beta task');
+    await send(user, composer, 'beta plain');
     await waitFor(() => expect(turns.bodies).toHaveLength(2));
-    expect(turns.bodies[1]).toMatchObject({ conversation: 'conv-a', input: 'alpha follow-up' });
+    expect(turns.bodies[1]).toMatchObject({ conversation: 'conv-b', input: 'beta plain' });
     expect(turns.bodies[1]).not.toHaveProperty('output');
 
-    await turns.finish(1);
+    await turns.finish(0);
     await waitFor(() => expect(turns.bodies).toHaveLength(3));
-    expect(turns.bodies[2]).toMatchObject({ conversation: 'conv-b', input: 'beta as a doc', output: 'doc' });
+    expect(turns.bodies[2]).toMatchObject({ conversation: 'conv-a', input: 'alpha as a doc', output: 'doc' });
     expect(turns.bodies[0]).not.toHaveProperty('output');
   });
 });
@@ -2194,7 +2423,7 @@ describe('"Edit with agent" on a doc opened from the library', () => {
     expect(spies.streamMessage).not.toHaveBeenCalled();
     expect(uploadAttachments).not.toHaveBeenCalled();
     expect(await screen.findByRole('button', { name: 'Pick a passage' })).toBeInTheDocument();
-    // A new chat clears the composer as any chat switch does, without sending its files (ENG-3661).
+    // A new chat clears the composer as any chat switch does, without sending its files.
     expect(screen.queryByText('notes.txt')).toBeNull();
   });
 
@@ -2236,7 +2465,7 @@ describe('"Edit with agent" on a doc opened from the library', () => {
   });
 
   it('lets the doc\'s chat read its history again when its queued request is taken out', async () => {
-    // Found in review: queued behind another chat's turn, the request kept the
+    // Found in review: queued behind a running turn, the request kept the
     // chat marked as holding a turn in flight; taken out of the queue, no turn
     // came to clear it.
     spies.fetchArtifactsStrict.mockResolvedValue([{ ...plan, originConversationId: 'conv-a' }]);
@@ -2250,16 +2479,27 @@ describe('"Edit with agent" on a doc opened from the library', () => {
     const composer = await openTask(user);
     spies.useActualStreams = true;
     const turns = serveTurns();
-    await openByTitle(user, 'Beta task');
-    await send(user, composer, 'beta turn');
+    // The doc's own chat runs a turn; the server keeps the library request
+    // for a turn of its own, so it queues behind that one.
+    const served = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn(async (url, init) => (String(url).endsWith('/responses/addon')
+      ? new Response(JSON.stringify({ status: 'queued', reason: 'next_task' }), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      })
+      : served(url, init))));
+    await send(user, composer, 'alpha turn');
     await waitFor(() => expect(turns.bodies).toHaveLength(1));
+    await turns.finish(0);
+    await send(user, composer, 'alpha second turn');
+    await waitFor(() => expect(turns.bodies).toHaveLength(2));
 
     await askFromTheLibrary(user);
     await waitFor(() => expect(isOptimisticConversation('conv-a')).toBe(true));
     await user.click(await screen.findByLabelText('Remove from queue'));
+    // The chat's own turn still runs; once it ends, nothing holds the mark.
+    await turns.finish(1);
     await waitFor(() => expect(isOptimisticConversation('conv-a')).toBe(false));
-    await turns.finish(0);
-    expect(turns.bodies).toHaveLength(1);
+    expect(turns.bodies).toHaveLength(2);
   });
 });
 
@@ -2323,12 +2563,15 @@ describe('a drained message whose send fails (ENG-1378)', () => {
     const user = userEvent.setup();
     const alpha = await openTask(user); // conv-a
 
-    // Turn 1 in Alpha holds the slot; Alpha and Beta each queue a file.
+    // Alpha and Beta each run a turn, and each queues a file behind its own.
     await send(user, alpha, 'first message');
     const stream = streams[streams.length - 1];
     await attach(user, 'alpha.txt');
     await send(user, alpha, 'queued alpha');
     const beta = await openByTitle(user, 'Beta task');
+    await send(user, beta, 'beta first');
+    await waitFor(() => expect(spies.streamMessage).toHaveBeenCalledTimes(2));
+    const betaStream = streams[streams.length - 1];
     await attach(user, 'beta.txt');
     await send(user, beta, 'queued beta');
     await waitFor(() => expect(screen.getAllByLabelText('Remove from queue').length).toBeGreaterThan(0));
@@ -2341,7 +2584,13 @@ describe('a drained message whose send fails (ENG-1378)', () => {
     uploadAttachments.mockImplementation(() => new Promise((_, reject) => {
       setTimeout(() => reject(new Error('Upload failed (500)')), 0);
     }));
-    await act(async () => { stream.opts.onDone('conv-a'); await Promise.resolve(); });
+    // Both turns end together, so each drains its own queue while the other's
+    // send is still uploading.
+    await act(async () => {
+      betaStream.opts.onDone('conv-b');
+      stream.opts.onDone('conv-a');
+      await Promise.resolve();
+    });
 
     // One upload attempt per task, then the drain chain stops.
     await waitFor(() => expect(uploadAttachments).toHaveBeenCalledTimes(2));
@@ -3789,10 +4038,22 @@ describe('"Run now" before the server has started the run', () => {
     await waitFor(() => expect(spies.fetchInFlightStatus).toHaveBeenCalledWith('conv-run'));
   }
 
+  it('skips the list refresh when the run ends after unmount', async () => {
+    await runNow(userEvent.setup());
+    let resolveStatus;
+    spies.fetchInFlightStatus.mockImplementationOnce(() => new Promise((resolve) => { resolveStatus = resolve; }));
+    await waitFor(() => expect(resolveStatus).toBeTypeOf('function'), { timeout: 4000 });
+
+    cleanup();
+    fetchInFlightList.mockClear();
+    await act(async () => { resolveStatus({ in_flight: false, has_buffer: true }); });
+    expect(fetchInFlightList).not.toHaveBeenCalled();
+  });
+
   it('loads the answer of a run that started and ended between asks', async () => {
     const user = userEvent.setup();
     await runNow(user);
-    expect(screen.getByText(/Running task/)).toBeInTheDocument();
+    expect(await screen.findByText(/Running task/)).toBeInTheDocument();
 
     // The next ask finds the run already over: no producer, but its buffer.
     spies.fetchInFlightStatus.mockImplementation(async () => ({ in_flight: false, has_buffer: true }));

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const hostMock = vi.hoisted(() => ({
   host: {
@@ -16,6 +16,7 @@ const analyticsMock = vi.hoisted(() => ({
   trackBillingOpened: vi.fn(),
   trackMenuApiKeysClicked: vi.fn(),
   trackMenuApiDocsClicked: vi.fn(),
+  trackOrganizationChanged: vi.fn(),
 }));
 vi.mock('../lib/analytics', () => analyticsMock);
 
@@ -201,14 +202,25 @@ describe('UserMenu — dropdown (ENG-1545 curated items)', () => {
   });
 
   it('asks for confirmation before logging out, then runs the logout flow', async () => {
-    renderMenu(<UserMenu user={user} />);
-    openMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: /Logout/ }));
-    // Confirm modal — nothing signed out yet.
-    expect(screen.getByText(LOGOUT_CONFIRM_COPY.title)).toBeInTheDocument();
-    expect(hostMock.host.logout).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: LOGOUT_CONFIRM_COPY.confirmLabel }));
-    expect(hostMock.host.logout).toHaveBeenCalled();
+    // A desktop sign-out arms a 2.5-second reload watchdog. On a real clock it
+    // outlives this file and fires once `window` is gone, which fails the run
+    // with an unhandled error. Hold it on a fake clock and drop it.
+    vi.useFakeTimers();
+    try {
+      renderMenu(<UserMenu user={user} />);
+      openMenu();
+      fireEvent.click(screen.getByRole('menuitem', { name: /Logout/ }));
+      // Confirm modal — nothing signed out yet.
+      expect(screen.getByText(LOGOUT_CONFIRM_COPY.title)).toBeInTheDocument();
+      expect(hostMock.host.logout).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: LOGOUT_CONFIRM_COPY.confirmLabel }));
+      expect(hostMock.host.logout).toHaveBeenCalled();
+      // Let the sign-out settle, so the watchdog is armed while the fake clock holds it.
+      await act(async () => { await Promise.resolve(); });
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -329,6 +341,26 @@ describe('UserMenu — organization picker', () => {
       switching: false,
     };
   };
+
+  it('attributes the reload after automatic landing to the landing switch', () => {
+    localStorage.clear();
+    sessionStorage.clear();
+    withOrgs([ACME, PERSONAL], ACME);
+    renderMenu(<UserMenu user={user} />).unmount();
+    analyticsMock.trackOrganizationChanged.mockClear();
+    withOrgs([ACME, PERSONAL], PERSONAL);
+    const source = renderMenu(<UserMenu user={user} />);
+    expect(orgsMock.switchOrg).toHaveBeenCalledWith(ACME.id);
+    source.unmount();
+    withOrgs([ACME, PERSONAL], ACME);
+    renderMenu(<UserMenu user={user} />);
+    expect(analyticsMock.trackOrganizationChanged.mock.calls).toEqual([
+      [{ fromKind: 'company', toKind: 'personal', cause: 'outside_app' }],
+      [{ fromKind: 'personal', toKind: 'company', cause: 'landing' }],
+    ]);
+    localStorage.clear();
+    sessionStorage.clear();
+  });
 
   it('names the active organization from the listing, not from the token claim', () => {
     // A company organization is where the listing genuinely knows more than the
@@ -560,7 +592,7 @@ describe('UserMenu — organization picker', () => {
     try {
       withOrgs([ACME, PERSONAL], ACME);
       orgsMock.switchOrg.mockResolvedValue({ ok: false, error: 'MindsHub would not switch. Nothing changed.' });
-      renderMenu(<UserMenu user={user} />);
+      const source = renderMenu(<UserMenu user={user} />);
       // Landing records the company organization in use.
       await waitFor(() => expect(readLastOrgId(user.sub)).toBe('org-acme'));
 
@@ -569,6 +601,14 @@ describe('UserMenu — organization picker', () => {
 
       expect(await screen.findByText('MindsHub would not switch. Nothing changed.')).toBeInTheDocument();
       expect(readLastOrgId(user.sub)).toBe('org-acme');
+
+      source.unmount();
+      analyticsMock.trackOrganizationChanged.mockClear();
+      withOrgs([ACME, PERSONAL], PERSONAL);
+      renderMenu(<UserMenu user={user} />);
+      expect(analyticsMock.trackOrganizationChanged).toHaveBeenCalledExactlyOnceWith({
+        fromKind: 'company', toKind: 'personal', cause: 'outside_app',
+      });
     } finally {
       localStorage.clear();
     }

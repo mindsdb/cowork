@@ -266,10 +266,10 @@
     "stayQueued": "{agent} could not take it now. It stays in the queue."
   },
   "voiceCall": {
-    "backToCall": "Back to the call with {agent}",
-    "onCall": "On a call with {agent}",
+    "backToCall": "Back to voice mode",
+    "onCall": "Voice mode is on",
     "callBackPending": "{agent} will call you back when it's done",
-    "call": "Call {agent}",
+    "call": "Voice mode",
     "anotherCall": "Another call is running"
   },
   "notion": {

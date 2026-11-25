@@ -5,7 +5,10 @@
     "searchAriaLabel": "Search models",
     "unavailable": "Unavailable",
     "addCredits": "Add credits",
-    "addCreditsTooltip": "Add credits to use this model"
+    "addCreditsTooltip": "Add credits to use this model",
+    "upgrade": "Upgrade",
+    "upgradeTooltip": "{tier, select, plus {Get Plus to include this model} pro {Upgrade to Pro to include this model} other {Upgrade to include this model}}",
+    "tierTag": "{tier, select, plus {Plus} pro {Pro} other {Plan}}"
   },
   "groups": {
     "openWeight": "Open Weight",

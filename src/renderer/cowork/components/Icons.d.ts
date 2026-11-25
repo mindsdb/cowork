@@ -15,6 +15,7 @@ declare const Ico: {
   chevDown: IconRenderer;
   chevLeft: IconRenderer;
   chevRight: IconRenderer;
+  chevUp: IconRenderer;
   clock: IconRenderer;
   close: IconRenderer;
   code: IconRenderer;

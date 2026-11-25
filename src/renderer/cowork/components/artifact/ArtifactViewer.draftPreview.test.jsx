@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 
+import { getOrgMode, setOrgMode } from '../../../lib/orgMode';
 import { getDraftLinks, setDraftLinks } from '../../../lib/draftLinks';
 
 const workspaceMock = vi.hoisted(() => ({
@@ -29,10 +30,12 @@ const loadArtifactDraftDocument = vi.hoisted(() => vi.fn());
 const loadArtifactDraftText = vi.hoisted(() => vi.fn());
 const createDraftLink = vi.hoisted(() => vi.fn());
 const headerProps = vi.hoisted(() => ({ current: null }));
+const fetchAuthenticatedBlob = vi.hoisted(() => vi.fn());
 const fetchAuthenticatedResponse = vi.hoisted(() => vi.fn());
 
 vi.mock('../../lib/authenticatedResource', async (importOriginal) => ({
   ...(await importOriginal()),
+  fetchAuthenticatedBlob,
   fetchAuthenticatedResponse,
 }));
 
@@ -129,6 +132,21 @@ const artifact = {
 function htmlDoc(content = '<html><head></head><body>Hi</body></html>') {
   return { content, contentType: 'text/html; charset=utf-8', isHtml: true };
 }
+
+it('reads an org image from its authenticated draft URL', async () => {
+  const previous = getOrgMode();
+  setOrgMode(true);
+  try {
+    const draftUrl = artifact.draftUrl.replace('index.html', 'chart.png');
+    fetchAuthenticatedBlob.mockResolvedValue(new Blob(['png'], { type: 'image/png' }));
+    render(<ArtifactViewer open artifact={{ ...artifact, draftUrl, ext: '.png', path: '/artifacts/launch/chart.png' }} onClose={vi.fn()} />);
+    await waitFor(() => expect(fetchAuthenticatedBlob).toHaveBeenCalledWith(
+      expect.stringContaining('https://cowork.example' + draftUrl + '?v='),
+    ));
+  } finally {
+    setOrgMode(previous);
+  }
+});
 
 describe('ArtifactViewer draft HTML preview (org-mode 401 fix)', () => {
   beforeEach(() => {

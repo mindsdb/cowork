@@ -31,6 +31,7 @@
       "retryExhausted": "Arrêt anticipé : la tâche échouait à chaque tentative.",
       "questionUnanswered": "Arrêt anticipé : une question est restée sans réponse.",
       "contentFilter": "Arrêt anticipé : le filtre de contenu du modèle a bloqué une réponse.",
+      "userStopped": "Arrêté.",
       "fallback": "Arrêté avant la fin."
     },
     "figureFile": {
@@ -109,17 +110,27 @@
       "tryAgainIn": "Réessayer dans {seconds} s",
       "tryAgain": "Réessayer",
       "adminSpendingLimitBody": "La limite de dépenses fixée par votre administrateur a été atteinte. Contactez votre administrateur.",
-      "budgetUsedUpTitle": "Le budget de votre organisation est épuisé",
+      "budgetUsedUpTitle": "{scope, select, org {{period, select, day {Le budget quotidien de votre organisation est épuisé} month {Le budget mensuel de votre organisation est épuisé} year {Le budget annuel de votre organisation est épuisé} other {Le budget de votre organisation est épuisé}}} workspace {{period, select, day {Le budget quotidien de cet espace de travail est épuisé} month {Le budget mensuel de cet espace de travail est épuisé} year {Le budget annuel de cet espace de travail est épuisé} other {Le budget de cet espace de travail est épuisé}}} api_key {{period, select, day {Le budget quotidien de cette clé API est épuisé} month {Le budget mensuel de cette clé API est épuisé} year {Le budget annuel de cette clé API est épuisé} other {Le budget de cette clé API est épuisé}}} team {{period, select, day {Le budget quotidien de votre équipe est épuisé} month {Le budget mensuel de votre équipe est épuisé} year {Le budget annuel de votre équipe est épuisé} other {Le budget de votre équipe est épuisé}}} member {{period, select, day {Votre budget quotidien est épuisé} month {Votre budget mensuel est épuisé} year {Votre budget annuel est épuisé} other {Votre budget est épuisé}}} other {{period, select, day {Un budget quotidien est épuisé} month {Un budget mensuel est épuisé} year {Un budget annuel est épuisé} other {Un budget est épuisé}}}}",
       "viewBudgets": "Voir les budgets",
       "balanceRanOutMobile": "Votre solde a été épuisé avant la fin de cette tâche.",
       "autoTopUpFailedBodyMobile": "Nous n’avons pas pu débiter votre carte.",
-      "connectProviderBodyMobile": "Connectez votre propre fournisseur dans les paramètres."
+      "connectProviderBodyMobile": "Connectez votre propre fournisseur dans les paramètres.",
+      "windowUsedUpTitle": "Quota du forfait épuisé",
+      "windowPausedUntil": "Vous avez utilisé votre quota {window, select, 7d {hebdomadaire} 5h {de 5 heures} other {du forfait}} et votre solde est épuisé. En pause jusqu’à {time}. Ajoutez des fonds pour continuer.",
+      "windowPaused": "Vous avez utilisé votre quota {window, select, 7d {hebdomadaire} 5h {de 5 heures} other {du forfait}} et votre solde est épuisé. En pause jusqu’à la réinitialisation. Ajoutez des fonds pour continuer.",
+      "windowPausedUntilMobile": "Vous avez utilisé votre quota {window, select, 7d {hebdomadaire} 5h {de 5 heures} other {du forfait}}. En pause jusqu’à {time}.",
+      "windowPausedMobile": "Vous avez utilisé votre quota {window, select, 7d {hebdomadaire} 5h {de 5 heures} other {du forfait}}. En pause jusqu’à la réinitialisation."
     },
     "usageAlert": {
       "freeLow": "Quota gratuit Air restant : {percent}",
       "freeLowRefills": "Quota gratuit Air restant : {percent} · renouvelé à {time}",
       "freeUsed": "Quota gratuit Air épuisé · votre solde est désormais utilisé",
-      "freeUsedUntil": "Quota gratuit Air épuisé · votre solde est utilisé jusqu’à {time}"
+      "freeUsedUntil": "Quota gratuit Air épuisé · votre solde est utilisé jusqu’à {time}",
+      "windowLow": "{percent} de votre quota {window, select, 7d {hebdomadaire} other {de 5 heures}} utilisé",
+      "windowLowResets": "{percent} de votre quota {window, select, 7d {hebdomadaire} other {de 5 heures}} utilisé · réinitialisation à {time}",
+      "windowUsed": "{window, select, 7d {Quota hebdomadaire épuisé} other {Quota de 5 heures épuisé}}",
+      "windowUsedUntil": "{window, select, 7d {Quota hebdomadaire épuisé} other {Quota de 5 heures épuisé}} · en pause jusqu’à {time}",
+      "windowOnWallet": "{window, select, 7d {Quota hebdomadaire épuisé} other {Quota de 5 heures épuisé}} · votre solde est utilisé aux tarifs API"
     },
     "reconnect": {
       "couldNotReconnect": "Impossible de se reconnecter. Essayez de vous déconnecter, puis de vous reconnecter.",
@@ -148,7 +159,9 @@
       "needsCreditsBody": "Vous n’avez pas assez de crédits pour ce modèle. Rechargez votre solde pour l’utiliser.",
       "disabledBody": "Ce modèle est désactivé pour votre espace de travail. Choisissez un autre modèle dans les paramètres.",
       "topUpBalance": "Recharger le solde",
-      "needsCreditsBodyMobile": "Vous n’avez pas assez de crédits pour ce modèle."
+      "needsCreditsBodyMobile": "Vous n’avez pas assez de crédits pour ce modèle.",
+      "notInTierTitle": "{model} n’est pas inclus dans votre forfait",
+      "notInTierBody": "{tier, select, plus {{model} est inclus dans Plus.} pro {{model} est inclus dans Pro.} other {Votre forfait n’inclut pas {model}.}} Changez de forfait ou ajoutez des fonds pour l’utiliser aux tarifs API."
     },
     "overloaded": {
       "theModelProvider": "Le fournisseur de modèles",
@@ -302,7 +315,11 @@
       "none": "Aucun projet"
     },
     "chooseHarness": "Choisir l’environnement d’exécution",
-    "voiceCall": "Appel vocal"
+    "voiceCall": "Mode vocal",
+    "dictation": {
+      "start": "Dicter",
+      "stop": "Arrêter la dictée"
+    }
   },
   "attachmentThumbnail": {
     "open": "Ouvrir l’image",
@@ -502,7 +519,8 @@
         "1": "Analyser le paysage concurrentiel et le positionnement",
         "2": "Automatiser le rapport d’avancement hebdomadaire de l’équipe",
         "3": "Étudier l’opportunité de marché pour un lancement de produit",
-        "4": "Rédiger le point de cette semaine à partir de celui de la semaine dernière"
+        "4": "Rédiger le point de cette semaine à partir de celui de la semaine dernière",
+        "5": "Transformer un rapport en présentation"
       }
     },
     "website": {
@@ -547,7 +565,8 @@
         "3": "Comparer les meilleurs modèles VLM avec les données Hugging Face",
         "4": "Calculer le TRI de flux de trésorerie d’investissement",
         "5": "Nettoyer ma feuille de calcul et en faire un graphique",
-        "6": "Extraire les clauses clés d’un contrat"
+        "6": "Extraire les clauses clés d’un contrat",
+        "7": "Transformer un relevé bancaire en feuille de calcul"
       }
     },
     "visualization": {
@@ -578,7 +597,10 @@
         "7": "Faire le point sur ce qui m’attend cette semaine",
         "8": "Se renseigner sur un prospect et rédiger une prise de contact",
         "9": "Me conseiller sur une affaire à partir de la transcription d’un appel",
-        "10": "Transformer des notes de réunion en actions à mener"
+        "10": "Transformer des notes de réunion en actions à mener",
+        "11": "Cartographier la stratégie commerciale d'un concurrent",
+        "12": "Créer un guide d'étude à partir du support de cours",
+        "13": "Dresser une liste de prospects classée"
       }
     },
     "games": {
@@ -599,7 +621,11 @@
       "placeholder": "Choisissez un exemple ou décrivez votre propre tâche"
     },
     "samplePrompts": "Exemples de prompts",
-    "pillsAriaLabel": "Types de tâches"
+    "pillsAriaLabel": "Types de tâches",
+    "own-work": {
+      "chipLabel": "Votre travail",
+      "placeholder": "Collez du texte ou un lien, ou joignez un fichier"
+    }
   },
   "taskRows": {
     "openProject": "Ouvrir {project}",
@@ -737,7 +763,7 @@
     "talkTo": "Parler à {agent}"
   },
   "voiceCall": {
-    "dialogLabel": "Appel vocal avec {agent}",
+    "dialogLabel": "Mode vocal",
     "connecting": "Connexion…",
     "ending": "Fin de l’appel…",
     "working": "En cours…",
@@ -801,5 +827,50 @@
     "fallbackName": "image",
     "alt": "Image générée {name}",
     "notShown": "Impossible d'afficher {name}. Le fichier a peut-être été déplacé ou supprimé."
+  },
+  "ownWork": {
+    "needsMaterial": "Ajoutez maintenant ce sur quoi il doit travailler : joignez un fichier, ou collez du texte ou un lien après la tâche.",
+    "waysLabel": "Façons d'apporter votre travail",
+    "attach": "Joindre un fichier",
+    "orPaste": "ou collez du texte ou un lien dans le champ ci-dessus",
+    "jobsHeading": "Choisissez une tâche si vous voulez",
+    "kindsLabel": "Type de travail",
+    "groups": {
+      "finance": "Finance et administration",
+      "sales": "Ventes et marketing",
+      "operations": "Opérations",
+      "legal": "Contrats et recherche"
+    },
+    "jobs": {
+      "finance": {
+        "0": "Regrouper ces relevés bancaires ou factures dans une seule feuille de calcul.",
+        "1": "Préparer le prochain rapport mensuel à partir de ces chiffres.",
+        "2": "Vérifier ces relevés pour repérer les erreurs ou les opérations inhabituelles."
+      },
+      "sales": {
+        "0": "Nettoyer cette liste de clients et signaler les doublons.",
+        "1": "Comparer ces deux listes de prix et montrer ce qui a changé.",
+        "2": "Rédiger des e-mails de suivi à partir de ces notes d'appel."
+      },
+      "operations": {
+        "0": "Transformer ces notes de réunion en décisions et actions à mener.",
+        "1": "Transformer ces notes en une synthèse d'une page.",
+        "2": "Transformer ce document de processus en checklist étape par étape."
+      },
+      "legal": {
+        "0": "Résumer les principales clauses et les risques de ce contrat.",
+        "1": "Résumer ce rapport et faire ressortir les chiffres qui comptent.",
+        "2": "Lire cette page et expliquer ce qui compte pour nous."
+      }
+    }
+  },
+  "reportContent": {
+    "title": "Signaler le contenu",
+    "message": "Signaler ce contenu comme dangereux ou offensant ? Son texte ou sa référence et les identifiants de votre compte seront transmis à l’équipe MindsHub pour examen.",
+    "submit": "Envoyer le signalement",
+    "sent": "Signalement reçu.",
+    "failed": "Impossible d’envoyer le signalement. Veuillez réessayer.",
+    "rateLimited": "Limite quotidienne de signalements atteinte. Réessayez plus tard.",
+    "retryAt": "Limite quotidienne de signalements atteinte. Réessayez le {when, date, short} à {when, time, short}."
   }
 }

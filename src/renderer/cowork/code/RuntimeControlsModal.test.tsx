@@ -7,6 +7,8 @@ const { pickCodeFolder } = vi.hoisted(() => ({
 }));
 
 vi.mock('../../platform/host', () => ({
+  // Console links read the signed-in account (useConsoleLink).
+  getAccessToken: () => Promise.resolve(null),
   host: {
     getPlatform: () => 'darwin',
     pickCodeFolder,

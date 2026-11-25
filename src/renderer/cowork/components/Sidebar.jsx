@@ -16,6 +16,8 @@ import OnboardingChecklist from './onboarding/OnboardingChecklist';
 import FirstArtifactTip from './onboarding/FirstArtifactTip';
 import { CodeSidebarSessions } from '../code/CodeSidebarSessions';
 import WorkspaceModeSwitch from './WorkspaceModeSwitch';
+import DesktopOfferModal, { DesktopTag } from './DesktopOfferModal';
+import { desktopOfferAvailable } from '../lib/desktopOffer';
 import { surfaceCopy } from '../lib/surface';
 import { brandLogoUrl, productName } from '../../lib/deploymentBrand';
 import { STOCK_PRODUCT_NAME, STOCK_WORDMARK } from '../../../shared/product-name';
@@ -310,6 +312,7 @@ export default function Sidebar({
   onStartChat = null,
   // Takes the "Try an example" row to Home, where the examples are.
   onOpenExamples = null,
+  onOpenOwnWork = null,
   // First-artifact tip — App arms it (0 → 1 artifacts transition) and
   // owns the persistent dismissal; the sidebar anchors it to the Live
   // Artifacts nav row and adds the "clicking the row dismisses" path.
@@ -328,6 +331,9 @@ export default function Sidebar({
   // The quick toggles are keyed off "is the user menu actually rendered", not
   // "is the user signed in" — while the pill shows, the menu (which hosts the
   // theme switch) isn't on screen, so the toggles must stay.
+  // The macOS desktop app hides its title bar and draws the traffic lights
+  // over the sidebar's top-left corner. Windows and Linux keep a native one.
+  const hasTrafficLights = !host.isWeb && host.isMac();
   const showsStatusPill = !host.isWeb && (!serverOnline || serverBusy);
   const showsUserMenu = !showsStatusPill && !!accountUser;
   // Which app this is (ENG-2172), and the note that explains an empty list
@@ -453,6 +459,7 @@ export default function Sidebar({
   const hasMoreRecents = false;
 
   const [recentsModalOpen, setRecentsModalOpen] = useState(false);
+  const [codeOfferOpen, setCodeOfferOpen] = useState(false);
 
   // Anchor for the first-artifact tip — the Live Artifacts nav row (the
   // count badge sits at its right edge, where the tip's arrow points).
@@ -502,18 +509,20 @@ export default function Sidebar({
       <div
         className="anton-sidebar__chrome drag-region shrink-0"
         // cascade-forced: overrides .anton-sidebar__chrome's default
-        // `padding: 14px 14px 8px` — also dynamic (host.isWeb picks the
-        // left inset that clears the macOS traffic lights in Electron).
-        style={{ padding: `9px 14px 8px ${host.isWeb ? 14 : 88}px` }}
+        // `padding: 14px 14px 8px` — also dynamic: only the macOS desktop
+        // app draws traffic lights inside the window, so only it needs the
+        // wide left inset. Windows and Linux keep their native title bar
+        // (ENG-4415).
+        style={{ padding: `9px 14px 8px ${hasTrafficLights ? 88 : 14}px` }}
       >
-        {/* Right-aligned cluster: collapse + search icons, then a
-            middle-dot separator, then the ANTON wordmark. The chrome's
-            existing `justify-content: space-between` pushes the whole
-            cluster against the right edge (the left half is empty space
-            past the traffic-light pad). */}
-        <div className="flex-1" />
+        {/* Collapse + search icons, then a middle-dot separator, then the
+            ANTON wordmark. On macOS and the web the cluster sits against the
+            right edge (on macOS the left half is the traffic-light pad). On
+            Windows and Linux there is nothing to clear, so it starts at the
+            left edge (ENG-4415). */}
+        {(host.isWeb || hasTrafficLights) && <div className="flex-1" />}
         <div
-          className="anton-sidebar__chrome-left ml-auto"
+          className={host.isWeb || hasTrafficLights ? 'anton-sidebar__chrome-left ml-auto' : 'anton-sidebar__chrome-left'}
           // cascade-forced: overrides .anton-sidebar__chrome-left's default
           // `gap: 14px` with a tighter 4px for this cluster.
           style={{ gap: 4 }}
@@ -622,6 +631,15 @@ export default function Sidebar({
           <WorkspaceModeSwitch
             value={activeWorkspace}
             onChange={onWorkspaceChange}
+          />
+        )}
+        {/* The web build shows the same switch; Code stays unselected and
+            only opens the offer of the desktop app, where Code runs. */}
+        {desktopOfferAvailable() && (
+          <WorkspaceModeSwitch
+            value="cowork"
+            onChange={(next) => { if (next === 'code') setCodeOfferOpen(true); }}
+            codeTag={<DesktopTag />}
           />
         )}
 
@@ -894,7 +912,7 @@ export default function Sidebar({
         {/* A running voice call, docked where the onboarding steps sit. */}
         {callCard}
 
-        {!codeRoute && onStartChat && <OnboardingChecklist onStartChat={onStartChat} onOpenExamples={onOpenExamples} />}
+        {!codeRoute && onStartChat && <OnboardingChecklist onStartChat={onStartChat} onOpenExamples={onOpenExamples} onOpenOwnWork={onOpenOwnWork} />}
 
         {/* One banner for all three update mechanisms, chosen by
             deriveUpdateBanner (shell-first). Exactly one banner or none. */}
@@ -1083,6 +1101,11 @@ export default function Sidebar({
         }}
       />
 
+      <DesktopOfferModal
+        feature={codeOfferOpen ? 'code_mode' : null}
+        entry="sidebar_switch"
+        onClose={() => setCodeOfferOpen(false)}
+      />
       <RecentsModal
         projects={projects}
         open={recentsModalOpen}

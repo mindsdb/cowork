@@ -15,6 +15,8 @@
     "expand": "Expand",
     "close": "Close",
     "closeDoc": "Close doc",
+    "renameDoc": "Rename doc: {title}",
+    "docName": "Doc name",
     "loading": "Loading doc",
     "gone": "This doc no longer exists.",
     "openFailed": "Could not open this doc. {reason}",
@@ -80,6 +82,7 @@
   "tabs": {
     "label": "Tabs",
     "add": "Add tab",
+    "addHint": "Add a new tab to this doc",
     "hide": "Hide tabs",
     "changed": "Changed",
     "showChanged": "Show the changed tab",
@@ -186,6 +189,11 @@
     "placeholderWrite": "What should the agent write here?",
     "placeholderChange": "What should change?",
     "send": "Send"
+  },
+  "comments": {
+    "edit": "Edit",
+    "editHint": "Type in the doc",
+    "commentHint": "Comment — click a block, or select words"
   },
   "chart": {
     "label": "Chart",

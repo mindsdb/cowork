@@ -13,6 +13,7 @@ vi.mock('../api', async (importOriginal) => {
   return { ...actual, fetchSkills: vi.fn(async () => []) };
 });
 
+
 const renderHome = (overrides = {}) => {
   const props = {
     onSend: vi.fn(async () => {}),
@@ -61,13 +62,69 @@ describe('HomeView task modes (ENG-1594)', () => {
     // arg alongside the composed text.
     await waitFor(() => expect(props.onSend).toHaveBeenCalledWith(
       `Make a deck about Q3\n\n${slides.instruction}`,
-      { harness: 'anton', model: undefined },
+      { harness: 'anton', model: undefined, taskMode: { task_mode: 'slides', mode_line: 'appended', example_placed: false } },
     ));
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: 'Remove Slides mode' })).not.toBeInTheDocument();
     });
     // Default view restored: pill row is back.
     expect(screen.getByRole('button', { name: 'Create slides' })).toBeInTheDocument();
+  });
+
+  it('sends a request typed over a picked example without the mode\'s instruction', async () => {
+    const user = userEvent.setup();
+    const props = renderHome();
+    const viz = TASK_MODES.find((m) => m.id === 'visualization');
+    await user.click(screen.getByRole('button', { name: viz.pillLabel }));
+    await user.click(screen.getByRole('button', { name: viz.samples[0].label }));
+    // onPrefill is the app's; here the person clears the box and types instead.
+    await user.type(screen.getByPlaceholderText(viz.placeholder), 'plan a birthday party');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(props.onSend).toHaveBeenCalledWith(
+      'plan a birthday party',
+      { harness: 'anton', model: undefined, taskMode: { task_mode: 'visualization', mode_line: 'replaced_example', example_placed: true } },
+    ));
+  });
+
+  it('sends what became of the mode line with the message it describes', async () => {
+    const user = userEvent.setup();
+    const props = renderHome();
+    await user.click(screen.getByRole('button', { name: 'Create slides' }));
+    await user.type(screen.getByPlaceholderText(slides.placeholder), 'Make a deck');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(props.onSend).toHaveBeenCalledWith(
+      `Make a deck\n\n${slides.instruction}`,
+      expect.objectContaining({ taskMode: { task_mode: 'slides', mode_line: 'appended', example_placed: false } }),
+    ));
+  });
+
+  it('keeps the mode note on a send still in flight when a second Enter is refused', async () => {
+    // The app refuses a second Home send while the first is still loading
+    // (attachments can take seconds), so the note must belong to each send,
+    // not to state the refused one can clear.
+    const user = userEvent.setup();
+    let release;
+    const onSend = vi.fn()
+      .mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }))
+      .mockImplementation(async () => false);
+    renderHome({ onSend });
+    await user.click(screen.getByRole('button', { name: 'Create slides' }));
+    await user.type(screen.getByPlaceholderText(slides.placeholder), 'Make a deck');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(2));
+    release(true);
+    expect(onSend.mock.calls[0][1].taskMode).toEqual({ task_mode: 'slides', mode_line: 'appended', example_placed: false });
+  });
+
+  it('sends no mode note when no mode is selected', async () => {
+    const user = userEvent.setup();
+    const props = renderHome();
+    await user.type(screen.getByRole('textbox'), 'hello');
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(props.onSend).toHaveBeenCalled());
+    expect(props.onSend.mock.calls[0][1]).not.toHaveProperty('taskMode');
   });
 
   it('keeps the mode when the send fails', async () => {
@@ -145,4 +202,14 @@ describe('HomeView task modes — hidden in Coding Mode', () => {
     expect(screen.queryByPlaceholderText(slides.placeholder)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Create slides' })).not.toBeInTheDocument();
   });
+});
+
+it('offers task notifications while the first prompt is still a draft', async () => {
+  const user = userEvent.setup();
+  const onComposeTask = vi.fn();
+  const props = renderHome({ onComposeTask });
+  expect(onComposeTask).not.toHaveBeenCalled();
+  await user.type(screen.getByRole('textbox'), 'Draft a launch email');
+  expect(onComposeTask).toHaveBeenCalledOnce();
+  expect(props.onSend).not.toHaveBeenCalled();
 });

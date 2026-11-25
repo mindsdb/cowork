@@ -1,4 +1,5 @@
 import { diagnostic } from '../../shared/diagnostics';
+import { planFailureFields } from './lib/subscriptionPlan';
 import { PLATFORM_UI } from '../lib/deployment';
 import { modelPickerMode, operatorEffortLevels } from '../lib/modelPicker';
 import { STOCK_PRODUCT_NAME } from '../../shared/product-name';
@@ -24,14 +25,17 @@ import { cacheSettings } from './lib/settingsCache';
 import { approvalsOffAtOf } from './lib/browserPrefs';
 import { setAntonInstallId } from './lib/analytics';
 import { artifactIdentity } from './lib/artifactIdentity';
+import { trackingSettingsBody } from './lib/trackingSettings';
 import { liveAppSharesFrom, sharedLiveAppsFrom } from './lib/liveAppSharing';
 import { liveAppStatesFrom } from './lib/liveAppState';
 import { liveAppAvailabilityFrom } from './lib/liveAppAvailability';
 import { getOrgMode } from '../lib/orgMode';
+import { getDocsEnabled } from '../lib/docsEnabled';
 import { isTaskBrowserOff } from './lib/taskBrowser';
 import { SHARING_OFF } from './lib/orgSharing';
+import { markWorkStarted } from './lib/documentWork';
 import {
-  MINDSHUB_ERROR_CODE, PEOPLE_LOOKUP, firstMindsHubFailure, readMindsHubFailure, readSharingCapabilities,
+  MINDSHUB_ERROR_CODE, PEOPLE_LOOKUP, PUBLISH_SHELL_TOO_OLD_CODE, firstMindsHubFailure, readMindsHubFailure, readSharingCapabilities,
 } from './lib/sharingContract';
 import {
   expectedOrganizationHeaders,
@@ -245,6 +249,9 @@ function dedupe(key, factory, { forceFresh = false } = {}) {
  * @property {string|null} [retry_at] When that wait ends, as an offset-bearing
  *   ISO 8601 instant.
  * @property {string} [reset_at] When a spent allowance refills.
+ * @property {string} [budget_scope] Whose budget a budget_exceeded stop spent.
+ * @property {string} [budget_period] That budget's period: day, month or year.
+ * @property {string} [budget_model] The model a per-model budget caps (its alias).
  * @property {string} [request_id] The server's id for the failed request.
  * @property {boolean} [reconnectable] The credential is MindsHub's, so
  *   signing in again fixes it.
@@ -346,6 +353,13 @@ function _failedEventMeta(events) {
        render time: the server deliberately doesn't parse it, since only the
        client knows the viewer's timezone (ENG-1537). */
     resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
+    // window_allowance_exhausted / model_not_in_tier (ENG-4186): which plan
+    // window filled, and which tier covers the model.
+    ...planFailureFields(ev),
+    // budget_exceeded: whose budget is spent (org, workspace, api_key); absent from an older server.
+    budgetScope: typeof ev.budget_scope === 'string' ? ev.budget_scope : null,
+    budgetPeriod: typeof ev.budget_period === 'string' ? ev.budget_period : null,
+    budgetModel: typeof ev.budget_model === 'string' && ev.budget_model ? ev.budget_model : null,
     // Absolute instant to gate Retry against. The message's own created_at
     // is NOT a substitute: the server serialises it offset-less, so JS reads
     // it as local time — the gate would last hours west of UTC and no-op east
@@ -414,6 +428,9 @@ function _hydrateAssistantEvents(messages) {
           providerLabel: failed?.providerLabel ?? null,
           retryAfter: failed?.retryAfter ?? null,
           resetAt: failed?.resetAt ?? null,
+          budgetScope: failed?.budgetScope ?? null,
+          budgetPeriod: failed?.budgetPeriod ?? null,
+          budgetModel: failed?.budgetModel ?? null,
           retryAt: failed?.retryAt ?? null,
           failedModel: failed?.failedModel ?? null,
           requestId: failed?.requestId ?? null,
@@ -683,6 +700,26 @@ export async function fetchOlderMessages(id, cursor, { timeoutMs } = {}) {
 }
 
 /**
+ * Whether conversation `id` can be opened, from its metadata alone (the
+ * preview's Open chat): 'ok'; 'not_found' when it is gone;
+ * 'forbidden' when it is someone else's; 'unavailable' on any other failure.
+ *
+ * @param {string} id
+ * @param {{timeoutMs?: number}} [options]
+ * @returns {Promise<'ok' | 'not_found' | 'forbidden' | 'unavailable'>}
+ */
+export async function fetchConversationStatus(id, { timeoutMs } = {}) {
+  try {
+    await req(`/conversations/${encodeURIComponent(id)}`, { timeoutMs });
+    return 'ok';
+  } catch (err) {
+    if (err?.status === 404) return 'not_found';
+    if (err?.status === 403) return 'forbidden';
+    return 'unavailable';
+  }
+}
+
+/**
  * Loader-facing conversation fetch. Unlike `fetchSession` (which collapses every
  * failure to `null`), this separates a gone conversation (`404 → 'not_found'`)
  * from an operational failure (auth / 5xx / network `→ 'unavailable'`) so the
@@ -804,6 +841,7 @@ export function sendablePicks(model, reasoningEffort) {
 }
 
 function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, resetPicks = [], attachmentIds = [], disabledConnections, browserOff = false, output, docContext, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
+  markWorkStarted();
   const ctrl = turnStreamController(onEvent);
   let userMessageId = null;
   /** @param {string} message @param {StreamFailure} event */
@@ -829,6 +867,7 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
   // operator-configured role settings, including restored tasks.
   const { sendsPicks, model: sentModel, reasoningEffort: sentEffort } = sendablePicks(model, reasoningEffort);
   const sendsEffort = sentEffort !== null;
+  const docsOn = getDocsEnabled();
   (async () => {
     try {
       bumpIdle();
@@ -866,15 +905,16 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           // an older server never sees the key.
           ...(browserOff ? { browser: 'off' } : {}),
           // This app shows docs: the server gives the agent its doc tools
-          // only on a request that says so.
-          docs: true,
+          // only on a request that says so. A deployment without doc tools
+          // (/health's docs_enabled) gets none of the doc fields.
+          ...(docsOn ? { docs: true } : {}),
           // The doc the person had open beside the conversation when they
           // sent this message, with its own "Edit with agent" target, so
           // "this section" means what they were looking at (the caller takes
           // it then: a message that waited its turn keeps its own); and the
           // composer's "Write it as a doc".
-          ...(docContext ? { doc_context: docContext } : {}),
-          ...(output ? { output } : {}),
+          ...(docsOn && docContext ? { doc_context: docContext } : {}),
+          ...(docsOn && output ? { output } : {}),
         }),
         signal: ctrl.signal,
       });
@@ -1680,6 +1720,10 @@ export async function fetchArtifactsStrict({ projectId, projectPath } = {}) {
   return Array.isArray(data) ? data : [];
 }
 
+export function fetchSharedArtifactPreview(target, signal) {
+  return req('/artifacts/shared-preview', { method: 'POST', body: JSON.stringify(target), signal });
+}
+
 export async function previewArtifact(path) {
   return req(`/artifacts/preview?path=${encodeURIComponent(path)}`);
 }
@@ -1940,6 +1984,33 @@ export async function updateOrgAppearance(payload) {
     headers: await hubHeaders(),
     body: JSON.stringify(payload),
   });
+}
+
+/**
+ * The signed-in account's open deletion request, `{ requestedAt, deleteBy }`,
+ * or null. The server answers 404 both when there is no open request and when
+ * there is no MindsHub account behind it (a desktop on its local server), so
+ * callers only ask where a MindsHub account is certain: the mobile app. Anything
+ * else rejects, so a failed read is never mistaken for "no request".
+ */
+export async function getDeletionRequest() {
+  try {
+    // Bounded: the Delete account button stays disabled until this settles.
+    return await req('/hub/deletion-request/', { timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+  } catch (err) {
+    if (err?.status === 404) return null;
+    throw err;
+  }
+}
+
+/**
+ * Ask MindsHub to delete the signed-in account. Idempotent: a second call
+ * answers the open request rather than opening another. Resolves to the same
+ * shape as getDeletionRequest; rejects with `err.status` on failure (404 when
+ * there is no MindsHub account behind the server).
+ */
+export async function requestAccountDeletion() {
+  return req('/hub/deletion-request/', { method: 'POST', timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
 }
 
 // The lock-owning wrappers decide how to handle failure. A save must never
@@ -2531,10 +2602,14 @@ async function notionViaMain(path, call, signal) {
     signal?.addEventListener('abort', onAbort, { once: true });
     call().then(resolve, reject).finally(() => signal?.removeEventListener('abort', onAbort));
   });
-  if (!result) return null;
+  return result ? mainBridgeResult(result, path) : null;
+}
+
+// A main-process bridge's answer for the route at `path`: `{ data }` with the
+// server's JSON, else the same error a direct request raises.
+async function mainBridgeResult(result, path) {
   if (result.ok) return { data: result.data };
   if ('status' in result) {
-    // The same error a direct request raises for this response.
     throw await responseError({
       status: result.status,
       text: async () => result.text,
@@ -3090,19 +3165,43 @@ export async function submitDataVaultForm({ formId, conversationId, values, skip
 //   { mode: 'public' }
 //   { mode: 'password', password: '...' }
 //   { mode: 'restricted', emails: [...], org_allowed: bool, notify?: { user_ids, emails } }
-// Public (or a falsy access) sends just `{ path }`, which clears any prior
-// protection on re-publish. `notify` goes through as given: cowork-server
+// A falsy access is public, and is sent as such: a request without access
+// publishes to the owner only. `notify` goes through as given: cowork-server
 // forwards it to MindsHub, which emails exactly the people it lists.
-export async function publishArtifact(path, access) {
-  const body = access && access.mode && access.mode !== 'public' ? { path, access } : { path };
-  return req('/publish', { method: 'POST', body: JSON.stringify(body) });
+// `approvedDatasources` lists the connections the person just approved sending
+// credentials for; on the desktop such a request goes through main, which
+// holds the app secret it needs.
+async function sendPublish(kind, route, body, approvedDatasources) {
+  const approved = (approvedDatasources || []).map(({ engine, name }) => ({ engine, name }));
+  if (!approved.length) return req(route, { method: 'POST', body: JSON.stringify(body) });
+  const result = host.isElectron
+    ? await host.publishWithApproval({ kind, path: body.path, access: body.access, approvedDatasources: approved })
+    : null;
+  if (result?.reason === 'unsupported') {
+    const err = new Error(result.reason);
+    err.code = PUBLISH_SHELL_TOO_OLD_CODE;
+    throw err;
+  }
+  if (result) return (await mainBridgeResult(result, route)).data;
+  return req(route, { method: 'POST', body: JSON.stringify({ ...body, approved_datasources: approved }) });
+}
+
+export async function publishArtifact(path, access, { approvedDatasources = [] } = {}) {
+  const body = { path, access: access && access.mode ? access : { mode: 'public' } };
+  return sendPublish('publish', '/publish', body, approvedDatasources);
 }
 
 // Re-publish an already-published artifact: pushes current files to the same
 // URL with the same access settings (server reuses report_id). Clears the
 // "Modified" badge on success.
-export async function updateArtifact(path) {
-  return req('/publish/update', { method: 'POST', body: JSON.stringify({ path }) });
+export async function updateArtifact(path, { approvedDatasources = [] } = {}) {
+  return sendPublish('update', '/publish/update', { path }, approvedDatasources);
+}
+
+// The connections a full-stack publish would newly send credentials for.
+export async function fetchPendingDatasources(path) {
+  const r = await req(`/publish/datasources?path=${encodeURIComponent(path)}`);
+  return Array.isArray(r?.pending) ? r.pending : [];
 }
 
 // Version history of a live artifact:
@@ -3127,12 +3226,25 @@ export async function fetchPublishStats(path) {
   return req(`/publish/stats?path=${encodeURIComponent(path)}`);
 }
 
-export async function setPublishTracking(path, enabled) {
+export async function setPublishTracking(path, settings) {
   if (!path) throw new Error('Artifact has no path');
   return req('/publish/stats/tracking', {
     method: 'PUT',
-    body: JSON.stringify({ path, enabled }),
+    body: JSON.stringify({ path, ...trackingSettingsBody(settings) }),
   });
+}
+
+// One viewer's visits, each with its time per section.
+export async function fetchPublishStatsViewer(path, viewerId) {
+  if (!path) throw new Error('Artifact has no path');
+  if (!viewerId) throw new Error('No viewer');
+  return req(`/publish/stats/viewers/${encodeURIComponent(viewerId)}?path=${encodeURIComponent(path)}`);
+}
+
+// Deletes every view, visit and viewer recorded for the published artifact.
+export async function deletePublishStats(path) {
+  if (!path) throw new Error('Artifact has no path');
+  return req(`/publish/stats?path=${encodeURIComponent(path)}`, { method: 'DELETE' });
 }
 
 // The path to send to publish/unpublish for an artifact. Prefer the
@@ -3336,13 +3448,20 @@ function localTimeZone() {
   }
 }
 
-export async function startVoiceSession(sdp, voice) {
+/* `mode` 'dictation' is the composer's mic (ENG-4630): a session that only
+   listens, for its live transcript. */
+export async function startVoiceSession(sdp, voice, mode) {
   return req('/voice/session', {
     method: 'POST',
     timeoutMs: 40_000,
     headers: await hubHeaders(),
     // The person's time zone, so the call knows their date and time.
-    body: JSON.stringify({ sdp, ...(voice ? { voice } : {}), ...(localTimeZone() ? { timezone: localTimeZone() } : {}) }),
+    body: JSON.stringify({
+      sdp,
+      ...(voice ? { voice } : {}),
+      ...(localTimeZone() ? { timezone: localTimeZone() } : {}),
+      ...(mode && mode !== 'call' ? { mode } : {}),
+    }),
   });
 }
 
@@ -3730,6 +3849,29 @@ export async function patchConversation(id, body) {
   });
 }
 
+/** GET /conversations/{id}/folders: `{ folders: [{ id, path, name, available }] }`, oldest first. */
+export async function listConversationFolders(conversationId) {
+  return req(`/conversations/${enc(conversationId)}/folders`);
+}
+
+/** POST /conversations/{id}/folders. A refusal throws with the server's user-facing reason. */
+export async function addConversationFolder(conversationId, path) {
+  return req(`/conversations/${enc(conversationId)}/folders`, {
+    method: 'POST',
+    body: JSON.stringify({ path }),
+  });
+}
+
+/** DELETE /conversations/{id}/folders/{folderId}. Detaches only; nothing on disk changes. */
+export async function removeConversationFolder(conversationId, folderId) {
+  return req(`/conversations/${enc(conversationId)}/folders/${enc(folderId)}`, { method: 'DELETE' });
+}
+
+/** GET /conversations/{id}/folders/{folderId}/files: `{ files, truncated? }`, like the project listing. */
+export async function listConversationFolderFiles(conversationId, folderId) {
+  return req(`/conversations/${enc(conversationId)}/folders/${enc(folderId)}/files`);
+}
+
 const DELETE_TURN_TIMEOUT_MS = 30000;
 
 // Delete one user→answer cycle (the question + the assistant
@@ -3932,7 +4074,7 @@ export async function runScheduleNow(id, { trial = false } = {}) {
 
 export async function fetchScheduleRuns(id, { limit = 100, strict = false } = {}) {
   // Returns { runs: [{ id, scheduleId, startedAt, finishedAt, durationMs,
-  // status, error, conversationId, isManual }] }
+  // status, error, conversationId, isManual, slotAt }] }
   // Newest first. A failed read is an empty list, unless `strict`, where it
   // throws so a caller acting on the list can say so.
   try {
@@ -4166,4 +4308,19 @@ export async function unregisterPushDevice(token, { timeoutMs = 3_000 } = {}) {
     body: JSON.stringify({ token }),
     timeoutMs,
   });
+}
+
+// A durable in-app receipt, never a mailto link or an optimistic success.
+export function reportContent(conversationId, messageId) {
+  return req('/content-reports/', {
+    method: 'POST',
+    body: JSON.stringify({ conversation_id: conversationId, message_id: messageId }),
+    timeoutMs: SHORT_REQUEST_TIMEOUT_MS,
+  });
+}
+
+export function reportArtifactContent(projectId, artifactId) {
+  return req('/content-reports/artifact', { method: 'POST',
+    body: JSON.stringify({ project_id: projectId, artifact_id: artifactId }),
+    timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
 }

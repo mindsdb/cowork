@@ -244,6 +244,10 @@ a[href],
   0%   { opacity: 0; transform: translateX(16px); }
   100% { opacity: 1; transform: none; }
 }
+@keyframes cw-comments-panel-out {
+  0%   { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateX(16px); }
+}
 @keyframes cw-act-bar-in {
   0%   { opacity: 0; transform: translate(-50%, 12px); }
   100% { opacity: 1; transform: translate(-50%, 0); }
@@ -638,6 +642,31 @@ button.meta-pill:active { background: var(--ghost-press); }
   box-shadow: none;
 }
 .send-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, black); }
+/* Dictate (ENG-4630): the mic between the model picker and Send. Quiet at
+   rest, like the toolbar's pills; accent while it listens. */
+.dictate-btn {
+  width: 30px; height: 30px; border-radius: var(--r-8);
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; background: transparent; color: var(--ink-2, var(--text-muted));
+  transition: background var(--dur-hover), color var(--dur-hover);
+}
+.dictate-btn:hover:not(:disabled) { background: var(--ghost-hover, var(--stone-150)); color: var(--text-strong); }
+.dictate-btn:disabled { cursor: progress; opacity: 0.6; }
+.dictate-btn.is-live { background: var(--accent-bg); color: var(--accent); }
+.dictate-btn.is-live:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.dictate-btn.is-live > svg { animation: dictate-pulse 1.4s ease-in-out infinite; }
+.dictate-btn__dot {
+  width: 8px; height: 8px; border-radius: 999px; background: currentColor;
+  animation: dictate-pulse 1s ease-in-out infinite;
+}
+@keyframes dictate-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) {
+  .dictate-btn.is-live > svg, .dictate-btn__dot { animation: none; }
+}
+.dictate-error {
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12px; color: var(--danger);
+}
 .send-btn:active:not(:disabled) { transform: scale(0.97); }
 .send-btn:disabled {
   /* Dormant, not dead: the composer is its page's primary action, so the
@@ -1375,8 +1404,10 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
   justify-content: space-between;
   padding: 14px 14px 8px;
 }
-.anton-sidebar__chrome-left { display: flex; align-items: center; gap: 14px; }
-.anton-sidebar__chrome-buttons { display: flex; gap: 2px; }
+/* min-width: 0 lets the cluster shrink inside a narrow sidebar, so a long
+   title truncates instead of running past the sidebar's edge (ENG-4415). */
+.anton-sidebar__chrome-left { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.anton-sidebar__chrome-buttons { display: flex; gap: 2px; flex-shrink: 0; }
 
 .anton-sidebar__logo {
   width: 18px;
@@ -1402,6 +1433,12 @@ button.card { font: inherit; color: inherit; text-align: left; width: 100%; }
   color: var(--nav-title-color, var(--ink));
   padding-right: 4px;
   white-space: nowrap;
+  /* Truncate a title too long for the sidebar (ENG-4415). `clip` with a
+     margin, not `hidden`, so the dark theme's glow isn't cut into a box. */
+  min-width: 0;
+  overflow: clip;
+  overflow-clip-margin: 14px;
+  text-overflow: ellipsis;
 }
 body[data-theme="dark"] .anton-sidebar__wordmark {
   text-shadow: 0 0 14px var(--accent-glow);
@@ -1542,6 +1579,13 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
   justify-content: center;
   font-weight: 500;
   letter-spacing: -0.01em;
+}
+/* With a tag beside Code (the web build's Desktop tag), equal halves are too
+   narrow for Code in a 240px sidebar, and it runs into Cowork. Each half
+   sizes to its content, on one line, and shares what is left. */
+.workspace-mode-switch--tagged > button {
+  flex: 1 1 auto;
+  white-space: nowrap;
 }
 
 .anton-sidebar__cta-wrap { padding: 8px 10px 10px; }
@@ -4042,6 +4086,8 @@ button.artifact-ref-pill:focus-visible { outline: 2px solid color-mix(in srgb, v
 .quick-edit-card-request { color: var(--ink-4); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .quick-edit-card-summary { display: flex; align-items: baseline; gap: 6px; color: var(--ink); font-size: var(--text-sm); line-height: 1.45; }
 .quick-edit-card-summary-text { min-width: 0; }
+/* Outside a turn's action row, so it takes that row's muted ink here. */
+.quick-edit-card-row .turn-action-btn { flex-shrink: 0; color: var(--ink-4); }
 .quick-edit-card-time { flex-shrink: 0; color: var(--ink-4); font-size: var(--text-xs); line-height: 1.6; font-variant-numeric: tabular-nums; }
 .quick-edit-card-row.is-undone .quick-edit-card-summary-text { color: var(--ink-4); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink-4) 70%, transparent); }
 .quick-edit-card-tag { flex-shrink: 0; padding: 1px 6px; border-radius: 999px; background: var(--surface-2); color: var(--ink-3); font-size: var(--text-2xs); font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
@@ -4065,3 +4111,8 @@ button.artifact-ref-pill:focus-visible { outline: 2px solid color-mix(in srgb, v
   border-color: color-mix(in srgb, var(--ink) 18%, transparent);
   color: var(--ink);
 }
+
+/* The Share footer's status fades between Saving…, Saved and Up to date. */
+@keyframes up-to-date-in { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+.up-to-date-tag { animation: up-to-date-in 180ms var(--ease-out, ease-out); }
+@media (prefers-reduced-motion: reduce) { .up-to-date-tag { animation: none; } }

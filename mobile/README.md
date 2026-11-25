@@ -32,11 +32,10 @@ vitest, electron-builder) reads it.
 The web app (`src/renderer/`) relies on these. Changing any of them is a
 breaking change for the shell and needs a matching web change.
 
-- **App id / bundle id / Android package:** `ai.mindshub.cowork`. App name: `MindsHub Cowork`.
+- **App id / bundle id / Android package:** `ai.mindshub.cowork`. App name: `MindsHub`.
 - **Remote URL:** production `https://cowork.mindshub.ai`, staging
-  `https://cowork.staging.mindshub.ai`. Only those two hosts stay in the
-  webview (`server.allowNavigation`); any other link opens in the system
-  browser. Cleartext is off.
+  `https://cowork.staging.mindshub.ai`. Each build loads its own deployment in the
+  webview. Links to the other deployment open in the system browser. Cleartext is off.
 - **User agent suffix:** `MindsHubCowork-iOS/<version>` and
   `MindsHubCowork-Android/<version>`, where `<version>` is the marketing
   version from `package.json` (CFBundleShortVersionString / versionName).
@@ -158,6 +157,44 @@ launch (`@capacitor/app`'s `appUrlOpen` / `getLaunchUrl`). The web app does
 not consume these startup callbacks yet, so this does not complete sign-in:
 the user returns to the sign-in screen and must tap Sign in again.
 
+### Staying signed in
+
+`MindsHubAuth` also has `loadSession()` (resolves `{ session? }`),
+`saveSession({ session })` and `clearSession()`. The web app
+(`src/renderer/lib/mobileSession.ts`) saves the Keycloak tokens there as one
+opaque string after each sign-in and refresh, and at launch refreshes the saved
+session once before Keycloak starts:
+
+- **Keycloak accepts it:** the app starts signed in.
+- **Keycloak refuses it** (400 or 401: expired, revoked, signed out
+  elsewhere): the saved session is cleared and the sign-in screen shows.
+- **Keycloak can't be reached:** the session is kept and the app offers
+  **Try again**, so a bad connection at launch doesn't sign anyone out.
+
+The whole startup has a 15-second deadline, including native storage and
+Keycloak initialization (which refreshes the supplied tokens again). A stalled
+startup shows **Try again** and keeps the saved session. A late response cannot
+leave that retry screen; retry reloads the page.
+
+Sign-out clears the saved session before the page reloads. How long someone
+stays signed in is the realm's SSO session limit (refresh tokens are
+session-bound); the app requests no offline token.
+
+Each deployment has its own storage key. The bridge accepts only the configured
+deployment's main frame. Bridge logging is disabled in debug and release builds.
+Android refuses to register Capacitor's legacy all-frame bridge at startup.
+
+Where it lives: **iOS** keeps it in one Keychain item
+(`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, so it never syncs or
+restores onto another device), and deletes any item left by an earlier
+install on the first launch. **Android** encrypts it with an AES-GCM key held
+in the Android Keystore and writes only the ciphertext to private
+preferences (`SessionStore`). Keystore keys don't survive an uninstall or a
+backup restore, so leftover ciphertext can't be read and is deleted.
+
+A web build newer than the shell checks for these methods and, without them,
+behaves as before: sign in on every launch.
+
 Local plugins aren't found by `cap sync`, so they are registered by hand:
 `MainViewController.capacitorDidLoad()` on iOS (the scene delegate and
 `Main.storyboard` both use `MainViewController`), and
@@ -177,8 +214,8 @@ artifact's page in the system browser.
 1. The web app (`src/renderer/lib/mobilePush.ts`) talks to
    `@capacitor/push-notifications` through the bridge. It never fires the OS
    permission prompt at launch. If notifications are already allowed, it
-   registers right after sign-in. Otherwise it waits until the user starts
-   their first task and shows a small in-app card ("Get notified when your
+   registers right after sign-in. Otherwise it waits until the user begins composing
+   their first task (or sends one without typing) and shows a small in-app card ("Get notified when your
    tasks finish", **Turn on** / **Not now**). **Turn on** fires the OS prompt.
    **Not now** hides the card for 14 days.
 2. The plugin hands back a token: the **APNs device token** on iOS (not an
@@ -194,8 +231,10 @@ artifact's page in the system browser.
    beside `aps`. On Android they are the FCM `data` map, next to a
    `notification` block. Without the `notification` block, Android shows
    nothing while the app is in the background.
-4. **A tap** opens `path` with the app's router. If there is no `path`, it
-   opens `url` in the system browser (a host outside `server.allowNavigation`
+4. **A tap** opens `path` with the app's router. A shared artifact opens in the signed-in viewer
+   by project and artifact ID.
+   An unavailable preview shows a message inside the app. For other
+   notifications without a path it opens `url` in the system browser (a host outside `server.allowNavigation`
    always leaves the webview). A tap that launches the app arrives before
    the router exists, and often before sign-in, which reloads the page. The
    web app keeps the tap in `sessionStorage` for 10 minutes and applies it

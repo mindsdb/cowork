@@ -15,6 +15,8 @@
     "expand": "Erweitern",
     "close": "Schließen",
     "closeDoc": "Dokument schließen",
+    "renameDoc": "Dokument umbenennen: {title}",
+    "docName": "Dokumentname",
     "loading": "Dokument wird geladen",
     "gone": "Dieses Dokument existiert nicht mehr.",
     "openFailed": "Dieses Dokument konnte nicht geöffnet werden. {reason}",
@@ -80,6 +82,7 @@
   "tabs": {
     "label": "Tabs",
     "add": "Tab hinzufügen",
+    "addHint": "Diesem Dokument einen neuen Tab hinzufügen",
     "hide": "Tabs ausblenden",
     "changed": "Geändert",
     "showChanged": "Geänderten Tab anzeigen",
@@ -186,6 +189,11 @@
     "placeholderWrite": "Was soll der Agent hier schreiben?",
     "placeholderChange": "Was soll sich ändern?",
     "send": "Senden"
+  },
+  "comments": {
+    "edit": "Bearbeiten",
+    "editHint": "Im Dokument schreiben",
+    "commentHint": "Kommentieren – auf einen Block klicken oder Wörter markieren"
   },
   "chart": {
     "label": "Diagramm",

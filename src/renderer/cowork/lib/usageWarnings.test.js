@@ -12,6 +12,7 @@ import {
   formatResetTime,
   freeAllowanceState,
   isBalanceEmpty,
+  isBalanceUsable,
   modelAccessSignature,
   allowanceStopCopy,
   freeServingPausedCopy,
@@ -20,6 +21,7 @@ import {
   FREE_TOKENS_LOW_FRACTION,
   USAGE_ACTIONS,
   AIR_ON_BALANCE_WARN_USD,
+  upgradeAction,
 } from './usageWarnings';
 import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL } from '../../lib/mindsUrls';
 
@@ -654,6 +656,24 @@ describe('isBalanceEmpty', () => {
   });
 });
 
+describe('isBalanceUsable', () => {
+  it.each([
+    ['funded', { usd: 20, canConsume: true, alert: null }],
+    ['low but still payable', { usd: 3, canConsume: true, alert: 'low' }],
+  ])('reads a wallet %s as usable', (_label, balance) => {
+    expect(isBalanceUsable(balance)).toBe(true);
+  });
+
+  it.each([
+    ['depleted', { usd: 0, canConsume: false, alert: 'depleted' }],
+    ['barred from drawing', { usd: 0.4, canConsume: false, alert: null }],
+    ['unflagged but holding nothing', { usd: 0, canConsume: true, alert: null }],
+    ['missing from the read', null],
+  ])('does not read a wallet %s as usable', (_label, balance) => {
+    expect(isBalanceUsable(balance)).toBe(false);
+  });
+});
+
 describe('modelAccessSignature', () => {
   it('has no signature for an unreachable or missing read', () => {
     expect(modelAccessSignature(null)).toBeNull();
@@ -756,7 +776,7 @@ describe('freeServingPausedCopy', () => {
 });
 
 describe('budgetExceededCopy', () => {
-  const RAISE = "Paid models can't run until an owner or admin raises it in Budgets.";
+  const RAISE = "Paid models can't run until an administrator raises it in Budgets.";
 
   it('names Air only while its free allowance has room', () => {
     expect(budgetExceededCopy({ usage: usage() })).toBe(`${RAISE} MindsHub Air still works while its free allowance lasts.`);
@@ -769,6 +789,24 @@ describe('budgetExceededCopy', () => {
     ['no hub usage at all', null],
   ])('says only who raises it with %s', (_label, u) => {
     expect(budgetExceededCopy({ usage: u })).toBe(RAISE);
+  });
+
+  it.each([
+    ['org', "Paid models can't run until an owner or admin raises it in Budgets."],
+    ['workspace', RAISE],
+    ['api_key', RAISE],
+    ['team', RAISE],
+    [null, RAISE],
+  ])('names who can raise a %s budget', (scope, expected) => {
+    expect(budgetExceededCopy({ usage: null, budgetScope: scope })).toBe(expected);
+  });
+
+  it.each([
+    ['org', "Claude Haiku can't run until an owner or admin raises it in Budgets. Other models still work."],
+    ['workspace', "Claude Haiku can't run until an administrator raises it in Budgets. Other models still work."],
+  ])('names the model a per-model %s budget stops, with or without Air room', (scope, expected) => {
+    expect(budgetExceededCopy({ usage: null, budgetScope: scope, budgetModelLabel: 'Claude Haiku' })).toBe(expected);
+    expect(budgetExceededCopy({ usage: usage(), budgetScope: scope, budgetModelLabel: 'Claude Haiku' })).toBe(expected);
   });
 
   it('never asks for credits or funds', () => {
@@ -907,5 +945,128 @@ describe('balanceDismissStep', () => {
     expect(withAuto({ status: 'ok' }).dismissKey).toBe('balance_low:2');
     expect(withAuto({ status: 'pending_action' }).dismissKey).toBe('balance_low:2');
     expect(withAuto({ status: 'cap_reached' }).dismissKey).toBe('balance_low:2');
+  });
+});
+
+// ── ENG-4186: Free, Plus and Pro ───────────────────────────────────────────
+const IN_2H = new Date(Date.now() + 2 * 3600 * 1000).toISOString();
+const IN_2D = new Date(Date.now() + 48 * 3600 * 1000).toISOString();
+const planRead = (tier, windows = [], over = {}) => usage({
+  plan: { tier, status: 'active', renewsAt: null, cancelAtPeriodEnd: false, windows },
+  ...over,
+});
+const EMPTY_WALLET = { balance: { usd: 0, canConsume: false, alert: 'depleted' } };
+
+describe('upgrade actions', () => {
+  it('labels each tier and opens the plan confirm for the named organization', () => {
+    expect(upgradeAction('plus').label).toBe('Get Plus');
+    expect(upgradeAction('pro').label).toBe('Upgrade to Pro');
+    expect(USAGE_ACTIONS.upgrade.label).toBe('Upgrade');
+    const url = new URL(usageActionUrl(upgradeAction('pro'), { organizationId: 'org-1', subject: 'u-1' }));
+    expect(url.searchParams.get('upgrade')).toBe('pro');
+    expect(url.searchParams.get('organization')).toBe('org-1');
+    // Not owner-gated here: the console checks who may buy.
+    expect(new URL(usageActionUrl(upgradeAction('plus'), { isBillingOwner: false })).searchParams.get('upgrade')).toBe('plus');
+  });
+});
+
+describe('deriveComposerWarning on a plan', () => {
+  it('reads exactly as before with no plan or a Free plan', () => {
+    for (const over of [{}, EMPTY_WALLET, { freeTokens: at(10) }]) {
+      const before = deriveComposerWarning(usage(over), { model: null });
+      expect(deriveComposerWarning(usage({ ...over, plan: null }), { model: null })).toEqual(before);
+      expect(deriveComposerWarning(planRead('free', [], over), { model: null })).toEqual(before);
+    }
+  });
+
+  it('says nothing on Plus while both windows have room, even with an empty wallet', () => {
+    expect(deriveComposerWarning(planRead('plus', [{ window: '5h', percentUsed: 30, resetsAt: IN_2H }], EMPTY_WALLET), {
+      model: 'claude-haiku-4-5',
+    })).toBeNull();
+  });
+
+  it('warns at 80% of a window, stepped for dismissal, with Pro on offer', () => {
+    const w = deriveComposerWarning(planRead('plus', [{ window: '5h', percentUsed: 84, resetsAt: IN_2H }], EMPTY_WALLET));
+    expect(w.kind).toBe('window_low');
+    expect(w.title).toBe('84% of your 5-hour allowance used');
+    expect(w.body).toMatch(/^After that, tasks pause until .+\.$/);
+    expect(w.dismissKey).toBe('window_low:5h:1');
+    expect(w.actions.map((a) => a.key)).toEqual(['viewUsage', 'upgrade']);
+    expect(w.actions[1].tier).toBe('pro');
+    const later = deriveComposerWarning(planRead('plus', [{ window: '5h', percentUsed: 91, resetsAt: IN_2H }], EMPTY_WALLET));
+    expect(later.dismissKey).toBe('window_low:5h:2');
+    expect(`${w.title} ${w.body}`).not.toMatch(/\$|token/i);
+  });
+
+  it('at the cap, says it continues from the wallet when the wallet can pay', () => {
+    const w = deriveComposerWarning(planRead('pro', [{ window: '7d', percentUsed: 100, resetsAt: IN_2D }]));
+    expect(w.kind).toBe('window_on_wallet');
+    expect(w.title).toBe('Weekly allowance used up');
+    expect(w.body).toMatch(/Continuing from your wallet at API rates until it resets at/);
+    // Nothing above Pro to offer.
+    expect(w.actions.map((a) => a.key)).toEqual(['viewUsage']);
+  });
+
+  it('at the cap with an empty wallet, says paused until the reset and offers funds', () => {
+    const w = deriveComposerWarning(planRead('plus', [{ window: '5h', percentUsed: 100, resetsAt: IN_2H }], EMPTY_WALLET));
+    expect(w.kind).toBe('window_exhausted');
+    expect(w.tone).toBe('danger');
+    expect(w.body).toBe(`Tasks on your plan are paused until ${formatResetTime(IN_2H)}. Add funds to keep going.`);
+    expect(w.actions.map((a) => a.key)).toEqual(['addFunds', 'upgrade']);
+  });
+
+  it('leaves a pick outside the plan to the wallet branches', () => {
+    const read = planRead('plus', [{ window: '5h', percentUsed: 100, resetsAt: IN_2H }], EMPTY_WALLET);
+    expect(deriveComposerWarning(read, { model: 'claude-opus-5-5', coveredByTier: 'pro' }).kind).toBe('balance_empty');
+  });
+
+  it('says nothing about plan windows on a provider other than MindsHub', () => {
+    const full = planRead('plus', [{ window: '5h', percentUsed: 100, resetsAt: IN_2H }], EMPTY_WALLET);
+    const half = planRead('plus', [{ window: '5h', percentUsed: 50, resetsAt: IN_2H }], EMPTY_WALLET);
+    expect(deriveComposerWarning(full, { providerType: 'anthropic' })).toBeNull();
+    expect(usageTransitions(half, full, { providerType: 'openai-compatible' })).toEqual([]);
+  });
+});
+
+describe('usageTransitions on a plan', () => {
+  const plus = (pct5h, over = {}) => planRead('plus', [
+    { window: '5h', percentUsed: pct5h, resetsAt: IN_2H },
+    { window: '7d', percentUsed: 20, resetsAt: IN_2D },
+  ], over);
+
+  it('reports a window crossing a warning step, once per step', () => {
+    expect(usageTransitions(plus(70), plus(82))).toEqual([
+      { kind: 'window_low', window: '5h', percentUsed: 82, resetsAt: IN_2H },
+    ]);
+    expect(usageTransitions(plus(82), plus(86))).toEqual([]);
+  });
+
+  it('reports a window filling up, and whether the wallet carries on', () => {
+    expect(usageTransitions(plus(95), plus(100))).toEqual([
+      { kind: 'window_exhausted', window: '5h', resetsAt: IN_2H, onWallet: true },
+    ]);
+    expect(usageTransitions(plus(95, EMPTY_WALLET), plus(100, EMPTY_WALLET))[0].onWallet).toBe(false);
+  });
+
+  it('says nothing when a plan arrives mid-task', () => {
+    expect(usageTransitions(usage(), plus(100))).toEqual([]);
+  });
+
+  it('says nothing about the windows to a task on a model the plan does not cover', () => {
+    // The task bills the wallet from the start, so the window is not its news.
+    expect(usageTransitions(plus(70), plus(82), { coveredByTier: 'pro' })).toEqual([]);
+    expect(usageTransitions(plus(95), plus(100), { coveredByTier: 'pro' })).toEqual([]);
+    // A model the plan covers still hears about it.
+    expect(usageTransitions(plus(70), plus(82), { coveredByTier: 'plus' }).map((t) => t.kind)).toEqual(['window_low']);
+    expect(usageTransitions(plus(95), plus(100), { coveredByTier: 'free' }).map((t) => t.kind)).toEqual(['window_exhausted']);
+  });
+});
+
+describe('modelAccessSignature on a plan', () => {
+  it('reads as before with no plan, and changes with the tier or a full window', () => {
+    expect(modelAccessSignature(usage({ plan: null }))).toBe(modelAccessSignature(usage()));
+    const plus = modelAccessSignature(planRead('plus'));
+    expect(modelAccessSignature(planRead('pro'))).not.toBe(plus);
+    expect(modelAccessSignature(planRead('plus', [{ window: '5h', percentUsed: 100, resetsAt: IN_2H }]))).not.toBe(plus);
   });
 });

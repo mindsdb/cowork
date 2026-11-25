@@ -23,7 +23,7 @@ vi.mock('./lib/analytics', () => ({ setAntonInstallId }));
 const transitionMock = vi.hoisted(() => ({ prepareForOrganizationReload: vi.fn() }));
 vi.mock('./lib/organizationTransition', () => transitionMock);
 
-import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchMemoryCapabilities, resetMemory, fetchSession, validateAndSaveConnector, deleteArtifact, publishArtifact, updateArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, mountProjectFilePreview, listSharedProjectFiles, SHORT_REQUEST_TIMEOUT_MS, CONNECTIONS_VAULT_KEEP, SHAREPOINT_UNAVAILABLE_MESSAGE, createSharePointConnection, editSharePointConnection, listSharePointLibraries, listSharePointChildren, importSharePointFiles, voiceOperate, readBrowserApproveSteps } from './api';
+import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, getDeletionRequest, requestAccountDeletion, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchMemoryCapabilities, resetMemory, fetchSession, validateAndSaveConnector, deleteArtifact, publishArtifact, updateArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, mountProjectFilePreview, listSharedProjectFiles, SHORT_REQUEST_TIMEOUT_MS, CONNECTIONS_VAULT_KEEP, SHAREPOINT_UNAVAILABLE_MESSAGE, createSharePointConnection, editSharePointConnection, listSharePointLibraries, listSharePointChildren, importSharePointFiles, listConversationFolders, addConversationFolder, removeConversationFolder, listConversationFolderFiles, voiceOperate, readBrowserApproveSteps } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { setOrgMode } from '../lib/orgMode';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
@@ -88,6 +88,43 @@ describe('authFetch organization boundary', () => {
 
     await expect(authFetch('/api/v1/projects'))
       .rejects.toThrow('The active organization changed; reload required');
+  });
+});
+
+describe('conversation working folders', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('calls the four folder routes with the ids encoded', async () => {
+    const fetchMock = vi.fn(async () => jsonRes({ folders: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await listConversationFolders('chat 1');
+    await addConversationFolder('chat 1', '/Users/x/docs');
+    await removeConversationFolder('chat 1', 'f/1');
+    await listConversationFolderFiles('chat 1', 'f/1');
+
+    const calls = fetchMock.mock.calls.map(([url, init]) => [
+      String(url).replace('http://127.0.0.1:26866/api/v1', ''),
+      init?.method || 'GET',
+      init?.body,
+    ]);
+    expect(calls).toEqual([
+      ['/conversations/chat%201/folders', 'GET', undefined],
+      ['/conversations/chat%201/folders', 'POST', JSON.stringify({ path: '/Users/x/docs' })],
+      ['/conversations/chat%201/folders/f%2F1', 'DELETE', undefined],
+      ['/conversations/chat%201/folders/f%2F1/files', 'GET', undefined],
+    ]);
+  });
+
+  it('throws the server refusal text so the card can show it', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonRes(
+      { detail: "Choose a folder that does not hold Cowork's own data" }, false, 400,
+    )));
+
+    await expect(addConversationFolder('chat-1', '/Users/x/.cowork')).rejects.toMatchObject({
+      message: "Choose a folder that does not hold Cowork's own data",
+      status: 400,
+    });
   });
 });
 
@@ -810,6 +847,21 @@ describe('fetchSession error hydration (ENG-1304)', () => {
     const err = task.messages.find((m) => m.role === 'error');
     expect(err).toMatchObject({ code: 'free_serving_paused', resetAt: '2099-01-02T00:00:00Z', requestId: 'corr-hosted' });
   });
+
+  it("carries a budget stop's scope onto its error row", async () => {
+    stubEndpoints([
+      { role: 'user', content: 'hi' },
+      { role: 'assistant', content: '', events: [
+        { type: 'response.created' },
+        { type: 'response.failed', code: 'budget_exceeded', error: 'Budget used up.', budget_scope: 'workspace', budget_period: 'day', budget_model: 'haiku-4-5' },
+      ] },
+    ]);
+    const { fetchSession } = await import('./api');
+    const task = await fetchSession('c1');
+    expect(task.messages.find((m) => m.role === 'error')).toMatchObject({
+      code: 'budget_exceeded', budgetScope: 'workspace', budgetPeriod: 'day', budgetModel: 'haiku-4-5',
+    });
+  });
 });
 
 /* A turn's figure sources come back with its saved events, so a reloaded
@@ -1375,6 +1427,34 @@ describe('fetchInFlightList', () => {
   });
 });
 
+describe('fetchConversationStatus — whether a preview can open its chat', () => {
+  const stubMeta = (spec) => vi.stubGlobal('fetch', vi.fn(async () => {
+    if (spec === 'throw') throw new Error('offline');
+    return jsonRes({ id: 'c1' }, spec.ok ?? true, spec.status ?? 200);
+  }));
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('reads the metadata only, and says ok when it is there', async () => {
+    stubMeta({});
+    const { fetchConversationStatus } = await import('./api');
+    expect(await fetchConversationStatus('c1')).toBe('ok');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(String(fetch.mock.calls[0][0])).toMatch(/\/conversations\/c1$/);
+  });
+
+  it.each([
+    [{ ok: false, status: 404 }, 'not_found'],
+    [{ ok: false, status: 403 }, 'forbidden'],
+    [{ ok: false, status: 503 }, 'unavailable'],
+    ['throw', 'unavailable'],
+  ])('maps %j to %s', async (spec, status) => {
+    stubMeta(spec);
+    const { fetchConversationStatus } = await import('./api');
+    expect(await fetchConversationStatus('c1')).toBe(status);
+  });
+});
+
 describe('fetchSessionResult — loader failure classification (ENG-1233 Major 2)', () => {
   const meta = { id: 'c1', title: 'T', project: null };
 
@@ -1678,6 +1758,85 @@ describe('req() timeout scoping', () => {
  * A definite answer is answered; a transient one is thrown for the caller to
  * ask again.
  */
+describe('account deletion requests', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  let calls;
+  const respond = (res) => {
+    calls = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+      calls.push({ url: String(url), options });
+      return res;
+    }));
+  };
+  const OPEN = { requestedAt: '2026-11-17T18:30:00Z', deleteBy: '2026-12-17T18:30:00Z' };
+
+  it('reads the open request from the hub route', async () => {
+    respond(jsonRes(OPEN));
+
+    await expect(getDeletionRequest()).resolves.toEqual(OPEN);
+    expect(calls[0].url).toMatch(/\/hub\/deletion-request\/$/);
+    expect(calls[0].options?.method ?? 'GET').toBe('GET');
+  });
+
+  it('reads a 404 as no open request', async () => {
+    respond(jsonRes({ detail: 'Not Found' }, false, 404));
+
+    await expect(getDeletionRequest()).resolves.toBeNull();
+  });
+
+  it('rejects on any other failure, so it is never mistaken for no request', async () => {
+    respond(jsonRes({ detail: 'boom' }, false, 502));
+
+    await expect(getDeletionRequest()).rejects.toMatchObject({ status: 502 });
+  });
+
+  describe.each([
+    ['GET', getDeletionRequest],
+    ['POST', requestAccountDeletion],
+  ])('%s deadline', (_method, send) => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('covers the wait for the access token', async () => {
+      hostMock.getAccessToken.mockImplementationOnce(() => new Promise(() => {}));
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+
+      const onError = vi.fn();
+      send().catch(onError);
+      await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS);
+
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ name: 'AbortError' }));
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('aborts a stalled network request', async () => {
+      const fetchMock = _abortAwareFetch(2 * SHORT_REQUEST_TIMEOUT_MS, OPEN);
+      vi.stubGlobal('fetch', fetchMock);
+
+      const onError = vi.fn();
+      send().catch(onError);
+      await vi.advanceTimersByTimeAsync(SHORT_REQUEST_TIMEOUT_MS);
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ name: 'AbortError' }));
+    });
+  });
+
+  it('posts the request and rejects with the status on failure', async () => {
+    respond(jsonRes(OPEN));
+    await expect(requestAccountDeletion()).resolves.toEqual(OPEN);
+    expect(calls[0].url).toMatch(/\/hub\/deletion-request\/$/);
+    expect(calls[0].options.method).toBe('POST');
+
+    respond(jsonRes({ detail: 'slow down' }, false, 429));
+    await expect(requestAccountDeletion()).rejects.toMatchObject({ status: 429 });
+  });
+});
+
 describe('fetchHubWorkspaces', () => {
   const DARK = { enabled: false, reachable: false, workspaces: [], activeWorkspaceId: null };
 

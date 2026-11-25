@@ -12,6 +12,7 @@
 // option carrying an explicit `maker` key skips the inference entirely.
 
 import i18n from '../../lib/i18n';
+import { PLAN_TIERS, cleanRequiredTier } from './subscriptionPlan';
 
 /* User-facing copy, translated when it is read (never at import). */
 const tr = (key, vars) => i18n.t(`messages.modelCatalog.${key}`, { ns: 'projects', ...vars });
@@ -274,27 +275,52 @@ export function restrictedModelTitle() {
   return tr('restricted.title');
 }
 
-/* The `disabled_reason` for a paid row while the org's spending budget is used
-   up. Credits do not lift it; an owner or admin raises the budget. */
+/* The `disabled_reason` for a paid row while a spending budget is used
+   up. Credits do not lift it; an administrator raises the budget. */
 export const BUDGET_EXCEEDED_REASON = 'budget_exceeded';
 
-/* The row tooltip for a model the org's budget stops. English, for tests and
+/* The row tooltip for a model a spent budget stops. English, for tests and
    callers that import it; budgetReachedModelTitle() is the viewer's language. */
-export const BUDGET_REACHED_MODEL_TITLE = "Your organization's budget is used up. An owner or admin can raise it in Budgets.";
+export const BUDGET_REACHED_MODEL_TITLE = "A budget covering this model is used up. An administrator can raise it in Budgets.";
 
 export function budgetReachedModelTitle() {
   return tr('budgetReached.title');
 }
 
+/* The `disabled_reason` for a row the org's plan does not cover while the
+   wallet cannot pay for it (ENG-4186). Both an upgrade and funds lift it:
+   funds pay for any model at API rates, on any plan. */
+export const MODEL_NOT_IN_TIER_REASON = 'model_not_in_tier';
+
+/* A plan window used up with an empty wallet also closes the rows it covers;
+   funds lift it, so it reads as "Needs credits" like the spent allowance. */
+export const WINDOW_ALLOWANCE_EXHAUSTED_REASON = 'window_allowance_exhausted';
+
 /* Every `disabled_reason` the renderer recognizes on a MindsHub model row: an
-   admin's model rule, the spent org budget, the empty wallet, and the spent
-   allowance. */
+   admin's model rule, a spent budget, the empty wallet, the spent
+   allowance, a model outside the plan, and a used-up plan window. */
 const KNOWN_MODEL_DISABLED_REASONS = new Set([
   MODEL_RESTRICTED_REASON,
   BUDGET_EXCEEDED_REASON,
   'wallet_empty',
   'included_allowance_exhausted',
+  MODEL_NOT_IN_TIER_REASON,
+  WINDOW_ALLOWANCE_EXHAUSTED_REASON,
 ]);
+
+/* The tiers a model row's `coveredByTier` may name. */
+const COVERING_TIERS = new Set(PLAN_TIERS);
+
+/**
+ * cowork-server's `modelCoveredByTier` relay narrowed to known tiers, id →
+ * 'free' | 'plus' | 'pro' (ENG-4186): the cheapest plan whose allowance
+ * covers each model. Anything else, and any input that is not a plain object,
+ * gives `{}`, which every reader takes as "coverage unknown".
+ */
+export function knownModelCoveredByTier(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  return Object.fromEntries(Object.entries(raw).filter(([, tier]) => COVERING_TIERS.has(tier)));
+}
 
 /**
  * The entries of cowork-server's `modelDisabledReasons` relay whose reason the
@@ -328,16 +354,25 @@ export function isModelRestricted(modelEnabled, modelDisabledReasons, id) {
     && (modelDisabledReasons || {})[id] === MODEL_RESTRICTED_REASON;
 }
 
-/** True when `id` is unavailable because the org's spending budget is used up. */
+/** True when `id` is unavailable because a spending budget is used up. */
 export function isModelBudgetReached(modelEnabled, modelDisabledReasons, id) {
   return isModelLocked(modelEnabled, id)
     && (modelDisabledReasons || {})[id] === BUDGET_EXCEEDED_REASON;
+}
+
+/** True when `id` is unavailable because the plan does not cover it and the
+ *  wallet cannot pay for it (ENG-4186). */
+export function isModelNotInTier(modelEnabled, modelDisabledReasons, id) {
+  return isModelLocked(modelEnabled, id)
+    && (modelDisabledReasons || {})[id] === MODEL_NOT_IN_TIER_REASON;
 }
 
 /**
  * @typedef {{
  *   disabled?: true,
  *   locked?: true,
+ *   tierLocked?: true,
+ *   requiredTier?: 'plus' | 'pro',
  *   restricted?: true,
  *   budgetReached?: true,
  *   tag?: string,
@@ -353,15 +388,34 @@ export function isModelBudgetReached(modelEnabled, modelDisabledReasons, id) {
  * - Restricted by an admin: disabled and `restricted`, tagged "Restricted", with
  *   the admin tooltip. Never `locked`, so ModelSelect attaches no "Add credits"
  *   button: money cannot unlock an admin rule.
- * - Stopped by the org's spent budget: disabled and `budgetReached`, tagged
+ * - Stopped by a spent budget: disabled and `budgetReached`, tagged
  *   "Budget reached". Never `locked`, since credits do not raise a budget.
+ * - Outside the plan with a wallet that cannot pay (ENG-4186): disabled,
+ *   `locked` (funds lift it, so "Add credits" stays) and `tierLocked` (so does
+ *   a plan that covers it, so ModelSelect adds "Upgrade"), tagged with the
+ *   tier that covers it when the catalog says ("Needs Pro").
  * - Anything else unavailable (the wallet, the spent allowance, or a server too
  *   old to send a reason): disabled and `locked`, tagged "Needs credits".
  *
+ * `modelCoveredByTier` is optional; without it a tier-locked row is tagged
+ * "Needs upgrade".
+ *
  * @returns {UnavailableModelFields}
  */
-export function unavailableModelFields(modelEnabled, modelDisabledReasons, id) {
+export function unavailableModelFields(modelEnabled, modelDisabledReasons, id, modelCoveredByTier = null) {
   if (!isModelLocked(modelEnabled, id)) return {};
+  if (isModelNotInTier(modelEnabled, modelDisabledReasons, id)) {
+    const tier = (modelCoveredByTier || {})[id];
+    const requiredTier = cleanRequiredTier(tier);
+    return {
+      disabled: true,
+      locked: true,
+      tierLocked: true,
+      ...(requiredTier ? { requiredTier } : {}),
+      tag: tr('notInTier.tag', { tier: requiredTier || 'other' }),
+      title: tr('notInTier.title'),
+    };
+  }
   if (isModelRestricted(modelEnabled, modelDisabledReasons, id)) {
     return { disabled: true, restricted: true, tag: tr('restricted.tag'), title: restrictedModelTitle() };
   }

@@ -31,6 +31,7 @@
       "retryExhausted": "Stopped early: the task kept failing.",
       "questionUnanswered": "Stopped early: a question went unanswered.",
       "contentFilter": "Stopped early: the model's content filter blocked a reply.",
+      "userStopped": "Stopped.",
       "fallback": "Stopped before it finished."
     },
     "figureFile": {
@@ -109,17 +110,27 @@
       "tryAgainIn": "Try again in {seconds}s",
       "tryAgain": "Try again",
       "adminSpendingLimitBody": "Your administrator's spending limit was reached. Contact your administrator.",
-      "budgetUsedUpTitle": "Your organization's budget is used up",
+      "budgetUsedUpTitle": "{scope, select, org {{period, select, day {Your organization's daily budget is used up} month {Your organization's monthly budget is used up} year {Your organization's yearly budget is used up} other {Your organization's budget is used up}}} workspace {{period, select, day {This workspace's daily budget is used up} month {This workspace's monthly budget is used up} year {This workspace's yearly budget is used up} other {This workspace's budget is used up}}} api_key {{period, select, day {This API key's daily budget is used up} month {This API key's monthly budget is used up} year {This API key's yearly budget is used up} other {This API key's budget is used up}}} team {{period, select, day {Your team's daily budget is used up} month {Your team's monthly budget is used up} year {Your team's yearly budget is used up} other {Your team's budget is used up}}} member {{period, select, day {Your daily budget is used up} month {Your monthly budget is used up} year {Your yearly budget is used up} other {Your budget is used up}}} other {{period, select, day {A daily budget is used up} month {A monthly budget is used up} year {A yearly budget is used up} other {A budget is used up}}}}",
       "viewBudgets": "View budgets",
       "balanceRanOutMobile": "Your balance ran out before this task finished.",
       "autoTopUpFailedBodyMobile": "We couldn't charge your card.",
-      "connectProviderBodyMobile": "Connect your own provider in Settings."
+      "connectProviderBodyMobile": "Connect your own provider in Settings.",
+      "windowUsedUpTitle": "Plan allowance used up",
+      "windowPausedUntil": "You've used your {window, select, 7d {weekly} 5h {5-hour} other {plan}} allowance and your balance is empty. Paused until {time}. Add funds to keep going.",
+      "windowPaused": "You've used your {window, select, 7d {weekly} 5h {5-hour} other {plan}} allowance and your balance is empty. Paused until it resets. Add funds to keep going.",
+      "windowPausedUntilMobile": "You've used your {window, select, 7d {weekly} 5h {5-hour} other {plan}} allowance. Paused until {time}.",
+      "windowPausedMobile": "You've used your {window, select, 7d {weekly} 5h {5-hour} other {plan}} allowance. Paused until it resets."
     },
     "usageAlert": {
       "freeLow": "Free Air allowance {percent} left",
       "freeLowRefills": "Free Air allowance {percent} left · refills at {time}",
       "freeUsed": "Free Air allowance used up · now using your balance",
-      "freeUsedUntil": "Free Air allowance used up · now using your balance until {time}"
+      "freeUsedUntil": "Free Air allowance used up · now using your balance until {time}",
+      "windowLow": "{percent} of your {window, select, 7d {weekly} other {5-hour}} allowance used",
+      "windowLowResets": "{percent} of your {window, select, 7d {weekly} other {5-hour}} allowance used · resets at {time}",
+      "windowUsed": "{window, select, 7d {Weekly} other {5-hour}} allowance used up",
+      "windowUsedUntil": "{window, select, 7d {Weekly} other {5-hour}} allowance used up · paused until {time}",
+      "windowOnWallet": "{window, select, 7d {Weekly} other {5-hour}} allowance used up · now using your wallet at API rates"
     },
     "reconnect": {
       "couldNotReconnect": "Could not reconnect. Try signing out and back in.",
@@ -148,7 +159,9 @@
       "needsCreditsBody": "You don't have enough credits for this model. Top up your balance to use it.",
       "disabledBody": "This model is turned off for your workspace. Choose another model in Settings.",
       "topUpBalance": "Top up balance",
-      "needsCreditsBodyMobile": "You don't have enough credits for this model."
+      "needsCreditsBodyMobile": "You don't have enough credits for this model.",
+      "notInTierTitle": "{model} isn't in your plan",
+      "notInTierBody": "{tier, select, plus {{model} is included with Plus.} pro {{model} is included with Pro.} other {Your plan doesn't include {model}.}} Upgrade, or add funds to use it at API rates."
     },
     "overloaded": {
       "theModelProvider": "The model provider",
@@ -302,7 +315,11 @@
       "none": "No project"
     },
     "chooseHarness": "Choose harness",
-    "voiceCall": "Voice call"
+    "voiceCall": "Voice mode",
+    "dictation": {
+      "start": "Dictate",
+      "stop": "Stop dictating"
+    }
   },
   "attachmentThumbnail": {
     "open": "Open image",
@@ -502,7 +519,8 @@
         "1": "Analyze competitor landscape and positioning",
         "2": "Automate weekly team status reporting",
         "3": "Research market opportunity for product launch",
-        "4": "Draft this week's update from last week's"
+        "4": "Draft this week's update from last week's",
+        "5": "Turn a report into a presentation"
       }
     },
     "website": {
@@ -547,7 +565,8 @@
         "3": "Compare top VLM models using Hugging Face data",
         "4": "Calculate IRR for investment cash flows",
         "5": "Clean up my spreadsheet and chart it",
-        "6": "Pull key terms out of a contract"
+        "6": "Pull key terms out of a contract",
+        "7": "Turn a bank statement into a spreadsheet"
       }
     },
     "visualization": {
@@ -578,7 +597,10 @@
         "7": "Review what is on my plate this week",
         "8": "Research a prospect and draft outreach",
         "9": "Coach me on a deal from a call transcript",
-        "10": "Turn meeting notes into action items"
+        "10": "Turn meeting notes into action items",
+        "11": "Map a competitor's go-to-market",
+        "12": "Make a study guide from course material",
+        "13": "Build a ranked lead list"
       }
     },
     "games": {
@@ -599,7 +621,11 @@
       "placeholder": "Pick an example, or describe your own task"
     },
     "samplePrompts": "Sample prompts",
-    "pillsAriaLabel": "Task types"
+    "pillsAriaLabel": "Task types",
+    "own-work": {
+      "chipLabel": "Your work",
+      "placeholder": "Paste text or a link, or attach a file"
+    }
   },
   "taskRows": {
     "openProject": "Open {project}",
@@ -737,7 +763,7 @@
     "talkTo": "Talk to {agent}"
   },
   "voiceCall": {
-    "dialogLabel": "Voice call with {agent}",
+    "dialogLabel": "Voice mode",
     "connecting": "Connecting…",
     "ending": "Ending…",
     "working": "Working on it…",
@@ -801,5 +827,50 @@
     "fallbackName": "image",
     "alt": "Generated image {name}",
     "notShown": "{name} could not be shown. It may have been moved or deleted."
+  },
+  "ownWork": {
+    "needsMaterial": "Now add what it should work on: attach a file, or paste text or a link after the job.",
+    "waysLabel": "Ways to bring your work",
+    "attach": "Attach a file",
+    "orPaste": "or paste text or a link in the box above",
+    "jobsHeading": "Pick a job if you like",
+    "kindsLabel": "Kind of work",
+    "groups": {
+      "finance": "Finance and admin",
+      "sales": "Sales and marketing",
+      "operations": "Operations",
+      "legal": "Contracts and research"
+    },
+    "jobs": {
+      "finance": {
+        "0": "Turn these bank statements or invoices into one spreadsheet.",
+        "1": "Build the next monthly report from these numbers.",
+        "2": "Check these statements for errors or unusual items."
+      },
+      "sales": {
+        "0": "Clean up this customer list and flag duplicates.",
+        "1": "Compare these two price lists and show what changed.",
+        "2": "Draft follow-up emails from these call notes."
+      },
+      "operations": {
+        "0": "Turn these meeting notes into decisions and action items.",
+        "1": "Turn these notes into a one-page brief.",
+        "2": "Turn this process document into a step-by-step checklist."
+      },
+      "legal": {
+        "0": "Summarize the key terms and risks in this contract.",
+        "1": "Summarize this report and pull out the numbers that matter.",
+        "2": "Read this page and tell me what matters for us."
+      }
+    }
+  },
+  "reportContent": {
+    "title": "Report content",
+    "message": "Report this content as unsafe or offensive? Its text or reference and your account identifiers will be sent to the MindsHub team for review.",
+    "submit": "Send report",
+    "sent": "Report received.",
+    "failed": "Could not send the report. Please try again.",
+    "rateLimited": "Daily report limit reached. Please try again later.",
+    "retryAt": "Daily report limit reached. Try again on {when, date, short} at {when, time, short}."
   }
 }

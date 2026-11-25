@@ -8,14 +8,25 @@
 // is looking at — tab, selection — so the next chat message carries it as the
 // doc view context. Cmd+Z and Shift+Cmd+Z are the doc's undo and redo
 // (useDoc), and a deletion offers its undo in a notice.
+// As a preview (`variant="modal"`) it has the artifact viewer's panel rail on
+// its right edge: Add tab, and Comments, which opens the viewer's comments
+// inbox beside the page. Comments sit on blocks (docComments); the doc beside
+// a chat has no rail and adds tabs from the page and the tab list instead.
+// Comments opened from the rail start in comment mode (the Comment / Edit
+// switch over the page): the page is read-only to the person, and a click on a
+// block comments on it. The agent's writes still land and show.
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ArrowUpRight, Download, FileText, Maximize2, Minimize2, PanelLeftOpen, X } from 'lucide-react';
+import { ArrowUpRight, ChevronDown, FilePlus, FileText, Maximize2, Minimize2, X } from 'lucide-react';
 import { Icon } from '../ui/Icon';
-import { Menu, Tooltip } from '../ui';
+import { Button, Menu, Spinner, Tooltip } from '../ui';
+import DocAskBar from './DocAskBar';
+import DocCommentModeSwitch from './DocCommentModeSwitch';
 import DocCanvas from './DocCanvas';
-import { TabRail, TabStrip, tabElementId, useTabsHidden } from './DocTabs';
+import DocHeaderTitle from './DocHeaderTitle';
+import { ShowTabsButton, TabRail, TabStrip, tabElementId, useTabsHidden } from './DocTabs';
 import { docPageTarget } from './docArtifact';
 import { useDoc } from './useDoc';
+import { noteArtifactRenamed } from '../../lib/artifactsStore';
 import { PendingEdits, useSaveIndicator } from './useSaveIndicator';
 import { downloadDocExport, fetchDoc, fetchDocMarkdown, followDoc, postDocOps, uploadDocImage } from './docApi';
 import { DocImageLoader } from './blocks';
@@ -28,9 +39,22 @@ import { useVersionHistory } from './useVersionHistory';
 import { changedSince } from './versionHistory';
 import { PublishMenu } from '../artifact/publish/PublishMenu';
 import { usePublish } from '../artifact/publish/usePublish';
+import { maximizeKeyShortcuts } from '../artifact/useViewerLayout';
+import { ViewerModeRail } from '../artifact/ViewerModeRail';
+import { ViewerSidePanel } from '../artifact/ViewerSidePanel';
+import { CommentsPanel } from '../artifact/comments';
+import Ico from '../Icons';
+import { commentFixMessage } from '../../lib/commentFixRequest';
+import { threadImageFiles } from '../../lib/commentImages';
+import { imageAttachment } from '../../lib/imageAttachments';
+import { commentedBlocks, docAnchorStates, docCommentSelector, threadLocations } from './docComments';
+import { useDocComments } from './useDocComments';
+import { commentKindFor, isOpenThread } from '../../lib/commentsReducer';
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
+import { useDocsEnabled } from '../../../lib/docsEnabled';
 import { sharedTranslator, useTranslation } from '../../../lib/i18n';
+import '../artifact/artifactWorkspace.css';
 import './doc.css';
 import './docPane.css';
 
@@ -38,6 +62,11 @@ import './docPane.css';
 const LOCAL_TRANSPORT = { fetchDoc, followDoc, postDocOps };
 const NO_TABS = new Set();
 const NO_FLASH = {};
+const NO_BLOCKS = new Set();
+const NO_LOCATIONS = new Map();
+const NO_STATES = {};
+// How long a block a comment card was clicked for stays marked.
+const FOCUS_MS = 1600;
 
 /**
  * Whose top-left corner the header sits in, where something is drawn over
@@ -95,31 +124,41 @@ export function writeErrorText(e) {
 
 export default function DocPane({
   projectRef, artifactId, title: fallbackTitle, variant = 'side', expanded = false, fillsWindow = false,
-  onToggleExpand, onClose, onAskAgent, onViewChange,
+  onToggleExpand, maximized = false, onToggleMaximized, onClose, onAskAgent, onViewChange,
+  // The preview rail's actions below its tabs (DocModal's Open chat).
+  railActions = [],
 }) {
   const {
     doc, status, error, capabilities, card, apply: applyOps, undo, redo, flash, agentActive, saving, writeError,
     clearWriteError,
   } = useDoc({ projectRef, artifactId, transport: LOCAL_TRANSPORT });
   const { t } = useTranslation('docs');
+  // Export and full screen use the artifact viewer's own words.
+  const { t: tArtifacts } = useTranslation('artifacts');
   // Images beside the doc, fetched with the app's credentials (the shell shows
   // only blob: images from its own server).
   const loadImage = useDraftImageLoader(card?.draftUrl, null);
   const orgMode = useOrgMode();
+  const docsEnabled = useDocsEnabled();
   // A doc is shared as its rendered page (doc.html), through the same publish
   // flow and access choices (public, password, named people, only me) as any
   // HTML artifact. The controller addresses the page, not the JSON beside it.
   const shareTarget = useMemo(() => docPageTarget(card), [card]);
-  const pub = usePublish(shareTarget, { enabled: !!shareTarget && !orgMode });
-  const canShare = !orgMode && !!shareTarget && capabilities?.canEdit !== false;
+  // A rename, by the person or the agent, reaches every list showing the doc's card.
+  const docTitle = doc?.title;
+  useEffect(() => {
+    if (docTitle) noteArtifactRenamed(artifactId, docTitle);
+  }, [artifactId, docTitle]);
+  const pub = usePublish(shareTarget, { enabled: !!shareTarget });
+  const canShare = !!shareTarget && capabilities?.canEdit !== false;
   const [activeTab, setActiveTab] = useState(null);
   const [unseen, setUnseen] = useState(new Set());
   const [notice, setNotice] = useState(null);
   const [narrow, setNarrow] = useState(false);
   const rootRef = useRef(null);
   const tabsId = useId();
-  // The tab rail folds away, as the app's sidebar does; the header's leading
-  // icon brings it back. Focus follows to the control that is left.
+  // The tab rail folds away, as the app's sidebar does; Show tabs, where the
+  // rail's Hide tabs sat, brings it back. Focus follows to the control that is left.
   const [tabsHidden, setTabsHidden] = useTabsHidden();
   const showTabsRef = useRef(null);
   const hideTabs = useCallback(() => {
@@ -135,6 +174,11 @@ export default function DocPane({
   // already took from a new one by it.
   const selection = useRef(null);
   const editable = capabilities?.canEdit !== false;
+  // Every "Edit with agent" entry in the canvas hangs off this handler. The
+  // server's canAddressWithAgent already includes the right to edit (and, in
+  // org mode, to run the agent); missing capabilities keep the entry, as they
+  // keep `editable`.
+  const askAgent = docsEnabled && capabilities?.canAddressWithAgent !== false ? onAskAgent : undefined;
   const warn = useCallback((text) => setNotice({ tone: 'warn', text }), []);
 
   // Every edit from the page and the tabs comes through here: a deletion,
@@ -152,6 +196,7 @@ export default function DocPane({
     if (done === 'changed') warn(t(kind === 'redo' ? 'notice.cantRedo' : 'notice.cantUndo'));
     return done;
   }, [undo, redo, warn, t]);
+  const renameDoc = useCallback((title) => apply([{ op: 'rename_doc', title }]), [apply]);
   const uploadImage = useCallback(async (file) => {
     try {
       return await uploadDocImage(projectRef, artifactId, file);
@@ -180,9 +225,14 @@ export default function DocPane({
 
   const tab = useMemo(() => doc?.tabs?.find((t) => t.id === activeTab) || doc?.tabs?.[0] || null, [doc, activeTab]);
 
+  // Comment mode, while the inbox is open: from the rail it starts on; a
+  // comment from the formatting bar opens the inbox and stays in edit mode.
+  const [commentMode, setCommentMode] = useState(false);
   // A tab the person adds opens at once, its title selected to be named.
   const [naming, setNaming] = useState(null);
   const addTab = useCallback(async () => {
+    // A tab is added to be named and written in: out of comment mode.
+    setCommentMode(false);
     const before = new Set(doc.tabs.map((t) => t.id));
     const res = await apply([{ op: 'add_tab', title: 'Untitled' }]);
     const created = res?.doc?.tabs?.find((t) => !before.has(t.id));
@@ -195,6 +245,110 @@ export default function DocPane({
   const named = useCallback(() => setNaming(null), []);
   const shown = version?.doc || doc;
   const shownTab = version ? shown.tabs.find((t) => t.id === activeTab) || shown.tabs[0] : tab;
+
+  // ── The preview's rail and its comments ──
+  const preview = variant === 'modal';
+  // Adding a tab from the page and the tab list; a preview adds it from the rail.
+  const addOnPage = editable && !version && !preview ? addTab : undefined;
+  const {
+    enabled: commentsEnabled, threads, viewer: commentViewer, markRead, unreadCount,
+    create: createComment, setStatus: setCommentStatus, loadImage: loadCommentImage, ...comments
+  } = useDocComments({ projectRef, artifactId, enabled: preview, onError: warn });
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const sidePanelId = useId();
+  const inboxOpen = commentsOpen && commentsEnabled;
+  useEffect(() => {
+    if (!inboxOpen) setCommentMode(false);
+  }, [inboxOpen]);
+  const toggleComments = () => {
+    setCommentsOpen(!inboxOpen);
+    setCommentMode(!inboxOpen);
+  };
+  // Someone who cannot edit has nothing to switch to: the open inbox is comment mode.
+  const commenting = inboxOpen && !version && (commentMode || !editable);
+  useEffect(() => {
+    if (inboxOpen && unreadCount > 0) markRead();
+  }, [inboxOpen, unreadCount, markRead]);
+  // Where each comment sits now; only the open inbox and the page beside it ask.
+  const locations = useMemo(() => (inboxOpen ? threadLocations(doc, threads) : NO_LOCATIONS), [inboxOpen, doc, threads]);
+  // While the inbox slides out its cards keep no anchor labels rather than read as detached.
+  const anchorStates = useMemo(
+    () => (locations === NO_LOCATIONS ? NO_STATES : docAnchorStates(threads, locations)),
+    [threads, locations],
+  );
+  const commented = useMemo(
+    () => (version ? NO_BLOCKS : commentedBlocks(threads, locations)),
+    [version, threads, locations],
+  );
+  // The blocks a card in the inbox points at: while it is hovered, and for a
+  // moment after it is clicked (its tab opened and the page scrolled there).
+  const [hoveredId, setHoveredId] = useState(null);
+  const [focused, setFocused] = useState(null);
+  const focusThread = useCallback((threadId) => {
+    const where = locations.get(threadId);
+    if (!where) return;
+    setActiveTab(where.tabId);
+    setFocused({ blockIds: where.blockIds });
+  }, [locations]);
+  // A card resolved or reopened under the pointer can leave the list without
+  // a mouseleave, so acting on one drops its highlight (a deleted one leaves
+  // `locations`, and its highlight with it).
+  const onCommentStatus = useCallback((id, status) => {
+    setHoveredId(null);
+    return setCommentStatus(id, status);
+  }, [setCommentStatus]);
+  useEffect(() => {
+    if (!focused) return undefined;
+    const first = rootRef.current?.querySelector(`[data-block-id="${focused.blockIds[0]}"]`);
+    first?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    const timer = setTimeout(() => setFocused(null), FOCUS_MS);
+    return () => clearTimeout(timer);
+  }, [focused]);
+  const highlighted = useMemo(() => {
+    if (version) return NO_BLOCKS;
+    const ids = [...(locations.get(hoveredId)?.blockIds || []), ...(focused?.blockIds || [])];
+    return ids.length ? new Set(ids) : NO_BLOCKS;
+  }, [version, locations, hoveredId, focused]);
+  const commentKind = commentKindFor(commentViewer);
+  // The inbox opens first: the new thread shows there, and so does a failure to post it.
+  const commentOnBlocks = useCallback(({ tab: tabId, blockIds, quote, text }) => {
+    setCommentsOpen(true);
+    return createComment({ selector: docCommentSelector({ tab: tabId, blockIds, quote }), text, kind: commentKind });
+  }, [createComment, commentKind]);
+  // A comment sent to the agent goes the way "Edit with agent" goes, on the
+  // blocks it was made on, with the thread's words and images.
+  const viewedTabId = tab?.id || null;
+  const addressWithAgent = useCallback(async (thread) => {
+    if (!askAgent) return;
+    const where = locations.get(thread.id);
+    const files = await threadImageFiles(thread, loadCommentImage);
+    askAgent({
+      blockIds: where?.blockIds || [],
+      request: commentFixMessage(thread),
+      tabId: where?.tabId || viewedTabId,
+      attachments: files.map(imageAttachment),
+    });
+  }, [askAgent, locations, viewedTabId, loadCommentImage]);
+  const openComments = threads.filter(isOpenThread).length;
+  const railTabs = !preview || !doc ? [] : [
+    editable && !version && {
+      id: 'add-tab',
+      icon: <Icon of={FilePlus} size={16} />,
+      label: t('tabs.add'),
+      description: t('tabs.addHint'),
+      onSelect: addTab,
+    },
+    commentsEnabled && {
+      id: 'comments',
+      icon: Ico.chats(16),
+      label: tArtifacts('layers.comments'),
+      description: tArtifacts('rail.commentsHint'),
+      pressed: inboxOpen,
+      onSelect: toggleComments,
+      badge: openComments,
+      badgeLabel: tArtifacts('rail.commentsOpen', { count: openComments }),
+    },
+  ].filter(Boolean);
 
   // A tab the agent writes into while the person reads another gets a dot.
   const prevFlash = useRef(flash);
@@ -235,7 +389,9 @@ export default function DocPane({
     reportView();
   }, [reportView, tab]);
 
+  const [exporting, setExporting] = useState(false);
   const exportAs = async (format) => {
+    setExporting(true);
     try {
       const name = await downloadDocExport(projectRef, artifactId, format);
       // The download is handed on, not finished: the desktop app asks where
@@ -243,6 +399,8 @@ export default function DocPane({
       setNotice({ tone: 'info', text: t('export.exporting', { name }) });
     } catch (e) {
       setNotice({ tone: 'warn', text: e.message || t('export.failed') });
+    } finally {
+      setExporting(false);
     }
   };
   const copyMarkdown = async () => {
@@ -293,7 +451,11 @@ export default function DocPane({
       pane.focus({ preventScroll: true });
     });
   }, [stepBack]);
-  const ownUndo = (target) => editable && !version && !(target instanceof HTMLInputElement);
+  // A field of its own (a tab's name, the "Ask for a change" bar, a comment
+  // box) keeps its own undo; a code block's textarea is the doc's text.
+  const ownField = (target) => target instanceof HTMLInputElement
+    || (target instanceof HTMLTextAreaElement && !target.closest('[data-block-id]'));
+  const ownUndo = (target) => editable && !version && !commenting && !ownField(target);
   const onKeyDownCapture = (e) => {
     const mod = e.metaKey || e.ctrlKey;
     if (!mod || e.altKey) return;
@@ -321,12 +483,14 @@ export default function DocPane({
   const pubRefresh = pub.refresh;
   const lastRev = useRef(null);
   useEffect(() => {
-    if (!doc || !pub.publishedUrl) return undefined;
+    // In org mode a read here is the owner-only audience route, which an edit
+    // never changes; the page itself follows edits on the server.
+    if (orgMode || !doc || !pub.publishedUrl) return undefined;
     if (lastRev.current === doc.rev) return undefined;
     lastRev.current = doc.rev;
     const t = setTimeout(() => { pubRefresh?.(); }, 1200);
     return () => clearTimeout(t);
-  }, [doc, pub.publishedUrl, pubRefresh]);
+  }, [orgMode, doc, pub.publishedUrl, pubRefresh]);
 
   // Published: the shared link, behind whatever access it was given. Not yet:
   // the page itself, opened from disk in the default browser (desktop), the
@@ -335,6 +499,8 @@ export default function DocPane({
   const canOpenInBrowser = !!pub.publishedUrl || canOpenLocally;
   const openLabel = t(pub.publishedUrl ? 'pane.openSharedPage' : 'pane.openInBrowser');
   const expandLabel = t(expanded ? 'pane.showChat' : 'pane.expand');
+  // The artifact viewer's own words for the same toggle.
+  const maximizeLabel = tArtifacts(maximized ? 'layout.restore' : 'layout.maximize');
   const exportLabel = t('export.label');
   const openInBrowser = async () => {
     try {
@@ -358,6 +524,7 @@ export default function DocPane({
   // the chat beside it may be about something else entirely.
   const live = agentActive;
   const tabbed = (shown?.tabs.length || 0) > 1;
+  const headerTitle = shown?.title || fallbackTitle || t('doc');
   const offline = writeError?.code === 'offline';
   const statusEl = live
     ? <span className="doc-header__status doc-header__status--agent"><span className="doc-header__pulse" aria-hidden="true" />{t('pane.status.agentWriting')}</span>
@@ -372,40 +539,15 @@ export default function DocPane({
       ref={rootRef}
       className={`doc-root ${variant === 'modal' ? 'doc-pane--modal' : 'doc-pane'} ${narrow ? 'doc-root--narrow' : ''}`}
       data-corner={headerCorner({ fillsWindow, expanded })}
-      aria-label={shown?.title || fallbackTitle || t('doc')}
+      aria-label={headerTitle}
       onKeyDownCapture={onKeyDownCapture}
     >
       <header className="doc-header">
-        {tabbed && !narrow && tabsHidden ? (
-          <Tooltip content={t('pane.showTabs')}>
-            <button type="button" ref={showTabsRef} className="doc-iconbtn doc-header__tabs" onClick={showTabs}
-              aria-label={t(unseen.size && !version ? 'pane.showTabsChanged' : 'pane.showTabs')}>
-              <Icon of={PanelLeftOpen} size={16} />
-              {unseen.size > 0 && !version && <span className="doc-header__tabs-dot" />}
-            </button>
-          </Tooltip>
-        ) : (
-          <span className="doc-header__icon"><Icon of={FileText} size={16} /></span>
-        )}
+        <span className="doc-header__icon"><Icon of={FileText} size={16} /></span>
         {/* A version looked at shows its own title: restoring it brings that back too. */}
-        <span className="doc-header__title" title={shown?.title || fallbackTitle}>{shown?.title || fallbackTitle || t('doc')}</span>
+        <DocHeaderTitle title={headerTitle}
+          onRename={doc && editable && !version ? renameDoc : undefined} />
         <span aria-live="polite">{statusEl}</span>
-        {doc && editable && <VersionMenu history={history} />}
-        {doc && (
-          <Menu
-            ariaLabel={exportLabel}
-            tooltip={exportLabel}
-            trigger={<button type="button" className="doc-iconbtn" aria-label={exportLabel}><Icon of={Download} size={16} /></button>}
-            items={[
-              { heading: t('export.downloadAs') },
-              ...exportChoices(capabilities?.exportFormats)
-                .map((key) => ({ key, label: t(`export.format.${key}`), onClick: () => exportAs(key) })),
-              { divider: true },
-              { key: 'copy', label: t('export.copyMarkdown'), onClick: copyMarkdown },
-            ]}
-          />
-        )}
-        {doc && canShare && <PublishMenu controller={pub} noun="doc" followsEdits />}
         {doc && (
           <Tooltip content={canOpenInBrowser ? openLabel : t('pane.shareToOpen')}>
             <button type="button" className="doc-iconbtn" aria-label={openLabel}
@@ -414,17 +556,53 @@ export default function DocPane({
             </button>
           </Tooltip>
         )}
-        {onToggleExpand && (
-          <Tooltip content={expandLabel}>
-            <button type="button" className="doc-iconbtn" aria-label={expandLabel} onClick={onToggleExpand}>
-              <Icon of={expanded ? Minimize2 : Maximize2} size={16} />
-            </button>
-          </Tooltip>
+        {doc && editable && <VersionMenu history={history} />}
+        {doc && canShare && <PublishMenu controller={pub} noun="doc" followsEdits />}
+        {/* Worn like the artifact viewer's Export (ArtifactExportMenu). */}
+        {doc && (
+          <Menu
+            ariaLabel={exportLabel}
+            align="end"
+            trigger={
+              <Button size="sm" disabled={exporting}>
+                {exporting
+                  ? (<><Spinner style={{ color: 'currentColor' }} /> {tArtifacts('export.exporting')}</>)
+                  : (<>{tArtifacts('export.export')} <span className="inline-flex text-ink-3"><Icon of={ChevronDown} size={14} /></span></>)}
+              </Button>
+            }
+            items={[
+              ...exportChoices(capabilities?.exportFormats)
+                .map((key) => ({ key, label: t(`export.format.${key}`), onClick: () => exportAs(key) })),
+              { divider: true },
+              { key: 'copy', label: t('export.copyMarkdown'), onClick: copyMarkdown },
+            ]}
+          />
         )}
-        {onClose && (
-          <Tooltip content={t('pane.close')}>
-            <button type="button" className="doc-iconbtn" aria-label={t('pane.closeDoc')} onClick={onClose}><Icon of={X} size={16} /></button>
-          </Tooltip>
+        {/* Expand or full screen, then close, past a divider: the artifact viewer's window controls. */}
+        {(onToggleExpand || onToggleMaximized || onClose) && (
+          <div className="doc-header__window-controls">
+            {onToggleExpand && (
+              <Tooltip content={expandLabel}>
+                <button type="button" className="doc-iconbtn" aria-label={expandLabel} onClick={onToggleExpand}>
+                  <Icon of={expanded ? Minimize2 : Maximize2} size={16} />
+                </button>
+              </Tooltip>
+            )}
+            {onToggleMaximized && (
+              <Tooltip content={maximizeLabel}>
+                <button type="button" className="doc-iconbtn" aria-label={maximizeLabel}
+                  aria-keyshortcuts={maximizeKeyShortcuts()}
+                  onClick={onToggleMaximized}>
+                  <Icon of={maximized ? Minimize2 : Maximize2} size={16} />
+                </button>
+              </Tooltip>
+            )}
+            {onClose && (
+              <Tooltip content={t('pane.close')}>
+                <button type="button" className="doc-iconbtn" aria-label={t('pane.closeDoc')} onClick={onClose}><Icon of={X} size={16} /></button>
+              </Tooltip>
+            )}
+          </div>
         )}
       </header>
 
@@ -452,47 +630,101 @@ export default function DocPane({
         </div>
       )}
 
-      {status === 'loading' && !doc && (
-        <div className="doc-scroll"><div className="doc-skeleton" aria-label={t('pane.loading')}><div /><div /><div style={{ width: '82%' }} /><div style={{ width: '64%' }} /></div></div>
-      )}
-      {status === 'error' && !doc && (
-        <div className="doc-state">{error?.status === 404 ? t('pane.gone') : t('pane.openFailed', { reason: error?.message || '' })}</div>
-      )}
-      {shown && shownTab && (
-        <div className="doc-body">
-          {tabbed && !narrow && (
-            <TabRail tabs={shown.tabs} activeId={shownTab.id} unseen={version ? NO_TABS : unseen} editable={editable && !version}
-              onSelect={setActiveTab} apply={apply} idBase={tabsId} hidden={tabsHidden} onHide={hideTabs} />
-          )}
-          <div className="doc-scroll">
-            {tabbed && narrow && (
-              <TabStrip tabs={shown.tabs} activeId={shownTab.id} onSelect={setActiveTab} idBase={tabsId}
-                onAdd={editable && !version ? addTab : undefined} unseen={version ? NO_TABS : unseen} />
+      {/* The page and, as a preview, the comments panel and the panel rail beside it. */}
+      <div className="artifact-viewer-workarea">
+        <div className="artifact-viewer-body">
+          <div className="doc-workarea__main">
+            {status === 'loading' && !doc && (
+              <div className="doc-scroll"><div className="doc-skeleton" aria-label={t('pane.loading')}><div /><div /><div style={{ width: '82%' }} /><div style={{ width: '64%' }} /></div></div>
             )}
-            <div {...(tabbed ? { role: 'tabpanel', id: `${tabsId}-panel`, 'aria-labelledby': tabElementId(tabsId, shownTab.id) } : {})}>
-              <PendingEdits.Provider value={onPendingChange}>
-                <DocImageLoader.Provider value={loadImage}>
-                <DocCanvas
-                  key={version ? `${shownTab.id}@${version.entry.rev}` : shownTab.id}
-                  doc={shown}
-                  tab={shownTab}
-                  editable={editable && !version}
-                  apply={apply}
-                  flash={version ? NO_FLASH : flash}
-                  changed={changed}
-                  agentLive={live}
-                  onAskAgent={version ? undefined : onAskAgent}
-                  onSelectionChange={onSelectionChange}
-                  onAddTab={addTab}
-                  nameTitle={naming === shownTab.id}
-                  onNamed={named}
-                  onUploadImage={uploadImage}
-                />
-                </DocImageLoader.Provider>
-              </PendingEdits.Provider>
-            </div>
+            {status === 'error' && !doc && (
+              <div className="doc-state">{error?.status === 404 ? t('pane.gone') : t('pane.openFailed', { reason: error?.message || '' })}</div>
+            )}
+            {shown && shownTab && (
+              <div className="doc-body" data-tabs-hidden={(tabbed && !narrow && tabsHidden) || undefined}>
+                {tabbed && !narrow && (
+                  <TabRail tabs={shown.tabs} activeId={shownTab.id} unseen={version ? NO_TABS : unseen} editable={editable && !version && !commenting}
+                    onSelect={setActiveTab} apply={apply} idBase={tabsId} hidden={tabsHidden} onHide={hideTabs} addable={!preview} />
+                )}
+                {tabbed && !narrow && tabsHidden && (
+                  <ShowTabsButton onShow={showTabs} changed={unseen.size > 0 && !version} buttonRef={showTabsRef} />
+                )}
+                <div className="doc-scroll">
+                  {tabbed && narrow && (
+                    <TabStrip tabs={shown.tabs} activeId={shownTab.id} onSelect={setActiveTab} idBase={tabsId}
+                      onAdd={addOnPage} unseen={version ? NO_TABS : unseen} />
+                  )}
+                  <div {...(tabbed ? { role: 'tabpanel', id: `${tabsId}-panel`, 'aria-labelledby': tabElementId(tabsId, shownTab.id) } : {})}>
+                    <PendingEdits.Provider value={onPendingChange}>
+                      <DocImageLoader.Provider value={loadImage}>
+                      <DocCanvas
+                        key={version ? `${shownTab.id}@${version.entry.rev}` : shownTab.id}
+                        doc={shown}
+                        tab={shownTab}
+                        editable={editable && !version && !commenting}
+                        apply={apply}
+                        flash={version ? NO_FLASH : flash}
+                        changed={changed}
+                        agentLive={live}
+                        onAskAgent={version ? undefined : askAgent}
+                        onSelectionChange={onSelectionChange}
+                        onAddTab={addOnPage}
+                        nameTitle={naming === shownTab.id}
+                        onNamed={named}
+                        onUploadImage={uploadImage}
+                        onComment={commentsEnabled && !version ? commentOnBlocks : undefined}
+                        commented={commented}
+                        highlighted={highlighted}
+                        commenting={commenting}
+                      />
+                      </DocImageLoader.Provider>
+                    </PendingEdits.Provider>
+                  </div>
+                </div>
+              </div>
+            )}
+            {inboxOpen && doc && editable && !version && (
+              <DocCommentModeSwitch commenting={commentMode} onChange={setCommentMode} />
+            )}
           </div>
+          {preview && (
+            <ViewerSidePanel id={sidePanelId} mode={inboxOpen ? 'comments' : null} label={tArtifacts('layers.comments')}>
+              {() => (
+                <CommentsPanel
+                  threads={threads}
+                  anchorStates={anchorStates}
+                  error={comments.error}
+                  expired={comments.expired}
+                  viewer={commentViewer}
+                  capabilities={comments.capabilities}
+                  onStatus={onCommentStatus}
+                  onAddressWithAgent={askAgent ? addressWithAgent : undefined}
+                  onDeleteThread={comments.deleteThread}
+                  onEditThread={comments.editThread}
+                  onCreate={createComment}
+                  onReply={comments.reply}
+                  loadImage={loadCommentImage}
+                  onHoverThread={setHoveredId}
+                  onLeaveThread={() => setHoveredId(null)}
+                  onFocusThread={focusThread}
+                  onClose={() => setCommentsOpen(false)}
+                />
+              )}
+            </ViewerSidePanel>
+          )}
         </div>
+        {preview && (
+          <ViewerModeRail
+            label={tArtifacts('rail.ariaLabel')}
+            tabs={railTabs}
+            actions={doc ? railActions : []}
+            panelId={sidePanelId}
+          />
+        )}
+      </div>
+      {/* The preview's "Ask for a change" bar, as the artifact viewer has. */}
+      {preview && doc && askAgent && !version && (
+        <DocAskBar artifact={card || { id: artifactId, title: doc.title }} tabId={tab?.id || null} onAskAgent={askAgent} />
       )}
       {version && <RestoreDialog history={history} shared={!!pub.publishedUrl} agentWriting={live} />}
       <RestoredNote history={history} />

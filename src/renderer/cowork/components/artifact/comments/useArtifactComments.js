@@ -25,6 +25,23 @@ import i18n from '../../../../lib/i18n';
 
 const failed = (action) => i18n.t(`comments.errors.${action}`, { ns: 'artifacts' });
 
+// A dropped connection reads "Failed to fetch" / "Load failed" / "NetworkError…"
+// depending on the browser; none of that is worth showing. Those, and errors
+// with no message, read as the action that failed.
+function isNetworkError(e) {
+  return e instanceof TypeError || /failed to fetch|load failed|networkerror|network request failed/i.test(String(e?.message || ''));
+}
+const reasonFor = (e, action) => (!e?.message || isNetworkError(e) ? failed(action) : e.message);
+
+// A warning is a moment's notice, not a state: it fades (CommentsPanel) and
+// clears after this long. Loading keeps retrying underneath, and a success
+// clears it at once.
+export const COMMENTS_ERROR_MS = 6000;
+// Marking read is housekeeping: it retries quietly a few times, then waits
+// for the next open of the inbox.
+const MARK_READ_RETRIES = 3;
+const MARK_READ_RETRY_MS = 4000;
+
 export function useArtifactComments(userDir, reportId, { enabled = true, onUnread } = {}) {
   const [threads, setThreads] = useState([]);
   const [error, setError] = useState('');
@@ -109,6 +126,7 @@ export function useArtifactComments(userDir, reportId, { enabled = true, onUnrea
           if (cancelled) return;
           const loaded = (data && data.threads) || [];
           setThreads(loaded);
+          setError('');
           if (data && data.viewer) setViewer(data.viewer);
           if (data && data.capabilities) setCapabilities(data.capabilities);
           setUnreadCount(Number(data?.unreadCount || 0));
@@ -119,7 +137,7 @@ export function useArtifactComments(userDir, reportId, { enabled = true, onUnrea
           // Terminal auth failure (session expired) — stop for good instead of
           // hammering the server (req() sets e.status from the HTTP code).
           if (e && (e.status === 401 || e.status === 403)) { setExpired(true); return; }
-          setError(e.message || failed('load'));
+          setError(reasonFor(e, 'load'));
           // Keep trying so a transient list failure doesn't kill realtime.
           const delay = Math.min(30000, 1000 * 2 ** attempts);
           attempts += 1;
@@ -147,18 +165,20 @@ export function useArtifactComments(userDir, reportId, { enabled = true, onUnrea
       apply({ ...created, type: created.type || 'thread.created' });
       return true;
     } catch (e) {
-      setError(e.message || failed('post'));
+      setError(reasonFor(e, 'post'));
       return false;
     }
   }, [userDir, reportId, apply]);
 
   const reply = useCallback(async (id, text) => {
-    if (!text || !text.trim()) return;
+    if (!text || !text.trim()) return false;
     try {
       const updated = await addCommentReply(userDir, reportId, id, text.trim());
       apply({ ...updated, type: 'thread.updated' });
+      return true;
     } catch (e) {
-      setError(e.message || failed('reply'));
+      setError(reasonFor(e, 'reply'));
+      return false;
     }
   }, [userDir, reportId, apply]);
 
@@ -168,7 +188,7 @@ export function useArtifactComments(userDir, reportId, { enabled = true, onUnrea
       apply({ ...updated, type: 'thread.updated' });
       return true;
     } catch (e) {
-      setError(e.message || failed('update'));
+      setError(reasonFor(e, 'update'));
       return false;
     }
   }, [userDir, reportId, apply]);
@@ -179,7 +199,7 @@ export function useArtifactComments(userDir, reportId, { enabled = true, onUnrea
       const updated = await editCommentThread(userDir, reportId, id, text.trim());
       apply({ ...updated, type: 'thread.updated' });
     } catch (e) {
-      setError(e.message || failed('edit'));
+      setError(reasonFor(e, 'edit'));
     }
   }, [userDir, reportId, apply]);
 
@@ -188,7 +208,7 @@ export function useArtifactComments(userDir, reportId, { enabled = true, onUnrea
       await deleteCommentThread(userDir, reportId, id);
       apply({ type: 'thread.deleted', id });
     } catch (e) {
-      setError(e.message || failed('delete'));
+      setError(reasonFor(e, 'delete'));
     }
   }, [userDir, reportId, apply]);
 
@@ -198,7 +218,7 @@ export function useArtifactComments(userDir, reportId, { enabled = true, onUnrea
       const updated = await editCommentReply(userDir, reportId, id, replyId, text.trim());
       apply({ ...updated, type: 'thread.updated' });
     } catch (e) {
-      setError(e.message || failed('edit'));
+      setError(reasonFor(e, 'edit'));
     }
   }, [userDir, reportId, apply]);
 
@@ -207,19 +227,36 @@ export function useArtifactComments(userDir, reportId, { enabled = true, onUnrea
       const updated = await deleteCommentReply(userDir, reportId, id, replyId);
       apply({ ...updated, type: 'thread.updated' });
     } catch (e) {
-      setError(e.message || failed('delete'));
+      setError(reasonFor(e, 'delete'));
     }
   }, [userDir, reportId, apply]);
 
+  const markReadRetryRef = useRef({ timer: null, attempts: 0 });
   const markRead = useCallback(async () => {
+    const retry = markReadRetryRef.current;
+    clearTimeout(retry.timer);
     try {
       await markCommentsRead(userDir, reportId);
+      retry.attempts = 0;
       unreadRequestRef.current += 1;
       setUnreadCount(0);
     } catch (e) {
-      setError(e.message || failed('markRead'));
+      if (e && (e.status === 401 || e.status === 403)) { setExpired(true); return; }
+      if (retry.attempts < MARK_READ_RETRIES) {
+        retry.attempts += 1;
+        retry.timer = setTimeout(() => { markRead(); }, MARK_READ_RETRY_MS * retry.attempts);
+      } else {
+        retry.attempts = 0;
+      }
     }
   }, [userDir, reportId]);
+  useEffect(() => () => clearTimeout(markReadRetryRef.current.timer), [userDir, reportId]);
+
+  useEffect(() => {
+    if (!error) return undefined;
+    const timer = setTimeout(() => setError(''), COMMENTS_ERROR_MS);
+    return () => clearTimeout(timer);
+  }, [error]);
 
   return {
     threads, error, expired, viewer, capabilities, unreadCount, markRead,

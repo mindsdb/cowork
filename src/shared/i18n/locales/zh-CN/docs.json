@@ -15,6 +15,8 @@
     "expand": "展开",
     "close": "关闭",
     "closeDoc": "关闭文档",
+    "renameDoc": "重命名文档：{title}",
+    "docName": "文档名称",
     "loading": "正在加载文档",
     "gone": "此文档已不存在。",
     "openFailed": "无法打开此文档。{reason}",
@@ -80,6 +82,7 @@
   "tabs": {
     "label": "标签页",
     "add": "添加标签页",
+    "addHint": "为此文档添加新标签页",
     "hide": "隐藏标签页",
     "changed": "已更改",
     "showChanged": "显示已更改的标签页",
@@ -186,6 +189,11 @@
     "placeholderWrite": "智能体应在这里写什么？",
     "placeholderChange": "需要修改什么？",
     "send": "发送"
+  },
+  "comments": {
+    "edit": "编辑",
+    "editHint": "在文档中输入",
+    "commentHint": "评论 — 点击一个块，或选中文字"
   },
   "chart": {
     "label": "图表",

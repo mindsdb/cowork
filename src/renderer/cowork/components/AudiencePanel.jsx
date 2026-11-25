@@ -17,7 +17,8 @@
 // An option may be `disabled` with a `disabledHint`: a disabled control fires
 // no hover of its own, so the hint hangs off a wrapper (`disabledTestId`).
 // The option whose value is `specificValue` unfolds a `<RecipientField>`
-// (given `recipients`) right under its own card when picked.
+// (given `recipients`) right under its own card when picked; any other option
+// may unfold its own field the same way (`editor`, e.g. the password).
 // `onlyMeOption`, `everyoneOption` and `specificOption` are the cards both
 // audiences offer, with the copy from lib/orgSharing.
 
@@ -76,7 +77,7 @@ export function specificOption(kind) {
  *   ariaLabel: string,
  *   value: string,
  *   onValueChange: (value: string) => void,
- *   options: Array<{ value: string, icon: import('react').ReactNode, title: string, desc: string, disabled?: boolean, disabledHint?: string, disabledTestId?: string }>,
+ *   options: Array<{ value: string, icon: import('react').ReactNode, title: string, desc: string, disabled?: boolean, disabledHint?: string, disabledTestId?: string, editor?: import('react').ReactNode, editorTestId?: string }>,
  *   specificValue?: string,
  *   recipients?: object | null,
  *   children?: import('react').ReactNode,
@@ -109,8 +110,9 @@ export function AudiencePanel({
               title={option.title}
               desc={option.desc}
               disabled={!!option.disabled}
-              editor={option.value === specificValue && recipients ? <RecipientField {...recipients} /> : null}
-              editorTestId="specific-recipients"
+              editor={option.editor
+                ?? (option.value === specificValue && recipients ? <RecipientField {...recipients} /> : null)}
+              editorTestId={option.editorTestId || 'specific-recipients'}
             />
           );
           if (!option.disabled || !option.disabledHint) return card;

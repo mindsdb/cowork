@@ -1,4 +1,5 @@
 import { diagnostic } from '../../shared/diagnostics';
+import { planFailureFields } from './lib/subscriptionPlan';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import Ico from './components/Icons';
@@ -56,6 +57,8 @@ import ConnectorPicker from './components/connector/ConnectorPicker';
 import ServerOfflineHelpModal from './components/ServerOfflineHelpModal';
 import ComingSoonModal from './components/ComingSoonModal';
 import SharePointSetupModal, { SHAREPOINT_ENGINE } from './components/sharepoint/SharePointSetupModal';
+import CustomMcpConnectModal from './components/connector/CustomMcpConnectModal';
+import { disconnectCustomMcp, isCustomMcp } from './lib/customMcp';
 import { useSharePointImport } from './components/sharepoint/useSharePointImport';
 import { applyConnectorTestEvent } from './components/datavault/connectorTestStore';
 import { handleArtifactCheckEvent } from './lib/artifactCheck';
@@ -74,8 +77,11 @@ import {
 } from './lib/messageQueue';
 import { loadCachedSettings } from './lib/settingsCache';
 import { useOrgMode } from '../lib/orgMode';
+import { getDocsEnabled } from '../lib/docsEnabled';
 import { clearDraft, moveDraft } from './lib/draftStore';
 import { takeDocContext } from './lib/docViewContext';
+import { clearDraftAttachments, getDraftAttachments, reloadDraftAttachmentsAfterPurge, setDraftAttachments } from './lib/draftAttachments';
+import { useDraftAttachments } from './hooks/useDraftAttachments';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useBrowseAvailable } from './hooks/useBrowseAvailable';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
@@ -111,7 +117,7 @@ import { stopScheduleRun } from './lib/stopScheduleRun';
 import { useAutoPauseNotifications } from './hooks/useAutoPauseNotifications';
 import { useScheduleRunNotifications } from './hooks/useScheduleRunNotifications';
 import { shouldKeepAwake } from './lib/scheduleKeepAwake';
-import { fetchSessions, fetchSession, fetchSessionResult, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
+import { fetchSessions, fetchSession, fetchSessionResult, fetchConversationStatus, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
          streamDataVaultSubmission,
          allocateConversationId, uploadAttachments, openBrowserAt,
@@ -139,9 +145,10 @@ import {
   mergeConvTurns,
   removeConvTurnsFor,
 } from './lib/conversationHistory';
-import { noteArtifactsFromSteps, onArtifactDeleted } from './lib/artifactsStore';
-import { createLatestLoader, withArtifactChange, withoutArtifact, withoutProjectArtifacts } from './lib/artifactList';
+import { noteArtifactsFromSteps, onArtifactDeleted, onArtifactRenamed } from './lib/artifactsStore';
+import { createLatestLoader, withArtifactChange, withArtifactTitle, withoutArtifact, withoutProjectArtifacts } from './lib/artifactList';
 import { resolveRepairConversation } from './lib/artifactRepairChat';
+import { OriginChatContext, checkOriginChat } from './lib/originChat';
 import { originConversationId } from './lib/artifactIdentity';
 import { isOrphanUser } from './lib/turnVisibility';
 import { isArtifactTipDismissed, dismissArtifactTip, dismissIfUntouched } from './components/onboarding/onboardingStore';
@@ -157,7 +164,7 @@ import { offeredModelId, offeredModels } from './lib/modelPickerOptions';
 import { compareAvailable } from './lib/compareSides';
 import { modelPickerMode } from '../lib/modelPicker';
 import { PLATFORM_UI } from '../lib/deployment';
-import { noteMobilePushTaskStarted, setMobilePushNavigator } from '../lib/mobilePush';
+import { offerMobileTaskNotifications, setMobilePushNavigator } from '../lib/mobilePush';
 import {
   CoworkProvider,
   CoworkRouterProvider,
@@ -171,6 +178,7 @@ import {
   loadConversation,
 } from './CoworkRouter';
 import { normalizeComposerDisabledConnections, toggleConnectionMute } from './lib/connectionMutes';
+import { ConversationTranscriptsContext, transcriptLookup } from './lib/chatTranscriptContext';
 import { rememberTaskBrowser } from './lib/taskBrowser';
 import { newTaskBrowserOff, showsBrowserSwitch, taskBrowserOn } from './lib/browserSwitch';
 import { useNativeOverlay } from './lib/nativeOverlay';
@@ -181,7 +189,7 @@ import BlankBrowserPanel from './components/browser/BlankBrowserPanel';
 import { BrowserPanel } from './components/browser/BrowserPanel';
 import { useVoiceCall, voiceCallRunning } from './lib/voice/useVoiceCall';
 import { askInTask, createCallWork, createQueueWatch, sendForOwnTurn } from './lib/voice/callWork';
-import { describeScreen, describeSteps, isRunning, runOperator } from './lib/voice/operator';
+import { describeFound, describeScreen, describeSteps, findTasks, isRunning, runOperator } from './lib/voice/operator';
 import { artifactsOnScreen } from './lib/voice/screenArtifacts';
 import { createSeenCallBack } from './lib/voice/seenCallBack';
 import {
@@ -199,7 +207,8 @@ import {
 } from './lib/browserApproval';
 import { forgetLegacyBrowserPrefs, setBrowserSettingSaver, syncBrowserPrefs } from './lib/browserPrefs';
 import { reportTurnEnd, TURN_STOPPED, waitForTurnEnd } from './lib/voice/turnEnds';
-import { Outlet } from 'react-router-dom';
+import { SharedArtifactPreview } from './components/artifact/SharedArtifactPreview';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 /* One-of-ten encouraging follow-ups picked when a connect task is
  * created. Reads as a friendly nudge after the connect-intro card —
@@ -581,13 +590,15 @@ function openStreamedForm(conversationId, finalContent) {
 
 async function loadSessionMessagesWithRetry(
   cid,
-  { isLive = false, isServerInFlight = false, skipLocalSidecar = false, timeoutMs } = {},
+  { isLive = false, isServerInFlight = false, skipLocalSidecar = false, timeoutMs, unmountedRef } = {},
 ) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     if (attempt > 0) {
       await new Promise((resolve) => { setTimeout(resolve, 50 * attempt); });
     }
+    if (unmountedRef?.current) return null;
     const fresh = await fetchSession(cid, { timeoutMs });
+    if (unmountedRef?.current) return null;
     if (!fresh || !Array.isArray(fresh.messages)) continue;
     return {
       // Only the most recent page — the caller merges this
@@ -696,6 +707,17 @@ export function searchRecents(tasks, projects) {
   ];
 }
 
+function RoutedArtifactsView(props) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const target = location.state?.sharedArtifact;
+  return <>
+    <ArtifactsView {...props} />
+    {target && <SharedArtifactPreview key={location.key} target={target}
+      onClose={() => navigate({ pathname: location.pathname, search: location.search }, { replace: true })} />}
+  </>;
+}
+
 function AppCore() {
   const { t: tSettings } = useTranslation('settings');
   // Seed from the read-through cache of the last settings fetch, not a literal
@@ -798,6 +820,9 @@ function AppCore() {
   // drain and every queue write report to it.
   const callQueueWatchRef = useRef(createQueueWatch());
   const voiceHistoryRef = useRef([]);
+  // Tasks the call's search_tasks found, by id, so open_task can open one
+  // older than the tasks loaded here.
+  const callFoundRef = useRef(new Map());
   // The call hung up while Anton worked on its requests: it calls back with the result.
   const callBackRef = useRef(false);
   const callBackSeenRef = useRef({ canCallBack: false });
@@ -960,6 +985,13 @@ function AppCore() {
       }
     }
     setArtifacts(data);
+    // Loaded once a list is actually in, whichever reload brought it: a
+    // superseded first load must not end the skeleton on an empty list,
+    // which read as "No artifacts yet" for a moment (ENG-4585).
+    setArtifactsLoaded(true);
+  }, {
+    // A failed load ends the skeleton too, rather than loading forever.
+    onFailed: () => setArtifactsLoaded(true),
   }));
   const reloadArtifacts = artifactsLoader.reload;
   // A delete from any surface (the artifacts page, a chat's viewer or working
@@ -973,6 +1005,12 @@ function AppCore() {
       reloadArtifacts();
     }
   }), [artifactsLoader, reloadArtifacts]);
+  // A doc renamed in its editor, from any surface, retitles its card in the
+  // library and the sidebar.
+  useEffect(() => onArtifactRenamed(({ id, title }) => {
+    if (withArtifactTitle(artifactsRef.current, id, title) === artifactsRef.current) return;
+    artifactsLoader.change(() => setArtifacts((prev) => withArtifactTitle(prev, id, title)));
+  }), [artifactsLoader]);
   // Publish state changes made on the artifacts page.
   const handleArtifactChanged = useCallback((updated) => {
     artifactsLoader.change(() => setArtifacts((prev) => withArtifactChange(prev, updated)));
@@ -1001,7 +1039,6 @@ function AppCore() {
   // merged into it would vanish the next time one ran — including on a visit
   // to the connections page.
   const [datasourceConnectors, setDatasourceConnectors] = useState([]);
-  const [composerAttachments, setComposerAttachments] = useState([]);
   /** Muted vault connections for the next send (all composers); persisted on stream. */
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
   /** The + menu's Browser switch, off for the next new task (ENG-3188). */
@@ -1009,6 +1046,7 @@ function AppCore() {
   const [composerPrefill, setComposerPrefill] = useState(null);
   // Set by the checklist's "Try an example" row; Home answers it and clears it.
   const [examplesRequest, setExamplesRequest] = useState(0);
+  const [ownWorkRequest, setOwnWorkRequest] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // null = no section selected: the mobile master-detail shows its section
@@ -1016,6 +1054,7 @@ function AppCore() {
   const [settingsSection, setSettingsSection] = useState(null);
   const [connectorPickerOpen, setConnectorPickerOpen] = useState(false);
   const [sharePointSetupOpen, setSharePointSetupOpen] = useState(false);
+  const [customMcpOpen, setCustomMcpOpen] = useState(false);
   const [serverHelpOpen, setServerHelpOpen] = useState(false);
   // Pending delete confirm — task id whose delete is awaiting user
   // confirmation in the modal. null = no modal.
@@ -1060,6 +1099,20 @@ function AppCore() {
   // above cannot own teardown: Stop has to reach the controller belonging to
   // the conversation it stops, not whichever one claimed them last.
   const liveStreamsRef = useRef(new Map()); // cid -> { ctrl, pad }
+  /*
+   * Conversations a send is still setting up a turn in: from its reservation
+   * until its stream registers (or the send gives up), while it uploads files
+   * and loads Notion pages. The shared slot above can't say this per
+   * conversation, since another conversation's send takes it meanwhile, so a
+   * second send into the same conversation reads this instead (ENG-4635).
+   */
+  const settingUpRef = useRef(new Set()); // cid
+  // A send here holds the shared slot or is still setting its turn up. Reads
+  // that asked only `activeStreamingTaskIdRef.current === cid` missed a send
+  // whose slot another conversation's send took meanwhile.
+  const settingUpHere = useCallback((cid) => (
+    Boolean(cid) && (activeStreamingTaskIdRef.current === cid || settingUpRef.current.has(cid))
+  ), []);
   /*
    * Conversations a Stop is ending, from its cancel request until that Stop
    * has finished. Each maps to a promise that settles true once that Stop has
@@ -1107,6 +1160,8 @@ function AppCore() {
     }
     liveStreamsRef.current.set(cid, { ctrl, pad: prev?.pad ?? null });
     streamCountRef.current.set(cid, (streamCountRef.current.get(cid) ?? 0) + 1);
+    // Its turn is live now: liveStreamsRef holds it from here.
+    settingUpRef.current.delete(cid);
   }, []);
 
   // Drop the record only when `ctrl` is still the registered one, so a stream
@@ -1160,6 +1215,7 @@ function AppCore() {
    * lets reopening it re-attach a second stream that aborts the running one.
    */
   const releaseSlotClaim = useCallback((...ids) => {
+    ids.forEach((cid) => settingUpRef.current.delete(cid));
     const held = activeStreamingTaskIdRef.current;
     if (held && ids.includes(held)) activeStreamingTaskIdRef.current = null;
   }, []);
@@ -1195,6 +1251,15 @@ function AppCore() {
   const recoverDroppedTurnRef = useRef(null);
   // Conversations with a dropped-turn recovery out, so a second drop waits on it.
   const droppedRecoveryRef = useRef(new Set());
+  // The dropped-turn reconnects and run-start probes wait minutes between
+  // tries; they read this to stop once the App is gone instead of polling and
+  // reattaching for it.
+  const unmountedRef = useRef(false);
+  useEffect(() => {
+    // Reset on mount too: StrictMode unmounts and remounts the same instance.
+    unmountedRef.current = false;
+    return () => { unmountedRef.current = true; };
+  }, []);
 
   // Running tally for the stranded-reservation self-heal (reservationReleaseDecision):
   // a stream that dies with no terminal pins the slot forever, so the in-flight
@@ -1320,7 +1385,10 @@ function AppCore() {
     // Releasing then would let the send reassign the refs into a second
     // concurrent stream on one conversation; a real strand still holds its dead
     // controller.
-    const preflight = Boolean(streaming) && !activeStreamCtrlRef.current;
+    // With tasks side by side the shared controller can be another
+    // conversation's while this one still uploads (ENG-4635), so its own
+    // setup entry counts too.
+    const preflight = Boolean(streaming) && (!activeStreamCtrlRef.current || settingUpRef.current.has(streaming));
     // Suppresses the unseen reap when the turn has produced events but the poll
     // hasn't listed it yet (see reservationReleaseDecision / the ref's decl).
     const producedData = activeStreamProducedRef.current;
@@ -1345,6 +1413,7 @@ function AppCore() {
       }
       activeStreamCtrlRef.current = null;
       activeStreamingTaskIdRef.current = null;
+      settingUpRef.current.delete(streaming);
       activeStreamProducedRef.current = false;
       staleReservationRef.current = { cid: null, misses: 0, seen: false, lastMissAt: 0 };
       // Clear the dead turn's live steps like every terminal path, else a turn
@@ -1642,13 +1711,7 @@ function AppCore() {
     // shared slot (that discards an earlier drain's text).
     //
     // The files those queued messages were carrying ride the SAME entry as the
-    // text, because they have to travel together: the removal above
-    // deletes the only other reference to them, while `composerAttachments` is a
-    // single app-wide list that is not keyed by task. Staging them here would
-    // therefore put task A's files on whatever task happens to be on screen, and
-    // sending from there would upload and send them against the wrong
-    // conversation. They are staged when — and only when — this task's redirect
-    // is consumed, by the ChatView actually showing this task.
+    // text, so both are staged together when ChatView consumes the redirect.
     setComposerRedirects((prev) => ({
       ...prev,
       [plan.taskId]: {
@@ -2065,6 +2128,10 @@ function AppCore() {
             retryAfter: typeof event?.retry_after === 'number' ? event.retry_after : null,
             retryAt: typeof event?.retry_at === 'string' ? event.retry_at : null,
             resetAt: typeof event?.reset_at === 'string' ? event.reset_at : null,
+            ...planFailureFields(event),
+            budgetScope: typeof event?.budget_scope === 'string' ? event.budget_scope : null,
+            budgetPeriod: typeof event?.budget_period === 'string' ? event.budget_period : null,
+            budgetModel: typeof event?.budget_model === 'string' && event.budget_model ? event.budget_model : null,
             requestId: typeof event?.request_id === 'string' ? event.request_id : null,
             /* Client-only: a lost connection, shown with "Trying to
                reconnect" while recoverDroppedTurn tries to reach the turn,
@@ -2143,6 +2210,8 @@ function AppCore() {
     // "Restricted" instead of "Needs credits" (mergeRecommendedModels keeps it
     // in step with modelEnabled).
     modelDisabledReasons: settings.modelDisabledReasons,
+    // Which plan covers each model (ENG-4186), for the picker's tier tags.
+    modelCoveredByTier: settings.modelCoveredByTier,
     // Which models advertise reasoning-effort levels (ENG-1940) — same
     // settings key SettingsView's per-role effort picker reads, so
     // Composer's EffortSelect stays in lockstep with it.
@@ -2153,7 +2222,7 @@ function AppCore() {
     // composer's effort pill reads it to show the level that will run.
     planningReasoningEffort: settings.planningReasoningEffort,
     onRefresh: refreshModelAvailability,
-  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelDisabledReasons, settings.modelEfforts, settings.planningReasoningEffort, refreshModelAvailability]);
+  }), [settings.modelProviders, settings.modelFamilies, settings.modelEnabled, settings.modelDisabledReasons, settings.modelCoveredByTier, settings.modelEfforts, settings.planningReasoningEffort, refreshModelAvailability]);
   // The composer's catalog and picker metadata for the artifact viewer's chat
   // bar (ENG-4227), the same ones the composer gets.
   const modelPickerCtx = useMemo(() => ({ models, modelMeta }), [models, modelMeta]);
@@ -2225,6 +2294,7 @@ function AppCore() {
   const [comingSoonFeature, setComingSoonFeature] = useState(null);
   // The custom route the "Coming soon" dialog offers for a connector cloud doesn't run.
   const [comingSoonOffer, setComingSoonOffer] = useState(null);
+  const [comingSoonConnectorId, setComingSoonConnectorId] = useState(null);
   const [customConnectors, setCustomConnectors] = useState([]);
   const composerConnectors = useMemo(
     () => composerConnectorList(connectors, datasourceConnectors, customConnectors),
@@ -2441,7 +2511,19 @@ function AppCore() {
   if (!routerRef.current) routerRef.current = createCoworkRouter();
   // Mobile app (ENG-4023): a tapped push notification opens its route here,
   // including one tapped before the router existed (cold start). No-op elsewhere.
-  useEffect(() => setMobilePushNavigator((path) => { routerRef.current?.navigate(path); }), []);
+  useEffect(() => setMobilePushNavigator((path) => {
+    // Only the push controller delivers a pending tap. An address-bar fragment
+    // must never instruct the app to open an external destination.
+    if (path.startsWith('/artifacts#shared=')) {
+      const params = new URLSearchParams(path.split('#')[1]);
+      const ref = params.get('ref');
+      const [project_id, artifact_id] = ref?.split('/') ?? [];
+      const sharedArtifact = ref ? { project_id, artifact_id } : {};
+      routerRef.current.navigate('/artifacts', { state: { sharedArtifact } });
+    } else {
+      routerRef.current.navigate(path);
+    }
+  }), []);
   const [route, setRoute] = useState(initialNav.route); // home | task | projects | scheduled | schedule-detail | artifacts | channels | customize
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
@@ -2644,7 +2726,7 @@ function AppCore() {
       setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
     });
     fetchProjects().then((data) => { if (Array.isArray(data)) setProjects(data); }).finally(() => setProjectsLoaded(true));
-    reloadArtifacts().finally(() => setArtifactsLoaded(true));
+    reloadArtifacts();
     fetchPins().then((data) => setPins(data.pins || []));
     refreshSchedules().catch(() => {});
     fetchDatasources()
@@ -2793,6 +2875,19 @@ function AppCore() {
     projectDetailPending != null &&
     !(selectedProject && (selectedProject.id === projectDetailPending || selectedProject.name === projectDetailPending));
   const selectedProjectForView = projectDetailResolving ? null : selectedProject;
+  // Attachments are drafted per composer, under the same key as its text
+  // (see Composer's useDraft), so they survive switching threads.
+  const composerDraftKey = route === 'task'
+    ? (currentTask?.id ?? activeTaskId ?? null)
+    : route === 'projects' && selectedProjectForView
+      ? `project:${selectedProjectForView.id || selectedProjectForView.name}`
+      : 'new';
+  const [composerAttachments, setComposerAttachments] = useDraftAttachments(composerDraftKey);
+  // Clears only what was sent, so a file added while the send ran stays drafted.
+  const clearSentComposerAttachments = (sent) => {
+    const ids = new Set(sent.map((a) => a?.id));
+    setComposerAttachments((prev) => prev.filter((a) => !ids.has(a.id)));
+  };
   const currentTaskProject = resolveTaskProject(currentTask, runnableProjects) || runnableSelectedProject;
   const currentTaskModel = currentTask?.model
     ? (sendableModelId(currentTask.model) === MODEL_ROUTER_ID
@@ -2848,11 +2943,11 @@ function AppCore() {
   // buildStreamHandlers() refactor is a fine follow-up once both
   // paths have stabilised.)
   const reconnectInFlight = useCallback(async (taskId) => {
-    if (!taskId) return false;
+    if (!taskId || unmountedRef.current) return false;
     // A tail or send registered here, or a send holding the slot while it
     // uploads. A second stream would abort it, whoever holds the shared slot.
     const alreadyStreamingHere = () => (
-      liveStreamsRef.current.has(taskId) || activeStreamingTaskIdRef.current === taskId
+      liveStreamsRef.current.has(taskId) || settingUpHere(taskId)
     );
     if (alreadyStreamingHere()) return true;
     let status;
@@ -2861,7 +2956,9 @@ function AppCore() {
     } catch {
       return false;
     }
-    if (!status || !status.in_flight) return false;
+    // Unmount may happen while the probe is pending. Do not open a stream
+    // for an App that is gone, even when the server still has a live turn.
+    if (unmountedRef.current || !status || !status.in_flight) return false;
     // A send or queued drain may have started here while the probe was out.
     if (alreadyStreamingHere()) return true;
 
@@ -2941,7 +3038,7 @@ function AppCore() {
         // answer (success), unless a config error was wrapped into its 200 body.
         // A reconnect that saw no completion records nothing.
         fireFirstResponse(classifyFirstResponse({
-          completed: streamState.status === 'done',
+          completed: streamState.status === 'done' && finalIncompleteReason !== 'user_stopped',
           isConfigError: !!configErrorInBody,
         }));
         setTasks((prev) => prev.map((t) => {
@@ -2953,7 +3050,7 @@ function AppCore() {
           if (configErrorInBody) {
             return { ...t, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
           }
-          return finalContent
+          return finalContent || (finalIncompleteReason === 'user_stopped' && finalSteps.length > 0)
             ? { ...t, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
@@ -3010,7 +3107,7 @@ function AppCore() {
     activeStreamCtrlRef.current = ctrl;
     registerStream(taskId, ctrl);
     return true;
-  }, [markInFlight, markInFlightDone, handleStreamError, registerStream, releaseStream, setStreamPad, releaseSlotClaim]);
+  }, [markInFlight, markInFlightDone, handleStreamError, registerStream, releaseStream, setStreamPad, releaseSlotClaim, settingUpHere]);
 
   /*
    * A dropped connection, not a failed turn: keep trying to reach the turn
@@ -3023,7 +3120,8 @@ function AppCore() {
   const recoverDroppedTurn = useCallback(async (cid) => {
     if (!cid || droppedRecoveryRef.current.has(cid)) return;
     droppedRecoveryRef.current.add(cid);
-    const current = () => tasksRef.current.find((t) => t.id === cid);
+    // Gone once the App unmounts, which ends the loop at its next check.
+    const current = () => (unmountedRef.current ? undefined : tasksRef.current.find((t) => t.id === cid));
     const settle = (update) => setTasks((prev) => prev.map((t) => (
       t.id === cid && droppedError(t) ? update(t) : t
     )));
@@ -3045,10 +3143,10 @@ function AppCore() {
         }
         let loaded = null;
         try {
-          loaded = await loadSessionMessagesWithRetry(cid, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS });
+          loaded = await loadSessionMessagesWithRetry(cid, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS, unmountedRef });
         } catch { continue; }
-        if (!loaded) continue;
         if (!droppedError(current()) || hasLiveTurnHere(cid)) return;
+        if (!loaded) continue;
         const knownIds = knownIdsOf(cid);
         settle((t) => {
           if (!historyEndsTurn(loaded.messages, droppedError(t)?._userMessageId)) return t;
@@ -3073,26 +3171,33 @@ function AppCore() {
   // `/c/:id`, whose loader + openConversation() (below) do the hydration and
   // stream reattach — so sidebar click / deep link / refresh / Back all run one
   // path.
-  const selectTask = (id, { keepStaged = false } = {}) => {
+  const selectTask = (id) => {
     if (sidebarPopout) setNavPopoutOpen(false);
     setWorkspaceMode('cowork');
-    // Clear the composer here (the sync nav intent), not in openConversation:
-    // that runs after the async loader and would wipe a queued-message redirect
-    // ChatView stages for the conversation. Matches staging's ordering. A send
-    // that brings the person here itself ("Edit with agent" from the library)
-    // keeps the staged files: they were never its to send or drop.
-    if (!keepStaged) setComposerAttachments([]);
     setActiveTaskId(id);
     setRoute('task');
   };
+  const selectTaskRef = useRef(selectTask);
+  selectTaskRef.current = selectTask;
+  // A preview's Open chat (lib/originChat): shows a chat, and says
+  // beforehand whether it can be opened.
+  const originChat = useMemo(() => ({
+    open: (id) => selectTaskRef.current(id),
+    check: (id) => checkOriginChat(id, {
+      tasks: tasksRef.current,
+      deletedIds: deletedTaskIdsRef.current,
+      fetchStatus: (chatId) => fetchConversationStatus(chatId, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS }),
+    }),
+  }), []);
 
-  // Hydrate + reattach the conversation the `/c/:id` route resolved. `loaded` is
-  // the loader result: `{ task }`, `{ optimistic: true }` (new-chat mid-send —
-  // messages live locally, don't clobber), or `{ unavailable: true }` (transient
-  // failure).
-  const openConversation = useCallback((id, loaded) => {
-    setActiveTaskId(id);
-    setRoute('task');
+  // Hydrate + reattach a conversation. `loaded` is the `/c/:id` loader result:
+  // `{ task }`, `{ optimistic: true }` (new-chat mid-send — messages live
+  // locally, don't clobber), or `{ unavailable: true }` (transient failure).
+  // openConversation (below) runs it for the chat it shows; it also loads a
+  // chat a turn is sent into while another page stays on screen (the artifact
+  // viewer's hand-off, ENG-4560). `visit: false` leaves recents ordering alone
+  // then, since nobody opened the chat.
+  const hydrateConversation = useCallback((id, loaded, { visit = true } = {}) => {
     // Composer is cleared by selectTask (sync), not here — see there. On a
     // loader failure flag it for a retry; any resolvable result clears a stale
     // error. The render only shows it when the conversation is absent locally,
@@ -3116,7 +3221,7 @@ function AppCore() {
     // Is this conversation actually mid-stream right now? If yes, we LEAVE
     // running indicators alone. If no, reconcile strips zombie placeholders
     // and collapses stale step state.
-    const isLive = activeStreamingTaskIdRef.current === id;
+    const isLive = settingUpHere(id);
     // Cross-client cache (Option B): when the server says this
     // conversation's producer is still running, skip the "things stopped"
     // continuation prompt — the reconnect above attaches to the live tail.
@@ -3126,12 +3231,14 @@ function AppCore() {
     // pins + the capped recents list. Runs before the empty-transcript return
     // below so every successful open updates recency — matching the prior
     // selectTask path, which recorded a visit regardless of message count.
-    recordTaskVisit(fresh, false).then(() => {
-      fetchPins().then((data) => setPins(data.pins || []));
-      fetchSessions().then((data) => {
-        if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
-      });
-    }).catch(() => {});
+    if (visit) {
+      recordTaskVisit(fresh, false).then(() => {
+        fetchPins().then((data) => setPins(data.pins || []));
+        fetchSessions().then((data) => {
+          if (Array.isArray(data)) setTasks((prev) => mergeTasksFromServer(data, prev).filter((t) => !deletedTaskIdsRef.current.has(t.id)));
+        });
+      }).catch(() => {});
+    }
 
     // A delete left unconfirmed here may have committed since; this page shows it.
     const pendingCut = unconfirmedDeletesRef.current[id];
@@ -3151,7 +3258,7 @@ function AppCore() {
       // Unless the page proves a pending delete took everything. A turn just
       // sent here is not on the server yet, so it keeps the rows.
       const emptiedByCut = cutCommitted
-        && activeStreamingTaskIdRef.current !== id && !hasLiveTurnHere(id);
+        && !settingUpHere(id) && !hasLiveTurnHere(id);
       // An empty page means every row this read knew of is gone; rows that
       // arrived after it began stay. The cut's own ids count as known: a read
       // started during the DELETE predates the rows that delete's resync wrote.
@@ -3218,13 +3325,19 @@ function AppCore() {
       ? prev.map((t) => (t.id === id ? patch(t) : t))
       : [patch(fresh), ...prev]));
     if (cutCommitted) settleCut();
-  }, [reconnectInFlight]);
+  }, [reconnectInFlight, settingUpHere]);
+
+  // Show the conversation the `/c/:id` route resolved, and hydrate it.
+  const openConversation = useCallback((id, loaded) => {
+    setActiveTaskId(id);
+    setRoute('task');
+    hydrateConversation(id, loaded);
+  }, [hydrateConversation]);
 
   const newTask = () => {
     if (sidebarPopout) setNavPopoutOpen(false);
     setWorkspaceMode('cowork');
     setActiveTaskId(null);
-    setComposerAttachments([]);
     setComposerPrefill(null);
     setRoute('home');
   };
@@ -3232,7 +3345,8 @@ function AppCore() {
   const handleNavigateHomeWithPrefill = (text, projectName) => {
     setWorkspaceMode('cowork');
     setActiveTaskId(null);
-    setComposerAttachments([]);
+    // The prefill starts Home's draft over.
+    clearDraftAttachments('new');
     setComposerPrefill({ text, bump: Date.now() });
     const targetName = projectName || 'general';
     const proj = projects.find((p) => p.name === targetName);
@@ -3329,7 +3443,6 @@ function AppCore() {
       attachments: [],
     }, ...prev]);
     setActiveTaskId(tempId);
-    setComposerAttachments([]);
     setRoute('task');
 
 
@@ -3495,7 +3608,8 @@ function AppCore() {
     setDisconnectError('');
     setDisconnectBusy(true);
     try {
-      await deleteDatasource(engine, name);
+      if (isCustomMcp(engine)) await disconnectCustomMcp(name, () => deleteDatasource(engine, name));
+      else await deleteDatasource(engine, name);
     } catch (e) {
       // eslint-disable-next-line no-console
       diagnostic("renderer.cowork.App", "WARNING", "connectors_disconnect_failed", '[connectors] disconnect failed', e);
@@ -3571,6 +3685,7 @@ function AppCore() {
       // The SharePoint routes are refused in org mode; offer the desktop app.
       if (orgMode) {
         setComingSoonOffer(null);
+        setComingSoonConnectorId(connector.id);
         setComingSoonFeature(connector.label || 'SharePoint');
       }
       else setSharePointSetupOpen(true);
@@ -3640,7 +3755,6 @@ function AppCore() {
       attachments: [],
     }, ...prev]);
     setActiveTaskId(tempId);
-    setComposerAttachments([]);
     setRoute('task');
 
     if (hasLiteralForm) {
@@ -3808,6 +3922,8 @@ function AppCore() {
     // caches its localStorage keys into a module-level variable at import
     // time, so removing the keys alone leaves that snapshot stale.
     if (purgedStaleAccount) resetOnboardingProgress();
+    // The attachment store read storage above this purge; drop what it read.
+    if (purgedStaleAccount) reloadDraftAttachmentsAfterPurge();
 
     /**
      * A document that has already rendered for another account reloads rather
@@ -3880,13 +3996,18 @@ function AppCore() {
     setTasks((prev) => prev.map((t) => {
       if (t.id !== streamingId) return t;
       // The task's own pick decides which resource it spends, same as the
-      // composer: a task on an explicit paid model never hears about free tokens.
-      const changes = usageTransitions(before, hubUsage, { model: t.model, providerType });
+      // composer: a task on an explicit paid model never hears about free
+      // tokens, and one outside its plan never hears about the plan's windows.
+      const changes = usageTransitions(before, hubUsage, {
+        model: t.model,
+        providerType,
+        coveredByTier: settings.modelCoveredByTier?.[t.model] ?? null,
+      });
       if (!changes.length) return t;
       const anchorId = currentTurnAnchorId(t.messages);
       return { ...t, usageNotices: withUsageNotices(t.usageNotices, changes.map((c) => ({ ...c, createdAt, anchorId }))) };
     }));
-  }, [hubUsage, hubUsageCtx.providerType]);
+  }, [hubUsage, hubUsageCtx.providerType, settings.modelCoveredByTier]);
 
   // Open the Settings surface. A named section drills straight to it (desktop
   // and the mobile master-detail alike). A bare open leaves desktop on its
@@ -4217,6 +4338,9 @@ function AppCore() {
     // Preflight: no provider configured → render an action card task
     // instead of routing through anton's LLM path.
     if (!(await ensureProviderReady())) {
+      // Sent from a page that stays on screen (meta.background): no chat
+      // opens to show the card, so the caller reports the refusal.
+      if (meta?.background) return false;
       // A caller that keeps something beside this chat (a doc) names the
       // placeholder's id ahead, so it finds the chat this makes.
       const taskId = meta?.placeholderId || `tmp-${Date.now()}`;
@@ -4248,7 +4372,7 @@ function AppCore() {
       }, ...prev]);
       setActiveTaskId(taskId);
       setRoute('task');
-      setComposerAttachments([]);
+      // Nothing was sent, so the drafted files stay.
       return false;
     }
 
@@ -4266,14 +4390,16 @@ function AppCore() {
     const effectiveProjectPath = requestedProject?.path || generalProject?.path || null;
 
     // A caller that is not the composer (the artifact viewer) passes its own
-    // mutes and attachments; the composer is still cleared, as the new chat opens.
+    // mutes and attachments, and leaves the composer's draft alone.
     const disabledForSend = normalizeComposerDisabledConnections(
       meta?.disabledConnections ?? composerDisabledConnections,
     );
     // Only the composer's own switch: the browser is off only when switched off.
     const browserOffForSend = newTaskBrowserOff({ callerBrowserOff: meta?.browserOff, browserOnInSettings, composerBrowserOff });
 
-    const rawComposer = meta?.attachments ?? composerAttachments;
+    // Only the composer's own sends carry its drafted files; other callers
+    // (connect buttons, the sidebar) must not pick up a draft left on Home.
+    const rawComposer = meta?.attachments ?? (meta?.fromComposer ? composerAttachments : []);
     const hasPendingFiles = rawComposer.some(isPendingFileAttachment);
     const suppliedConversationId = meta?.conversationId || null;
     // The browser open beside Home or the project on a page: the task is
@@ -4297,7 +4423,8 @@ function AppCore() {
       carried ? describeOpenBrowserPage(pageOriginForContext(carried)) : '',
     ].filter(Boolean).join('\n\n');
     if (carried) void carryBrowserInto(taskId, carried);
-    setComposerAttachments([]);
+    // A chat started in the background leaves the composer as it was.
+    if (meta?.fromComposer && !meta?.background) clearSentComposerAttachments(rawComposer);
     // A new conversation has no doc view yet: this is just the request's.
     const docContext = takeDocContext(taskId, meta?.docRequest);
 
@@ -4344,11 +4471,15 @@ function AppCore() {
       updatedAt: new Date().toISOString(),
     };
     setTasks((prev) => [newT, ...prev]);
-    setActiveTaskId(taskId);
-    setRoute('task');
-    // Mobile app (ENG-4023): the first task started is when the app offers
-    // "notify me when tasks finish" (once; no-op outside the app).
-    noteMobilePushTaskStarted();
+    // meta.background: the chat starts without being shown; the page that
+    // sent it (the artifact viewer, ENG-4560) stays on screen and reads the
+    // turn from `tasks`.
+    if (!meta?.background) {
+      setActiveTaskId(taskId);
+      setRoute('task');
+    }
+    // Also offer for tasks sent without typing in the home composer.
+    offerMobileTaskNotifications();
 
     let resolvedId = taskId;
     /*
@@ -4372,6 +4503,7 @@ function AppCore() {
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
       }
+      if (settingUpRef.current.delete(previousId)) settingUpRef.current.add(sid);
       rekeyStream(previousId, sid);
       markInFlightDone(previousId);
       markInFlight(sid);
@@ -4413,7 +4545,7 @@ function AppCore() {
           ? {
               ...t,
               messages: withThinkingPlaceholder(
-                [{ role: 'user', content: text, attachments: sendingAttachments, ...(docContext ? { docContext } : {}) }],
+                [{ role: 'user', content: text, attachments: sendingAttachments, ...(docContext ? { docContext } : {}), ...(meta?.output ? { output: meta.output } : {}) }],
                 // New-task path: the placeholder phase is genuinely
                 // "spinning up the conversation" — anton-core has to
                 // boot the LLM session, attach memories, etc. — so
@@ -4436,8 +4568,8 @@ function AppCore() {
       markInFlight(taskId);
     };
     // Before the session-start event, which clears the console attribution this reads.
-    trackNewTaskMessageSent({ text, attachments: sendingAttachments.length, start: classifyStart(text) });
-    trackAgentSessionStarted();
+    trackNewTaskMessageSent({ text, attachments: sendingAttachments.length, start: classifyStart(text), taskMode: meta?.taskMode, startVia: meta?.startVia });
+    trackAgentSessionStarted({ exampleId: meta?.entryExampleId });
     trackFirstQuery();
     const streamNewSessionFn = () => streamNewSession(sendText, {
       conversationId: suppliedConversationId || (hasPendingFiles || carried ? taskId : undefined),
@@ -4520,7 +4652,7 @@ function AppCore() {
         // answer (success), unless a config error was wrapped into its 200 body.
         // A reconnect that saw no completion records nothing.
         fireFirstResponse(classifyFirstResponse({
-          completed: streamState.status === 'done',
+          completed: streamState.status === 'done' && finalIncompleteReason !== 'user_stopped',
           isConfigError: !!configErrorInBody,
         }));
         setTasks((prev) => prev.map((t) => {
@@ -4532,7 +4664,7 @@ function AppCore() {
           if (configErrorInBody) {
             return { ...t, id: finalId, renamedFrom: t.id, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
           }
-          return finalContent
+          return finalContent || (finalIncompleteReason === 'user_stopped' && finalSteps.length > 0)
             ? { ...t, id: finalId, renamedFrom: t.id, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
@@ -4609,7 +4741,7 @@ function AppCore() {
     if (homeComposerSendingRef.current) return false;
     homeComposerSendingRef.current = true;
     try {
-      return await handleSendFromHome(text, meta);
+      return await handleSendFromHome(text, { ...meta, fromComposer: true });
     } finally {
       homeComposerSendingRef.current = false;
     }
@@ -4660,9 +4792,7 @@ function AppCore() {
             }
           : t,
       ));
-      // Only a fresh send owns the live composer's attachments; a drained
-      // queued item must not clear the composer of whatever task is on screen.
-      if (queuedAttachments == null) setComposerAttachments([]);
+      // Nothing was sent, so the drafted files stay.
       return false;
     }
 
@@ -4689,11 +4819,11 @@ function AppCore() {
       // exists to prevent.
       const orphaned = queuedAttachments ?? composerAttachments;
       if (queuedAttachments != null && queuedAttachments.length > 0) {
-        setComposerAttachments((prev) => {
-          const have = new Set(prev.map((a) => a.id));
-          const back = queuedAttachments.filter((a) => a && !have.has(a.id));
-          return back.length > 0 ? [...prev, ...back] : prev;
-        });
+        // Back to the drained task's own draft, not whichever one is on screen.
+        const prev = getDraftAttachments(id);
+        const have = new Set(prev.map((a) => a.id));
+        const back = queuedAttachments.filter((a) => a && !have.has(a.id));
+        if (back.length > 0) setDraftAttachments(id, [...prev, ...back]);
       }
       if (orphaned.length > 0) {
         toastManager.add({
@@ -4738,32 +4868,29 @@ function AppCore() {
     const docContext = opts.docContext !== undefined ? opts.docContext : takeDocContext(id, opts.docRequest);
 
     // Anton-core can't run two turns in parallel against the same
-    // conversation, so if a stream is in flight (or one is about to
-    // start) for this task we queue the new message and let
-    // onDone/onError drain it.
+    // conversation, so if this task has a turn in flight (or one is about to
+    // start) we queue the new message and let that turn's onDone/onError
+    // drain it. Turns in OTHER conversations don't matter: they run side by
+    // side (ENG-4635). This used to queue whenever any conversation held the
+    // shared slot (the ENG-1378 hotfix), so a follow-up in an idle task waited
+    // for every other running task to finish.
     //
-    // The check covers two race conditions:
-    //   1) `activeStreamCtrlRef` is already set — a fully launched
-    //      stream is in flight.
-    //   2) `activeStreamingTaskIdRef` is set but the controller hasn't
-    //      been assigned yet — a previous invocation is mid-await
-    //      (resolving attachments). This holds for ANY task's
-    //      reservation, not just this id: two rapid clicks on the same
-    //      task, or a manual send that lands while a cross-task drain
-    //      (ENG-1378) is between reserving the slot and awaiting
-    //      attachments, both otherwise pass the guard and start a second
-    //      parallel stream against anton-core (which runs one turn at a
-    //      time). The reservation is always cleared on done/error, so a
-    //      broadened guard cannot wedge later sends.
-    //   3) This task still has a live stream while the shared slot is free,
-    //      as after another task's Stop or terminal released it. A send now
-    //      would register over that stream and abort it mid-answer; the
-    //      stream's own terminal drops the record and drains this queue.
-    //      Likewise while a Stop on this task is running, which would abort the
-    //      new stream and leave its server turn running, or a turn delete is,
+    // The check covers:
+    //   1) A send into this task still setting up its turn (settingUpRef):
+    //      between its reservation and its stream registering it awaits
+    //      uploads and Notion pages. Two rapid sends, or a manual send that
+    //      lands while a drain into this task is in that window, would
+    //      otherwise start a second stream on one conversation. The entry is
+    //      cleared when the stream registers or the send gives up
+    //      (releaseSlotClaim), so it cannot wedge later sends.
+    //   2) This task has a live stream (hasLiveTurnHere). A send now would
+    //      register over that stream and abort it mid-answer; the stream's
+    //      own terminal drops the record and drains this queue. Likewise
+    //      while a Stop on this task is running, which would abort the new
+    //      stream and leave its server turn running, or a turn delete is,
     //      which may remove the new turn. The message waits, and that Stop or
     //      delete drains it once it has finished.
-    if (activeStreamingTaskIdRef.current || activeStreamCtrlRef.current || hasLiveTurnHere(id)) {
+    if (settingUpRef.current.has(id) || hasLiveTurnHere(id)) {
       // A message typed into a task that is working right now may belong to
       // that task ("use the sales DB instead"): offer it to the running turn
       // first (ENG-4194). Only the person's own composer sends: a drained or
@@ -4771,8 +4898,9 @@ function AppCore() {
       let queuedReason = null;
       // A message that asks for a doc ("Write it as a doc") or acts on a
       // passage ("Edit with agent") needs its own turn with that context:
-      // an add-on reaches the running turn as text alone.
-      const asksForDoc = Boolean(opts.output || docContext?.request || docContext?.selection);
+      // an add-on reaches the running turn as text alone. Without doc tools
+      // the request carries no doc context, so such a message is like any other.
+      const asksForDoc = getDocsEnabled() && Boolean(opts.output || docContext?.request || docContext?.selection);
       if (!opts.targetTask && !opts.skipPendingAnswer && !asksForDoc && hasLiveTurnHere(id)) {
         const eligibility = addonEligibility({
           conversationId: id,
@@ -4808,14 +4936,17 @@ function AppCore() {
       );
       // A voice call that sent it follows its queue item to its own turn.
       opts.onQueued?.(queuedId);
-      if (queuedAttachments == null) setComposerAttachments([]);
+      if (queuedAttachments == null) clearSentComposerAttachments(composerAttachments);
       // Queued counts as sent: the drain runs it when the slot frees, so a
       // repair waiting on this prompt will get its turn.
       return true;
     }
     // Synchronous reservation so a second invocation that fires
-    // before our awaits resolve sees us as "in flight."
+    // before our awaits resolve sees us as "in flight." That check reads this
+    // conversation's own entry: another conversation's send may take the
+    // shared slot before this stream registers.
     activeStreamingTaskIdRef.current = id;
+    settingUpRef.current.add(id);
     activeStreamProducedRef.current = false; // fresh stream: no events yet
     // Cross-client cache: we know this conversation is about to be
     // mid-stream. Marking immediately (rather than waiting for the
@@ -4893,13 +5024,11 @@ function AppCore() {
       // clear it now rather than leave the sidebar's running dot on until the
       // next in-flight poll.
       markInFlightDone(id);
-      // Other tasks' messages were queued behind this reservation, so send
-      // the next one now. This task is skipped: retrying its failed upload
-      // straight away would fail again. A send the drain started carries the
-      // tasks its drain chain already skipped, so two tasks whose uploads keep
-      // failing don't hand the slot back and forth: each is tried once, and
-      // the next turn to finish drains them again.
-      drainNextQueuedMessage(null, [...(opts.drainSkipped || []), id]);
+      // No drain here. Only this task's own messages can wait on this send
+      // (another task's never queue behind it: ENG-4635), and retrying its
+      // failed upload straight away would fail again; its next turn to finish
+      // drains them. (Before ENG-4635 every task's queue waited on this
+      // reservation, so a failure had to drain the next task's.)
       // Make the failure impossible to miss. The inline composer error alone
       // was easy to overlook, so a file that couldn't upload just sat at
       // "Queued" with no visible reason (the exact shape of the stuck-upload
@@ -4923,6 +5052,7 @@ function AppCore() {
             attachments: [...(t.attachments || []), ...sendingAttachments],
             messages: withThinkingPlaceholder([...t.messages, {
               role: 'user', content: text, attachments: sendingAttachments, ...(docContext ? { docContext } : {}),
+              ...(opts.output ? { output: opts.output } : {}),
             }]),
             // "Reviving" a task (replying in an existing one) must
             // bump updatedAt locally — the server only rewrites
@@ -4938,7 +5068,7 @@ function AppCore() {
     // A fresh send just consumed the live composer's attachments; a
     // drained queued item brought its own, so don't wipe whatever the
     // user may have started composing since.
-    if (queuedAttachments == null) setComposerAttachments([]);
+    if (queuedAttachments == null) clearSentComposerAttachments(composerAttachments);
 
     let streamState = initialStreamState();
     // `id` is the local task id we started with. If it's a temporary
@@ -4964,6 +5094,7 @@ function AppCore() {
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
       }
+      if (settingUpRef.current.delete(previousId)) settingUpRef.current.add(sid);
       rekeyStream(previousId, sid);
       markInFlightDone(previousId);
       markInFlight(sid);
@@ -5070,7 +5201,7 @@ function AppCore() {
         // answer (success), unless a config error was wrapped into its 200 body.
         // A reconnect that saw no completion records nothing.
         fireFirstResponse(classifyFirstResponse({
-          completed: streamState.status === 'done',
+          completed: streamState.status === 'done' && finalIncompleteReason !== 'user_stopped',
           isConfigError: !!configErrorInBody,
         }));
         setTasks((prev) => prev.map((t) => {
@@ -5082,7 +5213,7 @@ function AppCore() {
           if (configErrorInBody) {
             return { ...t, status: 'idle', messages: [...msgs, { role: 'provider_required' }] };
           }
-          return finalContent
+          return finalContent || (finalIncompleteReason === 'user_stopped' && finalSteps.length > 0)
             ? { ...t, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
@@ -5255,12 +5386,13 @@ function AppCore() {
     const wanted = String(name || '').trim().toLowerCase();
     return (callScreenRef.current.projects || []).find((p) => p.name.toLowerCase() === wanted) || null;
   };
-  // Work the call gave Anton that is still running: one at a time, so two
-  // requests never run side by side and two answers never talk over each
-  // other. A request while one runs is queued behind it or, when it should
+  // Work the call gave Anton that is still running, each in its own task.
+  // Work for a new task, or a task the call isn't working in, starts at once
+  // beside it (ENG-4631: it used to queue behind whatever ran). More work in a
+  // task the call is busy in is queued behind it there or, when it should
   // replace it, the person is asked first (the operator decides, from
   // ask_anton's refusal).
-  const callBusy = () => callWorkRef.current.first();
+  const callBusyIn = (taskId) => (taskId ? callWorkRef.current.inTask(taskId)[0] || null : null);
   // The call's last work went without an answer to say (given up on): with
   // nothing left running, there is nothing to call back about.
   const callWorkGone = () => {
@@ -5270,16 +5402,16 @@ function AppCore() {
   };
   const callActions = {
     ask_anton: async ({ request, task_id: taskId, project }) => {
-      const busy = callBusy();
+      const existing = taskId && taskId !== 'new' ? callTask(taskId) : null;
+      const busy = callBusyIn(existing?.id);
       if (busy) {
-        const where = tasksRef.current.find((t) => t.id === busy.taskId)?.title;
-        return `Not started: ${agentLabel} is still working on "${busy.request}"${where ? ` in "${where}"` : ''}. `
-          + 'Tell the user that, then either queue this with queue_for_anton, or ask whether to stop that work '
-          + 'and do this now (stop_task, then ask_anton).';
+        return `Not started: ${agentLabel} is still working on "${busy.request}" in "${existing.title}". `
+          + 'Tell the user that, then queue this there with queue_for_anton when it adds to that work, start it in a '
+          + "new task (task_id 'new') when it is separate work, or ask whether to stop that work and do this now "
+          + '(stop_task, then ask_anton).';
       }
       const inProject = project ? callProject(project) : null;
       if (project && !inProject) throw new Error(`There is no project called "${project}".`);
-      const existing = taskId && taskId !== 'new' ? callTask(taskId) : null;
       if (existing && !(callScreenRef.current.route === 'task' && callScreenRef.current.currentTask?.id === existing.id)) {
         selectTask(existing.id);
       }
@@ -5352,9 +5484,25 @@ function AppCore() {
       return `Moved "${task.title}" to ${known ? `"${known.name}"` : `a new project, "${project}"`}.`;
     },
     open_task: ({ task_id: taskId }) => {
-      const task = callTask(taskId);
+      // A task search_tasks found can be older than the tasks loaded here.
+      const found = callFoundRef.current.get(String(taskId));
+      const task = found && !tasksRef.current.some((t) => t.id === found.id) ? found : callTask(taskId);
       selectTask(task.id);
       return `Opened "${task.title}".`;
+    },
+    // Tasks by what the person calls them ("the pricing one"), including those
+    // too old for the snapshot's recent list (ENG-4631).
+    search_tasks: async ({ query }) => {
+      const text = String(query || '').trim();
+      let hits = [];
+      try {
+        hits = (await searchCowork(text))?.results || [];
+      } catch {
+        // The loaded tasks still answer.
+      }
+      const found = findTasks({ query: text, tasks: tasksRef.current, hits });
+      found.forEach((t) => callFoundRef.current.set(t.id, t));
+      return describeFound(text, found);
     },
     open_project: ({ project }) => {
       const known = callProject(project);
@@ -5426,7 +5574,7 @@ function AppCore() {
     request,
     history: voiceHistoryRef.current,
     snapshot: () => describeScreen({
-      ...callScreenRef.current, tasks: tasksRef.current, callTaskId: callTaskIdRef.current, working: callBusy(),
+      ...callScreenRef.current, tasks: tasksRef.current, callTaskId: callTaskIdRef.current, working: callWorkRef.current.all(),
       browserPage: pageOriginForContext(carriedPageRef.current?.() || ''),
       artifacts: artifactsOnScreen(),
       waiting: tasksRef.current
@@ -5481,6 +5629,10 @@ function AppCore() {
   );
   // An ended voice call only shows its card: the call button dismisses it and starts anew.
   const noCallRunning = !voiceCallRunning(voiceCall.phase);
+  // The composers' dictate mic (ENG-4630): the call's lane, so only where live
+  // voice is served through MindsHub, and not during a call, which holds the
+  // microphone. Not tied to the voice agent setting: it only types.
+  const dictationAvailable = voiceAvailable && llmViaMindsHub(settings) && noCallRunning;
   // Voice calls only where the LLM provider is MindsHub: the call runs on
   // MindsHub. With another provider every call button is hidden.
   const voiceOffered = llmViaMindsHub(settings) && voicePrefs.enabled;
@@ -5492,7 +5644,10 @@ function AppCore() {
       // Calling while a call back is due: the work goes on, and its result is
       // said on this call. Work left over with nothing running anywhere is
       // stale: it would hold the call busy for good.
-      if (!callBackRef.current) voiceHistoryRef.current = [];
+      if (!callBackRef.current) {
+        voiceHistoryRef.current = [];
+        callFoundRef.current = new Map();
+      }
       const anythingRunning = Boolean(activeStreamingTaskIdRef.current) || tasksRef.current.some(isRunning)
         || Object.values(messageQueueRef.current).some((queue) => queue?.length);
       if (!anythingRunning) callWorkRef.current.clear();
@@ -5534,19 +5689,22 @@ function AppCore() {
   // browser (ChatView's phone dock).
   const callInTaskOnPhone = isMobile && route === 'task' && Boolean(currentTask) && !showConversationError && !showConversationLoading;
 
-  const drainNextQueuedMessage = (preferredTaskId, skipTaskIds = []) => {
-    // Slot re-reserved (a new turn already started) — that turn's own
-    // onDone/onError will drain next. Prevents launching two parallel turns.
-    if (activeStreamCtrlRef.current || activeStreamingTaskIdRef.current) return;
+  const drainNextQueuedMessage = (preferredTaskId) => {
     /*
+     * Turns in different conversations run side by side (ENG-4635): another
+     * conversation streaming doesn't hold this one's queue. This used to
+     * return whenever any conversation held the shared slot, so a task whose
+     * turn had ended kept its queued message until every other task finished.
+     *
      * A conversation with a live stream is still running its own turn, which a
      * follow-up would replace (registerStream aborts it). Its own terminal drops
-     * the record before it drains, so its follow-up goes out then. One being
-     * stopped or having a turn deleted is skipped too: Stop drops what was
-     * queued before the click, and Stop or the delete drains the rest itself.
+     * the record before it drains, so its follow-up goes out then. One a send is
+     * still setting up a turn in is skipped the same way: that turn drains it.
+     * One being stopped or having a turn deleted is skipped too: Stop drops what
+     * was queued before the click, and Stop or the delete drains the rest itself.
      */
-    const skipped = new Set(Object.keys(messageQueueRef.current).filter(hasLiveTurnHere));
-    for (const skipTaskId of skipTaskIds) skipped.add(skipTaskId);
+    const skipped = new Set(Object.keys(messageQueueRef.current)
+      .filter((cid) => hasLiveTurnHere(cid) || settingUpRef.current.has(cid)));
     const taskId = selectNextQueuedTask(
       messageQueueRef.current,
       new Set(tasksRef.current.map((t) => t.id)),
@@ -5574,7 +5732,6 @@ function AppCore() {
     Promise.resolve().then(() => handleSendInTask(next.text, next.attachments || [], {
       targetTask,
       disabledConnections: next.disabledConnections,
-      drainSkipped: skipped,
       ...docChoices,
     })).catch(() => {
       enqueueMessage(taskId, next.text, next.attachments || [], next.disabledConnections || [], docChoices);
@@ -5591,6 +5748,8 @@ function AppCore() {
   // back to be sent. The resolution is carried between the two here so the send
   // can't pick a different chat than the repair is bound to.
   const artifactRepairTargetRef = useRef(null);
+  // Every chat's transcript by id, for the viewer on the Artifacts page.
+  const artifactTranscripts = useMemo(() => transcriptLookup(tasks), [tasks]);
 
   const resolveArtifactRepairConversation = useCallback(async (artifact) => {
     let fetched = null;
@@ -5624,7 +5783,12 @@ function AppCore() {
   const namesChat = (id, artifact) => !!id
     && (tasksRef.current.some((t) => String(t.id || '') === id) || id === originConversationId(artifact));
 
-  const addressArtifactWithAgent = async ({ artifact, prompt, conversationId }) => {
+  // `attachments`: pending image attachments (lib/imageAttachments) that ride
+  // with the prompt, uploaded on send as the composer's are (ENG-4410).
+  // `inBackground`: the viewer stays open and follows the turn itself (its
+  // chat bar mirrors the reply, ENG-4560), so the chat is loaded and the turn
+  // sent without showing it. Otherwise (a live app's launch) the chat opens.
+  const addressArtifactWithAgent = async ({ artifact, prompt, conversationId, attachments = [], inBackground = false }) => {
     const project = projectOfArtifact(artifact);
     const id = String(conversationId || '');
     let target = artifactRepairTargetRef.current;
@@ -5646,7 +5810,8 @@ function AppCore() {
         project,
         conversationId: namesChat(id, artifact) ? null : id || null,
         disabledConnections: [],
-        attachments: [],
+        attachments,
+        background: inBackground,
       });
     }
     const targetTask = tasksRef.current.find((t) => String(t.id || '') === target.id) || target.task;
@@ -5675,15 +5840,23 @@ function AppCore() {
     // when the turn ends, or below when no turn starts.
     markOptimisticConversation(target.id);
     // A failed load still sends: the repair is already bound to this chat.
-    if (loaded?.status === 'ok') {
-      openConversation(target.id, { task: loaded.task, id: target.id, knownIds: loaded.knownIds });
+    if (inBackground) {
+      // Loaded all the same, so the chat holds its history when it is opened
+      // mid-turn (the flag above keeps the loader from doing it then).
+      if (loaded?.status === 'ok') {
+        hydrateConversation(target.id, { task: loaded.task, id: target.id, knownIds: loaded.knownIds }, { visit: false });
+      }
+    } else {
+      if (loaded?.status === 'ok') {
+        openConversation(target.id, { task: loaded.task, id: target.id, knownIds: loaded.knownIds });
+      }
+      selectTask(target.id);
     }
-    selectTask(target.id);
     let started = false;
     try {
       // Queued when the chat is busy, including a turn waiting on the agent's
       // question: the repair prompt is not the user's answer to it.
-      started = await handleSendInTask(prompt, [], { targetTask, skipPendingAnswer: true, holdsOptimistic: true });
+      started = await handleSendInTask(prompt, attachments, { targetTask, skipPendingAnswer: true, holdsOptimistic: true });
     } finally {
       if (!started) clearOptimisticConversation(target.id);
     }
@@ -5698,7 +5871,7 @@ function AppCore() {
   // moved to another project or unreadable now) starts a new chat, the doc
   // docked beside that.
   const [docToDock, setDocToDock] = useState(null); // { taskId, artifact }, until that chat shows it
-  const editDocWithAgent = async ({ artifact, message, docRequest }) => {
+  const editDocWithAgent = async ({ artifact, message, docRequest, attachments = [] }) => {
     const target = await resolveRepairConversation({
       artifact,
       tasks: tasksRef.current,
@@ -5720,7 +5893,7 @@ function AppCore() {
       const placeholderId = `tmp-${Date.now()}`;
       setDocToDock({ taskId: id, placeholderId, artifact });
       return sendFromApp(message, {
-        project: projectOfArtifact(artifact), conversationId: id, placeholderId, docRequest, attachments: [],
+        project: projectOfArtifact(artifact), conversationId: id, placeholderId, docRequest, attachments,
       });
     }
     const loaded = chat;
@@ -5732,13 +5905,13 @@ function AppCore() {
     // below when no turn starts.
     markOptimisticConversation(target.id);
     setDocToDock({ taskId: target.id, artifact });
-    selectTask(target.id, { keepStaged: true });
+    selectTask(target.id);
     let started = false;
     try {
       // The chat's own connections: the composer's are still those of the
       // chat it last showed, until this one renders. Queued behind a turn
       // waiting on the agent's question, never taken as the answer to it.
-      started = await handleSendInTask(message, [], {
+      started = await handleSendInTask(message, attachments, {
         targetTask: loaded, docRequest, disabledConnections: loaded.disabledConnections ?? [], skipPendingAnswer: true,
         holdsOptimistic: true,
       });
@@ -5789,6 +5962,7 @@ function AppCore() {
       if (activeStreamingTaskIdRef.current === previousId) {
         activeStreamingTaskIdRef.current = sid;
       }
+      if (settingUpRef.current.delete(previousId)) settingUpRef.current.add(sid);
       rekeyStream(previousId, sid);
       setActiveTaskId((curr) => (curr === previousId ? sid : curr));
       migrateQueuedMessages([previousId, id], sid);
@@ -5940,7 +6114,7 @@ function AppCore() {
           // finished message instead of vanishing with the live row (ENG-3554).
           const leavingTake = t.messages.find((m) => m.role === '_streaming')?.firstTake?.text || '';
           const msgs = markActivityDone(removeThinkingPlaceholder(stripStreaming(t.messages)));
-          return finalContent
+          return finalContent || (finalIncompleteReason === 'user_stopped' && finalSteps.length > 0)
             ? { ...t, status: 'idle', messages: [...msgs, {
                 role: 'assistant',
                 content: finalContent,
@@ -6102,6 +6276,7 @@ function AppCore() {
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
     // Its unsent reply draft has nowhere to go back to.
     clearDraft(taskId);
+    clearDraftAttachments(taskId);
     // Optimistically remove from pins so the sidebar clears immediately.
     setPins((prev) => prev.filter((p) => p.item_id !== taskId));
     if (activeTaskId === taskId) {
@@ -6525,7 +6700,7 @@ function AppCore() {
        */
       const deletingTask = snapshot;
       const running = liveStreamsRef.current.has(taskId)
-        || activeStreamingTaskIdRef.current === taskId
+        || settingUpHere(taskId)
         || inFlightSetRef.current.has(taskId)
         || (deletingTask?.messages || []).some((m) => m.role === '_streaming');
       let stoppedStream = false;
@@ -6683,7 +6858,8 @@ function AppCore() {
     // The project's own composer draft, plus every draft belonging to a
     // conversation the server is about to cascade-delete.
     clearDraft(`project:${project.id || project.name}`);
-    doomedTaskIds.forEach((id) => clearDraft(id));
+    clearDraftAttachments(`project:${project.id || project.name}`);
+    doomedTaskIds.forEach((id) => { clearDraft(id); clearDraftAttachments(id); });
     doomedTaskIds.forEach((id) => addons.forgetConversation(id));
     // The server confirmed deletion, so it is now safe to update local state.
     setProjects((prev) => prev.filter((p) => p.name !== project.name));
@@ -6931,8 +7107,10 @@ function AppCore() {
   const attachWhenRunStarts = async (cid) => {
     for (const delay of RUN_START_PROBE_DELAYS_MS) {
       await new Promise((resolve) => { setTimeout(resolve, delay); });
-      if (!inFlightSetRef.current.has(cid)) return;
-      const outcome = runStartProbeOutcome(await fetchInFlightStatus(cid));
+      if (unmountedRef.current || !inFlightSetRef.current.has(cid)) return;
+      const status = await fetchInFlightStatus(cid);
+      if (unmountedRef.current) return;
+      const outcome = runStartProbeOutcome(status);
       if (outcome === 'ended') {
         runsAwaitingStartRef.current.delete(cid);
         refreshInFlightSet();
@@ -7264,6 +7442,11 @@ function AppCore() {
             newTask();
             setExamplesRequest(Date.now());
           }}
+          // Home's drafted files stay: they are the material that mode asks for.
+          onOpenOwnWork={() => {
+            newTask();
+            setOwnWorkRequest(Date.now());
+          }}
           // Hold the tip while the popout drawer is shut: Sidebar sees
           // collapsed={false} there, but the whole wrapper is translated
           // off-screen, so its anchor is invisible. The armed state
@@ -7323,6 +7506,7 @@ function AppCore() {
         >
         {route === 'home' && besideOffTask(
           <HomeView
+            onComposeTask={offerMobileTaskNotifications}
             greeting={look.greeting}
             showDots={showDots}
             activeTasks={activeTasks}
@@ -7349,6 +7533,7 @@ function AppCore() {
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
             onStartVoiceCall={startVoiceCall}
+            dictationAvailable={dictationAvailable}
             topShortcuts={offTaskShortcuts}
             browserSwitch={composerBrowserSwitch}
             onCreateProject={(args) => handleCreateProject({ ...args, _inline: true })}
@@ -7367,6 +7552,8 @@ function AppCore() {
             onPrefillConsumed={() => setComposerPrefill(null)}
             examplesRequest={examplesRequest}
             onExamplesRequestConsumed={() => setExamplesRequest(0)}
+            ownWorkRequest={ownWorkRequest}
+            onOwnWorkRequestConsumed={() => setOwnWorkRequest(0)}
             codingModeEnabled={false}
           />
         )}
@@ -7435,6 +7622,7 @@ function AppCore() {
             onRemoveAttachment={handleRemoveAttachment}
             onUpdateConnectorMute={(connector, useInChat) => handleTaskConnectorMute(currentTask?.id, connector, useInChat)}
             onStartVoiceCall={startVoiceCall}
+            dictationAvailable={dictationAvailable}
             browserRequest={browserRequest}
             projectTasks={projectTasksForBrowsers}
             onOpenTaskBrowser={(id, sessionId) => { selectTask(id); setBrowserRequest({ taskId: id, sessionId, at: Date.now() }); }}
@@ -7476,19 +7664,13 @@ function AppCore() {
             inFlightSet={inFlightSet}
             composerRedirects={composerRedirects}
             onComposerRedirectConsumed={(taskId, attachments) => {
-              // The drained files are staged here, at consumption time, and never
-              // at drain time: `composerAttachments` is app-wide, so staging a
-              // background task's files early would show them as chips on
-              // whatever conversation is open and send them there. The consumer
-              // hands them back because it is the one that knows the redirect was
-              // for the task on screen.
+              // Drained files are staged with the text, under the redirect's own task.
               const back = Array.isArray(attachments) ? attachments : [];
-              if (back.length > 0) {
-                setComposerAttachments((prev) => {
-                  const have = new Set(prev.map((a) => a.id));
-                  const fresh = back.filter((a) => a && !have.has(a.id));
-                  return fresh.length > 0 ? [...prev, ...fresh] : prev;
-                });
+              if (taskId && back.length > 0) {
+                const prev = getDraftAttachments(taskId);
+                const have = new Set(prev.map((a) => a.id));
+                const fresh = back.filter((a) => a && !have.has(a.id));
+                if (fresh.length > 0) setDraftAttachments(taskId, [...prev, ...fresh]);
               }
               setComposerRedirects((prev) => {
                 if (!taskId || !prev[taskId]) return prev;
@@ -7576,6 +7758,7 @@ function AppCore() {
             disabledConnections={composerDisabledConnections}
             onUpdateConnectorMute={handleComposerConnectorMute}
             onStartVoiceCall={startVoiceCall}
+            dictationAvailable={dictationAvailable}
             topShortcuts={offTaskShortcuts}
             browserSwitch={composerBrowserSwitch}
             onOpenSchedule={(task) => {
@@ -7679,7 +7862,10 @@ function AppCore() {
         )}
 
         {route === 'artifacts' && (
-          <ArtifactsView
+          // The viewer hands a message to an artifact's chat without leaving
+          // this page, and follows the reply from that chat's task (ENG-4560).
+          <ConversationTranscriptsContext.Provider value={artifactTranscripts}>
+          <RoutedArtifactsView
             artifacts={artifacts}
             onArtifactChanged={handleArtifactChanged}
             onRefreshArtifacts={reloadArtifacts}
@@ -7689,6 +7875,7 @@ function AppCore() {
             onAddressWithAgent={addressArtifactWithAgent}
             resolveRepairConversation={resolveArtifactRepairConversation}
             onEditDocWithAgent={editDocWithAgent}
+            onOpenConversation={selectTask}
             onOpenProject={(p) => {
               // Pin the project so ProjectsView opens directly in detail
               // (its `selectedProject` effect mirrors that into local
@@ -7697,6 +7884,7 @@ function AppCore() {
               setRoute('projects');
             }}
           />
+          </ConversationTranscriptsContext.Provider>
         )}
 
         {route === 'tasks' && (
@@ -7787,6 +7975,7 @@ function AppCore() {
               defaultEngineId={settings.codingAgentEngine || DEFAULT_CODING_AGENT_ENGINE}
               defaultModel={settings.codingAgentModel || DEFAULT_CODING_AGENT_MODEL}
               models={mindsModels}
+              modelLabels={settings.modelLabels}
               modelMeta={modelMeta}
               skillScopeKey={codeSkillScopeKey}
               connections={connectors}
@@ -7948,6 +8137,16 @@ function AppCore() {
         }}
       />
 
+      <CustomMcpConnectModal
+        open={customMcpOpen}
+        onClose={() => setCustomMcpOpen(false)}
+        onConnected={() => {
+          fetchDatasources()
+            .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
+            .catch(() => setConnectors([]));
+        }}
+      />
+
       <ConnectorPicker
         open={connectorPickerOpen}
         onClose={() => setConnectorPickerOpen(false)}
@@ -7963,7 +8162,12 @@ function AppCore() {
             connect: (connector) => { void handleConnectorPicked(connector); },
             build: (name) => sendFromApp(buildCustomConnectorRequest(name)),
           }));
+          setComingSoonConnectorId(c?.id || null);
           setComingSoonFeature(label);
+        }}
+        onAddMcpUrl={() => {
+          setConnectorPickerOpen(false);
+          setCustomMcpOpen(true);
         }}
         onBuildCustom={(query) => {
           setConnectorPickerOpen(false);
@@ -7984,7 +8188,8 @@ function AppCore() {
       <ComingSoonModal
         feature={comingSoonFeature}
         offer={comingSoonOffer}
-        onClose={() => { setComingSoonFeature(null); setComingSoonOffer(null); }}
+        connectorId={comingSoonConnectorId}
+        onClose={() => { setComingSoonFeature(null); setComingSoonOffer(null); setComingSoonConnectorId(null); }}
       />
 
       {!host.isWeb && (
@@ -8205,9 +8410,11 @@ function AppCore() {
     <HubUsageContext.Provider value={hubUsageCtx}>
       <ModelPickerContext.Provider value={modelPickerCtx}>
         <LiveAppAvailabilityWatcher accountScope={codeSkillScopeKey} />
-        <CoworkProvider value={coworkValue}>
-          <CoworkRouterProvider router={routerRef.current} />
-        </CoworkProvider>
+        <OriginChatContext.Provider value={originChat}>
+          <CoworkProvider value={coworkValue}>
+            <CoworkRouterProvider router={routerRef.current} />
+          </CoworkProvider>
+        </OriginChatContext.Provider>
       </ModelPickerContext.Provider>
     </HubUsageContext.Provider>
   );

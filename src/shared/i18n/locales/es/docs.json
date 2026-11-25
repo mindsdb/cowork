@@ -15,6 +15,8 @@
     "expand": "Expandir",
     "close": "Cerrar",
     "closeDoc": "Cerrar documento",
+    "renameDoc": "Cambiar nombre del documento: {title}",
+    "docName": "Nombre del documento",
     "loading": "Cargando documento",
     "gone": "Este documento ya no existe.",
     "openFailed": "No se pudo abrir este documento. {reason}",
@@ -80,6 +82,7 @@
   "tabs": {
     "label": "Pestañas",
     "add": "Agregar pestaña",
+    "addHint": "Agrega una pestaña nueva a este documento",
     "hide": "Ocultar pestañas",
     "changed": "Modificada",
     "showChanged": "Mostrar la pestaña modificada",
@@ -186,6 +189,11 @@
     "placeholderWrite": "¿Qué debe escribir el agente aquí?",
     "placeholderChange": "¿Qué debe cambiar?",
     "send": "Enviar"
+  },
+  "comments": {
+    "edit": "Editar",
+    "editHint": "Escribir en el documento",
+    "commentHint": "Comentar: haz clic en un bloque o selecciona palabras"
   },
   "chart": {
     "label": "Gráfico",

@@ -142,6 +142,16 @@
     "cancel": "Annulla",
     "signingOut": "Uscita in corso…",
     "signOut": "Esci",
+    "delete": {
+      "title": "Elimina account",
+      "subtitle": "Richiedi l’eliminazione definitiva del tuo account MindsHub.",
+      "button": "Elimina account",
+      "confirmTitle": "Eliminare il tuo account MindsHub?",
+      "confirmBody": "Il supporto verificherà la richiesta e organizzerà l’eliminazione del tuo account e dei tuoi dati personali entro 30 giorni. Alcuni dati relativi all’account, alla fatturazione e all’assistenza potrebbero essere conservati. Se possiedi un’organizzazione con altri membri, il supporto ti aiuterà prima a trasferirne la proprietà. Gli altri membri manterranno l’organizzazione e i dati condivisi. L’eliminazione è irreversibile.",
+      "sending": "Invio in corso…",
+      "requested": "Richiesta del {requestedOn}. Data di eliminazione prevista: {deleteBy}.",
+      "error": "Non è stato possibile confermare la richiesta. Puoi riprovare senza rischi."
+    },
     "web": {
       "title": "Gestito tramite MindsHub",
       "body": "Nella versione web, l’account si gestisce tramite MindsHub."
@@ -211,6 +221,21 @@
       "tryAgain": "Riprova",
       "bodyMobile": "MindsHub non ha risposto."
     },
-    "empty": "Ancora nessun utilizzo da mostrare per questo account."
+    "empty": "Ancora nessun utilizzo da mostrare per questo account.",
+    "plan": {
+      "title": "{tier, select, plus {Piano Plus} pro {Piano Pro} other {Piano}}",
+      "renewsOn": "Si rinnova il {date}",
+      "endsOn": "Termina il {date}",
+      "ending": "In scadenza",
+      "pastDue": "Pagamento non riuscito",
+      "pastDueBody": "Non siamo riusciti a rinnovare il tuo piano. Aggiorna la carta in Gestisci per mantenerlo.",
+      "windowName": "{window, select, 7d {Quota settimanale} other {Quota di 5 ore}}",
+      "windowUsed": "{percent} usato",
+      "windowUsedResets": "{percent} usato · si rinnova alle {time}",
+      "windowMeterLabel": "{window, select, 7d {Quota settimanale usata} other {Quota di 5 ore usata}}",
+      "afterCap": "Superata una delle due quote, le attività usano il tuo saldo a tariffe API o vanno in pausa fino al rinnovo.",
+      "upgrade": "{tier, select, plus {Passa a Plus} pro {Passa a Pro} other {Cambia piano}}",
+      "manage": "Gestisci"
+    }
   }
 }

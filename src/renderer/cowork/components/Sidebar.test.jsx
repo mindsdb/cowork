@@ -54,7 +54,6 @@ const render = (ui, options) => rtlRender(ui, { wrapper: ToastProvider, ...optio
 
 import Sidebar from './Sidebar';
 import { deriveUpdateBanner } from '../../../shared/update-banner';
-import { OWN_WORK_PROMPT } from './onboarding/steps';
 import { reset as resetOnboarding } from './onboarding/onboardingStore';
 
 const baseProps = { tasks: [], onNavigate: () => {}, showWorkspaceSwitch: true };
@@ -153,11 +152,46 @@ describe('Sidebar — persistent Cowork / Code workspace switch', () => {
     expect(screen.queryByRole('button', { name: 'New code task' })).toBeNull();
   });
 
-  it('does not expose local coding on the hosted web shell', () => {
+  it('shows Code on the hosted web shell, where choosing it offers the desktop app and never switches', async () => {
     hostMock.isWeb = true;
+    const onWorkspaceChange = vi.fn();
+    render(<Sidebar {...baseProps} showWorkspaceSwitch={false} onWorkspaceChange={onWorkspaceChange} />);
+    expect(screen.getByRole('button', { name: 'Cowork' })).toHaveAttribute('aria-pressed', 'true');
+    const code = screen.getByRole('button', { name: /^Code/ });
+    expect(code).toHaveTextContent('Desktop');
+    // The tag makes Code too wide for an equal half of a 240px sidebar, so
+    // this switch sizes its halves to their content (layout is not measurable
+    // here; checked in the full app at 240px in every locale).
+    expect(code.parentElement).toHaveClass('workspace-mode-switch--tagged');
+    expect(code.style.padding).toBe('5px 6px');
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    fireEvent.click(code);
+
+    expect(await screen.findByRole('dialog', { name: 'Code mode runs in the Desktop app' })).toBeInTheDocument();
+    expect(onWorkspaceChange).not.toHaveBeenCalled();
+  });
+
+  it('shows no Code entry inside the mobile app', () => {
+    hostMock.isWeb = true;
+    hostMock.isMobileShell = true;
+    try {
+      render(<Sidebar {...baseProps} />);
+      expect(screen.queryByRole('button', { name: /^Code/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Cowork' })).toBeNull();
+    } finally {
+      hostMock.isMobileShell = false;
+    }
+  });
+
+  it('leaves the desktop switch without a Desktop tag', () => {
+    hostMock.isWeb = false;
     render(<Sidebar {...baseProps} />);
-    expect(screen.queryByRole('button', { name: 'Code' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Cowork' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Code' })).not.toHaveTextContent('Desktop');
+    expect(screen.getAllByRole('button', { name: /^Code/ })).toHaveLength(1);
+    // Desktop keeps its equal halves.
+    expect(screen.getByRole('button', { name: 'Code' }).parentElement).not.toHaveClass('workspace-mode-switch--tagged');
+    expect(screen.getByRole('button', { name: 'Code' }).style.padding).not.toBe('5px 6px');
   });
 });
 
@@ -634,18 +668,19 @@ describe('Sidebar — onboarding checklist rows', () => {
     hostMock.isWeb = true;
   });
 
-  it('starts a chat from the first step and opens Home from the example row', async () => {
+  it('opens Home from both rows without starting a chat', async () => {
     const onStartChat = vi.fn().mockResolvedValue(true);
     const onOpenExamples = vi.fn();
+    const onOpenOwnWork = vi.fn();
     const user = userEvent.setup();
-    render(<Sidebar {...baseProps} onStartChat={onStartChat} onOpenExamples={onOpenExamples} />);
+    render(<Sidebar {...baseProps} onStartChat={onStartChat} onOpenExamples={onOpenExamples} onOpenOwnWork={onOpenOwnWork} />);
 
     await user.click(screen.getByText('Try an example'));
     expect(onOpenExamples).toHaveBeenCalledTimes(1);
-    expect(onStartChat).not.toHaveBeenCalled();
 
     await user.click(screen.getByText('Start with your own work'));
-    expect(onStartChat).toHaveBeenCalledWith(OWN_WORK_PROMPT);
+    expect(onOpenOwnWork).toHaveBeenCalledTimes(1);
+    expect(onStartChat).not.toHaveBeenCalled();
   });
 });
 

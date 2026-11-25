@@ -518,8 +518,8 @@ describe('free_serving_paused card', () => {
 describe('budget_exceeded card', () => {
   const PAID = { id: 'claude-sonnet-4', name: 'Claude Sonnet 4' };
   const MSG = "Your organization's spending budget is used up. An owner or admin can raise it in Budgets.";
-  const TITLE = "Your organization's budget is used up";
-  const RAISE = "Paid models can't run until an owner or admin raises it in Budgets.";
+  const TITLE = "A budget is used up";
+  const RAISE = "Paid models can't run until an administrator raises it in Budgets.";
   const renderStop = (usage, props = {}) => render(withUsage(
     usage,
     <ChatView
@@ -536,6 +536,49 @@ describe('budget_exceeded card', () => {
     expect(stopCard(TITLE).getByRole('button', { name: 'View budgets' })).toBeEnabled();
     expect(stopCard(TITLE).queryByRole('button', { name: /Add funds|auto top up/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Switch to MindsHub Air' })).toBeNull();
+  });
+
+  it.each([
+    ['org', "Your organization's budget is used up", "Paid models can't run until an owner or admin raises it in Budgets."],
+    ['workspace', "This workspace's budget is used up", RAISE],
+    ['api_key', "This API key's budget is used up", RAISE],
+    ['team', "Your team's budget is used up", RAISE],
+    ['all_members', 'Your budget is used up', RAISE],
+  ])('names the %s budget and who can raise it when the failure says whose it is', (scope, title, body) => {
+    render(withUsage(
+      hubUsage({ remaining: 0, used: 100 }),
+      <ChatView task={taskWith(failedTurn('budget_exceeded', MSG, { budgetScope: scope }))} model={PAID} />,
+    ));
+    expect(stopCard(title).getByText(body)).toBeInTheDocument();
+  });
+
+  it.each([
+    ['org', 'month', "Your organization's monthly budget is used up"],
+    ['workspace', 'day', "This workspace's daily budget is used up"],
+    ['user', 'year', 'Your yearly budget is used up'],
+  ])('names the %s budget\'s %s period in the card title', (scope, period, title) => {
+    render(withUsage(
+      hubUsage({ remaining: 0, used: 100 }),
+      <ChatView task={taskWith(failedTurn('budget_exceeded', MSG, { budgetScope: scope, budgetPeriod: period }))} model={PAID} />,
+    ));
+    expect(stopCard(title).getByRole('button', { name: 'View budgets' })).toBeEnabled();
+  });
+
+  it.each([
+    [{ 'haiku-4-5': 'Claude Haiku' }, 'Claude Haiku'],
+    [{}, 'haiku-4-5'],
+  ])('names the model a per-model budget stops, by its catalog label or else its alias', (modelLabels, shown) => {
+    render(withUsage(
+      hubUsage({ remaining: 0, used: 100 }),
+      <ChatView
+        task={taskWith(failedTurn('budget_exceeded', MSG, { budgetScope: 'workspace', budgetPeriod: 'day', budgetModel: 'haiku-4-5' }))}
+        model={PAID}
+        modelLabels={modelLabels}
+      />,
+    ));
+    expect(stopCard("This workspace's daily budget is used up").getByText(
+      `${shown} can't run until an administrator raises it in Budgets. Other models still work.`,
+    )).toBeInTheDocument();
   });
 
   it('offers MindsHub Air while its free allowance has room, resending the failed message', async () => {
@@ -671,6 +714,14 @@ describe('rate_limited failure card (ENG-1537)', () => {
     );
     screen.getByRole('button', { name: 'Try again' }).click();
     expect(onSend).toHaveBeenCalledWith('draw me a chart', [], { docContext: null });
+  });
+
+  it('asks for a doc again when the failed message asked for one', () => {
+    const onSend = vi.fn();
+    const [user, error] = failedTurn('rate_limited', BODY);
+    render(<ChatView task={taskWith([{ ...user, output: 'doc' }, error])} onSend={onSend} />);
+    screen.getByRole('button', { name: 'Try again' }).click();
+    expect(onSend).toHaveBeenCalledWith('draw me a chart', [], { docContext: null, output: 'doc' });
   });
 });
 
@@ -1243,12 +1294,16 @@ const WIRE_CODES = [
   'free_serving_paused',
   // An org admin's model rule refused the model; credits do not unlock it.
   'model_restricted',
-  // The org's spending budget is used up; an owner or admin raises it in Budgets.
+  // A spending budget is used up; an administrator raises it in Budgets.
   'budget_exceeded',
   // cowork-server found no free database connection in time; the user waits, then retries.
   'server_busy',
   // The server stopped while the turn ran; the question itself was fine, so it can be sent again.
   'turn_lost',
+  // ENG-4186 — a Plus or Pro window used up with an empty wallet.
+  'window_allowance_exhausted',
+  // ENG-4186 — a model outside the plan with an empty wallet.
+  'model_not_in_tier',
   'anton_error',
 ];
 

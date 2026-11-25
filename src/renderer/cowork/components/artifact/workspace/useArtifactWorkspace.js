@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { host } from '../../../../platform/host';
 import i18n from '../../../../lib/i18n';
 import { productName } from '../../../../lib/deploymentBrand';
+import { draftCommentsNeedProvision } from '../../../lib/draftComments';
 import {
   cancelAgentRepair,
   canUseArtifactWorkspace,
@@ -90,6 +91,10 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
   const [reviewRevision, setReviewRevision] = useState(null);
   const [draft, setDraft] = useState('');
   const [revisions, setRevisions] = useState([]);
+  // The revision the live page shows (ENG-4595), from the workspace load:
+  // what "Review changes" compares the draft against. Null when unpublished
+  // or unknown.
+  const [publishedRevision, setPublishedRevision] = useState(null);
   const [capabilities, setCapabilities] = useState(null);
   const [commentsReady, setCommentsReady] = useState(false);
   const [commentsOffReason, setCommentsOffReason] = useState('');
@@ -183,10 +188,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
       if (!isCurrent()) return;
       nextCapabilities = review?.capabilities || null;
       setReviewRevision(review?.currentRevision || null);
-      // Absent capabilities mean an older server that only speaks the POST, so
-      // fall through to it: assuming reviewer there would silently drop the
-      // owner's own comments.
-      const canProvision = nextCapabilities ? nextCapabilities.canEdit !== false : true;
+      const canProvision = draftCommentsNeedProvision(review);
       if (canProvision) {
         try {
           const access = await enableDraftComments(artifact);
@@ -234,6 +236,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
       setRepair(loaded.repair || null);
       const bundledRevisions = Array.isArray(loaded.revisions) ? loaded.revisions : null;
       if (bundledRevisions) setRevisions(bundledRevisions);
+      setPublishedRevision(loaded.publishedRevision?.id ? loaded.publishedRevision : null);
       setComparison(null);
       // Take over the view only for a decision the user can still act on: the
       // same file, and the agent's revision still head. A repair the artifact
@@ -302,6 +305,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
     setReviewRevision(null);
     setDraft('');
     setRevisions([]);
+    setPublishedRevision(null);
     setCapabilities(null);
     setCommentsReady(false);
     setUnsupportedReason('');
@@ -395,6 +399,28 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
       setStatus('error');
     }
   }, [artifact, source]);
+
+  // A change to a published artifact (ENG-4409), shown before it goes live:
+  // both sides are read by id, since the source this closure holds may be the
+  // one from before the change landed. `review` rides along on the comparison
+  // for the viewer (which quick edit it was, so Undo can reach it).
+  const reviewPublish = useCallback(async (beforeId, afterId, review = {}) => {
+    if (!supported || !beforeId || !afterId || beforeId === afterId) return false;
+    const generation = workspaceGeneration.current;
+    try {
+      const [before, after] = await Promise.all([
+        loadArtifactRevision(artifact, beforeId),
+        loadArtifactRevision(artifact, afterId),
+      ]);
+      if (workspaceGeneration.current !== generation) return false;
+      setComparison({ kind: 'publish', before, after, afterContent: after?.content ?? '', review });
+      return true;
+    } catch (compareError) {
+      if (workspaceGeneration.current !== generation) return false;
+      setError(compareError.message || tr('loadRevisionFailed'));
+      return false;
+    }
+  }, [artifact, supported]);
 
   const restoreRevision = useCallback(async (revisionId) => {
     if (!source) {
@@ -561,6 +587,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
     dirty,
     currentRevision,
     revisions,
+    publishedRevision,
     capabilities,
     capabilitiesFromServer,
     commentsReady,
@@ -575,6 +602,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
     comparison,
     setComparison,
     compareRevision,
+    reviewPublish,
     restoreRevision,
     repair,
     repairPending,
@@ -588,8 +616,8 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
     addressWithAgent, cancelRepair, capabilities, capabilitiesFromServer, changeMode, commentsReady,
     commentsOffReason,
     compareRevision, comparison, conflict, currentRevision, decideRepair, dirty, discard, draft, error, load,
-    mode, previewOnly, refreshRepair, releaseRepairsForComment, repair, repairPending,
-    repairSuperseded, restoreRevision, revisions, save, source, status,
+    mode, previewOnly, publishedRevision, refreshRepair, releaseRepairsForComment, repair, repairPending,
+    repairSuperseded, restoreRevision, reviewPublish, revisions, save, source, status,
     supported, unsupportedReason,
   ]);
 }

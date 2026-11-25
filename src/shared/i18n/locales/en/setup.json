@@ -191,11 +191,7 @@
     "steps": {
       "bring-your-work": {
         "title": "Start with your own work",
-        "description": "Tell Cowork what you're working on and hand it a file or notes."
-      },
-      "customize-role": {
-        "title": "Customize Cowork to your role",
-        "description": "Add ready-made tools and workflows."
+        "description": "Hand Cowork a file, notes or a link, and it starts."
       },
       "connect-app": {
         "title": "Connect an app",

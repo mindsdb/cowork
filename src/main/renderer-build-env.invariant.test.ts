@@ -11,7 +11,7 @@ import { fileURLToPath } from 'url';
 // bake the SAME set, so any drift fails (for any var). The contract list also
 // catches a var dropped from every build at once. Scoped to the desktop builds
 // by keying on step-`env:` injection; the web/Docker build passes build-args
-// via `build-push-ecr` (a different profile, tracked in ENG-1163).
+// via `build-image` (a different profile, tracked in ENG-1163).
 
 // The renderer build-var contract. Update deliberately when the renderer's
 // build-time inputs change; the parity check then enforces it everywhere.

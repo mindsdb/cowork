@@ -46,7 +46,7 @@ describe('MobilePushPrompt', () => {
     await controller.signedIn('user-1');
     render(<MobilePushPrompt controller={controller} />);
 
-    act(() => controller.noteTaskStarted());
+    act(() => controller.offerForTask());
     expect(screen.getByText('Get notified when your tasks finish')).toBeTruthy();
 
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Turn on' })); });
@@ -59,7 +59,7 @@ describe('MobilePushPrompt', () => {
     const { controller, plugin, storage } = controllerWith('prompt');
     await controller.signedIn('user-1');
     render(<MobilePushPrompt controller={controller} />);
-    act(() => controller.noteTaskStarted());
+    act(() => controller.offerForTask());
 
     fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
     expect(screen.queryByTestId('mobile-push-prompt')).toBeNull();

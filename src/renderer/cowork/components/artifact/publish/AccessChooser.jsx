@@ -17,12 +17,15 @@
 //   <AccessChooser value={draft} onChange={setDraft} />
 //   // on confirm: publish(buildAccessPayload(draft))
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
+import { Popover } from '@base-ui/react/popover';
 import Ico from '../../Icons';
 import { Tooltip } from '../../ui';
+import RecipientField from '../../RecipientField';
 import { isEmailShaped } from '../../../lib/emailAddress';
 import { PLATFORM_UI } from '../../../../lib/deployment';
 import i18n, { useTranslation } from '../../../../lib/i18n';
+import { getOrgMode } from '../../../../lib/orgMode';
 import { hasSharedPublishToken } from '../../../../lib/sharedPublishToken';
 import AudiencePanel, { everyoneOption, onlyMeOption, specificOption } from '../../AudiencePanel';
 import {
@@ -54,13 +57,15 @@ const BARE_INPUT = 'flex-1 min-w-0 bg-transparent border-0 [outline:none] text-i
 
 // ── Access-draft helpers (the contract between UI and the publish API) ──
 
-// The draft a first share starts from. With MindsHub UI on it starts on
-// Public, as it always has. With it off nothing is picked, so the person
-// chooses who can open the link first: `isAccessDraftValid` refuses a draft
-// with no mode, which keeps Share disabled until then. `preselect: false`
-// leaves nothing picked with MindsHub UI on too.
+// A new share starts from Only me, so a link nobody chose access for opens to
+// its owner alone. A shared-token deployment has no Only me
+// (DEFAULT_MODES), so nothing is picked and Share waits for a choice.
+// `preselect: false` leaves nothing picked either.
 export function newAccessDraft({ preselect = true } = {}) {
-  return { mode: PLATFORM_UI && preselect ? AUDIENCE_CHOICE.PUBLIC : '', password: '', emailsText: '', teamIds: [], userIds: [] };
+  return {
+    mode: preselect && !SHARED_TOKEN_PUBLISH ? AUDIENCE_CHOICE.PRIVATE : '',
+    password: '', emailsText: '', teamIds: [], userIds: [],
+  };
 }
 
 // Seed a draft from an artifact's current (owner-side) access state, so
@@ -83,9 +88,9 @@ export function newAccessDraft({ preselect = true } = {}) {
 // nothing picked and nobody listed, which `isAccessDraftValid` refuses: no
 // save is built from it.
 export function accessDraftFromArtifact(artifact, { orgSharing = false, teams = [] } = {}) {
-  // Nothing is live on an unpublished artifact, so with MindsHub UI off it
+  // Nothing is live on an unpublished artifact, so outside MindsHub mode it
   // starts from a new draft, whatever access an earlier publish left on it.
-  if (!PLATFORM_UI && !artifact?.publishedUrl) return newAccessDraft();
+  if (!artifact?.publishedUrl && !getOrgMode()) return newAccessDraft();
   const audience = readArtifactAudience(artifact);
   if (!audience) return { mode: '', password: '', emailsText: '', teamIds: [], userIds: [] };
   const serverMode = artifact?.accessMode || (artifact?.accessProtected ? 'password' : 'public');
@@ -324,6 +329,13 @@ const DEFAULT_MODES = SHARED_TOKEN_PUBLISH
 // no "Everyone", and "Specific people" takes emails only. Without
 // `canShareArtifactsOrg` "Everyone" is grayed with the role hint, or with
 // "Couldn't reach MindsHub" while MindsHub couldn't be asked.
+// `layout`: 'list' shows every option as a card at once (the first share);
+// 'dropdown' shows the chosen one as a card that opens the others in a
+// dropdown, which closes on a pick (changing a published artifact's access).
+// With 'dropdown', `showEditor` false leaves out the field the choice unfolds
+// (the password, the people), for a card that only shows and switches, and
+// `chosenDesc` replaces the chosen option's line on the card (who is on a
+// list, rather than what a list is).
 export function AccessChooser({
   value,
   onChange,
@@ -332,6 +344,9 @@ export function AccessChooser({
   sharing = null,
   // The chooser's accessible name; "Who can access your app" by default.
   ariaLabel,
+  layout = 'list',
+  showEditor = true,
+  chosenDesc = '',
 }) {
   const { t } = useTranslation('artifacts');
   const draft = value;
@@ -363,6 +378,28 @@ export function AccessChooser({
   };
 
   const specificPeople = ACCESS_LABELS.specificPeople;
+  // The password unfolds under its own card, as the recipients do under
+  // "Specific …", rather than after the last option.
+  const passwordField = (
+    <div className={INPUT_SHELL}>
+      <input
+        type={draft._reveal ? 'text' : 'password'}
+        value={draft.password}
+        onChange={(e) => set({ password: e.target.value })}
+        onKeyDown={(e) => { if (e.key === 'Enter' && isAccessDraftValid(draft)) onSubmit?.(); }}
+        autoFocus
+        placeholder={t('publish.addPassword')}
+        className={BARE_INPUT}
+      />
+      <Tooltip content={draft._reveal ? t('publish.hide') : t('publish.show')}>
+        <button type="button" onClick={() => set({ _reveal: !draft._reveal })}
+          aria-label={draft._reveal ? t('publish.hidePassword') : t('publish.showPassword')}
+          className="bg-transparent border-0 cursor-pointer text-ink-4 inline-flex p-1">
+          {draft._reveal ? Ico.eyeOff(16) : Ico.eye(16)}
+        </button>
+      </Tooltip>
+    </div>
+  );
   // "Only me" is its own option rather than an empty "Specific people", so
   // the choice a person made is the choice they see selected.
   const options = [
@@ -372,9 +409,28 @@ export function AccessChooser({
     modes.includes(AUDIENCE_CHOICE.SPECIFIC) && (orgSharing
       ? specificOption(SHARED_KIND.ARTIFACT)
       : { value: AUDIENCE_CHOICE.SPECIFIC, icon: specificPeople.icon(16), title: specificPeople.title, desc: specificPeople.desc }),
-    modes.includes(AUDIENCE_CHOICE.PASSWORD) && { value: AUDIENCE_CHOICE.PASSWORD, icon: Ico.lock(16), title: ACCESS_LABELS.password.title, desc: ACCESS_LABELS.password.desc },
+    modes.includes(AUDIENCE_CHOICE.PASSWORD) && {
+      value: AUDIENCE_CHOICE.PASSWORD, icon: Ico.lock(16), title: ACCESS_LABELS.password.title, desc: ACCESS_LABELS.password.desc,
+      editor: draft.mode === AUDIENCE_CHOICE.PASSWORD ? passwordField : null, editorTestId: 'password-field',
+    },
     modes.includes(AUDIENCE_CHOICE.PUBLIC) && { value: AUDIENCE_CHOICE.PUBLIC, icon: Ico.globe(16), title: ACCESS_LABELS.public.title, desc: ACCESS_LABELS.public.desc },
   ].filter(Boolean);
+
+  if (layout === 'dropdown') {
+    return (
+      <AccessDropdown
+        options={options}
+        value={draft.mode}
+        onValueChange={(m) => set({ mode: m })}
+        chosenDesc={chosenDesc}
+        ariaLabel={ariaLabel}
+        editor={showEditor ? (
+          options.find((option) => option.value === draft.mode)?.editor
+          ?? (draft.mode === AUDIENCE_CHOICE.SPECIFIC ? <RecipientField {...recipients} /> : null)
+        ) : null}
+      />
+    );
+  }
 
   return (
     <AudiencePanel
@@ -384,28 +440,89 @@ export function AccessChooser({
       options={options}
       specificValue={AUDIENCE_CHOICE.SPECIFIC}
       recipients={recipients}
-    >
-      {draft.mode === AUDIENCE_CHOICE.PASSWORD && (
-        <div className={INPUT_SHELL}>
-          <input
-            type={draft._reveal ? 'text' : 'password'}
-            value={draft.password}
-            onChange={(e) => set({ password: e.target.value })}
-            onKeyDown={(e) => { if (e.key === 'Enter' && isAccessDraftValid(draft)) onSubmit?.(); }}
-            autoFocus
-            placeholder={t('publish.addPassword')}
-            className={BARE_INPUT}
-          />
-          <Tooltip content={draft._reveal ? t('publish.hide') : t('publish.show')}>
-            <button type="button" onClick={() => set({ _reveal: !draft._reveal })}
-              aria-label={draft._reveal ? t('publish.hidePassword') : t('publish.showPassword')}
-              className="bg-transparent border-0 cursor-pointer text-ink-4 inline-flex p-1">
-              {draft._reveal ? Ico.eyeOff(16) : Ico.eye(16)}
-            </button>
-          </Tooltip>
-        </div>
-      )}
-    </AudiencePanel>
+    />
+  );
+}
+
+/* The chosen access as a card that opens the options in a dropdown. The
+   options are the same cards, as radios, with the same lock hints; picking
+   one closes it. The field the choice needs (password, people) sits under
+   the card. */
+function AccessDropdown({ options, value, onValueChange, editor, chosenDesc = '', ariaLabel }) {
+  const { t } = useTranslation('artifacts');
+  const whoCanAccess = ariaLabel ?? t('publish.whoCanAccess');
+  const [open, setOpen] = useState(false);
+  // Arrow keys move through the options without picking: the radio group
+  // checks each one it lands on, and a pick closes the dropdown (and, on the
+  // summary, starts a change). Enter or a click picks.
+  const [highlighted, setHighlighted] = useState(null);
+  // The key behind the radio group's change, if any: its change details do
+  // not say whether an arrow key or a click made it.
+  const keyRef = useRef('');
+  const changeOpen = (next) => {
+    setOpen(next);
+    if (!next) setHighlighted(null);
+  };
+  const pick = (m) => {
+    changeOpen(false);
+    if (m !== value) onValueChange(m);
+  };
+  const chosen = options.find((option) => option.value === value) || null;
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      <Popover.Root open={open} onOpenChange={changeOpen}>
+        <Popover.Trigger
+          className="flex w-full min-w-0 cursor-pointer items-center gap-[10px] rounded-card border border-solid border-line
+            bg-surface-2 py-[10px] px-3 text-left font-body text-ink outline-none
+            [transition:border-color_var(--dur-hover)_ease,box-shadow_var(--dur-hover)_ease]
+            hover:border-line-2 focus-visible:border-accent focus-visible:shadow-[var(--ring)]
+            data-[popup-open]:border-accent"
+          aria-label={chosen ? `${whoCanAccess}: ${chosen.title}` : whoCanAccess}
+          data-testid="access-dropdown"
+        >
+          <span className="inline-grid h-[30px] w-[30px] shrink-0 place-items-center rounded-card-row border border-solid border-line bg-surface text-ink-3">
+            {chosen?.icon}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[13px] font-semibold text-ink">{chosen?.title || whoCanAccess}</span>
+            {(chosenDesc || chosen?.desc) && (
+              <span className="mt-px block truncate text-[11.5px] text-ink-3">{chosenDesc || chosen.desc}</span>
+            )}
+          </span>
+          <span className={`inline-flex shrink-0 text-ink-3 transition-transform duration-hover${open ? ' rotate-180' : ''}`}>
+            {Ico.chevDown(14)}
+          </span>
+        </Popover.Trigger>
+        <Popover.Portal>
+          <Popover.Positioner side="bottom" align="start" sideOffset={6} style={{ zIndex: 95, width: 'var(--anchor-width)' }}>
+            <Popover.Popup
+              onKeyDownCapture={(event) => { keyRef.current = event.key; }}
+              onPointerDownCapture={() => { keyRef.current = ''; }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && highlighted) {
+                  event.preventDefault();
+                  pick(highlighted);
+                }
+              }}
+              className="max-h-[var(--available-height,_360px)] overflow-y-auto rounded-[12px] border border-solid border-line
+                bg-surface p-2 shadow-sh-popup outline-none [transform-origin:var(--transform-origin)]
+                data-[open]:animate-scale-in data-[closed]:animate-scale-out"
+            >
+              <AudiencePanel
+                ariaLabel={whoCanAccess}
+                value={highlighted ?? value}
+                onValueChange={(m) => {
+                  if (keyRef.current.startsWith('Arrow')) setHighlighted(m);
+                  else pick(m);
+                }}
+                options={options.map(({ editor: _editor, ...option }) => option)}
+              />
+            </Popover.Popup>
+          </Popover.Positioner>
+        </Popover.Portal>
+      </Popover.Root>
+      {editor && <div data-testid="access-editor">{editor}</div>}
+    </div>
   );
 }
 

@@ -48,8 +48,9 @@
   },
   "status": {
     "badge": {
+      "onlyYou": "나만",
       "public": "공개",
-      "password": "비밀번호",
+      "publicPassword": "공개 · 비밀번호",
       "restricted": "제한됨"
     },
     "hint": {
@@ -57,8 +58,11 @@
       "notShareable": "공유되지 않았습니다. 웹 페이지와 Markdown 문서만 링크로 공유할 수 있습니다.",
       "orgRestricted": "제한됨. 링크를 열 수 있는 사람을 보려면 ‘공유’를 여세요.",
       "ownerOnly": "공유되었지만 나만 링크를 열 수 있습니다.",
+      "password": "링크와 비밀번호가 있는 사람은 누구나 열 수 있습니다.",
       "chosenPeople": "공유되었습니다. 선택한 사람만 링크를 열 수 있습니다.",
-      "unknown": "공유되었습니다. 링크를 열 수 있는 사람을 확인할 수 없어 제한된 것으로 간주합니다."
+      "unknown": "공유되었습니다. 링크를 열 수 있는 사람을 확인할 수 없어 제한된 것으로 간주합니다.",
+      "sharedWith": "{names}와(과) 공유됨",
+      "sharedWithMore": "{names} 외 {count}명과 공유됨"
     },
     "sharingFailed": "공유 실패",
     "couldNotShare": "공유하지 못했습니다.",
@@ -68,7 +72,6 @@
     "stoppingSharing": "공유를 중지하는 중…",
     "deleting": "삭제하는 중…",
     "notShared": "공유 안 됨",
-    "draft": "초안",
     "unsharedChanges": "공유되지 않은 변경 사항"
   },
   "liveAppShare": {
@@ -96,10 +99,9 @@
     "toolbar": {
       "ariaLabel": "댓글 도구 모음",
       "comment": "댓글 — 요소를 클릭하세요(⌥를 누르면 컨테이너 선택)",
-      "inbox": "댓글 받은 편지함",
-      "hideComment": "댓글 숨기기",
-      "showComment": "댓글 표시",
-      "close": "댓글 닫기"
+      "navigate": "탐색",
+      "navigateHint": "댓글을 고정해 둔 채 평소처럼 페이지 사용",
+      "commentLabel": "댓글"
     },
     "composer": {
       "placeholder": "댓글 추가…",
@@ -132,6 +134,8 @@
       "hoursAgo": "{count, plural, other {#시간 전}}",
       "daysAgo": "{count, plural, other {#일 전}}",
       "replies": "{count, plural, other {답글 #개}}",
+      "replyPlaceholder": "답글…",
+      "replyAriaLabel": "이 댓글에 답글 달기",
       "edited": "(편집됨)",
       "unattachedTip": "이 댓글이 가리키던 아티팩트의 부분을 더 이상 사용할 수 없습니다.",
       "generalTip": "아티팩트 전체에 대한 일반 피드백입니다.",
@@ -147,7 +151,12 @@
       "reopen": "다시 열기",
       "markResolved": "해결됨으로 표시",
       "resolve": "해결",
-      "more": "더 보기"
+      "more": "더 보기",
+      "agentQueued": "대기 중",
+      "edit": "편집",
+      "editAriaLabel": "댓글 편집",
+      "pinned": "고정됨",
+      "pinnedTip": "아티팩트의 특정 부분에 고정된 댓글입니다. 댓글을 클릭하면 해당 위치로 이동합니다."
     },
     "errors": {
       "load": "댓글을 불러오지 못했습니다",
@@ -157,6 +166,10 @@
       "edit": "편집하지 못했습니다",
       "delete": "삭제하지 못했습니다",
       "markRead": "피드백을 읽음으로 표시하지 못했습니다"
+    },
+    "guide": {
+      "title": "댓글",
+      "body": "페이지 어디에나 메모를 남길 수 있고, 공유받은 사람도 댓글을 달 수 있습니다. 고치고 싶은 댓글을 골라 에이전트에게 해결을 요청하세요."
     }
   },
   "export": {
@@ -229,16 +242,31 @@
     "close": "비교 닫기",
     "reject": "거부 및 복원",
     "accept": "수락 및 해결",
-    "restore": "새 리비전으로 복원"
+    "restore": "새 리비전으로 복원",
+    "changePosition": "{count, plural, other {변경 #건 중 {current}번째}}",
+    "previousChange": "이전 변경",
+    "nextChange": "다음 변경",
+    "changeNavigation": "변경 사항 이동",
+    "publishedArtifact": "게시된 아티팩트",
+    "reviewBeforePublishing": "게시하기 전에 변경 사항 검토",
+    "reviewUnshared": "아직 공유되지 않은 변경 사항",
+    "keepDraft": "초안으로 유지",
+    "publishChange": "이 변경 사항 게시",
+    "publishChanges": "변경 사항 게시",
+    "sharedVersion": "공유된 버전",
+    "draftVersion": "초안",
+    "publishing": "게시 중…"
   },
   "htmlEditor": {
     "blockGone": "선택한 텍스트 블록을 더 이상 사용할 수 없습니다.",
     "updateFailed": "이 텍스트를 업데이트하지 못했습니다.",
-    "advancedMode": "고급 모드 — 변경 사항은 계속 리비전으로 저장됩니다",
+    "advancedMode": "소스 코드 — 변경 사항은 계속 수정본으로 저장됩니다",
     "selected": "{label} 선택됨 — 입력하여 변경하세요",
     "preparing": "편집할 수 있는 텍스트를 준비하는 중…",
     "noEditable": "직접 편집할 수 있는 텍스트가 없습니다",
-    "clickToEdit": "아티팩트에서 편집할 텍스트를 클릭하세요",
+    "clickToEdit": "버튼과 링크를 포함해 텍스트를 클릭하면 편집할 수 있습니다.",
+    "syncingView": "미리 보기에서 보던 위치를 여는 중…",
+    "keepingPlace": "보던 위치로 돌아가는 중…",
     "htmlSource": "HTML 소스",
     "editing": "아티팩트 편집 중",
     "back": "아티팩트로 돌아가기",
@@ -251,7 +279,16 @@
       "buttonLabel": "버튼 레이블",
       "caption": "캡션",
       "text": "텍스트"
-    }
+    },
+    "mode": {
+      "ariaLabel": "실시간 편집 모드",
+      "navigate": "탐색",
+      "edit": "텍스트 편집",
+      "navigateHint": "평소처럼 페이지 사용: 슬라이드, 탭, 링크 이동",
+      "editHint": "텍스트를 클릭해 변경",
+      "navigateGuidance": "탐색 중입니다. 평소처럼 페이지를 사용한 뒤 무언가 바꾸려면 텍스트 편집으로 전환하세요."
+    },
+    "sourceCode": "소스 코드"
   },
   "workspace": {
     "noWorkspace": "이 아티팩트는 편집 기능이 제공되기 전에 만들어졌습니다",
@@ -272,6 +309,12 @@
   },
   "publish": {
     "ownedByOther": "이 아티팩트는 다른 소유자가 게시했습니다.",
+    "datasources": {
+      "notice": "게시하면 다음 연결의 자격 증명이 업로드됩니다: {list}",
+      "review": "이 앱은 승인하지 않은 연결의 자격 증명을 보냅니다. 공유에서 확인한 후 다시 게시하세요.",
+      "updateApp": "연결과 함께 이 앱을 게시하려면 앱을 업데이트하세요. 채팅에서 에이전트에게 게시를 요청할 수도 있습니다.",
+      "unapproved": "다음 자격 증명 없이 게시됨: {list}"
+    },
     "linkLeftLive": {
       "unrecorded": "이 링크는 {product}에서 각 페이지의 공유자를 기록하기 전에 공유되었으므로 {product}에서 업데이트하거나 게시를 중단할 수 없습니다. ‘업데이트’를 누르면 새 링크로 공유되며, ‘공유 중지’를 누르거나 아티팩트를 삭제해도 이 링크를 가진 사람은 계속 열 수 있습니다. 관리자에게 삭제를 요청하세요.",
       "otherArtifact": "게시가 중단된 페이지가 없습니다. 이 아티팩트의 기록이 다른 아티팩트의 페이지({link})를 가리키고 있었습니다.",
@@ -337,6 +380,16 @@
     "load": {
       "sharingSettings": "공유 설정",
       "currentAccess": "현재 액세스 설정"
+    },
+    "editList": "목록 편집",
+    "sharedWith": {
+      "title": "공유 대상",
+      "hint": "공유 대상 보기",
+      "triggerLabel": "공유됨: 공유 대상 보기",
+      "whoCanOpen": "열 수 있는 사람",
+      "ownerOnlyTitle": "소유자만",
+      "ownerOnlyDesc": "다른 사람은 공유 링크를 열 수 없습니다",
+      "listWithheld": "공유된 팀과 사람만"
     }
   },
   "previewErrors": {
@@ -387,7 +440,9 @@
     "artifactActions": "아티팩트 작업",
     "moreActions": "추가 작업",
     "reloadPreview": "미리 보기 다시 불러오기",
-    "close": "닫기"
+    "close": "닫기",
+    "unsharedChangesHint": "공유 링크에는 이전 버전이 표시됩니다. 변경 사항을 게시하려면 공유에서 업데이트를 사용하세요.",
+    "reviewUnsharedHint": "공유 링크에 아직 반영되지 않은 변경 사항을 검토하고 게시합니다"
   },
   "body": {
     "previewWatermark": "미리 보기",
@@ -455,7 +510,8 @@
     "discardFailed": "해당 제안을 취소하지 못했습니다.",
     "deleteTitle": "아티팩트를 삭제할까요?",
     "deleteMessage": "‘{title}’이(가) 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
-    "changedElsewhere": "이 아티팩트가 변경되었습니다. 다시 불러오기"
+    "changedElsewhere": "이 아티팩트가 변경되었습니다. 다시 불러오기",
+    "changePublished": "게시됨"
   },
   "artifactsView": {
     "sort": {
@@ -489,7 +545,24 @@
     "search": "아티팩트 검색",
     "emptyTitle": "아직 아티팩트가 없습니다",
     "emptyBody": "{agent}이(가) 만든 문서, 대시보드, 코드 결과물이 여기에 표시됩니다.",
-    "working": "작업하는 중…"
+    "working": "작업하는 중…",
+    "filter": {
+      "type": "유형",
+      "allTypes": "모든 유형",
+      "owner": "소유자",
+      "allOwners": "모든 소유자",
+      "me": "나",
+      "unknownOwner": "알 수 없는 소유자",
+      "anotherMember": "다른 멤버",
+      "noMatch": "이 필터와 일치하는 아티팩트가 없습니다.",
+      "clear": "필터 지우기",
+      "status": "상태",
+      "allStatuses": "모든 상태",
+      "access": "액세스",
+      "allAccess": "모든 액세스 수준"
+    },
+    "openComments": "{count, plural, other {열린 댓글 #개}}",
+    "openCommentsHint": "댓글이 열린 상태로 미리 보기 열기"
   },
   "compare": {
     "refused": "이쪽은 마지막 턴을 아직 처리하는 중이어서 메시지를 받지 못했습니다. 메시지는 아래 입력란에 다시 넣어 두었습니다.",
@@ -652,7 +725,8 @@
     "send": "보내기",
     "route": {
       "edit": "직접 편집하는 중…",
-      "agent": "에이전트에게 넘기는 중…"
+      "agent": "에이전트에게 넘기는 중…",
+      "reply": "답변하는 중…"
     },
     "stage": {
       "routing": "진행 방법을 정하는 중…",
@@ -687,37 +761,50 @@
     "workingInChat": "채팅에서 작업 중…",
     "sentToChat": "채팅으로 보냈습니다.",
     "chatStopped": "채팅 턴이 답변 전에 중단되었습니다.",
+    "resolveThread": {
+      "question": "댓글을 해결됨으로 표시할까요?",
+      "resolve": "해결",
+      "notNow": "나중에",
+      "resolved": "댓글을 해결했습니다.",
+      "failed": "댓글을 해결하지 못했습니다. 다시 시도하세요."
+    },
     "unsavedConfirm": {
       "title": "저장하지 않은 변경 사항이 있습니다. 보내기 전에 저장할까요?",
       "save": "저장하고 보내기",
       "discard": "버리고 보내기",
       "cancel": "취소",
       "saveFailed": "변경 사항을 저장하지 못해 아무것도 보내지 않았습니다."
+    },
+    "queued": "대기 중",
+    "queueLabel": "실행 대기",
+    "removeQueued": "대기열에서 제거",
+    "hide": "메시지 숨기기",
+    "comment": {
+      "onArtifact": "아티팩트에 대한 이 댓글을 처리하세요:",
+      "onText": "텍스트 “{quote}”에 대한 이 댓글을 처리하세요:",
+      "onElement": "요소 `{selector}`에 대한 이 댓글을 처리하세요:"
     }
   },
   "stats": {
-    "toggle": {
-      "show": "통계",
-      "hide": "통계 숨기기"
-    },
     "title": "통계",
     "close": "통계 패널 닫기",
     "loading": "통계 불러오는 중",
     "retry": "다시 시도",
-    "trackViews": "조회수 집계",
-    "trackingOff": "집계가 꺼져 있습니다. 켜면 조회수 집계가 시작됩니다.",
     "metrics": {
-      "viewsInPeriod": "조회수(30일)",
-      "uniqueViewers": "순 방문자(30일)",
-      "totalViews": "총 조회수",
-      "lastViewed": "마지막 조회"
+      "views": "조회수",
+      "viewers": "순 방문자",
+      "avgTime": "평균 시간",
+      "completion": "완독률",
+      "lastViewedHint": "최근 조회 {time}"
     },
     "daysInUtc": "날짜는 UTC 기준",
     "chartLabel": "일별 조회수",
     "viewers": {
       "email": "이메일",
       "lastSeen": "마지막 방문",
-      "restrictedOnly": "방문자 이름은 공유가 제한된 경우에만 기록됩니다."
+      "restrictedOnly": "방문자 이름은 공유가 제한된 경우에만 기록됩니다.",
+      "anonymous": "익명 방문자",
+      "none": "아직 기록된 방문자가 없습니다."
     },
     "noViews": "아직 조회수가 없습니다",
     "errors": {
@@ -726,7 +813,66 @@
       "reconnect": "통계를 보려면 MindsHub를 다시 연결하세요.",
       "temporarilyUnavailable": "통계를 일시적으로 사용할 수 없습니다.",
       "loadFailed": "통계를 불러올 수 없습니다."
-    }
+    },
+    "chartTitle": "조회수, 최근 30일",
+    "noViewsHint": "누군가 링크를 열면 여기에 조회가 표시됩니다.",
+    "off": {
+      "title": "방문자 분석이 꺼져 있습니다",
+      "body": "켜면 이 페이지를 누가 열었는지, 얼마나 머물렀는지, 어느 부분을 읽었는지 볼 수 있습니다.",
+      "turnOn": "켜기"
+    },
+    "pages": {
+      "title": "페이지별 시간",
+      "audienceChart": "페이지별 평균 시간, 전체 방문자",
+      "position": "페이지 {number} / {total}",
+      "untitled": "페이지 {number}",
+      "timeSpent": "머문 시간",
+      "avgTime": "평균 시간",
+      "reached": "도달률",
+      "barSpent": "페이지 {number} / {total}, {name}: {time}",
+      "barAvg": "페이지 {number} / {total}, {name}: 평균 {time}",
+      "barAvgReach": "페이지 {number} / {total}, {name}: 평균 {time}, 방문의 {reach} 도달"
+    },
+    "activity": {
+      "title": "모든 방문",
+      "viewerCount": "{count, plural, other {방문자 #명}}",
+      "summary": "{count, plural, other {방문 #회}} · {lastSeen}",
+      "totalTime": "총 시간 {time}",
+      "viewed": "조회: {percent}",
+      "whereabouts": "기기, OS 및 위치",
+      "loading": "방문 불러오는 중",
+      "noVisits": "기록된 방문이 없습니다.",
+      "visit": "방문",
+      "allVisits": "{count, plural, other {모든 방문 #회}} · {time}",
+      "visitOption": "{date} · {time} · {device}",
+      "viewerChart": "페이지별 시간, {name}",
+      "visitChart": "페이지별 시간, {name}, {date} 방문"
+    },
+    "devices": {
+      "desktop": "데스크톱",
+      "mobile": "모바일",
+      "tablet": "태블릿",
+      "unknown": "알 수 없는 기기"
+    },
+    "delete": {
+      "action": "분석 데이터 삭제",
+      "title": "방문자 분석을 삭제할까요?",
+      "message": "이 페이지에 기록된 모든 조회, 방문, 방문자가 삭제됩니다. 되돌릴 수 없습니다.",
+      "confirm": "삭제",
+      "hint": "이 아티팩트에 기록된 모든 조회와 방문을 삭제합니다. 되돌릴 수 없습니다."
+    },
+    "duration": {
+      "seconds": "{s}초",
+      "minutes": "{m}분",
+      "minutesSeconds": "{m}분 {s}초",
+      "hours": "{h}시간",
+      "hoursMinutes": "{h}시간 {m}분"
+    },
+    "guide": {
+      "title": "통계",
+      "body": "최근 30일 동안 공유 링크가 날마다 몇 번 열렸는지 보여 줍니다. 본인의 방문은 집계되지 않습니다."
+    },
+    "advanced": "고급"
   },
   "refPill": {
     "open": "{title} 열기"
@@ -739,18 +885,71 @@
     "showFewer": "간단히 보기"
   },
   "layers": {
-    "ariaLabel": "뷰어 레이어",
     "source": "실시간 편집",
     "comments": "댓글",
     "sourceOffPrompt": {
       "title": "실시간 편집을 끌까요?",
       "message": "실시간 편집에서 저장하지 않은 변경 사항이 삭제됩니다.",
       "confirmLabel": "변경 사항 삭제"
-    }
+    },
+    "stats": "통계"
   },
   "address": {
     "draft": "초안",
     "copy": "주소 복사",
     "copied": "복사됨"
+  },
+  "layout": {
+    "maximize": "전체 화면",
+    "restore": "전체 화면 종료"
+  },
+  "imageAttachments": {
+    "onlyImages": "PNG, JPEG, GIF, WebP 이미지만 첨부할 수 있습니다.",
+    "tooLarge": "{name}이(가) 5MB를 초과합니다.",
+    "tooMany": "메시지당 이미지는 최대 {count}개입니다.",
+    "drop": "이미지를 놓아 첨부",
+    "uploadFailed": "이미지를 업로드하지 못했습니다. 다시 시도하세요.",
+    "unavailable": "이미지를 표시할 수 없음",
+    "enlarge": "이미지 확대",
+    "shrink": "이미지 축소",
+    "image": "이미지"
+  },
+  "analytics": {
+    "title": "방문자 분석",
+    "collect": "방문자 분석 수집",
+    "collectHint": "이 페이지를 누가 열었는지, 얼마나 머물렀는지, 어느 부분을 읽었는지 확인하세요.",
+    "loading": "분석 설정 불러오는 중",
+    "loadFailed": "분석 설정을 불러오지 못했습니다.",
+    "addCredits": "크레딧 추가",
+    "errors": {
+      "creditsRequired": "방문자 분석을 수집하려면 크레딧을 추가하세요.",
+      "trackingOff": "먼저 방문자 분석을 켜세요.",
+      "saveFailed": "설정을 저장하지 못했습니다."
+    }
+  },
+  "rail": {
+    "ariaLabel": "뷰어 패널",
+    "sourceHint": "페이지의 텍스트와 레이아웃 변경",
+    "commentsHint": "피드백 남기기 및 검토",
+    "statsHint": "누가 얼마나 오래 봤는지",
+    "commentsOpen": "댓글, 열린 댓글 {count}개",
+    "openChat": "채팅 열기",
+    "openChatHint": "미리 보기를 닫고 이 항목을 만든 채팅으로 이동합니다",
+    "openChatUnavailable": {
+      "noOrigin": "채팅에서 만들어지지 않았거나 채팅이 기록되기 전에 만들어졌습니다",
+      "deleted": "이 항목을 만든 채팅이 삭제되었습니다",
+      "colleague": "동료의 채팅에서 만들어져 해당 동료만 열 수 있습니다",
+      "unreachable": "이 항목을 만든 채팅에 지금 연결할 수 없습니다"
+    }
+  },
+  "liveEditPanel": {
+    "close": "실시간 편집 패널 닫기",
+    "changes": {
+      "title": "저장되지 않은 변경 사항",
+      "undo": "이 변경 취소",
+      "undoNamed": "{label} 변경 취소: {text}",
+      "was": "이전: {text}",
+      "emptyText": "(비어 있음)"
+    }
   }
 }

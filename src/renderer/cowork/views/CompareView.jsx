@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, X } from 'lucide-react';
 import { host } from '../../platform/host';
+import { markWorkStarted } from '../lib/documentWork';
 import ChatView from './ChatView';
 import ModelSelect from '../components/ModelSelect.jsx';
 import TaskModePills from '../components/taskmodes/TaskModePills';
@@ -27,7 +28,9 @@ import { initialStreamState, reduceStream } from '../lib/responseStreamAdapter';
 import { relativeAge } from '../lib/formatTime';
 import { projectLabel } from '../lib/projectLabel';
 import { useHubUsageContext } from '../lib/hubUsageContext';
-import { USAGE_ACTIONS, deriveComposerWarning, usageActionUrl } from '../lib/usageWarnings';
+import { USAGE_ACTIONS, deriveUsageWarning, usageActionUrl } from '../lib/usageWarnings';
+import { useConsoleLink } from '../hooks/useConsoleLink';
+import { useElementWidth } from '../hooks/useElementWidth';
 import { billingActions, offersBilling } from '../lib/billingLinks';
 import {
   trackBillingOpened,
@@ -64,6 +67,7 @@ import {
   composerBlock,
   divergedAt,
   isCreditFailure,
+  noticeStopsSide,
   silentFor,
   unjudgeableReason,
   formatDuration,
@@ -86,6 +90,7 @@ import {
   verdictLabel,
 } from '../lib/compareSides';
 import i18n, { useTranslation } from '../../lib/i18n';
+import { useUsageActions } from '../hooks/useUpgradeOffer';
 
 const tr = (key, vars) => i18n.t(`compare.${key}`, { ns: 'artifacts', ...vars });
 
@@ -126,18 +131,24 @@ function namesFor(models, a, b) {
   );
 }
 
-/** The credits notice a model would get on its own, from the shared usage rules. */
-function useCreditNotices(modelIds) {
+/** The credits notice a model would get on its own, from the shared usage
+ *  rules. `modelCoveredByTier` (id to the cheapest plan covering it) lets a
+ *  pick outside a Plus or Pro plan speak of the wallet, as the composer does. */
+function useCreditNotices(modelIds, modelCoveredByTier = null) {
   const hubUsage = useHubUsageContext();
   const usage = hubUsage?.usage ?? null;
   const providerType = hubUsage?.providerType;
-  const notices = modelIds.map((model) => deriveComposerWarning(usage, { providerType, model: model || null }));
+  const notices = modelIds.map((model) => deriveUsageWarning(usage, {
+    providerType,
+    model: model || null,
+    coveredByTier: modelCoveredByTier?.[model] ?? null,
+  }));
   return { notices, isBillingOwner: !!usage?.isBillingOwner };
 }
 
-function openBilling(action, isBillingOwner, trigger) {
+function openBilling(action, isBillingOwner, trigger, consoleLink) {
   trackBillingOpened(trigger);
-  host.openExternal(usageActionUrl(action, { isBillingOwner }));
+  host.openExternal(consoleLink(usageActionUrl(action, { isBillingOwner })));
 }
 
 const NOTICE_VARIANT = { danger: 'danger', warning: 'warning', info: 'info' };
@@ -147,12 +158,17 @@ const NOTICE_VARIANT = { danger: 'danger', warning: 'warning', info: 'info' };
 // is the only explanation for the disabled button.
 function CreditNotice({ notice, isBillingOwner, trigger }) {
   const { t } = useTranslation('artifacts');
+  const consoleLink = useConsoleLink();
   const [dismissed, dismiss] = useUsageBarDismiss();
+  const usageActions = useUsageActions();
   if (!notice) return null;
+  if (!offersBilling()) {
+    return notice.blocks ? <Alert variant="warning">{t('chatView.cards.providerLimitBody', { ns: 'chat' })}</Alert> : null;
+  }
   const key = notice.dismissKey ?? notice.kind;
   const closable = !notice.blocks;
   if (closable && dismissed.includes(key)) return null;
-  const actions = billingActions(notice.actions);
+  const actions = usageActions.visible(billingActions(notice.actions));
   return (
     <Alert variant={NOTICE_VARIANT[notice.tone] || 'info'} title={notice.title} className="relative w-full pr-10">
       {closable && (
@@ -171,7 +187,9 @@ function CreditNotice({ notice, isBillingOwner, trigger }) {
         {actions.length > 0 && (
           <span className="flex flex-wrap gap-2">
             {actions.map((action) => (
-              <Button key={action.key} size="sm" variant={action.key === 'addFunds' ? 'primary' : 'subtle'} onClick={() => openBilling(action, isBillingOwner, trigger)}>
+              <Button key={action.key} size="sm" variant={action.key === 'addFunds' ? 'primary' : 'subtle'} onClick={() => (usageActions.isUpgrade(action)
+                ? usageActions.openUpgrade(action, 'compare')
+                : openBilling(action, isBillingOwner, trigger, consoleLink))}>
                 {action.label}
               </Button>
             ))}
@@ -332,6 +350,7 @@ export default function CompareView({ models = [], modelMeta, projects = [], age
       <ComparisonDetail
         comparisonId={openId}
         models={models}
+        modelMeta={modelMeta}
         projects={projects}
         agentLabel={agentLabel}
         firstSend={firstSend?.comparisonId === openId ? firstSend : null}
@@ -358,7 +377,11 @@ export default function CompareView({ models = [], modelMeta, projects = [], age
   );
 }
 
-const HISTORY_GRID = 'minmax(0, 2.4fr) minmax(0, 2fr) 64px 72px 170px 72px 16px';
+const historyGrid = () => `minmax(0, 2.4fr) minmax(0, 2fr) 64px ${offersBilling() ? '72px ' : ''}170px 72px 16px`;
+// The fixed columns, gaps and padding take about 510px of the table. Below this
+// width Prompt and Models are left too little to read (none at all on a phone),
+// so each comparison stacks into a card instead.
+const HISTORY_STACK_BELOW = 760;
 // Below this many comparisons a search box is clutter; above it, finding one
 // by eye stops being quick.
 const FILTER_THRESHOLD = 10;
@@ -383,25 +406,32 @@ function WinnerChip({ verdict, names }) {
   const { t } = useTranslation('artifacts');
   if (!verdict) return <span className="text-ink-4" aria-label={t('compare.verdictFilters.none')}>—</span>;
   if (verdict === 'a' || verdict === 'b') {
-    return <Badge variant="accent" className="max-w-full truncate" title={names[verdict]}>{names[verdict]}</Badge>;
+    // Badge is a flex box, which never draws an ellipsis itself: the name's own span does.
+    return (
+      <Badge variant="accent" className="max-w-full" title={names[verdict]}>
+        <span className="truncate">{names[verdict]}</span>
+      </Badge>
+    );
   }
   return <Badge>{verdict === 'tie' ? t('compare.tie') : t('compare.neither')}</Badge>;
 }
 
+const LABEL_CLASS = 'font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.10em] uppercase';
+
 function HistoryHeaderRow() {
   const { t } = useTranslation('artifacts');
   const Cell = ({ children, center = false }) => (
-    <div className={`font-[family-name:var(--font-mono)] text-[10.5px] text-ink-4 tracking-[0.10em] uppercase${center ? ' text-center' : ''}`}>{children}</div>
+    <div className={`${LABEL_CLASS}${center ? ' text-center' : ''}`}>{children}</div>
   );
   return (
     <div
       className="grid gap-[14px] py-[10px] px-[14px] border-b border-t-0 border-x-0 border-solid border-line"
-      style={{ gridTemplateColumns: HISTORY_GRID }}
+      style={{ gridTemplateColumns: historyGrid() }}
     >
       <Cell>{t('compare.columns.prompt')}</Cell>
       <Cell>{t('compare.columns.models')}</Cell>
       <Cell center>{t('compare.columns.turns')}</Cell>
-      <Cell>{t('compare.columns.cost')}</Cell>
+      {offersBilling() && <Cell>{t('compare.columns.cost')}</Cell>}
       <Cell>{t('compare.columns.winner')}</Cell>
       <Cell>{t('compare.columns.started')}</Cell>
       <Cell />
@@ -440,6 +470,10 @@ function ComparisonHistory({ comparisons, hasMore = false, loadingOlder = false,
   const [verdict, setVerdict] = useState('all');
   const [model, setModel] = useState('all');
   const [sort, setSort] = useState('recent');
+  const listRef = useRef(null);
+  const listWidth = useElementWidth(listRef);
+  // 0 means not measured yet: keep the table until there is a width to judge.
+  const stacked = listWidth > 0 && listWidth < HISTORY_STACK_BELOW;
   const all = comparisons || [];
   const filtering = all.length > FILTER_THRESHOLD;
   const rows = filtering
@@ -456,7 +490,7 @@ function ComparisonHistory({ comparisons, hasMore = false, loadingOlder = false,
         actions={newButton}
       />
       <div className="flex-1 min-h-0 overflow-y-auto pb-8">
-        <div className="max-w-[1080px] mx-auto w-full px-7 flex flex-col gap-3">
+        <div ref={listRef} className="max-w-[1080px] mx-auto w-full px-7 flex flex-col gap-3">
           {error && <Alert variant="danger">{error}</Alert>}
           {comparisons === undefined && !error && <div className="py-10 text-center"><Spinner /></div>}
           {filtering && (
@@ -469,38 +503,75 @@ function ComparisonHistory({ comparisons, hasMore = false, loadingOlder = false,
           )}
           {all.length > 0 && (
             <div className="rounded-[12px] border border-solid border-line overflow-hidden">
-              <HistoryHeaderRow />
+              {!stacked && <HistoryHeaderRow />}
               {rows.map((c) => {
                 const [a, b] = c.sides || [];
                 const names = namesFor(models, a, b);
                 const turns = turnsLabel(a?.turnCount, b?.turnCount, names);
                 const cost = historyCost(c.sides || []);
+                const title = (extra = '') => <span className={`truncate text-[14px] text-ink font-medium${extra}`} title={c.title}>{c.title}</span>;
+                /* One model per line, so each name is shown whole. */
+                const modelTags = (
+                  <span className="flex flex-col gap-1 min-w-0">
+                    <ModelTag id={a?.model} name={names.a} />
+                    <ModelTag id={b?.model} name={names.b} />
+                  </span>
+                );
+                const turnCount = <span className="text-ink-3 font-mono text-xs" title={turns.title}>{turns.text}</span>;
+                const costCell = offersBilling() && (
+                  <span
+                    className="text-ink-3 font-mono text-xs tabular-nums"
+                    title={cost ? t('compare.costTitle') : undefined}
+                    aria-label={cost ? t('compare.costAria', { cost }) : t('compare.costUnread')}
+                  >
+                    {cost ?? '—'}
+                  </span>
+                );
+                const winner = <span className="min-w-0"><WinnerChip verdict={c.verdict} names={names} /></span>;
+                const age = <span className="text-ink-4 font-mono text-xs">{relativeAge(c.createdAt)}</span>;
+                const chevron = <span aria-hidden className="text-ink-4 opacity-0 group-hover:opacity-100 transition-opacity">{Ico.chevRight(14)}</span>;
+                const rowProps = {
+                  as: 'div',
+                  onActivate: () => onOpen(c.id),
+                  'aria-label': t('compare.openComparison', { title: c.title }),
+                };
+                if (stacked) {
+                  return (
+                    <CardRow key={c.id} {...rowProps} className="group flex flex-col gap-2 py-3 px-[14px] cursor-pointer transition-colors hover:bg-surface-2">
+                      <span className="flex items-center gap-2 min-w-0">
+                        {title(' flex-1 min-w-0')}
+                        {age}
+                      </span>
+                      {modelTags}
+                      <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5 min-w-0">
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className={LABEL_CLASS}>{t('compare.columns.turns')}</span>
+                          {turnCount}
+                        </span>
+                        {/* A bare dash with no column above it reads as a separator. */}
+                        {cost && costCell}
+                        <span className="inline-flex items-center gap-1.5 min-w-0 max-w-full">
+                          <span className={LABEL_CLASS}>{t('compare.columns.winner')}</span>
+                          {winner}
+                        </span>
+                      </span>
+                    </CardRow>
+                  );
+                }
                 return (
                   <CardRow
                     key={c.id}
-                    as="div"
-                    onActivate={() => onOpen(c.id)}
-                    aria-label={t('compare.openComparison', { title: c.title })}
+                    {...rowProps}
                     className="group grid gap-[14px] py-3 px-[14px] items-center cursor-pointer transition-colors hover:bg-surface-2"
-                    style={{ gridTemplateColumns: HISTORY_GRID }}
+                    style={{ gridTemplateColumns: historyGrid() }}
                   >
-                    <span className="truncate text-[14px] text-ink font-medium" title={c.title}>{c.title}</span>
-                    {/* One model per line, so each name is shown whole. */}
-                    <span className="flex flex-col gap-1 min-w-0">
-                      <ModelTag id={a?.model} name={names.a} />
-                      <ModelTag id={b?.model} name={names.b} />
-                    </span>
-                    <span className="text-ink-3 font-mono text-xs text-center" title={turns.title}>{turns.text}</span>
-                    <span
-                      className="text-ink-3 font-mono text-xs tabular-nums"
-                      title={cost ? t('compare.costTitle') : undefined}
-                      aria-label={cost ? t('compare.costAria', { cost }) : t('compare.costUnread')}
-                    >
-                      {cost ?? '—'}
-                    </span>
-                    <span className="min-w-0"><WinnerChip verdict={c.verdict} names={names} /></span>
-                    <span className="text-ink-4 font-mono text-xs">{relativeAge(c.createdAt)}</span>
-                    <span aria-hidden className="text-ink-4 opacity-0 group-hover:opacity-100 transition-opacity">{Ico.chevRight(14)}</span>
+                    {title()}
+                    {modelTags}
+                    <span className="text-center">{turnCount}</span>
+                    {costCell}
+                    {winner}
+                    {age}
+                    {chevron}
                   </CardRow>
                 );
               })}
@@ -607,7 +678,7 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
 
   const nameA = modelName(models, sides.a.model);
   const nameB = modelName(models, sides.b.model);
-  const credits = useCreditNotices([sides.a.model, sides.b.model]);
+  const credits = useCreditNotices([sides.a.model, sides.b.model], modelMeta?.modelCoveredByTier);
   const creditNotice = compareCreditNotice(credits.notices);
   // A side that could not run at all would stop on its first step.
   const ready = prompt.trim() && sides.a.model && sides.b.model && !busy && !creditNotice?.blocks;
@@ -727,7 +798,10 @@ function NewComparison({ models, modelMeta, projects, onCancel, onStarted }) {
           </p>
 
           {!prompt.trim() && (
-            <TaskModePills modes={EXAMPLES} label={t('compare.examplesLabel')} onPick={(example) => setPrompt(example.prompt)} />
+            <TaskModePills modes={EXAMPLES} label={t('compare.examplesLabel')} onPick={(example) => {
+              markWorkStarted();
+              setPrompt(example.prompt);
+            }} />
           )}
         </div>
       </div>
@@ -932,7 +1006,7 @@ function useComparisonSides(comparison, { onRefused } = {}) {
   return { tasks, busy, errors, ready, unknown, lastEventAt, send, stop, refresh, load, recheck };
 }
 
-function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSend, onFirstSendDone, onBack, onDeleted, onOpenTask, onOpenSettings }) {
+function ComparisonDetail({ comparisonId, models, modelMeta, projects, agentLabel, firstSend, onFirstSendDone, onBack, onDeleted, onOpenTask, onOpenSettings }) {
   const { t } = useTranslation('artifacts');
   const [comparison, setComparison] = useState(null);
   const [error, setError] = useState('');
@@ -1025,16 +1099,17 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
   // All or nothing: a message meant for both must not quietly reach only the
   // side that happens to be free, which would make the two diverge.
   const names = namesFor(models, sides.a, sides.b);
-  const credits = useCreditNotices([sides.a?.model, sides.b?.model]);
+  const credits = useCreditNotices([sides.a?.model, sides.b?.model], modelMeta?.modelCoveredByTier);
+  const consoleLink = useConsoleLink();
   // A side whose state is unknown may still be mid-turn: its cost waits too.
   const holding = Object.fromEntries(SIDE_LABELS.map((label) => [label, !!busy[label] || !!unknown[label]]));
   const usage = useComparisonUsage(comparisonId, holding);
-  const combined = combinedCost(usage);
+  const combined = offersBilling() && combinedCost(usage);
   // A side is held back for credits while its last turn stopped for them and
   // the account still cannot pay for its model. The next usage refresh (every
   // 30s, and on window focus) lifts it once funds arrive.
   const outOfCredits = SIDE_LABELS.filter((l, i) => (
-    isCreditFailure(turns[l][turns[l].length - 1]) && credits.notices[i]?.kind === 'balance_empty'
+    isCreditFailure(turns[l][turns[l].length - 1]) && noticeStopsSide(credits.notices[i])
   ));
   // A continued side takes no messages, so it is never waited for.
   const unloaded = SIDE_LABELS.filter((label) => !(tasks[label] && ready[label]) && !sides[label]?.continuedAt);
@@ -1224,7 +1299,7 @@ function ComparisonDetail({ comparisonId, models, projects, agentLabel, firstSen
                 </Button>
               )}
               {block.action === 'addFunds' && offersBilling() && (
-                <Button size="sm" variant="primary" onClick={() => openBilling(USAGE_ACTIONS.addFunds, credits.isBillingOwner, 'compare_follow_up')}>
+                <Button size="sm" variant="primary" onClick={() => openBilling(USAGE_ACTIONS.addFunds, credits.isBillingOwner, 'compare_follow_up', consoleLink)}>
                   {t('compare.addFunds')}
                 </Button>
               )}
@@ -1365,7 +1440,7 @@ function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUs
   const runningFor = Number.isFinite(startedAt) ? Math.max(0, now - startedAt) : null;
   const silent = busy ? silentFor(lastEventAt, now) : null;
   const project = task ? { id: side?.projectId, name: task.projectName, path: task.projectPath } : null;
-  const cost = sideCost(usage);
+  const cost = offersBilling() && sideCost(usage);
   const lastTurnMs = last ? turnDurationMs(last) : null;
   return (
     <section
