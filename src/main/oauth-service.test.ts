@@ -246,6 +246,8 @@ describe('oauthConnect', () => {
     const result = await oauthConnect({ ...OPTS, callbackTimeoutMs: 120 });
     expect(result.ok).toBe(false);
     expect(result.reason).toMatch(/timed out/i);
+    // Built-in connectors keep their result shape: no browser end code.
+    expect(Object.keys(result).sort()).toEqual(['ok', 'reason']);
   });
 
   // A mismatched-state hit no longer tears the whole attempt down (see the
@@ -504,19 +506,27 @@ describe('authorizeInBrowser', () => {
     await expect(flow).resolves.toMatchObject({ ok: true, code: 'real' });
   });
 
-  it('times out when no callback arrives', async () => {
+  it('times out when no callback arrives, and says so by its code', async () => {
     captureAuthUrl();
     const result = await authorizeInBrowser({ ...BROWSER_OPTS, callbackTimeoutMs: 50 });
-    expect(result).toMatchObject({ ok: false });
+    expect(result).toMatchObject({ ok: false, code: 'timed_out' });
     expect(result.ok ? '' : result.reason).toMatch(/timed out/);
   });
 
-  it('is cancelled by cancelCurrentOAuth', async () => {
+  it('is cancelled by cancelCurrentOAuth, and says so by its code', async () => {
     const nextAuthUrl = captureAuthUrl();
     const flow = authorizeInBrowser(BROWSER_OPTS);
     await nextAuthUrl();
     cancelCurrentOAuth();
-    await expect(flow).resolves.toMatchObject({ ok: false, reason: 'cancelled' });
+    await expect(flow).resolves.toMatchObject({ ok: false, reason: 'cancelled', code: 'cancelled' });
+  });
+
+  it('names a provider error callback by its code and the provider\'s error parameter', async () => {
+    const nextAuthUrl = captureAuthUrl();
+    const flow = authorizeInBrowser(BROWSER_OPTS);
+    const authUrl = await nextAuthUrl();
+    await hitCallback(authUrl, { error: 'access_denied', error_description: 'The user said no', state: authUrl.searchParams.get('state') as string });
+    await expect(flow).resolves.toMatchObject({ ok: false, code: 'provider_error', oauthError: 'access_denied' });
   });
 
   it.each(['http://auth.example.com/authorize', 'file:///etc/passwd', 'not a url'])(

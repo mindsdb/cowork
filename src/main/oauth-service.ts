@@ -127,9 +127,21 @@ export interface BrowserAuthorizeOpts {
   callbackTimeoutMs?: number;
 }
 
+/** Why a browser login ended without a code, when it is one of the known ends. */
+export type BrowserLoginEnd = 'cancelled' | 'timed_out' | 'provider_error';
+
 export type BrowserAuthorizeResult =
   | { ok: true; code: string; codeVerifier: string; redirectUri: string }
-  | { ok: false; reason: string };
+  /** `oauthError` is the provider's `error` parameter as sent; unchecked. */
+  | { ok: false; reason: string; code?: BrowserLoginEnd; oauthError?: string };
+
+/* A rejection of the callback wait that names how the login ended. */
+class BrowserLoginError extends Error {
+  constructor(readonly end: BrowserLoginEnd, message: string, readonly oauthError?: string) {
+    super(message);
+    this.name = 'BrowserLoginError';
+  }
+}
 
 /* One live OAuth attempt. `cancel` runs every hook the attempt's steps added,
    so a cancel reaches whichever step is running: the loopback wait or the
@@ -216,7 +228,7 @@ export async function oauthConnect(opts: OAuthConnectOpts): Promise<OAuthConnect
   attempt.hooks.push(() => exchangeController.abort());
   try {
     const step = await browserStep(opts, attempt);
-    if (!step.ok) return step;
+    if (!step.ok) return { ok: false, reason: step.reason };
     return await exchangeCode(opts, step, exchangeController.signal, () => attempt.cancelled);
   } finally {
     endAttempt(attempt);
@@ -227,7 +239,7 @@ async function browserStep(opts: BrowserAuthorizeOpts, attempt: Attempt): Promis
   let server: http.Server | null = null;
   let rejectCode: ((err: Error) => void) | null = null;
   attempt.hooks.push(() => {
-    rejectCode?.(new Error('cancelled'));
+    rejectCode?.(new BrowserLoginError('cancelled', 'cancelled'));
     closeServer(server);
   });
 
@@ -246,7 +258,7 @@ async function browserStep(opts: BrowserAuthorizeOpts, attempt: Attempt): Promis
   try {
     port = opts.redirectPort ? await bindFixedPort(opts.redirectPort) : await findFreePort();
   } catch (e: any) {
-    if (attempt.cancelled) return { ok: false, reason: 'cancelled' };
+    if (attempt.cancelled) return { ok: false, reason: 'cancelled', code: 'cancelled' };
     return {
       ok: false,
       reason: opts.redirectPort
@@ -254,7 +266,7 @@ async function browserStep(opts: BrowserAuthorizeOpts, attempt: Attempt): Promis
         : `Could not bind a loopback port: ${e?.message || e}`,
     };
   }
-  if (attempt.cancelled) return { ok: false, reason: 'cancelled' };
+  if (attempt.cancelled) return { ok: false, reason: 'cancelled', code: 'cancelled' };
 
   const redirectHost = opts.redirectHost || '127.0.0.1';
   const redirectUri = `http://${redirectHost.includes(':') ? `[${redirectHost}]` : redirectHost}:${port}/callback`;
@@ -313,7 +325,7 @@ async function browserStep(opts: BrowserAuthorizeOpts, attempt: Attempt): Promis
           res.statusCode = 400;
           res.setHeader('Content-Type', 'text/html');
           res.end(callbackPage('Authorization failed', desc || error));
-          reject(new Error(`Provider returned error: ${error}${desc ? ` — ${desc}` : ''}`));
+          reject(new BrowserLoginError('provider_error', `Provider returned error: ${error}${desc ? ` — ${desc}` : ''}`, error));
           return;
         }
         const code = url.searchParams.get('code');
@@ -347,7 +359,7 @@ async function browserStep(opts: BrowserAuthorizeOpts, attempt: Attempt): Promis
   let timeoutHandle: NodeJS.Timeout | null = null;
   const timeoutPromise = new Promise<string>((_, reject) => {
     timeoutHandle = setTimeout(
-      () => reject(new Error(`OAuth timed out — no callback received within ${Math.round(callbackTimeoutMs / 60000)} minutes.`)),
+      () => reject(new BrowserLoginError('timed_out', `OAuth timed out — no callback received within ${Math.round(callbackTimeoutMs / 60000)} minutes.`)),
       callbackTimeoutMs,
     );
   });
@@ -369,7 +381,9 @@ async function browserStep(opts: BrowserAuthorizeOpts, attempt: Attempt): Promis
     code = await Promise.race([codePromise, timeoutPromise]);
   } catch (e: any) {
     closeServer(server);
-    return { ok: false, reason: e?.message || 'OAuth flow failed.' };
+    const reason = e?.message || 'OAuth flow failed.';
+    if (!(e instanceof BrowserLoginError)) return { ok: false, reason };
+    return { ok: false, reason, code: e.end, ...(e.oauthError ? { oauthError: e.oauthError } : {}) };
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle);
     // Tiny delay so the success page actually paints in the user's

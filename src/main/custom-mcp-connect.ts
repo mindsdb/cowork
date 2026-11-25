@@ -20,7 +20,7 @@ import { appSecretGeneration, isCustomMcpAvailable } from './app-secret';
 import { checkPublicHttpsUrl, GuardedFetchError, type GuardedFetch } from './guarded-fetch';
 import { customMcpFetch, keepAccessWithoutRefresh, type StoredSettings } from './custom-mcp-tokens';
 import {
-  discoverMcpAuth, exchangeCode, givenClient, McpOAuthError, registerClient, revokeToken,
+  discoverMcpAuth, exchangeCode, givenClient, McpOAuthError, OAUTH_ERROR_CODES, registerClient, revokeToken,
   type AuthorizationServer, type OAuthClient, type TokenSet,
 } from './mcp-oauth';
 import { authorizeInBrowser, base64UrlEncode, CUSTOM_MCP_REDIRECT_PORT, CUSTOM_MCP_REDIRECT_URI, type BrowserAuthorizeOpts, type BrowserAuthorizeResult } from './oauth-service';
@@ -222,14 +222,32 @@ export async function logIn(
     redirectPort: CUSTOM_MCP_REDIRECT_PORT,
     redirectHost: '127.0.0.1',
   });
-  if (!browser.ok) return { ok: false, code: 'login_failed', reason: browser.reason };
+  if (!browser.ok) return browserFailure(browser);
   const tokens = await exchangeCode(authorizationServer, client, {
     code: browser.code, codeVerifier: browser.codeVerifier, redirectUri: browser.redirectUri, resource,
   }, deps.fetchFn);
   return { tokens, client, resource, authorizationServer };
 }
 
-const CANCELLED = { ok: false as const, code: 'login_failed', reason: 'The connection was cancelled.' };
+const CANCELLED = { ok: false as const, code: 'login_cancelled', reason: 'The connection was cancelled.' };
+
+/** The result for a browser login that ended without a code. Only a
+ *  registered OAuth error code from the provider is kept; its description
+ *  never is. Other failures (a busy port, a broken callback) stay `login_failed`. */
+function browserFailure(browser: Extract<BrowserAuthorizeResult, { ok: false }>): { ok: false; code: string; reason: string } {
+  switch (browser.code) {
+    case 'cancelled':
+      return CANCELLED;
+    case 'timed_out':
+      return { ok: false, code: 'login_timed_out', reason: 'The browser login did not come back in time.' };
+    case 'provider_error': {
+      const known = browser.oauthError && OAUTH_ERROR_CODES.has(browser.oauthError) ? browser.oauthError : undefined;
+      return { ok: false, code: 'login_refused', reason: known ? `The login server refused the login: ${known}` : 'The login server refused the login.' };
+    }
+    default:
+      return { ok: false, code: 'login_failed', reason: browser.reason };
+  }
+}
 
 let connectAttempts = 0;
 let cancelledThrough = 0;

@@ -535,12 +535,31 @@ describe('connectCustomMcp', () => {
     expect(await readPart(store.root!, ID, 'tools')).toBe('[]');
   });
 
-  it('reports a login the browser step did not finish, and creates nothing', async () => {
-    const { deps: d } = deps(LOGIN_SERVER, { authorize: async () => ({ ok: false, reason: 'cancelled' }) });
+  it('reports a login cancelled in the browser step, and creates nothing', async () => {
+    const { deps: d } = deps(LOGIN_SERVER, { authorize: async () => ({ ok: false, reason: 'cancelled', code: 'cancelled' as const }) });
 
     const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['auth.example.com'] }, d);
 
-    expect(result).toEqual({ ok: false, code: 'login_failed', reason: 'cancelled' });
+    expect(result).toEqual({ ok: false, code: 'login_cancelled', reason: 'The connection was cancelled.' });
+    expect(server.records.size).toBe(0);
+  });
+
+  it.each([
+    ['a timed-out login', { ok: false as const, reason: 'OAuth timed out — no callback received within 3 minutes.', code: 'timed_out' as const },
+      { code: 'login_timed_out', reason: 'The browser login did not come back in time.' }],
+    ['a registered provider error', { ok: false as const, reason: 'Provider returned error: invalid_scope — nope', code: 'provider_error' as const, oauthError: 'invalid_scope' },
+      { code: 'login_refused', reason: 'The login server refused the login: invalid_scope' }],
+    ['an unregistered provider error', { ok: false as const, reason: 'Provider returned error: <b>call 555</b> — token=abc', code: 'provider_error' as const, oauthError: '<b>call 555</b>' },
+      { code: 'login_refused', reason: 'The login server refused the login.' }],
+    ['a busy redirect port', { ok: false as const, reason: 'Port 47295 (required for this connector\'s redirect URI) is already in use — close whatever\'s using it and try again.' },
+      { code: 'login_failed', reason: 'Port 47295 (required for this connector\'s redirect URI) is already in use — close whatever\'s using it and try again.' }],
+  ])('reports %s by its own code, and creates nothing', async (_name, browser, expected) => {
+    const { deps: d } = deps(LOGIN_SERVER, { authorize: async () => browser });
+
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['auth.example.com'] }, d);
+
+    expect(result).toEqual({ ok: false, ...expected });
+    expect(JSON.stringify(result)).not.toContain('token=abc');
     expect(server.records.size).toBe(0);
   });
 
@@ -569,7 +588,7 @@ describe('connectCustomMcp', () => {
     cancelCustomMcpConnects();
     answer();
 
-    expect(await pending).toEqual({ ok: false, code: 'login_failed', reason: 'The connection was cancelled.' });
+    expect(await pending).toEqual({ ok: false, code: 'login_cancelled', reason: 'The connection was cancelled.' });
     expect(server.records.size).toBe(0);
     expect(keychain.entries.size).toBe(0);
   });
@@ -585,7 +604,7 @@ describe('connectCustomMcp', () => {
 
     const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['auth.example.com'] }, d);
 
-    expect(result).toMatchObject({ ok: false, code: 'login_failed' });
+    expect(result).toMatchObject({ ok: false, code: 'login_cancelled' });
     expect(authorize).not.toHaveBeenCalled();
   });
 
@@ -705,7 +724,7 @@ describe('checking a typed client ID before the browser opens', () => {
 
     const result = await connectCustomMcp(TYPED, d);
 
-    expect(result).toEqual({ ok: false, code: 'login_failed', reason: 'The connection was cancelled.' });
+    expect(result).toEqual({ ok: false, code: 'login_cancelled', reason: 'The connection was cancelled.' });
     expect(authorize).not.toHaveBeenCalled();
   });
 

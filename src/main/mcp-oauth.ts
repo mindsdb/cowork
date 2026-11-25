@@ -65,7 +65,7 @@ export interface TokenSet {
 // The registered error codes (RFC 6749 5.2, RFC 8707): only these reach
 // messages, which may land in logs and on screen; any other text a server
 // sends could carry a token.
-const OAUTH_ERROR_CODES = new Set([
+export const OAUTH_ERROR_CODES: ReadonlySet<string> = new Set([
   'invalid_request',
   'invalid_client',
   'invalid_grant',
