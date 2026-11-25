@@ -12,7 +12,7 @@
  * meant for another service under its own name.
  */
 
-import type { GuardedFetch } from './guarded-fetch';
+import { GuardedFetchError, SseReader, type GuardedFetch } from './guarded-fetch';
 
 export type McpOAuthErrorCode =
   | 'not_mcp'
@@ -77,9 +77,10 @@ const OAUTH_ERROR_CODES = new Set([
 const REFUSED_GRANT_CODES = new Set(['invalid_grant', 'invalid_client', 'unauthorized_client']);
 const MAX_LIFETIME_SECONDS = 365 * 24 * 60 * 60;
 
+const INITIALIZE_ID = 1;
 const INITIALIZE_BODY = JSON.stringify({
   jsonrpc: '2.0',
-  id: 1,
+  id: INITIALIZE_ID,
   method: 'initialize',
   params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'MindsHub Cowork', version: '1' } },
 });
@@ -92,12 +93,30 @@ const INITIALIZE_BODY = JSON.stringify({
  */
 export async function discoverMcpAuth(serverUrl: string, fetchFn: GuardedFetch): Promise<McpAuthDiscovery> {
   const server = new URL(serverUrl);
-  const probe = await fetchFn(server, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
-    body: INITIALIZE_BODY,
-  });
-  if (probe.ok) return { needsLogin: false };
+  let probe: Response;
+  try {
+    probe = await fetchFn(server, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      body: INITIALIZE_BODY,
+      // Stop at the initialize reply, not at a notification that comes before it.
+      settleEarly: isInitializeResult,
+      decodeBody: true,
+    });
+  } catch (err) {
+    // A body that cannot be read as HTTP or as compressed data is not an MCP answer.
+    if (err instanceof GuardedFetchError && err.code === 'bad_response') {
+      throw new McpOAuthError('not_mcp', 'the server did not answer as an MCP server');
+    }
+    throw err;
+  }
+  if (probe.ok) {
+    const body = await probe.text().catch(() => '');
+    if (!isInitializeAnswer(probe.headers.get('content-type'), body)) {
+      throw new McpOAuthError('not_mcp', 'the address answered, but not as an MCP server');
+    }
+    return { needsLogin: false };
+  }
   if (probe.status !== 401) {
     throw new McpOAuthError('not_mcp', `the server answered ${probe.status} instead of an MCP response`);
   }
@@ -121,6 +140,38 @@ export async function discoverMcpAuth(serverUrl: string, fetchFn: GuardedFetch):
   const authorizationServer = await authorizationServerMetadata(issuer, !metadata, fetchFn);
   const scope = challenge.scope ?? scopesFrom(metadata);
   return { needsLogin: true, resource, ...(scope ? { scope } : {}), authorizationServer };
+}
+
+/* Whether a 200 answer is an MCP `initialize` result: a JSON-RPC response,
+   plain JSON or in a server-sent event, whose result names a protocol version,
+   capabilities and the server. A web page, another API's JSON, an empty body
+   or a JSON-RPC error is not. */
+function isInitializeAnswer(contentType: string | null, body: string): boolean {
+  if ((contentType ?? '').toLowerCase().includes('text/event-stream')) {
+    const reader = new SseReader(isInitializeResult);
+    reader.write(body);
+    return reader.end();
+  }
+  return isInitializeResult(body.replace(/^\uFEFF/, ''));
+}
+
+/* The reply to INITIALIZE_BODY: same id, a result and no error, with a protocol
+   version, capabilities and a named, versioned server. */
+function isInitializeResult(json: string): boolean {
+  let message: unknown;
+  try {
+    message = JSON.parse(json);
+  } catch {
+    return false;
+  }
+  const isObject = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
+  if (!isObject(message) || message.jsonrpc !== '2.0' || message.id !== INITIALIZE_ID || 'error' in message) return false;
+  const { result } = message;
+  if (!isObject(result)) return false;
+  const { protocolVersion, capabilities, serverInfo } = result;
+  const text = (value: unknown) => typeof value === 'string' && value !== '';
+  return text(protocolVersion) && isObject(capabilities) && isObject(serverInfo) && text(serverInfo.name) && text(serverInfo.version);
 }
 
 /** Registers this app as a public client (PKCE, no secret) when the server

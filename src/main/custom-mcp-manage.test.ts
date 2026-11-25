@@ -84,7 +84,7 @@ async function serverFetch(input: string | URL | Request, init: RequestInit = {}
   return json(404, { detail: 'no route' });
 }
 
-type Answer = { status: number; headers?: Record<string, string>; json?: unknown };
+type Answer = { status: number; headers?: Record<string, string>; json?: unknown; text?: string };
 const LOGIN_SERVER: Record<string, Answer> = {
   [`POST ${SERVER_URL}`]: { status: 401, headers: { 'www-authenticate': 'Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"' } },
   'GET https://mcp.example.com/.well-known/oauth-protected-resource/mcp': { status: 200, json: { resource: SERVER_URL, authorization_servers: [AUTH] } },
@@ -104,7 +104,7 @@ function loginServer(table: Record<string, Answer> = LOGIN_SERVER) {
   const fetchFn: GuardedFetch = async (input, init = {}) => {
     requests.push({ url: String(input), init });
     const answer = table[`${init.method ?? 'GET'} ${String(input)}`] ?? { status: 404 };
-    return new Response(answer.json === undefined ? '' : JSON.stringify(answer.json), { status: answer.status, headers: answer.headers });
+    return new Response(answer.json === undefined ? answer.text ?? '' : JSON.stringify(answer.json), { status: answer.status, headers: answer.headers });
   };
   const authorize = vi.fn(async () => ({ ok: true as const, code: 'code-2', codeVerifier: 'verifier', redirectUri: 'http://127.0.0.1:47295/callback' }));
   const deps: ConnectDeps = { fetchFn, authorize, newId: () => ID, checkAuthorizeUrl: async (url) => new URL(url) };
@@ -232,6 +232,36 @@ describe('tools', () => {
 });
 
 describe('reconnect', () => {
+  const INITIALIZE_RESULT = {
+    jsonrpc: '2.0',
+    id: 1,
+    result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 'Test', version: '1' } },
+  };
+
+  it('reports success for a server with no login that still answers as MCP, as JSON or as an event stream', async () => {
+    await seed();
+    const json = loginServer({ [`POST ${SERVER_URL}`]: { status: 200, json: INITIALIZE_RESULT } });
+    expect(await reconnectCustom({ id: ID }, json.deps)).toEqual({ ok: true });
+    const sse = loginServer({
+      [`POST ${SERVER_URL}`]: { status: 200, headers: { 'content-type': 'text/event-stream' }, text: `data: ${JSON.stringify(INITIALIZE_RESULT)}\n\n` },
+    });
+    expect(await reconnectCustom({ id: ID }, sse.deps)).toEqual({ ok: true });
+  });
+
+  it.each([
+    ['a web page', { status: 200, headers: { 'content-type': 'text/html' }, text: '<html></html>' }],
+    ['plain JSON', { status: 200, json: { ok: true } }],
+    ['an empty body', { status: 200 }],
+  ])('fails when the address now answers 200 with %s', async (_name, answer) => {
+    await seed();
+    const { deps } = loginServer({ [`POST ${SERVER_URL}`]: answer });
+
+    expect(await reconnectCustom({ id: ID }, deps)).toMatchObject({ ok: false, code: 'not_mcp' });
+
+    expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-old');
+    expect(server.records.has(ID)).toBe(true);
+  });
+
   it('names the login hosts first and opens nothing', async () => {
     await seed();
     const { deps, authorize } = loginServer();

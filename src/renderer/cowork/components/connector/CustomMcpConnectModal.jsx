@@ -37,6 +37,8 @@ export function connectErrorMessage(t, result) {
       return t('customMcp.error.unresolved');
     case 'proxy_network':
       return t('customMcp.error.proxyNetwork');
+    case 'not_mcp':
+      return t('customMcp.error.notMcp');
     case 'needs_client_id':
       return t('customMcp.error.needsClientId');
     case 'timeout':

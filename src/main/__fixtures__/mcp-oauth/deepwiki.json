@@ -10,7 +10,7 @@
       "method": "POST",
       "status": 200,
       "step": "initialize_without_token",
-      "text": "event: message\r\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{\"logging\":{},\"prompts\":{\"listChanged\":true},\"resources\":{\"subscribe\":false,\"listChanged\":true},\"tools\":{\"listChanged\":true}},\"serverInfo\":{\"name\":\"DeepWiki\",\"version\":\"4.0.2\"},\"instructions\":\"DeepWiki MCP provides AI-powered documentation for GitHub repositories.\\n\\nWith a user OAuth token, all devin_* tools act in one organization: without an X-Org-Id header, the first one the user joined. Not",
+      "text": "event: message\r\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{\"logging\":{},\"prompts\":{\"listChanged\":true},\"resources\":{\"subscribe\":false,\"listChanged\":true},\"tools\":{\"listChanged\":true}},\"serverInfo\":{\"name\":\"DeepWiki\",\"version\":\"4.0.2\"},\"instructions\":\"DeepWiki MCP provides AI-powered documentation for GitHub repositories.\\n\\nWith a user OAuth token, all devin_* tools act in one organization: without an X-Org-Id header, the first one the user joined. Not\"}}\r\n\r\n",
       "url": "https://mcp.deepwiki.com/mcp"
     },
     {

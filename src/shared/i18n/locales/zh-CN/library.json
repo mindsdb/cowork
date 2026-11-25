@@ -709,6 +709,7 @@
       "invalidRequest": "该请求无效：{reason}",
       "tokenRejected": "服务器不再接受此登录。请重新连接以再次登录。",
       "unreachable": "无法访问服务器。请稍后重试。",
+      "notMcp": "该地址不是 MCP 服务器。请检查 URL。",
       "notHandedOver": "应用尚未将设置交给此服务器。请重启应用后重试。",
       "missing": "此连接已不存在。",
       "unreadable": "暂时无法读取此连接的记录。请稍后重试。"

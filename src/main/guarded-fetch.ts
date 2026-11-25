@@ -13,6 +13,7 @@
 
 import { lookup as dnsLookup } from 'node:dns/promises';
 import * as https from 'node:https';
+import * as zlib from 'node:zlib';
 import type { IncomingMessage, RequestOptions } from 'node:http';
 import type { LookupAddress } from 'node:dns';
 import { isIP } from 'node:net';
@@ -42,6 +43,16 @@ export interface GuardedRequestInit {
   method?: string;
   headers?: Record<string, string> | Headers;
   body?: string | URLSearchParams;
+  /** For a successful `text/event-stream` answer: called with the data of each
+   *  complete event; once it returns true the answer is made without waiting
+   *  for the stream to close (an MCP server may keep it open). The body is what
+   *  arrived by then. */
+  settleEarly?: (eventData: string) => boolean;
+  /** Decode the body of a successful (2xx) answer in gzip, deflate or br, within
+   *  `maxBytes` once decoded. Other statuses keep their raw body, so their status
+   *  and headers still arrive. Without it the request asks for an uncompressed
+   *  answer and the body is not decoded. */
+  decodeBody?: boolean;
 }
 
 export type GuardedFetch = (input: string | URL, init?: GuardedRequestInit) => Promise<Response>;
@@ -178,6 +189,9 @@ function send(
   const host = bare(url.hostname);
   const body = init.body === undefined ? undefined : String(init.body);
   const headers: Record<string, string> = { ...headerRecord(init.headers), host: url.host };
+  if (!Object.keys(headers).some((name) => name.toLowerCase() === 'accept-encoding')) {
+    headers['accept-encoding'] = init.decodeBody ? 'gzip, deflate, br' : 'identity';
+  }
   if (body !== undefined && !Object.keys(headers).some((name) => name.toLowerCase() === 'content-length')) {
     headers['content-length'] = String(Buffer.byteLength(body));
   }
@@ -204,27 +218,92 @@ function send(
     };
     const req = request(requestOptions, (res: IncomingMessage) => {
       const chunks: Buffer[] = [];
+      let rawSize = 0;
       let size = 0;
-      res.on('data', (chunk: Buffer) => {
-        size += chunk.length;
-        if (size > maxBytes) {
-          req.destroy();
-          finish(() => reject(new GuardedFetchError('too_large', 'the server sent more than the allowed size')));
-          return;
-        }
-        chunks.push(chunk);
-      });
-      res.on('end', () =>
+      const fail = (code: GuardedFetchErrorCode, message: string) => {
+        req.destroy();
+        decoder?.destroy();
+        finish(() => reject(new GuardedFetchError(code, message)));
+      };
+      const complete = () =>
         finish(() => {
           // Node's parser passes any three-digit status, and `Response` throws
           // outside 200-599; thrown here it would escape every handler.
           try {
-            resolve(toResponse(res, Buffer.concat(chunks)));
+            resolve(toResponse(res, Buffer.concat(chunks), decoded));
           } catch {
             reject(new GuardedFetchError('bad_response', 'the server sent a response that is not valid HTTP'));
           }
-        }),
-      );
+        });
+
+      let decoder: zlib.Gunzip | zlib.Inflate | zlib.InflateRaw | zlib.BrotliDecompress | undefined;
+      let decoded = false;
+      const ok = (res.statusCode ?? 0) >= 200 && (res.statusCode ?? 0) < 300;
+      const encoding = String(res.headers['content-encoding'] ?? '').trim().toLowerCase();
+      const compressed = init.decodeBody === true && ok && encoding !== '' && encoding !== 'identity';
+      if (compressed && !['gzip', 'x-gzip', 'deflate', 'br'].includes(encoding)) {
+        fail('bad_response', 'the server used a compression this app cannot read');
+        return;
+      }
+      decoded = compressed;
+      const eventStream =
+        ok && init.settleEarly !== undefined && String(res.headers['content-type'] ?? '').toLowerCase().includes('text/event-stream');
+      // Each byte of the body is read once, so the work stays within `maxBytes`.
+      const textDecoder = new TextDecoder('utf-8');
+      const sse = eventStream ? new SseReader(init.settleEarly as (data: string) => boolean) : undefined;
+
+      // Bytes of the body proper: what arrived, or what it decodes to.
+      const accept = (chunk: Buffer) => {
+        if (settled) return;
+        size += chunk.length;
+        if (size > maxBytes) {
+          fail('too_large', 'the server sent more than the allowed size');
+          return;
+        }
+        chunks.push(chunk);
+        if (sse?.write(textDecoder.decode(chunk, { stream: true }))) {
+          complete();
+          req.destroy();
+          decoder?.destroy();
+        }
+      };
+
+      // A "deflate" body is meant to be zlib-wrapped, but some servers send it
+      // raw; the choice needs the first two bytes, however they are split.
+      let head = Buffer.alloc(0);
+      const start = (bytes: Buffer) => {
+        decoder = decoderFor(encoding, bytes);
+        decoder.on('data', accept);
+        decoder.on('end', complete);
+        decoder.on('error', () => fail('bad_response', 'the server sent a body that is not valid compressed data'));
+        decoder.write(bytes);
+      };
+
+      res.on('data', (chunk: Buffer) => {
+        rawSize += chunk.length;
+        if (rawSize > maxBytes) {
+          fail('too_large', 'the server sent more than the allowed size');
+          return;
+        }
+        if (!compressed) {
+          accept(chunk);
+          return;
+        }
+        if (decoder) {
+          decoder.write(chunk);
+          return;
+        }
+        head = Buffer.concat([head, chunk]);
+        if (head.length >= 2 || encoding !== 'deflate') start(head);
+      });
+      res.on('end', () => {
+        if (!compressed) complete();
+        else {
+          if (!decoder && head.length > 0) start(head);
+          if (decoder) decoder.end();
+          else complete();
+        }
+      });
       res.on('error', () => finish(() => reject(new GuardedFetchError('network', 'the connection failed'))));
     });
     const timer = setTimeout(() => {
@@ -237,9 +316,84 @@ function send(
   });
 }
 
-function toResponse(res: IncomingMessage, body: Buffer): Response {
+function decoderFor(encoding: string, head: Buffer) {
+  if (encoding === 'br') return zlib.createBrotliDecompress();
+  if (encoding === 'deflate') {
+    const wrapped = head.length > 1 && (head[0] & 0x0f) === 8 && ((head[0] << 8) | head[1]) % 31 === 0;
+    return wrapped ? zlib.createInflate() : zlib.createInflateRaw();
+  }
+  return zlib.createGunzip();
+}
+
+/** Reads server-sent events one piece of text at a time, each character once.
+ *  Lines end in LF, CR or CRLF (a CRLF may be split between pieces); a blank
+ *  line closes an event. `onData` gets the data of each event that has any, and
+ *  returning true stops the reading. */
+export class SseReader {
+  private line = '';
+  private data: string[] = [];
+  private afterCr = false;
+  private started = false;
+  private stopped = false;
+
+  constructor(private readonly onData: (data: string) => boolean) {}
+
+  /** True once `onData` has returned true. */
+  write(text: string): boolean {
+    if (this.stopped) return true;
+    if (!this.started) {
+      if (text === '') return false;
+      this.started = true;
+      if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+    }
+    let from = 0;
+    for (let i = 0; i < text.length && !this.stopped; i++) {
+      const c = text.charCodeAt(i);
+      if (this.afterCr) {
+        this.afterCr = false;
+        if (c === 10) {
+          from = i + 1;
+          continue;
+        }
+      }
+      if (c === 10 || c === 13) {
+        this.line += text.slice(from, i);
+        from = i + 1;
+        this.afterCr = c === 13;
+        this.endLine();
+      }
+    }
+    if (!this.stopped) this.line += text.slice(from);
+    return this.stopped;
+  }
+
+  /** The stream ended: a last line or event left open still counts. */
+  end(): boolean {
+    if (this.stopped) return true;
+    if (this.line !== '') this.endLine();
+    if (!this.stopped) this.endLine();
+    return this.stopped;
+  }
+
+  private endLine(): void {
+    const line = this.line;
+    this.line = '';
+    if (line === '') {
+      const data = this.data.join('\n');
+      this.data = [];
+      if (data !== '' && this.onData(data)) this.stopped = true;
+    } else if (line === 'data') {
+      this.data.push('');
+    } else if (line.startsWith('data:')) {
+      this.data.push(line.slice(line.charAt(5) === ' ' ? 6 : 5));
+    }
+  }
+}
+
+function toResponse(res: IncomingMessage, body: Buffer, decoded = false): Response {
   const headers = new Headers();
   for (const [name, value] of Object.entries(res.headers)) {
+    if (decoded && (name === 'content-encoding' || name === 'content-length')) continue;
     if (Array.isArray(value)) value.forEach((item) => headers.append(name, item));
     else if (value !== undefined) headers.set(name, value);
   }

@@ -109,7 +109,7 @@ async function serverFetch(input: string | URL | Request, init: RequestInit = {}
   return json(404, { detail: 'no route' });
 }
 
-type Answer = { status: number; headers?: Record<string, string>; json?: unknown };
+type Answer = { status: number; headers?: Record<string, string>; json?: unknown; text?: string };
 
 /** The MCP server and its authorization server, answering by "METHOD url". */
 function mcpServer(table: Record<string, Answer>) {
@@ -117,7 +117,7 @@ function mcpServer(table: Record<string, Answer>) {
   const fetchFn: GuardedFetch = async (input, init = {}) => {
     requests.push({ url: String(input), init });
     const answer = table[`${init.method ?? 'GET'} ${String(input)}`] ?? { status: 404 };
-    return new Response(answer.json === undefined ? '' : JSON.stringify(answer.json), { status: answer.status, headers: answer.headers });
+    return new Response(answer.json === undefined ? answer.text ?? '' : JSON.stringify(answer.json), { status: answer.status, headers: answer.headers });
   };
   return { fetchFn, requests };
 }
@@ -143,7 +143,12 @@ const LOGIN_SERVER: Record<string, Answer> = {
   [`POST ${AUTH}/token`]: { status: 200, json: { access_token: 'AT-1', refresh_token: 'RT-1', token_type: 'Bearer', expires_in: 3600 } },
 };
 
-const NO_LOGIN_SERVER: Record<string, Answer> = { [`POST ${SERVER_URL}`]: { status: 200, json: { jsonrpc: '2.0', id: 1, result: {} } } };
+const INITIALIZE_RESULT = {
+  jsonrpc: '2.0',
+  id: 1,
+  result: { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'Test', version: '1' } },
+};
+const NO_LOGIN_SERVER: Record<string, Answer> = { [`POST ${SERVER_URL}`]: { status: 200, json: INITIALIZE_RESULT } };
 
 let ids: string[];
 function deps(table: Record<string, Answer>, overrides: Partial<ConnectDeps> = {}) {
@@ -342,6 +347,30 @@ describe('connectCustomMcp', () => {
     expect(result).toMatchObject({ ok: false, code: 'server_changed' });
     expect(server.records.size).toBe(0);
     expect(keychain.entries.size).toBe(0);
+  });
+
+  it.each([
+    ['a web page', { status: 200, headers: { 'content-type': 'text/html' }, text: '<html><body>Hello</body></html>' }],
+    ['plain JSON', { status: 200, json: { ok: true } }],
+    ['an empty body', { status: 200 }],
+    ['a JSON-RPC error', { status: 200, json: { jsonrpc: '2.0', id: 1, error: { code: -32601, message: 'no' } } }],
+  ])('refuses an address that answers 200 with %s, and stores nothing', async (_name, answer) => {
+    const { deps: d, authorize } = deps({ [`POST ${SERVER_URL}`]: answer });
+
+    const result = await connectCustomMcp({ label: 'Docs', url: SERVER_URL }, d);
+
+    expect(result).toMatchObject({ ok: false, code: 'not_mcp' });
+    expect(authorize).not.toHaveBeenCalled();
+    expect(server.records.size).toBe(0);
+    expect(server.held.size).toBe(0);
+    expect(keychain.entries.size).toBe(0);
+  });
+
+  it('connects a server with no login that answers initialize as an event stream', async () => {
+    const event = `event: message\r\ndata: ${JSON.stringify(INITIALIZE_RESULT)}\r\n\r\n`;
+    const { deps: d } = deps({ [`POST ${SERVER_URL}`]: { status: 200, headers: { 'content-type': 'text/event-stream' }, text: event } });
+
+    expect(await connectCustomMcp({ label: 'Docs', url: SERVER_URL }, d)).toMatchObject({ ok: true, id: ID });
   });
 
   it('keeps a read-only tool off when its name is longer than the server takes', async () => {

@@ -112131,6 +112131,40 @@
       "text": "5fa1c6def140"
     }
   },
+  "library:customMcp.error.notMcp": {
+    "de": {
+      "from": "3479f0339dcc",
+      "text": "0052216e46ca"
+    },
+    "es": {
+      "from": "3479f0339dcc",
+      "text": "c082cb0c6131"
+    },
+    "fr": {
+      "from": "3479f0339dcc",
+      "text": "03176b333b8b"
+    },
+    "it": {
+      "from": "3479f0339dcc",
+      "text": "d9a0c430f234"
+    },
+    "ja": {
+      "from": "3479f0339dcc",
+      "text": "6768db748784"
+    },
+    "ko": {
+      "from": "3479f0339dcc",
+      "text": "ae3a1d2a3d69"
+    },
+    "pt-BR": {
+      "from": "3479f0339dcc",
+      "text": "14ac5cea3450"
+    },
+    "zh-CN": {
+      "from": "3479f0339dcc",
+      "text": "86710f55b1ba"
+    }
+  },
   "library:customMcp.error.notPublic": {
     "de": {
       "from": "4bb3be7181d6",

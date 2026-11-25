@@ -134,6 +134,110 @@ describe('discoverMcpAuth on recorded servers', () => {
   });
 });
 
+const INITIALIZE_RESULT = {
+  jsonrpc: '2.0',
+  id: 1,
+  result: { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'Test', version: '1' } },
+};
+
+describe('discoverMcpAuth on a 200 answer', () => {
+  const probe = (answer: Answer) => replay({ [`POST ${SERVER}`]: answer });
+
+  it('asks for an event as soon as it is complete, and for a body it can decode', async () => {
+    const { fetchFn, requests } = probe({ status: 200, json: INITIALIZE_RESULT });
+    await discoverMcpAuth(SERVER, fetchFn);
+    expect(requests[0].init).toMatchObject({ settleEarly: expect.any(Function), decodeBody: true });
+  });
+
+  it('accepts a JSON initialize result', async () => {
+    expect(await discoverMcpAuth(SERVER, probe({ status: 200, json: INITIALIZE_RESULT }).fetchFn)).toEqual({ needsLogin: false });
+  });
+
+  it('accepts an event stream whose result follows a priming and a comment event, with CRLF and a leading BOM', async () => {
+    const text = `\uFEFFid: 1\r\ndata:\r\n\r\n: ping\r\n\r\nevent: message\r\ndata: ${JSON.stringify(INITIALIZE_RESULT)}\r\n\r\n`;
+    const answer = { status: 200, headers: { 'content-type': 'text/event-stream' }, text };
+    expect(await discoverMcpAuth(SERVER, probe(answer).fetchFn)).toEqual({ needsLogin: false });
+  });
+
+  it('accepts an event whose data spans several lines', async () => {
+    // Lines of one event are joined with a newline, which JSON allows between tokens.
+    const spread = JSON.stringify(INITIALIZE_RESULT).replace(/,/, ',\ndata: ');
+    const answer = { status: 200, headers: { 'content-type': 'text/event-stream' }, text: `data: ${spread}\n\n` };
+    expect(await discoverMcpAuth(SERVER, probe(answer).fetchFn)).toEqual({ needsLogin: false });
+  });
+
+  it.each([
+    ['an HTML page', { status: 200, headers: { 'content-type': 'text/html' }, text: '<!doctype html><html></html>' }],
+    ['plain JSON', { status: 200, json: { hello: 'world' } }],
+    ['a JSON array', { status: 200, json: [INITIALIZE_RESULT] }],
+    ['an empty body', { status: 200 }],
+    ['a JSON-RPC error', { status: 200, json: { jsonrpc: '2.0', id: 1, error: { code: -32600, message: 'bad' } } }],
+    ['a reply without an id', { status: 200, json: { ...INITIALIZE_RESULT, id: undefined } }],
+    ['a reply to another request', { status: 200, json: { ...INITIALIZE_RESULT, id: 2 } }],
+    ['a reply with both a result and an error', { status: 200, json: { ...INITIALIZE_RESULT, error: { code: 1, message: 'x' } } }],
+    ['a reply with empty server info', { status: 200, json: { ...INITIALIZE_RESULT, result: { ...INITIALIZE_RESULT.result, serverInfo: {} } } }],
+    ['a result that is not an initialize result', { status: 200, json: { jsonrpc: '2.0', id: 1, result: {} } }],
+    ['a result without server info', { status: 200, json: { jsonrpc: '2.0', id: 1, result: { protocolVersion: '1', capabilities: {} } } }],
+    ['a result that is not JSON-RPC', { status: 200, json: { result: INITIALIZE_RESULT.result } }],
+    ['an event stream with no result', { status: 200, headers: { 'content-type': 'text/event-stream' }, text: ': hi\n\ndata: nope\n\n' }],
+  ])('refuses %s as not an MCP server', async (_name, answer) => {
+    expect(await failure(discoverMcpAuth(SERVER, probe(answer).fetchFn))).toBe('not_mcp');
+  });
+
+  it('accepts an event stream whose reply comes after a notification, or has no closing blank line', async () => {
+    const note = 'data: {"jsonrpc":"2.0","method":"notifications/message"}\n\n';
+    const reply = `data: ${JSON.stringify(INITIALIZE_RESULT)}`;
+    const headers = { 'content-type': 'text/event-stream' };
+    expect(await discoverMcpAuth(SERVER, probe({ status: 200, headers, text: note + reply + '\n\n' }).fetchFn)).toEqual({ needsLogin: false });
+    expect(await discoverMcpAuth(SERVER, probe({ status: 200, headers, text: reply }).fetchFn)).toEqual({ needsLogin: false });
+  });
+
+  it('settles only on the initialize reply', async () => {
+    const { requests } = probe({ status: 200, json: INITIALIZE_RESULT });
+    const fetchFn: GuardedFetch = async (input, init) => {
+      expect(init?.settleEarly?.('{"jsonrpc":"2.0","method":"notifications/message"}')).toBe(false);
+      expect(init?.settleEarly?.(JSON.stringify(INITIALIZE_RESULT))).toBe(true);
+      return new Response(JSON.stringify(INITIALIZE_RESULT));
+    };
+    expect(await discoverMcpAuth(SERVER, fetchFn)).toEqual({ needsLogin: false });
+    void requests;
+  });
+
+  it('refuses a body that cannot be read as not an MCP server', async () => {
+    const fetchFn: GuardedFetch = async () => {
+      throw new GuardedFetchError('bad_response', 'bad data');
+    };
+    expect(await failure(discoverMcpAuth(SERVER, fetchFn))).toBe('not_mcp');
+  });
+
+  it('still reports a network failure as it is', async () => {
+    const fetchFn: GuardedFetch = async () => {
+      throw new GuardedFetchError('timeout', 'slow');
+    };
+    expect(await failure(discoverMcpAuth(SERVER, fetchFn))).toBe('timeout');
+  });
+
+  it('still refuses another error status as not an MCP server', async () => {
+    expect(await failure(discoverMcpAuth(SERVER, probe({ status: 404 }).fetchFn))).toBe('not_mcp');
+  });
+
+  it('still runs the login discovery on a 401, including the fallback without metadata', async () => {
+    const { fetchFn } = replay({
+      [`POST ${SERVER}`]: { status: 401, headers: { 'www-authenticate': 'Bearer' } },
+      'GET https://mcp.example.com/.well-known/oauth-authorization-server': {
+        status: 200,
+        json: {
+          issuer: 'https://mcp.example.com',
+          authorization_endpoint: 'https://mcp.example.com/authorize',
+          token_endpoint: 'https://mcp.example.com/token',
+          code_challenge_methods_supported: ['S256'],
+        },
+      },
+    });
+    expect(await discoverMcpAuth(SERVER, fetchFn)).toMatchObject({ needsLogin: true, resource: SERVER });
+  });
+});
+
 describe('discoverMcpAuth against hostile answers', () => {
   it('refuses a server asking for access to another service', async () => {
     const { fetchFn } = replay(hostile({ resource: 'https://mcp.notion.com/mcp' }));

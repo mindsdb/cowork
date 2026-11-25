@@ -4,12 +4,13 @@ import { PassThrough } from 'node:stream';
 import * as http from 'node:http';
 import * as https from 'node:https';
 import * as net from 'node:net';
+import * as zlib from 'node:zlib';
 import type { LookupAddress } from 'node:dns';
 import cases from './__fixtures__/public-address-cases.json';
-import { checkPublicHttpsUrl, createGuardedFetch, GuardedFetchError, type GuardedFetchOptions } from './guarded-fetch';
+import { checkPublicHttpsUrl, createGuardedFetch, SseReader, GuardedFetchError, type GuardedFetchOptions } from './guarded-fetch';
 
 type Responder = (options: https.RequestOptions & { servername?: string }, body: string) =>
-  | { status: number; headers?: Record<string, string>; chunks?: string[] }
+  | { status: number; headers?: Record<string, string>; chunks?: Array<string | Buffer>; open?: boolean }
   | 'error'
   | 'hang';
 
@@ -40,7 +41,7 @@ function fakeRequest(responder: Responder) {
         });
         onResponse(res);
         for (const chunk of outcome.chunks ?? []) res.write(chunk);
-        res.end();
+        if (!outcome.open) res.end();
       });
     };
     return req;
@@ -194,6 +195,215 @@ describe('createGuardedFetch', () => {
     expect(await refusal(proxied.fetchFn('https://mcp.example.com/'))).toBe('proxy_network');
     const direct = guarded(() => 'error', { proxyConfigured: async () => false });
     expect(await refusal(direct.fetchFn('https://mcp.example.com/'))).toBe('network');
+  });
+});
+
+const SSE_HEADERS = { 'content-type': 'text/event-stream' };
+const anyEvent = () => true;
+const EVENT = 'event: message\ndata: {"jsonrpc":"2.0","id":1,"result":{}}\n\n';
+
+describe('settleEarly', () => {
+  it('answers on the first complete event, without waiting for the stream to close', async () => {
+    const { fetchFn } = guarded(() => ({ status: 200, headers: SSE_HEADERS, chunks: [EVENT], open: true }));
+    const response = await fetchFn('https://mcp.example.com/mcp', { settleEarly: anyEvent });
+    expect(await response.text()).toBe(EVENT);
+  });
+
+  it('waits past a priming or comment event for one that carries data', async () => {
+    const { fetchFn } = guarded(() => ({
+      status: 200,
+      headers: SSE_HEADERS,
+      chunks: ['id: 1\ndata:\n\n', ': ping\n\n', EVENT],
+      open: true,
+    }));
+    const response = await fetchFn('https://mcp.example.com/mcp', { settleEarly: anyEvent });
+    expect(await response.text()).toContain('"result"');
+  });
+
+  it('does not answer on an event that is not closed yet', async () => {
+    const { fetchFn } = guarded(() => ({ status: 200, headers: SSE_HEADERS, chunks: ['data: {"a":1}\n'], open: true }), { timeoutMs: 30 });
+    expect(await refusal(fetchFn('https://mcp.example.com/mcp', { settleEarly: anyEvent }))).toBe('timeout');
+  });
+
+  it('reads a CRLF that is split across chunks', async () => {
+    const { fetchFn } = guarded(() => ({
+      status: 200,
+      headers: SSE_HEADERS,
+      chunks: ['data: {"a":1}\r', '\n\r', '\n'],
+      open: true,
+    }));
+    const response = await fetchFn('https://mcp.example.com/mcp', { settleEarly: anyEvent });
+    // The second CR already closes the event; the LF after it need not arrive.
+    expect(await response.text()).toBe('data: {"a":1}\r\n\r');
+  });
+
+  it('reads a stream that starts with a byte order mark', async () => {
+    const { fetchFn } = guarded(() => ({ status: 200, headers: SSE_HEADERS, chunks: ['\uFEFF' + EVENT], open: true }));
+    const response = await fetchFn('https://mcp.example.com/mcp', { settleEarly: anyEvent });
+    expect(await response.text()).toContain('"result"');
+  });
+
+  it('does not settle early on a body that is not an event stream', async () => {
+    const { fetchFn } = guarded(() => ({ status: 200, headers: { 'content-type': 'application/json' }, chunks: [EVENT], open: true }), {
+      timeoutMs: 30,
+    });
+    expect(await refusal(fetchFn('https://mcp.example.com/mcp', { settleEarly: anyEvent }))).toBe('timeout');
+  });
+
+  it('still counts what arrived against the size limit', async () => {
+    const { fetchFn } = guarded(() => ({ status: 200, headers: SSE_HEADERS, chunks: ['data: ' + 'x'.repeat(100)], open: true }), { maxBytes: 50 });
+    expect(await refusal(fetchFn('https://mcp.example.com/mcp', { settleEarly: anyEvent }))).toBe('too_large');
+  });
+});
+
+describe('settleEarly with a predicate', () => {
+  it('waits for the event the predicate accepts, not the first one with data', async () => {
+    const note = 'data: {"method":"notifications/message"}\n\n';
+    const { fetchFn } = guarded(() => ({ status: 200, headers: SSE_HEADERS, chunks: [note, EVENT], open: true }));
+    const response = await fetchFn('https://mcp.example.com/mcp', { settleEarly: (d) => d.includes('"result"') });
+    expect(await response.text()).toBe(note + EVENT);
+  });
+
+  it('answers on a CR-terminated event while the stream is open', async () => {
+    const { fetchFn } = guarded(() => ({ status: 200, headers: SSE_HEADERS, chunks: ['data: {"a":1}\r\r'], open: true }));
+    const response = await fetchFn('https://mcp.example.com/mcp', { settleEarly: anyEvent });
+    expect(await response.text()).toBe('data: {"a":1}\r\r');
+  });
+
+  it('does not stall on a large fragmented stream that never matches', async () => {
+    const chunks = Array.from({ length: 4096 }, () => 'data: ' + 'x'.repeat(120) + '\n');
+    const { fetchFn } = guarded(() => ({ status: 200, headers: SSE_HEADERS, chunks }), { maxBytes: 1024 * 1024 });
+    const started = Date.now();
+    const response = await fetchFn('https://mcp.example.com/mcp', { settleEarly: () => false });
+    expect((await response.text()).length).toBeGreaterThan(500_000);
+    expect(Date.now() - started).toBeLessThan(1500);
+  });
+});
+
+describe('SseReader', () => {
+  const read = (...parts: string[]) => {
+    const seen: string[] = [];
+    const reader = new SseReader((d) => (seen.push(d), false));
+    parts.forEach((part) => reader.write(part));
+    reader.end();
+    return seen;
+  };
+
+  it('counts an event left open at the end of the stream', () => {
+    expect(read('data: a\n')).toEqual(['a']);
+    expect(read('data: a')).toEqual(['a']);
+  });
+
+  it('reads LF, CR and CRLF endings, split anywhere', () => {
+    expect(read('data: a\r\r', 'data: b\n\n', 'data: c\r', '\n\r', '\n')).toEqual(['a', 'b', 'c']);
+  });
+
+  it('joins data lines and skips empty events and comments', () => {
+    expect(read(': hi\n\ndata:\n\ndata: a\ndata:b\n\n')).toEqual(['a\nb']);
+  });
+});
+
+describe('decodeBody', () => {
+  it('reads a zlib-wrapped deflate body whose first chunk holds one header byte', async () => {
+    const body = zlib.deflateSync('hello world'.repeat(10));
+    const { fetchFn } = guarded(() => ({
+      status: 200,
+      headers: { 'content-encoding': 'deflate' },
+      chunks: [body.subarray(0, 1), body.subarray(1)],
+    }));
+    expect(await (await fetchFn('https://mcp.example.com/mcp', { decodeBody: true })).text()).toBe('hello world'.repeat(10));
+  });
+
+  it('keeps the status and headers of an error answer whose body uses an unknown encoding', async () => {
+    const { fetchFn } = guarded(() => ({
+      status: 401,
+      headers: { 'content-encoding': 'zstd', 'www-authenticate': 'Bearer' },
+      chunks: ['not decodable'],
+    }));
+    const response = await fetchFn('https://mcp.example.com/mcp', { decodeBody: true });
+    expect(response.status).toBe(401);
+    expect(response.headers.get('www-authenticate')).toBe('Bearer');
+  });
+
+  const text = JSON.stringify({ hello: 'world'.repeat(20) });
+  const encoders: Array<[string, (data: string) => Buffer]> = [
+    ['gzip', (d) => zlib.gzipSync(d)],
+    ['deflate', (d) => zlib.deflateSync(d)],
+    ['deflate', (d) => zlib.deflateRawSync(d)],
+    ['br', (d) => zlib.brotliCompressSync(d)],
+  ];
+
+  it('asks for an uncompressed answer unless told to decode', async () => {
+    const { fetchFn, calls } = guarded(ok);
+    await fetchFn('https://mcp.example.com/mcp');
+    await fetchFn('https://mcp.example.com/mcp', { decodeBody: true });
+    expect((calls[0].headers as Record<string, string>)['accept-encoding']).toBe('identity');
+    expect((calls[1].headers as Record<string, string>)['accept-encoding']).toBe('gzip, deflate, br');
+  });
+
+  it.each(encoders)('decodes a %s body', async (encoding, encode) => {
+    const body = encode(text);
+    const { fetchFn } = guarded(() => ({
+      status: 200,
+      headers: { 'content-type': 'application/json', 'content-encoding': encoding, 'content-length': String(body.length) },
+      chunks: [body.subarray(0, 5), body.subarray(5)],
+    }));
+    const response = await fetchFn('https://mcp.example.com/mcp', { decodeBody: true });
+    expect(await response.text()).toBe(text);
+    expect(response.headers.get('content-encoding')).toBeNull();
+  });
+
+  it('settles early on an event inside a compressed stream', async () => {
+    const { fetchFn } = guarded(() => ({
+      status: 200,
+      headers: { ...SSE_HEADERS, 'content-encoding': 'gzip' },
+      chunks: [zlib.gzipSync(EVENT, { finishFlush: zlib.constants.Z_SYNC_FLUSH })],
+      open: true,
+    }));
+    const response = await fetchFn('https://mcp.example.com/mcp', { settleEarly: anyEvent, decodeBody: true });
+    expect(await response.text()).toBe(EVENT);
+  });
+
+  it('refuses a malformed compressed body', async () => {
+    const { fetchFn } = guarded(() => ({
+      status: 200,
+      headers: { 'content-encoding': 'gzip' },
+      chunks: ['this is not gzip data at all'],
+    }));
+    expect(await refusal(fetchFn('https://mcp.example.com/mcp', { decodeBody: true }))).toBe('bad_response');
+  });
+
+  it('refuses a truncated compressed body', async () => {
+    const body = zlib.gzipSync(text);
+    const { fetchFn } = guarded(() => ({
+      status: 200,
+      headers: { 'content-encoding': 'gzip' },
+      chunks: [body.subarray(0, body.length - 8)],
+    }));
+    expect(await refusal(fetchFn('https://mcp.example.com/mcp', { decodeBody: true }))).toBe('bad_response');
+  });
+
+  it('refuses a compression it cannot read', async () => {
+    const { fetchFn } = guarded(() => ({ status: 200, headers: { 'content-encoding': 'zstd' }, chunks: ['x'] }));
+    expect(await refusal(fetchFn('https://mcp.example.com/mcp', { decodeBody: true }))).toBe('bad_response');
+  });
+
+  it('refuses a body that is small compressed but over the limit once decoded', async () => {
+    const body = zlib.gzipSync('a'.repeat(100_000));
+    expect(body.length).toBeLessThan(1000);
+    const { fetchFn } = guarded(() => ({ status: 200, headers: { 'content-encoding': 'gzip' }, chunks: [body] }), { maxBytes: 10_000 });
+    expect(await refusal(fetchFn('https://mcp.example.com/mcp', { decodeBody: true }))).toBe('too_large');
+  });
+
+  it('accepts a compressed body whose decoded size is within the limit', async () => {
+    const body = zlib.gzipSync('a'.repeat(5_000));
+    const { fetchFn } = guarded(() => ({ status: 200, headers: { 'content-encoding': 'gzip' }, chunks: [body] }), { maxBytes: 10_000 });
+    expect((await (await fetchFn('https://mcp.example.com/mcp', { decodeBody: true })).text()).length).toBe(5_000);
+  });
+
+  it('answers an empty compressed body as empty', async () => {
+    const { fetchFn } = guarded(() => ({ status: 200, headers: { 'content-encoding': 'gzip' }, chunks: [] }));
+    expect(await (await fetchFn('https://mcp.example.com/mcp', { decodeBody: true })).text()).toBe('');
   });
 });
 

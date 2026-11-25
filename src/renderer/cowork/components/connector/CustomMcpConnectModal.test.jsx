@@ -140,6 +140,18 @@ describe('CustomMcpConnectModal', () => {
     expect(await screen.findByText("The login didn't finish: cancelled")).toBeTruthy();
   });
 
+  it('says the address is not an MCP server, and does not connect', async () => {
+    const user = userEvent.setup();
+    customMcpConnect.mockResolvedValue({ ok: false, code: 'not_mcp', reason: 'the address answered, but not as an MCP server' });
+    const { onConnected } = renderModal();
+
+    await fill(user);
+    await user.click(screen.getByRole('button', { name: 'Connect' }));
+
+    expect(await screen.findByText("That address isn't an MCP server. Check the URL.")).toBeTruthy();
+    expect(onConnected).not.toHaveBeenCalled();
+  });
+
   it('warns when the server could not list its tools', async () => {
     const user = userEvent.setup();
     customMcpConnect.mockResolvedValue({ ok: true, id: 'cm-1', label: 'Tracker', serverUrl: URL, toolsOn: 0, toolsUnavailable: true });
