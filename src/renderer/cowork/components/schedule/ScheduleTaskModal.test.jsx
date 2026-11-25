@@ -232,6 +232,18 @@ describe('ScheduleTaskModal — connections', () => {
     renderModal();
     expect(screen.queryByText('Connections')).not.toBeInTheDocument();
   });
+
+  it('keeps a renamed datasource excluded when editing', async () => {
+    const task = {
+      id: 's1', prompt: 'digest', cadence: 'daily',
+      disabledConnections: [{ engine: 'postgres', name: 'Primary', datasource_id: 12 }],
+    };
+    const { onSubmit } = renderModal({
+      task, connectors: [{ engine: 'postgres', name: 'Renamed', datasourceId: 12 }],
+    });
+    expect(screen.getByRole('checkbox', { name: /Renamed/ })).not.toBeChecked();
+    expect((await submitted(onSubmit, /Save changes/i)).disabled_connections).toEqual(task.disabledConnections);
+  });
 });
 
 describe('ScheduleTaskModal — started from a chat', () => {

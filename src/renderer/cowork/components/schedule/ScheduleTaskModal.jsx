@@ -13,7 +13,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { projectLabel } from '../../lib/projectLabel';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
 import { Alert, Button, Checkbox, Field, Select, Input, Textarea, Tooltip } from '../ui';
-import { connectionMuteKey, normalizeComposerDisabledConnections, toggleConnectionMute } from '../../lib/connectionMutes';
+import { connectionMuteKey } from '../../lib/connectionMutes';
+import { matchesScheduleExclusion, scheduleConnectionExclusions, toggleScheduleExclusion } from '../../lib/scheduleConnectionExclusions';
 import { missedRunLabel, missedRunText } from '../../lib/scheduleCopy';
 import {
   INTERVAL_MINUTES, defaultWhen, describeWhen, deviceZone, formatRun, nextRuns, timeZoneLabel, usableZone,
@@ -118,7 +119,7 @@ export default function ScheduleTaskModal({
         prompt:      task.prompt || '',
         projectPath: match?.path || defaultProjectPath || NO_PROJECT,
         model:       task.model || DEFAULT_MODEL,
-        disabledConnections: normalizeComposerDisabledConnections(task.disabledConnections),
+        disabledConnections: scheduleConnectionExclusions(task.disabledConnections),
         timezone,
         ...at,
       });
@@ -363,14 +364,14 @@ export default function ScheduleTaskModal({
               </span>
               <div className="flex flex-col gap-1.5">
                 {connectors.map((c) => {
-                  const key = connectionMuteKey(c.engine, c.name);
-                  const used = !form.disabledConnections.some((d) => connectionMuteKey(d.engine, d.name) === key);
+                  const key = c.datasourceId != null ? `datasource:${c.datasourceId}` : connectionMuteKey(c.engine, c.name);
+                  const used = !form.disabledConnections.some((d) => matchesScheduleExclusion(d, c));
                   return (
                     <label key={key} className="flex items-center gap-2 text-[13px] cursor-pointer">
                       <Checkbox
                         size="sm"
                         checked={used}
-                        onCheckedChange={(on) => update('disabledConnections', toggleConnectionMute(form.disabledConnections, c, on))}
+                        onCheckedChange={(on) => update('disabledConnections', toggleScheduleExclusion(form.disabledConnections, c, on))}
                       />
                       <span className="text-ink">{c.name}</span>
                       <span className="text-ink-3">{c.display_name || c.engine}</span>
