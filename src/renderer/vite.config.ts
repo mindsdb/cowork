@@ -119,10 +119,13 @@ const draftLinkFrameSources = webEntryTransform('cowork-draft-link-frame-sources
 // build time, hosted only. It rewrites only img-src, which neither transform
 // above touches.
 // Per environment: VITE_BRAND_ENV is the image's build-environment.
-function orgBrandImageSourcesFor(mode: string) {
-  const env = process.env.VITE_BRAND_ENV
+function brandEnvFor(mode: string) {
+  return process.env.VITE_BRAND_ENV
     || loadEnv(mode, path.resolve(__dirname, '../..'), 'VITE_').VITE_BRAND_ENV;
-  const origins = orgBrandImageOrigins(env);
+}
+
+function orgBrandImageSourcesFor(mode: string) {
+  const origins = orgBrandImageOrigins(brandEnvFor(mode));
   return webEntryTransform('cowork-org-brand-image-sources', (html) => withOrgBrandImageSources(html, origins));
 }
 
@@ -130,9 +133,7 @@ function orgBrandImageSourcesFor(mode: string) {
 // page's img-src also names this environment's console (images only; the
 // gallery frames none of its pages). Same build-time, hosted-only reasoning.
 function galleryImageSourcesFor(mode: string) {
-  const env = process.env.VITE_BRAND_ENV
-    || loadEnv(mode, path.resolve(__dirname, '../..'), 'VITE_').VITE_BRAND_ENV;
-  const origins = galleryImageOrigins(env);
+  const origins = galleryImageOrigins(brandEnvFor(mode));
   return webEntryTransform('cowork-gallery-image-sources', (html) => withGalleryImageSources(html, origins));
 }
 
