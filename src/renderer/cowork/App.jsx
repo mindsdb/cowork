@@ -31,6 +31,7 @@ import { Button, EmptyState, Tooltip } from './components/ui';
 import { ToastProvider, useToastManager } from './components/ui/Toast';
 import HomeView from './views/HomeView';
 import GalleryColumn from './components/gallery/GalleryColumn';
+import { composerPrefillHandler } from './lib/composerPrefill';
 import { useHomeGallery } from './components/gallery/useHomeGallery';
 import ChatView, { warmBrowser } from './views/ChatView';
 import ProjectsView from './views/ProjectsView';
@@ -2530,7 +2531,7 @@ function AppCore() {
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = effectiveWorkspaceMode === 'code' ? 'code' : route;
-  // The Use Case Gallery column beside Home (ENG-4664).
+  // The Use Case Gallery column beside Home.
   const gallery = useHomeGallery({ onHome: route === 'home' && effectiveWorkspaceMode === 'cowork', tasks, tasksStatus });
   // Route-aware gravity-field intensity: dense work surfaces quiet the
   // light-mode field (gf-quiet + gravity-field.css) so it never competes
@@ -5600,7 +5601,9 @@ function AppCore() {
   /* Show browser from Home or Projects: the task view's pane, beside the page
      on a wide screen and over it otherwise, so the page stays usable. On the
      web it shows at once, with the start page, while the browser opens. */
-  const offTaskPaneFloats = isNarrow || isMobile || !(route === 'home' || route === 'projects');
+  // The Use Case Gallery takes the docked spot beside Home, so a browser
+  // opened there floats over the page instead of hiding the gallery.
+  const offTaskPaneFloats = isNarrow || isMobile || !(route === 'home' || route === 'projects') || (route === 'home' && gallery.open);
   const offTaskPaneProps = {
     floating: offTaskPaneFloats,
     taskKey: route,
@@ -5647,6 +5650,8 @@ function AppCore() {
       }}
       openExternal={(url) => host.openExternal(url)}
       focusSearch={gallery.focusSearch}
+      place={gallery.place}
+      onPlaceChange={gallery.setPlace}
       welcome={gallery.welcome}
       variant={isMobile ? 'sheet' : 'panel'}
       reserveCorner={!isMobile}
@@ -7588,7 +7593,7 @@ function AppCore() {
             onShowServerHelp={() => openSettings('backend')}
             skipIntro={bootIntroDone}
             prefill={composerPrefill}
-            onPrefill={(text, select, send) => setComposerPrefill({ text, bump: Date.now(), select, send })}
+            onPrefill={composerPrefillHandler(setComposerPrefill)}
             onPrefillConsumed={() => setComposerPrefill(null)}
             examplesRequest={examplesRequest}
             onExamplesRequestConsumed={() => setExamplesRequest(0)}

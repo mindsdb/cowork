@@ -141,6 +141,75 @@ describe('useHomeGallery', () => {
     expect(trackGalleryShown).not.toHaveBeenCalledWith('auto');
   });
 
+  it('waits for the task list while it loads, then opens for an account that turns out to have none', async () => {
+    const { result, rerender } = mount({ tasksStatus: 'loading', tasks: [] });
+    await waitFor(() => expect(result.current.manifest).not.toBeNull());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(result.current.open).toBe(false);
+    rerender({ tasksStatus: 'ready', tasks: [] });
+    await waitFor(() => expect(result.current.open).toBe(true));
+    expect(trackGalleryShown).toHaveBeenCalledWith('auto');
+  });
+
+  it('decides again once a task list that failed to load comes back empty', async () => {
+    const { result, rerender } = mount({ tasksStatus: 'failed', tasks: [] });
+    await waitFor(() => expect(result.current.manifest).not.toBeNull());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(result.current.open).toBe(false);
+    rerender({ tasksStatus: 'ready', tasks: [] });
+    await waitFor(() => expect(result.current.open).toBe(true));
+    expect(trackGalleryShown).toHaveBeenCalledWith('auto');
+  });
+
+  it('starting an example settles it, so a later visit does not open it by itself', async () => {
+    const first = mount();
+    await waitFor(() => expect(first.result.current.open).toBe(true));
+    act(() => first.result.current.start(first.result.current.manifest.entries[0]));
+    expect(readGallerySettled()).toBe(true);
+    first.unmount();
+
+    const second = mount();
+    await waitFor(() => expect(second.result.current.manifest).not.toBeNull());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(second.result.current.open).toBe(false);
+  });
+
+  it('folds and settles when the person starts a task of their own instead, and stays shut back on Home', async () => {
+    const { result, rerender } = mount();
+    await waitFor(() => expect(result.current.open).toBe(true));
+    // Sending from Home's box moves them to the task, and the list gains it.
+    rerender({ onHome: false, tasks: [{ id: 't1' }] });
+    rerender({ onHome: true, tasks: [{ id: 't1' }] });
+    expect(result.current.open).toBe(false);
+    expect(trackGalleryClosed).toHaveBeenCalledWith('own_task');
+    expect(readGallerySettled()).toBe(true);
+  });
+
+  it('keeps where the person was across a fold and reopen', async () => {
+    const { result } = mount();
+    await waitFor(() => expect(result.current.open).toBe(true));
+    act(() => result.current.setPlace({ query: 'game', category: 'Games', openId: 'celestial-merge-2048' }));
+    act(() => result.current.hide('button'));
+    act(() => result.current.show('button'));
+    expect(result.current.place).toEqual({ query: 'game', category: 'Games', openId: 'celestial-merge-2048' });
+  });
+
+  it('records nothing new when asked to show a column that is already open', async () => {
+    const { result } = mount();
+    await waitFor(() => expect(result.current.open).toBe(true));
+    trackGalleryShown.mockClear();
+    act(() => result.current.show('checklist'));
+    expect(result.current.open).toBe(true);
+    expect(trackGalleryShown).not.toHaveBeenCalled();
+  });
+
+  it('leaves out examples published for the other surface', async () => {
+    vi.stubGlobal('fetch', respond({ ...LIST, entries: [{ ...LIST.entries[0], surfaces: ['desktop'] }] }));
+    const { result } = mount({ surface: 'web' });
+    await waitFor(() => expect(result.current.failure).toBe('empty'));
+    expect(result.current.available).toBe(false);
+  });
+
   it('does nothing where the gallery is not offered', async () => {
     const fetchSpy = respond(LIST);
     vi.stubGlobal('fetch', fetchSpy);

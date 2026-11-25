@@ -97,8 +97,14 @@ function Example({ entry, openExternal }) {
   );
 }
 
-function Detail({ entry, position, total, query, onBack, onStep, onCategory, onStart, onOwnWork, onHide, openExternal, reserveCorner }) {
+function Detail({ entry, position, total, query, onBack, onStep, onCategory, onStart, onOwnWork, onHide, openExternal, reserveCorner, focusRequest }) {
   const { t } = useTranslation('shell');
+  const headingRef = useRef(null);
+  // Opening an example hides the row that had focus, which would drop focus to
+  // the page and leave Escape and the arrow keys with nothing to act on.
+  useEffect(() => {
+    if (focusRequest) headingRef.current?.focus();
+  }, [focusRequest]);
   const minutes = runMinutes(entry.seconds);
   const facts = [
     entry.model ? t('gallery.builtWith', { model: entry.model }) : null,
@@ -126,7 +132,7 @@ function Detail({ entry, position, total, query, onBack, onStep, onCategory, onS
           <Crumb label={entry.category} onClick={() => onCategory(entry.category)} />
         </nav>
         <Example entry={entry} openExternal={openExternal} />
-        <h3 className="m-0 text-[18px] font-semibold text-ink leading-snug">{entry.title}</h3>
+        <h3 ref={headingRef} tabIndex={-1} className="outline-none m-0 text-[18px] font-semibold text-ink leading-snug">{entry.title}</h3>
         {entry.description && <p className="m-0 text-[13px] leading-relaxed text-ink-2">{entry.description}</p>}
         {entry.answer && (
           <section className="flex flex-col gap-2">
@@ -162,6 +168,9 @@ function Detail({ entry, position, total, query, onBack, onStep, onCategory, onS
 export default function GalleryColumn({
   manifest, failure = null, onRetry, onHide, onStart, onOwnWork = null,
   openExternal = () => {}, focusSearch = false, className = '',
+  // Where the person is (search, tab, opened example), owned by the caller so
+  // it survives a fold; without it the column keeps its own.
+  place: placeProp = null, onPlaceChange = null,
   // The first run, opened by itself: greets the person instead of titling the list.
   welcome = false,
   // 'panel' beside Home, drawn like the sidebar; 'sheet' over Home on a phone.
@@ -170,9 +179,20 @@ export default function GalleryColumn({
   reserveCorner = false,
 }) {
   const { t } = useTranslation('shell');
-  const [query, setQuery] = useState('');
-  const [category, setCategory] = useState(ALL_CATEGORIES);
-  const [openId, setOpenId] = useState(null);
+  const [ownPlace, setOwnPlace] = useState({ query: '', category: ALL_CATEGORIES, openId: null });
+  const place = placeProp ?? ownPlace;
+  const placeRef = useRef(place);
+  placeRef.current = place;
+  const update = (patch) => {
+    const next = { ...placeRef.current, ...patch };
+    placeRef.current = next;
+    (onPlaceChange ?? setOwnPlace)(next);
+  };
+  const { query, category, openId } = place;
+  const setQuery = (value) => update({ query: value });
+  const setCategory = (value) => update({ category: value });
+  const setOpenId = (value) => update({ openId: value });
+  const [focusDetail, setFocusDetail] = useState(0);
   const searchRef = useRef(null);
 
   useEffect(() => {
@@ -184,11 +204,16 @@ export default function GalleryColumn({
     [manifest, query, category],
   );
 
+  // One search is one event: keyed on the text alone, so a tab clicked while
+  // searching does not record it again. The count is the one at settle time.
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const searching = Boolean(view?.searching);
   useEffect(() => {
-    if (!view?.searching) return undefined;
-    const timer = setTimeout(() => trackGallerySearched(query.trim().length, view.list.length), SEARCH_SETTLE_MS);
+    if (!searching) return undefined;
+    const timer = setTimeout(() => trackGallerySearched(query.trim().length, viewRef.current?.list.length ?? 0), SEARCH_SETTLE_MS);
     return () => clearTimeout(timer);
-  }, [query, view]);
+  }, [query, searching]);
 
   const list = view?.list ?? [];
   const opened = openId ? manifest?.entries.find((entry) => entry.id === openId) ?? null : null;
@@ -196,6 +221,7 @@ export default function GalleryColumn({
 
   const open = (entry, from) => {
     setOpenId(entry.id);
+    if (from !== 'step') setFocusDetail((n) => n + 1);
     trackGalleryExampleOpened(entry.id, from);
   };
   const step = (delta) => {
@@ -231,12 +257,13 @@ export default function GalleryColumn({
           query={view?.searching ? query.trim() : ''}
           onBack={() => setOpenId(null)}
           onStep={step}
-          onCategory={(next) => { setCategory(next); setQuery(''); setOpenId(null); }}
+          onCategory={(next) => update({ category: next, query: '', openId: null })}
           onStart={onStart}
           onOwnWork={onOwnWork}
           onHide={() => onHide('button')}
           openExternal={openExternal}
           reserveCorner={reserveCorner}
+          focusRequest={focusDetail}
         />
       ) : null}
       {/* The list stays mounted under an opened example, so Back returns to the

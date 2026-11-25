@@ -68,8 +68,13 @@ function readFile(file, base) {
   return { label: text(file.label), name: text(file.name), what: text(file.what), href };
 }
 
-function readEntry(raw, base) {
+// The console publishes `surfaces` only for an example that runs on one of
+// them; omitted means both.
+const runsOn = (raw, surface) => !surface || !Array.isArray(raw.surfaces) || raw.surfaces.includes(surface);
+
+function readEntry(raw, base, surface) {
   if (!raw || typeof raw.id !== 'string' || typeof raw.mode !== 'string' || !text(raw.title)) return null;
+  if (!runsOn(raw, surface)) return null;
   const found = findSample(raw.mode, raw.id);
   if (!found) return null;
   const thumbnail = consoleAsset(raw.thumbnail, base);
@@ -102,14 +107,15 @@ function readEntry(raw, base) {
 /**
  * The published list as the column uses it, or null when there is nothing to
  * show: a version this build does not know, a malformed list, or no example
- * Cowork can start. `base` is the address the list was read from.
+ * Cowork can start. `base` is the address the list was read from; `surface`
+ * ('web' or 'desktop') leaves out examples published for the other one.
  */
-export function readGalleryManifest(raw, base) {
+export function readGalleryManifest(raw, base, { surface = null } = {}) {
   if (!raw || raw.version !== GALLERY_MANIFEST_VERSION || !Array.isArray(raw.entries)) return null;
   const seen = new Set();
   const entries = [];
   for (const item of raw.entries) {
-    const entry = readEntry(item, base);
+    const entry = readEntry(item, base, surface);
     if (!entry || seen.has(entry.id)) continue;
     seen.add(entry.id);
     entries.push(entry);
@@ -144,7 +150,7 @@ export function readGalleryManifest(raw, base) {
  * naming why there is none, so the column can say it cannot load and the
  * reason can be recorded. Never sends credentials: the list is public.
  */
-export async function fetchGalleryManifest(consoleUrl, fetchImpl = globalThis.fetch) {
+export async function fetchGalleryManifest(consoleUrl, fetchImpl = globalThis.fetch, { surface = null } = {}) {
   const url = galleryManifestUrl(consoleUrl);
   let response;
   try {
@@ -159,6 +165,6 @@ export async function fetchGalleryManifest(consoleUrl, fetchImpl = globalThis.fe
   } catch {
     return { failure: 'invalid' };
   }
-  const manifest = readGalleryManifest(raw, url);
+  const manifest = readGalleryManifest(raw, url, { surface });
   return manifest ? { manifest } : { failure: raw?.version === GALLERY_MANIFEST_VERSION ? 'empty' : 'invalid' };
 }

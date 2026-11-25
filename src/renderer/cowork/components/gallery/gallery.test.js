@@ -89,6 +89,14 @@ describe('readGalleryManifest', () => {
     expect(read(raw).entries[2].example.viewUrl).toBeNull();
   });
 
+  it('leaves out an example published only for the other surface, and keeps it where it runs', () => {
+    const raw = { ...RAW, entries: RAW.entries.map((e, i) => (i === 0 ? { ...e, surfaces: ['desktop'] } : e)) };
+    const first = RAW.entries[0].id;
+    expect(readGalleryManifest(raw, LIST_URL, { surface: 'web' })?.entries.map((e) => e.id) ?? []).not.toContain(first);
+    expect(readGalleryManifest(raw, LIST_URL, { surface: 'desktop' }).entries.map((e) => e.id)).toContain(first);
+    expect(readGalleryManifest(RAW, LIST_URL, { surface: 'web' }).entries.map((e) => e.id)).toContain(first);
+  });
+
   it('files an example no section names under its own category', () => {
     const raw = { ...RAW, sections: RAW.sections.slice(0, 1) };
     const manifest = read(raw);

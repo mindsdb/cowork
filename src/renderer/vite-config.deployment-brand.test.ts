@@ -12,7 +12,7 @@ import { withGalleryImageSources } from '../shared/gallery-image-origins';
 // Loads the real renderer config as a dev server for each kind of build and
 // checks which of them put the deployment brand's tags in the web page.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ENV_KEYS = ['BUILD_TARGET', 'VITE_PLATFORM_UI'] as const;
+const ENV_KEYS = ['BUILD_TARGET', 'VITE_PLATFORM_UI', 'VITE_BRAND_ENV'] as const;
 type BuildEnv = Partial<Record<(typeof ENV_KEYS)[number], string>>;
 const savedEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
 const PLUGIN = 'cowork-deployment-brand';
@@ -74,6 +74,14 @@ describe('the deployment brand in the web page', () => {
     expect(html).toContain('<script src="/brand/brand.js"></script>');
     expect(html).toContain('<link rel="stylesheet" href="/brand/brand.css" />');
     expect(cspOf(html)).toBe(cspOf(withGalleryImageSources(withOrgBrandImageSources(withDraftLinkFrameSources(withDeploymentBrand(page('index-web.html')))))));
+  }, 30_000);
+
+  it("names only the build's own environment's console for gallery pictures", async () => {
+    const dev = await startServer({ BUILD_TARGET: 'web', VITE_PLATFORM_UI: 'true', VITE_BRAND_ENV: 'staging' });
+    const html = await dev.transformIndexHtml('/index-web.html', page('index-web.html'));
+    const imgSrc = cspOf(html).split(';').map((d) => d.trim().split(/\s+/)).find((d) => d[0] === 'img-src') ?? [];
+    expect(imgSrc).toContain('https://console.staging.mindshub.ai');
+    expect(imgSrc).not.toContain('https://console.mindshub.ai');
   }, 30_000);
 
   it('stays out of other pages the web dev server serves', async () => {

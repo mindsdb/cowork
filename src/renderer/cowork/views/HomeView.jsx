@@ -679,7 +679,9 @@ export default function HomeView({
     setTaskMode(entry.mode);
     setPickedSample(entry.sample);
     setHandoffHint(false);
-    const send = sendsAtOnce(entry);
+    // Files already attached on Home would ride along with a send; with any
+    // there, the example waits in the box for the person to decide.
+    const send = sendsAtOnce(entry) && !(attachments?.length);
     setGalleryHint(send ? null : entry.title);
     trackExamplePicked(entry.id, 'gallery');
     onPrefill(entry.sample.prompt, undefined, send);

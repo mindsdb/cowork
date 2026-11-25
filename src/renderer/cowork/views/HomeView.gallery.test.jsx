@@ -25,13 +25,14 @@ const found = findSample('wide-research', 'research-a-prospect-and-draft-outreac
 const entry = { id: 'research-a-prospect-and-draft-outreach', mode: found.mode, sample: found.sample, title: 'Research a prospect and draft outreach', needs: 'Nothing, or your notes' };
 
 let pickFromGallery;
-function Home({ onSend, onOpenGallery = null, ownWorkRequest = 0 }) {
+function Home({ onSend, onOpenGallery = null, ownWorkRequest = 0, attachments = [] }) {
   const [prefill, setPrefill] = useState(null);
   const [pick, setPick] = useState(null);
   pickFromGallery = (over = {}) => setPick({ entry: { ...entry, ...over }, bump: Date.now() });
   return (
     <HomeView
       onSend={onSend}
+      attachments={attachments}
       activeTasks={[]}
       onSelectTask={vi.fn()}
       onClearActive={vi.fn()}
@@ -89,6 +90,15 @@ describe('HomeView gallery start', () => {
     expect(meta.taskMode).toMatchObject({ task_mode: 'wide-research', example_placed: true });
     expect(trackExamplePicked).toHaveBeenCalledWith('research-a-prospect-and-draft-outreach', 'gallery');
     expect(screen.queryByText(/Change anything, then press Send/)).not.toBeInTheDocument();
+  });
+
+  it('waits for Send instead when files are already attached on Home, so they never ride along unseen', async () => {
+    const onSend = vi.fn(async () => true);
+    render(<Home onSend={onSend} attachments={[{ id: 'a1', name: 'notes.pdf' }]} />);
+    pickFromGallery({ needs: 'Nothing' });
+    await screen.findByDisplayValue(found.sample.prompt);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(onSend).not.toHaveBeenCalled();
   });
 
   it('places but does not send an example that does not say what it needs', async () => {

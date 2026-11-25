@@ -84,6 +84,18 @@ describe('GalleryColumn list', () => {
     vi.useRealTimers();
   });
 
+  it('records a settled search once, even when a tab is clicked while searching', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { user } = setup();
+    await user.type(screen.getByRole('searchbox', { name: 'Search examples' }), 'a');
+    act(() => { vi.advanceTimersByTime(1100); });
+    expect(trackGallerySearched).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole('tab', { name: /^Your documents/ }));
+    act(() => { vi.advanceTimersByTime(1100); });
+    expect(trackGallerySearched).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
   it('greets the person on the first run, and offers ideas when reopened', () => {
     const { unmount } = render(<GalleryColumn manifest={manifest} onHide={vi.fn()} onStart={vi.fn()} welcome />);
     expect(screen.getByRole('heading', { name: 'Welcome to Cowork' })).toBeInTheDocument();
@@ -143,6 +155,16 @@ describe('GalleryColumn example', () => {
 
     await user.click(screen.getByRole('button', { name: /Results for “a”/ }));
     expect(screen.getByRole('searchbox')).toHaveValue('a');
+  });
+
+  it('moves focus into an opened example, so Escape and the arrow keys keep working', async () => {
+    const { user, onHide } = setup();
+    await user.click(rows()[1]);
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Research a prospect and draft outreach' }));
+    await user.keyboard('{ArrowRight}');
+    expect(screen.getByRole('heading', { name: 'Turn a bank statement into a spreadsheet' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(onHide).toHaveBeenLastCalledWith('escape');
   });
 
   it('shows a written result with what Cowork made and starts from it', async () => {
