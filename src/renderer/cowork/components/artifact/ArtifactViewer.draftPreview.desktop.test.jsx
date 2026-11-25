@@ -13,7 +13,7 @@
  * per module registry, so the host's platform cannot vary between tests there.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 
 const workspaceMock = vi.hoisted(() => ({
   supported: false,
@@ -133,6 +133,9 @@ describe('ArtifactViewer draft HTML preview on Desktop (ENG-2818)', () => {
     loadArtifactDraftText.mockResolvedValue({ content: '<body><h1>Launch brief</h1><p>Ships Monday.</p></body>', truncated: false, mime: 'text/html' });
     const { unmount } = render(<ArtifactViewer open artifact={artifact} onClose={vi.fn()} />);
     await screen.findByTitle('Launch brief');
+    // The frame's URL lands from the shared loader's promise, outside act:
+    // let the viewer's effects for that render run before the call asks.
+    await act(async () => {});
     expect(loadArtifactDraftText).not.toHaveBeenCalled();
 
     expect(artifactsOnScreen()[0]).toMatchObject({ title: 'Launch brief', text: '', reading: true });
