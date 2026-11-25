@@ -7604,6 +7604,7 @@ function AppCore() {
             galleryPick={gallery.pick}
             onGalleryPickConsumed={gallery.clearPick}
             onGalleryPickHeld={gallery.holdPick}
+            active={effectiveWorkspaceMode === 'cowork'}
             onOpenGallery={gallery.available && !galleryShown ? () => gallery.show('button') : null}
             codingModeEnabled={false}
           />

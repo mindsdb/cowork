@@ -293,6 +293,8 @@ export default function HomeView({
   onGalleryPickConsumed,
   // Turns a waiting one-click pick into a plain prefill.
   onGalleryPickHeld,
+  // False while Home stays mounted but hidden behind another workspace.
+  active = true,
   // Opens the Use Case Gallery column; null while it is open or not offered.
   onOpenGallery = null,
   codingModeEnabled = false,
@@ -679,22 +681,23 @@ export default function HomeView({
   // as if Send were pressed, on its own: without the page open in the browser
   // beside Home. The person chose it, so it replaces what is there.
   // A one-click send belongs to the visit it was clicked in. A pick still
-  // waiting when setup blocks Home, or when the person leaves it, only fills
-  // the box once Home can take it: the send needs a fresh click.
+  // waiting when setup blocks Home, or when the person leaves it (or hides it
+  // behind Code Mode), only fills the box once Home can take it: the send
+  // needs a fresh click.
   const waitingPickRef = useRef(null);
   waitingPickRef.current = galleryPick;
   const holdPickRef = useRef(onGalleryPickHeld);
   holdPickRef.current = onGalleryPickHeld;
   useEffect(() => {
-    if (galleryPick?.send && blocked) onGalleryPickHeld?.();
+    if (galleryPick?.send && (blocked || !active)) onGalleryPickHeld?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [galleryPick, blocked]);
+  }, [galleryPick, blocked, active]);
   useEffect(() => () => {
     if (waitingPickRef.current?.send) holdPickRef.current?.();
   }, []);
 
   useEffect(() => {
-    if (!galleryPick || !composerUsable || codingModeEnabled || !onPrefill) return;
+    if (!galleryPick || !composerUsable || !active || codingModeEnabled || !onPrefill) return;
     const { entry } = galleryPick;
     galleryStartRef.current = entry.sample;
     setTaskMode(entry.mode);
@@ -709,7 +712,7 @@ export default function HomeView({
     onPrefill(entry.sample.prompt, undefined, send);
     onGalleryPickConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [galleryPick, composerUsable, codingModeEnabled]);
+  }, [galleryPick, composerUsable, active, codingModeEnabled]);
 
   // Shows the examples once the composer is usable, like the console handoff.
   useEffect(() => {

@@ -61,7 +61,7 @@ function Home({ onSend, onOpenGallery = null, ownWorkRequest = 0, attachments = 
 // App's side of a pick: it outlives Home, which can be left and come back.
 let setHost;
 function Host({ onSend }) {
-  const [state, setState] = useState({ pick: null, home: true, configReady: true, serverOnline: true, skipIntro: true });
+  const [state, setState] = useState({ pick: null, home: true, active: true, configReady: true, serverOnline: true, skipIntro: true });
   const [prefill, setPrefill] = useState(null);
   setHost = (over) => setState((s) => ({ ...s, ...over }));
   if (!state.home) return null;
@@ -81,6 +81,7 @@ function Host({ onSend }) {
       onOpenSettings={vi.fn()}
       serverOnline={state.serverOnline}
       skipIntro={state.skipIntro}
+      active={state.active}
       prefill={prefill}
       onPrefill={(text, select, send) => setPrefill({ text, bump: Date.now(), select, send })}
       onPrefillConsumed={() => setPrefill(null)}
@@ -188,6 +189,25 @@ describe('HomeView gallery start', () => {
     expect(onSend).not.toHaveBeenCalled();
     act(() => setHost({ serverOnline: true }));
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1), { timeout: 8000 });
+  }, 10000);
+
+  it('only fills the box, back on Home, when the person switched to Code Mode before a queued Try could send', async () => {
+    const onSend = vi.fn(async () => true);
+    render(<Host onSend={onSend} />);
+    // Clicked while Home is still starting up; Code Mode hides Home, which
+    // stays mounted, and Home finishes starting behind it.
+    act(() => setHost({ home: false }));
+    act(() => setHost({ home: true, skipIntro: false, serverOnline: false }));
+    act(() => setHost({ pick: tryPick() }));
+    act(() => setHost({ active: false }));
+    act(() => setHost({ serverOnline: true }));
+    await new Promise((r) => setTimeout(r, 3000));
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.queryByDisplayValue(found.sample.prompt)).toBeNull();
+    act(() => setHost({ active: true }));
+    await screen.findByDisplayValue(found.sample.prompt);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(onSend).not.toHaveBeenCalled();
   }, 10000);
 
   it('only fills the box when setup turned out to be needed after the click, once setup is done', async () => {
