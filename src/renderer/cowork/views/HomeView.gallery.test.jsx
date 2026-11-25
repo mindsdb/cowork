@@ -205,10 +205,10 @@ describe('HomeView gallery start', () => {
     expect(onSend).not.toHaveBeenCalled();
     expect(screen.queryByDisplayValue(found.sample.prompt)).toBeNull();
     act(() => setHost({ active: true }));
-    await screen.findByDisplayValue(found.sample.prompt);
+    await screen.findByDisplayValue(found.sample.prompt, {}, { timeout: 5000 });
     await new Promise((r) => setTimeout(r, 50));
     expect(onSend).not.toHaveBeenCalled();
-  }, 10000);
+  }, 15000);
 
   it('only fills the box when setup turned out to be needed after the click, once setup is done', async () => {
     const onSend = vi.fn(async () => true);

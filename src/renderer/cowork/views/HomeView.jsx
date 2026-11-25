@@ -675,11 +675,6 @@ export default function HomeView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownWorkRequest, composerUsable, codingModeEnabled]);
 
-  // An example started from the gallery is placed once the composer is usable,
-  // exactly as one picked under the composer: its mode selected, its prompt in
-  // the box. One the click said to send (galleryRules.startsNow) is then sent
-  // as if Send were pressed, on its own: without the page open in the browser
-  // beside Home. The person chose it, so it replaces what is there.
   // A one-click send belongs to the visit it was clicked in. A pick still
   // waiting when setup blocks Home, or when the person leaves it (or hides it
   // behind Code Mode), only fills the box once Home can take it: the send
@@ -696,6 +691,11 @@ export default function HomeView({
     if (waitingPickRef.current?.send) holdPickRef.current?.();
   }, []);
 
+  // An example started from the gallery is placed once the composer is usable,
+  // exactly as one picked under the composer: its mode selected, its prompt in
+  // the box. One the click said to send (galleryRules.startsNow) is then sent
+  // as if Send were pressed, on its own: without the page open in the browser
+  // beside Home. The person chose it, so it replaces what is there.
   useEffect(() => {
     if (!galleryPick || !composerUsable || !active || codingModeEnabled || !onPrefill) return;
     const { entry } = galleryPick;
