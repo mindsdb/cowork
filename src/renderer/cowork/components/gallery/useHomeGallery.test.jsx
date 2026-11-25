@@ -82,6 +82,18 @@ describe('useHomeGallery', () => {
     expect(trackGalleryClosed).toHaveBeenCalledWith('started');
   });
 
+  it('hands over and records the send decision the click made', async () => {
+    const { result } = mount();
+    await waitFor(() => expect(result.current.open).toBe(true));
+    const entry = { ...result.current.manifest.entries[0], start: 'send' };
+    act(() => result.current.start(entry, false));
+    expect(result.current.pick.send).toBe(false);
+    expect(trackGalleryExampleStarted).toHaveBeenLastCalledWith(entry.id, false);
+    act(() => result.current.start(entry, true));
+    expect(result.current.pick.send).toBe(true);
+    expect(trackGalleryExampleStarted).toHaveBeenLastCalledWith(entry.id, true);
+  });
+
   it('opens from the button with the search focused', async () => {
     window.localStorage.setItem('anton.gallery.settled', '1');
     const { result } = mount();

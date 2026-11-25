@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { readGalleryManifest, fetchGalleryManifest, galleryManifestUrl } from './galleryManifest';
 import { filterGallery, matchesQuery, ALL_CATEGORIES } from './galleryFilter';
-import { galleryOffered, opensByItself, readGallerySettled, markGallerySettled, runMinutes, firstRunPreviewRequested, takeFirstRunPreview, clearFirstRunPreview } from './galleryRules';
+import { startsNow, galleryOffered, opensByItself, readGallerySettled, markGallerySettled, runMinutes, firstRunPreviewRequested, takeFirstRunPreview, clearFirstRunPreview } from './galleryRules';
 
 const CONSOLE = 'https://console.example.test';
 const LIST_URL = `${CONSOLE}/gallery-examples/manifest.json`;
@@ -58,6 +58,28 @@ describe('readGalleryManifest', () => {
     };
     expect(read(raw).entries.map((e) => e.start)).toEqual(['send', 'fill', null]);
     expect(read().entries.map((e) => e.start)).toEqual([null, null, null]);
+  });
+
+  it('keeps the list when one answer is malformed, and that answer only loses its bad parts', () => {
+    const raw = {
+      ...RAW,
+      entries: RAW.entries.map((e, i) => (i === 0
+        ? { ...e, answer: { blocks: [
+          { type: 'paragraph', text: 'Still here.' },
+          { type: 'list', items: 'One item' },
+          { type: 'table', columns: 'A', rows: 'B' },
+          { type: 'table', columns: ['A'], rows: [['1'], 'not a row'] },
+        ] } }
+        : e)),
+    };
+    const manifest = read(raw);
+    expect(manifest.entries.map((e) => e.id)).toEqual(RAW.entries.map((e) => e.id));
+    expect(manifest.entries[0].answer.blocks).toEqual([
+      { type: 'paragraph', text: 'Still here.' },
+      { type: 'list', ordered: false, items: [] },
+      { type: 'table', columns: [], rows: [] },
+      { type: 'table', columns: ['A'], rows: [['1']] },
+    ]);
   });
 
   it('leaves out an example Cowork has no prompt for, wherever it is named', () => {
@@ -181,6 +203,16 @@ describe('filterGallery', () => {
     expect(filterGallery(manifest, { category: 'Your documents' }).list.map((e) => e.id))
       .toEqual(['turn-a-bank-statement-into-a-spreadsheet']);
     expect(filterGallery(manifest, { category: 'Your documents', query: 'timeline' }).list).toEqual([]);
+  });
+});
+
+describe('startsNow', () => {
+  const send = { start: 'send' };
+  it('sends at once only an example the list says to send, with no files on Home and a provider set up', () => {
+    expect(startsNow(send)).toBe(true);
+    expect(startsNow({ start: 'fill' })).toBe(false);
+    expect(startsNow(send, { filesAttached: true })).toBe(false);
+    expect(startsNow(send, { setupNeeded: true })).toBe(false);
   });
 });
 

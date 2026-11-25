@@ -21,7 +21,6 @@ import {
 import { takeSignupWelcome, SIGNUP_FROM_DESKTOP } from '../lib/signupWelcome';
 import { productName } from '../../lib/deploymentBrand';
 import { getDraft, setDraft } from '../lib/draftStore';
-import { sendsAtOnce } from '../components/gallery/galleryRules';
 import i18n, { useTranslation } from '../../lib/i18n';
 
 // ── Boot choreography ───────────────────────────────────────────────────
@@ -333,6 +332,8 @@ export default function HomeView({
   }, []);
   // The gallery example in the composer, named under it while it is there.
   const galleryStartRef = useRef(null);
+  // The prompt of a gallery example being sent at once, until that send goes.
+  const autoSendRef = useRef(null);
   const [galleryHint, setGalleryHint] = useState(null);
   useEffect(() => {
     if (!taskMode) {
@@ -425,6 +426,8 @@ export default function HomeView({
     onPrefill?.(next);
   };
   const sendTracked = async (text, meta) => {
+    const automatic = autoSendRef.current !== null && text === autoSendRef.current;
+    autoSendRef.current = null;
     const { text: message, modeLine } = ownWork
       ? { text: composeOwnWorkMessage(text), modeLine: null }
       : modeMessage(taskMode, text, pickedSample);
@@ -436,6 +439,7 @@ export default function HomeView({
       ...(ownWork && ownWorkVia ? { startVia: ownWorkVia } : {}),
       ...(!ownWork && pickedSample && pickedSample === galleryStartRef.current ? { startVia: 'gallery' } : {}),
       ...(ownWork && ownWorkFromConsoleRef.current ? { entryExampleId: OWN_WORK_START } : {}),
+      ...(automatic ? { leaveBrowserPage: true } : {}),
     };
     const result = await onSend(message, sendMeta);
     if (result) {
@@ -669,9 +673,9 @@ export default function HomeView({
 
   // An example started from the gallery is placed once the composer is usable,
   // exactly as one picked under the composer: its mode selected, its prompt in
-  // the box. One the list says to send is then sent as if Send
-  // were pressed; one that can take their file waits for them. The person
-  // chose it, so it replaces what is there.
+  // the box. One the click said to send (galleryRules.startsNow) is then sent
+  // as if Send were pressed, on its own: without the page open in the browser
+  // beside Home. The person chose it, so it replaces what is there.
   useEffect(() => {
     if (!galleryPick || !composerUsable || codingModeEnabled || !onPrefill) return;
     const { entry } = galleryPick;
@@ -679,9 +683,9 @@ export default function HomeView({
     setTaskMode(entry.mode);
     setPickedSample(entry.sample);
     setHandoffHint(false);
-    // Files already attached on Home would ride along with a send; with any
-    // there, the example waits in the box for the person to decide.
-    const send = sendsAtOnce(entry) && !(attachments?.length);
+    // Files attached since the click would ride along; the example then waits.
+    const send = Boolean(galleryPick.send) && !(attachments?.length);
+    autoSendRef.current = send ? entry.sample.prompt : null;
     setGalleryHint(send ? null : entry.title);
     trackExamplePicked(entry.id, 'gallery');
     onPrefill(entry.sample.prompt, undefined, send);

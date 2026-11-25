@@ -174,7 +174,7 @@ describe('GalleryColumn example', () => {
     expect(screen.getByText(/Built with MindsHub Air · About 3 minutes/)).toBeInTheDocument();
     expect(screen.getByText('Runs it now on sample data, as a new task.')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Try this example' }));
-    expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ id: 'research-a-prospect-and-draft-outreach' }));
+    expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ id: 'research-a-prospect-and-draft-outreach' }), true);
   });
 
   it('only fills the box for an example that can take the person\'s file', async () => {
@@ -183,7 +183,7 @@ describe('GalleryColumn example', () => {
     expect(screen.queryByRole('button', { name: 'Try this example' })).not.toBeInTheDocument();
     expect(screen.getByText('Puts the message in the box. Nothing runs until you press Send.')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Start from this example' }));
-    expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ id: 'turn-a-bank-statement-into-a-spreadsheet' }));
+    expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ id: 'turn-a-bank-statement-into-a-spreadsheet' }), false);
   });
 
   it('starts as the list says, whatever its needs copy reads', async () => {
@@ -202,6 +202,18 @@ describe('GalleryColumn example', () => {
     await user.click(screen.getByRole('button', { name: 'Next example' }));
     expect(screen.getByRole('button', { name: 'Start from this example' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Use my own file' })).toBeInTheDocument();
+  });
+
+  it.each([
+    ['files already attached on Home', { filesAttached: true }],
+    ['no provider set up yet', { setupNeeded: true }],
+  ])('offers Start, not Try, with %s, and starts it without a send', async (_name, props) => {
+    const { user, onStart } = setup(props);
+    await user.click(rows()[1]);
+    expect(screen.queryByRole('button', { name: 'Try this example' })).not.toBeInTheDocument();
+    expect(screen.getByText('Puts the message in the box. Nothing runs until you press Send.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Start from this example' }));
+    expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ id: 'research-a-prospect-and-draft-outreach' }), false);
   });
 
   it('opens a live example in the browser and frames nothing', async () => {

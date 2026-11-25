@@ -38,6 +38,10 @@ function publishedPage(value) {
   }
 }
 
+// A nested list that is not an array reads as empty, so one malformed answer
+// cannot stop the whole list from loading.
+const arrayOf = (value) => (Array.isArray(value) ? value : []);
+
 const BLOCK_TYPES = new Set(['heading', 'paragraph', 'list', 'table']);
 
 function readAnswer(answer) {
@@ -46,11 +50,11 @@ function readAnswer(answer) {
     .filter((block) => block && BLOCK_TYPES.has(block.type))
     .map((block) => {
       if (block.type === 'list') {
-        return { type: 'list', ordered: Boolean(block.ordered), items: (block.items || []).map(text).filter(Boolean) };
+        return { type: 'list', ordered: Boolean(block.ordered), items: arrayOf(block.items).map(text).filter(Boolean) };
       }
       if (block.type === 'table') {
-        const columns = (block.columns || []).map(text);
-        const rows = (block.rows || []).filter(Array.isArray).map((row) => row.map(text));
+        const columns = arrayOf(block.columns).map(text);
+        const rows = arrayOf(block.rows).filter(Array.isArray).map((row) => row.map(text));
         return { type: 'table', columns, rows };
       }
       return { type: block.type, text: text(block.text) };

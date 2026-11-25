@@ -25,10 +25,12 @@ const found = findSample('wide-research', 'research-a-prospect-and-draft-outreac
 const entry = { id: 'research-a-prospect-and-draft-outreach', mode: found.mode, sample: found.sample, title: 'Research a prospect and draft outreach', needs: 'Nothing, or your notes' };
 
 let pickFromGallery;
+let setPickDirectly;
 function Home({ onSend, onOpenGallery = null, ownWorkRequest = 0, attachments = [] }) {
   const [prefill, setPrefill] = useState(null);
   const [pick, setPick] = useState(null);
-  pickFromGallery = (over = {}) => setPick({ entry: { ...entry, ...over }, bump: Date.now() });
+  setPickDirectly = setPick;
+  pickFromGallery = (over = {}) => setPick({ entry: { ...entry, ...over }, send: over.start === 'send', bump: Date.now() });
   return (
     <HomeView
       onSend={onSend}
@@ -101,10 +103,28 @@ describe('HomeView gallery start', () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
-  it('places but does not send an example the list does not say to send, whatever its needs copy reads', async () => {
+  it('sends a Try on its own, without the page open in the browser beside Home', async () => {
     const onSend = vi.fn(async () => true);
     render(<Home onSend={onSend} />);
-    pickFromGallery({ needs: 'Nothing', start: null });
+    pickFromGallery({ start: 'send' });
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][1].leaveBrowserPage).toBe(true);
+  });
+
+  it('lets a send the person makes carry the browser page as usual', async () => {
+    const onSend = vi.fn(async () => true);
+    render(<Home onSend={onSend} />);
+    pickFromGallery();
+    await screen.findByDisplayValue(found.sample.prompt);
+    await userEvent.setup().keyboard('{Enter}');
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend.mock.calls[0][1].leaveBrowserPage).toBeUndefined();
+  });
+
+  it('places but does not send an example the click did not send, whatever its list says', async () => {
+    const onSend = vi.fn(async () => true);
+    render(<Home onSend={onSend} />);
+    setPickDirectly({ entry: { ...entry, needs: 'Nothing', start: 'send' }, send: false, bump: Date.now() });
     await screen.findByDisplayValue(found.sample.prompt);
     await new Promise((r) => setTimeout(r, 50));
     expect(onSend).not.toHaveBeenCalled();

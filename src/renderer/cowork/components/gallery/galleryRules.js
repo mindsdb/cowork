@@ -10,6 +10,13 @@ const STORAGE_KEY = 'anton.gallery.settled';
 export const sendsAtOnce = (entry) => entry?.start === 'send';
 export const takesOwnFile = (entry) => entry?.start === 'fill';
 
+// What a click does, decided when it is made and shown on the button: it
+// sends only an example the list says to send, and only with no files waiting
+// on Home (they would ride along unseen) and a provider set up (otherwise the
+// send would wait, and fire on a later return to Home with no new click).
+export const startsNow = (entry, { filesAttached = false, setupNeeded = false } = {}) =>
+  sendsAtOnce(entry) && !filesAttached && !setupNeeded;
+
 /**
  * Where the column exists at all: Desktop and hosted Cowork Web. Not the
  * mobile app (no room beside Home), and not a self-hosted web build, which has

@@ -7,7 +7,7 @@ import { answerMarkdown } from './galleryAnswer';
 import { useTranslation } from '../../../lib/i18n';
 import { productName } from '../../../lib/deploymentBrand';
 import { ALL_CATEGORIES, filterGallery } from './galleryFilter';
-import { runMinutes, sendsAtOnce, takesOwnFile } from './galleryRules';
+import { runMinutes, startsNow, takesOwnFile } from './galleryRules';
 import { trackGalleryExampleOpened, trackGallerySearched } from '../../lib/analytics';
 
 // How long a typed search must hold before it is recorded, so one search is
@@ -97,7 +97,8 @@ function Example({ entry, openExternal }) {
   );
 }
 
-function Detail({ entry, position, total, query, onBack, onStep, onCategory, onStart, onOwnWork, onHide, openExternal, reserveCorner, focusRequest }) {
+function Detail({ entry, position, total, query, onBack, onStep, onCategory, onStart, onOwnWork, onHide, openExternal, reserveCorner, focusRequest, homeState }) {
+  const now = startsNow(entry, homeState);
   const { t } = useTranslation('shell');
   const headingRef = useRef(null);
   // Opening an example hides the row that had focus, which would drop focus to
@@ -150,10 +151,10 @@ function Detail({ entry, position, total, query, onBack, onStep, onCategory, onS
       <div className={`px-4 py-3 border-t border-line flex flex-col gap-2 ${reserveCorner ? 'pr-12' : ''}`}>
         <ActionBar
           size="md"
-          primary={{ label: t(sendsAtOnce(entry) ? 'gallery.tryIt' : 'gallery.start'), onClick: () => onStart(entry) }}
+          primary={{ label: t(now ? 'gallery.tryIt' : 'gallery.start'), onClick: () => onStart(entry, now) }}
           secondary={takesOwnFile(entry) && onOwnWork ? { label: t('gallery.ownFile'), onClick: onOwnWork } : null}
         />
-        <p className="m-0 text-[12px] text-ink-3 text-right">{t(sendsAtOnce(entry) ? 'gallery.tryItNote' : 'gallery.startNote')}</p>
+        <p className="m-0 text-[12px] text-ink-3 text-right">{t(now ? 'gallery.tryItNote' : 'gallery.startNote')}</p>
       </div>
     </div>
   );
@@ -167,6 +168,8 @@ function Detail({ entry, position, total, query, onBack, onStep, onCategory, onS
  */
 export default function GalleryColumn({
   manifest, failure = null, onRetry, onHide, onStart, onOwnWork = null,
+  // Home's state a one-click send depends on (galleryRules.startsNow).
+  filesAttached = false, setupNeeded = false,
   openExternal = () => {}, focusSearch = false, className = '',
   // Where the person is (search, tab, opened example), owned by the caller so
   // it survives a fold; without it the column keeps its own.
@@ -259,6 +262,7 @@ export default function GalleryColumn({
           onStep={step}
           onCategory={(next) => update({ category: next, query: '', openId: null })}
           onStart={onStart}
+          homeState={{ filesAttached, setupNeeded }}
           onOwnWork={onOwnWork}
           onHide={() => onHide('button')}
           openExternal={openExternal}

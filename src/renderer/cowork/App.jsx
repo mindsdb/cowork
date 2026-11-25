@@ -200,7 +200,7 @@ import {
 } from './lib/voice/callNeeds';
 import { handBackBrowser } from './lib/browserHandBack';
 import {
-  desktopTaskSession, latestBrowserSessionIdIn, offTaskBrowserId, pageOriginForContext,
+  carriedPageFor, desktopTaskSession, latestBrowserSessionIdIn, offTaskBrowserId, pageOriginForContext,
 } from './lib/browserSession';
 import { VOICES, getVoicePrefs, llmViaMindsHub, setVoicePrefs, subscribeVoicePrefs, useVoicePrefs, voiceLabel } from './lib/voice/voicePrefs';
 import { warmBrowserForSession } from './lib/browserWarmUp';
@@ -4409,7 +4409,7 @@ function AppCore() {
     const suppliedConversationId = meta?.conversationId || null;
     // The browser open beside Home or the project on a page: the task is
     // about it, and its own browser opens there, so it needs its real id now.
-    const carried = carriedBrowserPage();
+    const carried = carriedPageFor(meta, carriedBrowserPage);
     const taskId = suppliedConversationId
       || (hasPendingFiles || carried ? allocateConversationId() : `tmp-${Date.now()}`);
     // Flag the not-yet-persisted id so the route loader renders from local
@@ -5644,6 +5644,8 @@ function AppCore() {
       onRetry={gallery.retry}
       onHide={gallery.hide}
       onStart={gallery.start}
+      filesAttached={composerAttachments.length > 0}
+      setupNeeded={(health.config_ready ?? settings.configReady) === false}
       onOwnWork={() => {
         gallery.hide('own_work');
         setOwnWorkRequest(Date.now());

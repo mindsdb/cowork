@@ -127,9 +127,11 @@ export function useHomeGallery({
     trackGalleryClosed(how);
   }, []);
 
-  const start = useCallback((entry) => {
-    trackGalleryExampleStarted(entry.id, sendsAtOnce(entry));
-    setPick({ entry, bump: Date.now() });
+  // `send` is what the click decided (startsNow), carried with the pick so a
+  // pick that waits (Home still loading) does what the button said.
+  const start = useCallback((entry, send = sendsAtOnce(entry)) => {
+    trackGalleryExampleStarted(entry.id, send);
+    setPick({ entry, send, bump: Date.now() });
     hide('started');
   }, [hide]);
 
