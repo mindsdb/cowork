@@ -465,6 +465,10 @@
         "pendingDetail": "Your credentials are stored encrypted. This page updates when the check finishes."
       }
     },
+    "httpRefusal": {
+      "uploadTooLarge": "This upload is over the size limit. Pick a smaller file, or fewer files at once.",
+      "requestTooLarge": "This request is over the size limit. Try sending less content."
+    },
     "fileDrop": {
       "uploading": "Uploading…"
     },
@@ -799,6 +803,7 @@
     "couldNotOpenPicker": "Could not open the folder picker.",
     "filesNotUploaded": "\"{name}\" was created, but its files didn't upload.",
     "filesNotUploadedReason": "The upload didn't finish. Add the files to the project again.",
+    "filesUploadUnconfirmed": "\"{name}\" was created. Check its files before trying the upload again.",
     "title": "Start a new project",
     "nameLabel": "Project name",
     "instructionsLabel": "Instructions",

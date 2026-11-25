@@ -123351,6 +123351,74 @@
       "text": "6148b38691e3"
     }
   },
+  "projects:messages.httpRefusal.requestTooLarge": {
+    "de": {
+      "from": "4ec5aeeb89a7",
+      "text": "90b7d693b647"
+    },
+    "es": {
+      "from": "4ec5aeeb89a7",
+      "text": "fe56a76d8d2b"
+    },
+    "fr": {
+      "from": "4ec5aeeb89a7",
+      "text": "429294bf3b51"
+    },
+    "it": {
+      "from": "4ec5aeeb89a7",
+      "text": "6480d44b3417"
+    },
+    "ja": {
+      "from": "4ec5aeeb89a7",
+      "text": "af4cba35cff8"
+    },
+    "ko": {
+      "from": "4ec5aeeb89a7",
+      "text": "898f5d6b10c4"
+    },
+    "pt-BR": {
+      "from": "4ec5aeeb89a7",
+      "text": "e78ad19ad65a"
+    },
+    "zh-CN": {
+      "from": "4ec5aeeb89a7",
+      "text": "fa23828632a3"
+    }
+  },
+  "projects:messages.httpRefusal.uploadTooLarge": {
+    "de": {
+      "from": "9aabe418507e",
+      "text": "146e832ce523"
+    },
+    "es": {
+      "from": "9aabe418507e",
+      "text": "c955eef32e8c"
+    },
+    "fr": {
+      "from": "9aabe418507e",
+      "text": "e824a3dd0156"
+    },
+    "it": {
+      "from": "9aabe418507e",
+      "text": "f7d3b34149ec"
+    },
+    "ja": {
+      "from": "9aabe418507e",
+      "text": "c9c8e1e227b4"
+    },
+    "ko": {
+      "from": "9aabe418507e",
+      "text": "77825546d312"
+    },
+    "pt-BR": {
+      "from": "9aabe418507e",
+      "text": "06b21b831f5c"
+    },
+    "zh-CN": {
+      "from": "9aabe418507e",
+      "text": "7a4eaedc63d2"
+    }
+  },
   "projects:messages.liveAppSharing.copyGoesToGeneral": {
     "de": {
       "from": "ac9143996d7e",
@@ -133583,6 +133651,40 @@
     "zh-CN": {
       "from": "0b337e313643",
       "text": "4ca00282e1f7"
+    }
+  },
+  "projects:newProjectModal.filesUploadUnconfirmed": {
+    "de": {
+      "from": "63d411d08afb",
+      "text": "19f12d840a6f"
+    },
+    "es": {
+      "from": "63d411d08afb",
+      "text": "164f65737c21"
+    },
+    "fr": {
+      "from": "63d411d08afb",
+      "text": "ecc3fa1bf3bb"
+    },
+    "it": {
+      "from": "63d411d08afb",
+      "text": "bc7f73ad3d99"
+    },
+    "ja": {
+      "from": "63d411d08afb",
+      "text": "96b8ff68873c"
+    },
+    "ko": {
+      "from": "63d411d08afb",
+      "text": "139675688ee2"
+    },
+    "pt-BR": {
+      "from": "63d411d08afb",
+      "text": "e4519e145e50"
+    },
+    "zh-CN": {
+      "from": "63d411d08afb",
+      "text": "86686b0196cd"
     }
   },
   "projects:newProjectModal.folderUnsupported": {

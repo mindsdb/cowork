@@ -465,6 +465,10 @@
         "pendingDetail": "Tus credenciales se guardan cifradas. Esta página se actualiza cuando termina la comprobación."
       }
     },
+    "httpRefusal": {
+      "uploadTooLarge": "Esta subida supera el límite de tamaño. Elige un archivo más pequeño o sube menos archivos a la vez.",
+      "requestTooLarge": "Esta solicitud supera el límite de tamaño. Intenta enviar menos contenido."
+    },
     "fileDrop": {
       "uploading": "Subiendo…"
     },
@@ -799,6 +803,7 @@
     "couldNotOpenPicker": "No se pudo abrir el selector de carpetas.",
     "filesNotUploaded": "Se creó \"{name}\", pero sus archivos no se subieron.",
     "filesNotUploadedReason": "La subida no terminó. Vuelve a agregar los archivos al proyecto.",
+    "filesUploadUnconfirmed": "Se creó \"{name}\". Revisa los archivos del proyecto antes de volver a subirlos.",
     "title": "Crear un proyecto",
     "nameLabel": "Nombre del proyecto",
     "instructionsLabel": "Instrucciones",

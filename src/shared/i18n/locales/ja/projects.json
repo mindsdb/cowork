@@ -465,6 +465,10 @@
         "pendingDetail": "認証情報は暗号化して保存されます。確認が完了するとこのページが更新されます。"
       }
     },
+    "httpRefusal": {
+      "uploadTooLarge": "アップロードのサイズが上限を超えています。小さいファイルを選ぶか、一度にアップロードするファイルの数を減らしてください。",
+      "requestTooLarge": "リクエストのサイズが上限を超えています。送信する内容を減らしてみてください。"
+    },
     "fileDrop": {
       "uploading": "アップロード中…"
     },
@@ -799,6 +803,7 @@
     "couldNotOpenPicker": "フォルダ選択画面を開けませんでした。",
     "filesNotUploaded": "「{name}」を作成しましたが、ファイルをアップロードできませんでした。",
     "filesNotUploadedReason": "アップロードが完了しませんでした。もう一度プロジェクトにファイルを追加してください。",
+    "filesUploadUnconfirmed": "「{name}」を作成しました。もう一度アップロードする前に、プロジェクト内のファイルを確認してください。",
     "title": "新しいプロジェクトを開始",
     "nameLabel": "プロジェクト名",
     "instructionsLabel": "指示",

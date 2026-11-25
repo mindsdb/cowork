@@ -465,6 +465,10 @@
         "pendingDetail": "Suas credenciais são armazenadas criptografadas. Esta página é atualizada quando a verificação termina."
       }
     },
+    "httpRefusal": {
+      "uploadTooLarge": "Este envio excede o limite de tamanho. Escolha um arquivo menor ou envie menos arquivos por vez.",
+      "requestTooLarge": "Esta solicitação excede o limite de tamanho. Tente enviar menos conteúdo."
+    },
     "fileDrop": {
       "uploading": "Enviando…"
     },
@@ -799,6 +803,7 @@
     "couldNotOpenPicker": "Não foi possível abrir o seletor de pastas.",
     "filesNotUploaded": "\"{name}\" foi criado, mas os arquivos não foram enviados.",
     "filesNotUploadedReason": "O envio não foi concluído. Adicione os arquivos ao projeto novamente.",
+    "filesUploadUnconfirmed": "\"{name}\" foi criado. Verifique os arquivos do projeto antes de tentar enviá-los novamente.",
     "title": "Criar um projeto",
     "nameLabel": "Nome do projeto",
     "instructionsLabel": "Instruções",

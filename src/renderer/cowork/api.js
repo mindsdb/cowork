@@ -268,9 +268,10 @@ function dedupe(key, factory, { forceFresh = false } = {}) {
  *
  * @param {Response} res
  * @param {string} fallback
+ * @param {{fileUpload?: boolean}} [options]
  * @returns {Promise<RefusalError>}
  */
-async function responseError(res, fallback) {
+async function responseError(res, fallback, { fileUpload = false } = {}) {
   let text = '';
   try {
     text = await res.text();
@@ -279,7 +280,7 @@ async function responseError(res, fallback) {
   }
   const { message, code } = readRefusalBody(text);
   const { retry_after, retry_at } = readRetryAfter(res.headers?.get?.('Retry-After'));
-  const err = /** @type {RefusalError} */ (new Error(refusalMessage({ status: res.status, message, fallback })));
+  const err = /** @type {RefusalError} */ (new Error(refusalMessage({ status: res.status, message, fallback, fileUpload })));
   err.status = res.status;
   err.code = code;
   err.retry_after = retry_after;
@@ -1595,7 +1596,7 @@ export async function uploadProjectFiles(projectName, files) {
     method: 'POST',
     body: form,
   });
-  if (!res.ok) throw await responseError(res, `Upload failed (${res.status})`);
+  if (!res.ok) throw await responseError(res, `Upload failed (${res.status})`, { fileUpload: true });
   return res.json();
 }
 
@@ -2281,7 +2282,7 @@ export async function uploadSkillFile(file, { shared } = {}) {
   form.append('file', file, file.name);
   if (typeof shared === 'boolean') form.append('shared', shared ? 'true' : 'false');
   const res = await authFetch(BASE + '/skills/upload', { method: 'POST', body: form });
-  if (!res.ok) throw await responseError(res, `Upload failed (${res.status})`);
+  if (!res.ok) throw await responseError(res, `Upload failed (${res.status})`, { fileUpload: true });
   return res.json();
 }
 
@@ -3669,7 +3670,7 @@ export async function uploadAttachments(files, { projectName, sessionId, timeout
       `${BASE}/attachments/${enc(projectName)}/${enc(sessionId)}/upload`,
       { method: 'POST', body: form, signal },
     );
-    if (!res.ok) throw await responseError(res, `Attachment upload failed (${res.status})`);
+    if (!res.ok) throw await responseError(res, `Attachment upload failed (${res.status})`, { fileUpload: true });
     const data = await res.json();
     return Array.isArray(data) ? data : [];
   } catch (err) {

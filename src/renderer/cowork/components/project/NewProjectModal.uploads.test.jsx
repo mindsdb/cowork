@@ -1,21 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-
-const api = vi.hoisted(() => ({
-  createProject: vi.fn(),
-  uploadProjectFiles: vi.fn(),
-  writeProjectFile: vi.fn(async () => ({})),
-}));
-
-const toast = vi.hoisted(() => ({ add: vi.fn() }));
-
-vi.mock('../../api', () => ({
-  ...api,
-  ANTON_PROJECT_INSTRUCTIONS_PATH: '.anton/anton.md',
-}));
-
-vi.mock('../ui/Toast', () => ({ useToastManager: () => toast }));
-
+import * as api from '../../api';
+import * as toastUi from '../ui/Toast';
 import NewProjectModal from './NewProjectModal';
 
 const SIZE_LIMIT = 'This upload is over the size limit. Pick a smaller file, or fewer files at once.';
@@ -24,7 +10,7 @@ const SIZE_LIMIT = 'This upload is over the size limit. Pick a smaller file, or 
 async function createWithOneFile() {
   const onClose = vi.fn();
   const onCreated = vi.fn();
-  render(<NewProjectModal open onClose={onClose} onCreated={onCreated} />);
+  render(<NewProjectModal open onClose={onClose} onCreated={onCreated} />, { wrapper: toastUi.ToastProvider });
   fireEvent.change(screen.getByPlaceholderText('acme-engineering'), {
     target: { value: 'billing' },
   });
@@ -38,13 +24,16 @@ async function createWithOneFile() {
 }
 
 describe('NewProjectModal file upload', () => {
+  const toast = { add: vi.fn() };
+
   beforeEach(() => {
-    api.createProject.mockReset();
-    api.createProject.mockResolvedValue({ id: 'project-1', name: 'billing' });
-    api.uploadProjectFiles.mockReset();
-    api.writeProjectFile.mockClear();
-    toast.add.mockReset();
+    vi.spyOn(api, 'createProject').mockResolvedValue({ id: 'project-1', name: 'billing' });
+    vi.spyOn(api, 'uploadProjectFiles');
+    vi.spyOn(toastUi, 'useToastManager').mockReturnValue(toast);
+    toast.add.mockClear();
   });
+
+  afterEach(() => vi.restoreAllMocks());
 
   it('creates the project and says the files did not upload when the upload is refused', async () => {
     api.uploadProjectFiles.mockRejectedValue(
@@ -70,7 +59,7 @@ describe('NewProjectModal file upload', () => {
       name: 'untitled-project-2',
       display_name: 'Мій проєкт',
     });
-    api.uploadProjectFiles.mockRejectedValue(new Error(SIZE_LIMIT));
+    api.uploadProjectFiles.mockRejectedValue(Object.assign(new Error(SIZE_LIMIT), { status: 413 }));
     await createWithOneFile();
 
     await waitFor(() => expect(toast.add).toHaveBeenCalledTimes(1));
@@ -82,7 +71,7 @@ describe('NewProjectModal file upload', () => {
   });
 
   it('falls back to a general reason when the refusal carries no sentence', async () => {
-    api.uploadProjectFiles.mockRejectedValue(new Error(''));
+    api.uploadProjectFiles.mockRejectedValue(Object.assign(new Error(''), { status: 400 }));
     const { onCreated } = await createWithOneFile();
 
     await waitFor(() => expect(onCreated).toHaveBeenCalled());
@@ -102,5 +91,27 @@ describe('NewProjectModal file upload', () => {
     expect(onClose).toHaveBeenCalled();
     expect(api.uploadProjectFiles).toHaveBeenCalledWith('billing', [file]);
     expect(toast.add).not.toHaveBeenCalled();
+  });
+});
+
+describe('NewProjectModal when the upload cannot be confirmed', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it.each([
+    ['the upload response is cut short', () => new Response('{"results":[', { status: 200 })],
+    ['the connection drops', () => { throw new TypeError('Failed to fetch'); }],
+  ])('asks the user to check the files when %s', async (_scenario, uploadResponse) => {
+    const project = { id: 'project-1', name: 'billing' };
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(Response.json(project))
+      .mockImplementationOnce(uploadResponse);
+    vi.stubGlobal('fetch', fetch);
+
+    const { onCreated, onClose } = await createWithOneFile();
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(project));
+    expect(onClose).toHaveBeenCalled();
+    expect(fetch.mock.calls[1][0]).toMatch(/\/billing\/files\/upload$/);
+    const toast = document.querySelector('[data-type="danger"]');
+    expect(toast?.textContent).toBe('"billing" was created. Check its files before trying the upload again.');
   });
 });

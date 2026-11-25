@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { UPLOAD_TOO_LARGE_MESSAGE, readRefusalBody, readRetryAfter, refusalMessage } from './httpRefusal';
+import { readRefusalBody, readRetryAfter, refusalMessage } from './httpRefusal';
 
 const BUSY = 'Cowork is busy. Try again in about 5 seconds.';
 const json = (body) => JSON.stringify(body);
@@ -54,12 +54,11 @@ describe('refusalMessage', () => {
   const FALLBACK = 'Upload failed (413)';
 
   it('says the upload is over the size limit for a 413 that names no sentence', () => {
-    expect(UPLOAD_TOO_LARGE_MESSAGE).toBe(TOO_LARGE);
     const edgePage = '<html><head><title>413 Payload Too Large</title></head><body><center>cloudflare</center></body></html>';
     const { message } = readRefusalBody(edgePage);
 
-    expect(refusalMessage({ status: 413, message, fallback: FALLBACK })).toBe(TOO_LARGE);
-    expect(refusalMessage({ status: 413, message: '', fallback: FALLBACK })).toBe(TOO_LARGE);
+    expect(refusalMessage({ status: 413, message, fallback: FALLBACK, fileUpload: true })).toBe(TOO_LARGE);
+    expect(refusalMessage({ status: 413, message: '', fallback: FALLBACK, fileUpload: true })).toBe(TOO_LARGE);
   });
 
   it("shows a 413's own sentence over the size sentence", () => {

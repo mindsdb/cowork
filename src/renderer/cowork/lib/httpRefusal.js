@@ -1,7 +1,6 @@
 /* What a refused request (a non-2xx answer) says about itself: the sentence to
-   show, the code to branch on, and when to try again. Pure, so api.js's
-   responseError stays a thin reader of the Response and every body shape is
-   testable on its own. */
+   show, the code to branch on, and when to try again. */
+import i18n from '../../lib/i18n';
 
 /**
  * The sentence and machine code in a refused request's body.
@@ -66,28 +65,22 @@ export function readRefusalBody(text) {
   };
 }
 
-/* Shown for a 413 whose body names no sentence. A proxy in front of the server
-   refuses a body over its own limit with an HTML page: Cloudflare does so past
-   100 MB on hosted Cowork. The project and attachment uploads send every picked
-   file in one request, so several small files can pass that limit together,
-   and the sentence names the upload, not one file. It names no number, since
-   the app can't tell which edge refused or what its limit is. */
-export const UPLOAD_TOO_LARGE_MESSAGE = 'This upload is over the size limit. Pick a smaller file, or fewer files at once.';
-
 /**
- * The sentence a refused request shows: the body's own sentence, else the
- * size sentence for a 413, else the caller's fallback.
+ * Preserve the server's sentence. For an unexplained 413, give advice for
+ * the request in the current UI language. Each proxy sets its own limit.
  *
  * @param {object} refusal
  * @param {number} refusal.status The response's HTTP status.
  * @param {string} refusal.message The body's sentence (readRefusalBody), or ''.
  * @param {string} refusal.fallback The caller's sentence for any other refusal.
+ * @param {boolean} [refusal.fileUpload] Whether the user can reduce a file selection.
  * @returns {string}
  */
-export function refusalMessage({ status, message, fallback }) {
+export function refusalMessage({ status, message, fallback, fileUpload = false }) {
   if (message) return message;
-  if (status === 413) return UPLOAD_TOO_LARGE_MESSAGE;
-  return fallback;
+  if (status !== 413) return fallback;
+  const key = fileUpload ? 'messages.httpRefusal.uploadTooLarge' : 'messages.httpRefusal.requestTooLarge';
+  return i18n.t(key, { ns: 'projects' });
 }
 
 /**

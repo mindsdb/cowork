@@ -465,6 +465,10 @@
         "pendingDetail": "Vos identifiants sont stockés chiffrés. Cette page se met à jour à la fin de la vérification."
       }
     },
+    "httpRefusal": {
+      "uploadTooLarge": "Cette importation dépasse la taille maximale autorisée. Choisissez un fichier plus petit ou importez moins de fichiers à la fois.",
+      "requestTooLarge": "Cette requête dépasse la taille maximale autorisée. Essayez d’envoyer moins de contenu."
+    },
     "fileDrop": {
       "uploading": "Importation…"
     },
@@ -799,6 +803,7 @@
     "couldNotOpenPicker": "Impossible d’ouvrir le sélecteur de dossier.",
     "filesNotUploaded": "« {name} » a été créé, mais ses fichiers n’ont pas été importés.",
     "filesNotUploadedReason": "L’importation n’a pas abouti. Ajoutez de nouveau les fichiers au projet.",
+    "filesUploadUnconfirmed": "« {name} » a été créé. Vérifiez les fichiers du projet avant de réessayer l’importation.",
     "title": "Créer un projet",
     "nameLabel": "Nom du projet",
     "instructionsLabel": "Instructions",

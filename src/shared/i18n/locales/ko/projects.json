@@ -465,6 +465,10 @@
         "pendingDetail": "자격 증명은 암호화되어 저장됩니다. 확인이 끝나면 이 페이지가 업데이트됩니다."
       }
     },
+    "httpRefusal": {
+      "uploadTooLarge": "업로드 크기가 한도를 초과했습니다. 더 작은 파일을 선택하거나 한 번에 업로드하는 파일 수를 줄여 주세요.",
+      "requestTooLarge": "요청 크기가 한도를 초과했습니다. 전송할 내용을 줄여 보세요."
+    },
     "fileDrop": {
       "uploading": "업로드 중…"
     },
@@ -799,6 +803,7 @@
     "couldNotOpenPicker": "폴더 선택기를 열지 못했습니다.",
     "filesNotUploaded": "‘{name}’을(를) 만들었지만 파일을 업로드하지 못했습니다.",
     "filesNotUploadedReason": "업로드가 완료되지 않았습니다. 프로젝트에 파일을 다시 추가하세요.",
+    "filesUploadUnconfirmed": "‘{name}’ 프로젝트를 만들었습니다. 다시 업로드하기 전에 프로젝트의 파일을 확인해 주세요.",
     "title": "새 프로젝트 시작",
     "nameLabel": "프로젝트 이름",
     "instructionsLabel": "지침",

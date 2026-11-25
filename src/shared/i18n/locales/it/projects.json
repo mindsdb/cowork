@@ -465,6 +465,10 @@
         "pendingDetail": "Le tue credenziali sono archiviate in forma crittografata. Questa pagina si aggiorna al termine della verifica."
       }
     },
+    "httpRefusal": {
+      "uploadTooLarge": "Questo caricamento supera il limite di dimensione. Scegli un file più piccolo o carica meno file alla volta.",
+      "requestTooLarge": "Questa richiesta supera il limite di dimensione. Prova a inviare meno contenuti."
+    },
     "fileDrop": {
       "uploading": "Caricamento…"
     },
@@ -799,6 +803,7 @@
     "couldNotOpenPicker": "Impossibile aprire la selezione della cartella.",
     "filesNotUploaded": "«{name}» è stato creato, ma i suoi file non sono stati caricati.",
     "filesNotUploadedReason": "Il caricamento non è stato completato. Aggiungi di nuovo i file al progetto.",
+    "filesUploadUnconfirmed": "«{name}» è stato creato. Controlla i file del progetto prima di riprovare a caricarli.",
     "title": "Avvia un nuovo progetto",
     "nameLabel": "Nome del progetto",
     "instructionsLabel": "Istruzioni",

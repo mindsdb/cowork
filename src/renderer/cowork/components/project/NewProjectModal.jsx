@@ -168,24 +168,25 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
         }
       }
 
-      /* 3) Upload files in one multipart request. The per-file result list
-         in a successful response is ignored. A refused request (a 413 from
-         the server or the hosted edge, for one) still ends with the project
-         created and the dialog closed, since a second Create would make a
-         duplicate project. The toast is then the only place the person
-         learns the files are missing, so it stays until they dismiss it. Its
-         text is the sentence uploadProjectFiles puts in the error. */
+      // 3) The project exists even if the multipart upload fails. Keep any
+      // upload notice visible after the dialog closes.
       if (files.length) {
         try {
           await uploadProjectFiles(finalName, files);
         } catch (e) {
           // eslint-disable-next-line no-console
           diagnostic("renderer.cowork.components.project.NewProjectModal", "WARNING", "new_project_uploads_failed", '[new-project] uploads failed', e);
+          // responseError attaches the HTTP status to a refusal. A connection
+          // or JSON decoding error can happen after the files were saved.
+          const refused = e?.status >= 400;
+          const name = projectLabel(result) || finalName;
           toastManager.add({
             type: 'danger',
             timeout: 0,
-            title: t('newProjectModal.filesNotUploaded', { name: projectLabel(result) || finalName }),
-            description: e?.message || t('newProjectModal.filesNotUploadedReason'),
+            title: refused
+              ? t('newProjectModal.filesNotUploaded', { name })
+              : t('newProjectModal.filesUploadUnconfirmed', { name }),
+            description: refused ? (e.message || t('newProjectModal.filesNotUploadedReason')) : undefined,
           });
         }
       }

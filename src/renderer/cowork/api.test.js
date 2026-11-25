@@ -26,6 +26,7 @@ vi.mock('./lib/organizationTransition', () => transitionMock);
 import { authFetch, fetchRecommendedModels, fetchSettings, testProviders, updateSettings, revealSettingKey, streamNewSession, streamMessage, fetchHealth, fetchInFlightList, cancelResponse, cancelScratchpad, fetchHubWorkspaces, getDeletionRequest, requestAccountDeletion, fetchArtifactStatus, listProjectFiles, fetchMemory, fetchMemoryCapabilities, resetMemory, fetchSession, validateAndSaveConnector, deleteArtifact, publishArtifact, updateArtifact, unpublishArtifact, deleteProject, writeProjectFile, uploadProjectFiles, uploadAttachments, uploadSkillFile, deleteProjectFile, deleteConversationTurn, deleteConversation, deleteAttachment, mountProjectFilePreview, listSharedProjectFiles, SHORT_REQUEST_TIMEOUT_MS, CONNECTIONS_VAULT_KEEP, SHAREPOINT_UNAVAILABLE_MESSAGE, createSharePointConnection, editSharePointConnection, listSharePointLibraries, listSharePointChildren, importSharePointFiles, listConversationFolders, addConversationFolder, removeConversationFolder, listConversationFolderFiles, voiceOperate, readBrowserApproveSteps } from './api';
 import { MODEL_ROUTER_ID } from './lib/modelCatalog';
 import { setOrgMode } from '../lib/orgMode';
+import { changeLocale } from '../lib/i18n';
 import { __resetOrganizationRequestBoundaryForTests } from './lib/organizationRequestBoundary';
 
 const jsonRes = (body, ok = true, status = 200) => ({
@@ -1042,6 +1043,15 @@ describe('streamNewSession: a refusal before the stream', () => {
     });
   });
 
+  it('asks for less content when a text-only chat hits the request size limit', async () => {
+    vi.stubGlobal('fetch', refuse(413, '<html>413</html>'));
+
+    const { message, event } = await failure();
+
+    expect(message).toBe('This request is over the size limit. Try sending less content.');
+    expect(event.http_status).toBe(413);
+  });
+
   it("keeps a busy refusal's status, code and delay-seconds Retry-After", async () => {
     vi.stubGlobal('fetch', refuse(503, { detail: BUSY, code: 'server_busy' }, { 'Retry-After': '5' }));
 
@@ -1208,6 +1218,21 @@ describe('an upload a proxy refuses as too large', () => {
     ['uploadAttachments', () => uploadAttachments([picked()], { projectName: 'general', sessionId: 'conv-1' }), 'Attachment upload failed (502)'],
     ['uploadSkillFile', () => uploadSkillFile(picked()), 'Upload failed (502)'],
   ];
+
+  it('uses the active language for the upload guidance and preserves a server detail verbatim', async () => {
+    try {
+      await changeLocale('es');
+      vi.stubGlobal('fetch', refuse(413, EDGE_413, 'text/html'));
+      await expect(uploadProjectFiles('general', [picked()])).rejects.toThrow(
+        'Esta subida supera el límite de tamaño. Elige un archivo más pequeño o sube menos archivos a la vez.',
+      );
+      const detail = 'This upload exceeds the server limit.';
+      vi.stubGlobal('fetch', refuse(413, JSON.stringify({ detail }), 'application/json'));
+      await expect(uploadProjectFiles('general', [picked()])).rejects.toThrow(detail);
+    } finally {
+      await changeLocale('en');
+    }
+  });
 
   it.each(uploads)("%s says the upload is over the size limit when the 413 is an HTML page", async (_name, call) => {
     vi.stubGlobal('fetch', refuse(413, EDGE_413, 'text/html'));

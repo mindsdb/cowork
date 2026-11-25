@@ -465,6 +465,10 @@
         "pendingDetail": "Ihre Zugangsdaten werden verschlüsselt gespeichert. Diese Seite wird aktualisiert, sobald die Prüfung abgeschlossen ist."
       }
     },
+    "httpRefusal": {
+      "uploadTooLarge": "Dieser Upload überschreitet die zulässige Größe. Wählen Sie eine kleinere Datei oder weniger Dateien auf einmal aus.",
+      "requestTooLarge": "Diese Anfrage überschreitet die zulässige Größe. Versuchen Sie, weniger Inhalt zu senden."
+    },
     "fileDrop": {
       "uploading": "Wird hochgeladen…"
     },
@@ -799,6 +803,7 @@
     "couldNotOpenPicker": "Die Ordnerauswahl konnte nicht geöffnet werden.",
     "filesNotUploaded": "„{name}“ wurde erstellt, aber die Dateien wurden nicht hochgeladen.",
     "filesNotUploadedReason": "Der Upload wurde nicht abgeschlossen. Fügen Sie die Dateien erneut zum Projekt hinzu.",
+    "filesUploadUnconfirmed": "„{name}“ wurde erstellt. Prüfen Sie die Dateien im Projekt, bevor Sie den Upload erneut versuchen.",
     "title": "Neues Projekt starten",
     "nameLabel": "Projektname",
     "instructionsLabel": "Anweisungen",
