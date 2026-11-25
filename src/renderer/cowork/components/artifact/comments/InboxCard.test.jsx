@@ -232,3 +232,32 @@ describe('InboxCard pinned and inline edit', () => {
     expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
   });
 });
+
+describe('InboxCard holding its thread (a doc)', () => {
+  const withReply = {
+    ...THREAD,
+    payload: {
+      ...THREAD.payload,
+      replies: [{ id: 'r1', text: 'Done in the summary.', author: { user_id: 'owner', email: 'owner@example.com' } }],
+    },
+  };
+
+  it('shows the replies and a box to reply while open, and nothing more while closed', async () => {
+    const onReply = vi.fn().mockResolvedValue(true);
+    const { rerender } = render(<InboxCard thread={withReply} viewer={{ user_id: 'owner' }} onReply={onReply} />);
+    expect(screen.queryByText('Done in the summary.')).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Reply to this comment' })).toBeNull();
+
+    rerender(<InboxCard thread={withReply} viewer={{ user_id: 'owner' }} onReply={onReply} expanded />);
+    expect(screen.getByText('Done in the summary.')).toBeInTheDocument();
+    const box = screen.getByRole('textbox', { name: 'Reply to this comment' });
+    fireEvent.change(box, { target: { value: 'Thanks' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await vi.waitFor(() => expect(onReply).toHaveBeenCalledWith('thread-1', 'Thanks', []));
+  });
+
+  it('keeps replies in the popover where the card has no onReply', () => {
+    render(<InboxCard thread={withReply} viewer={{ user_id: 'owner' }} expanded />);
+    expect(screen.queryByRole('textbox', { name: 'Reply to this comment' })).toBeNull();
+  });
+});

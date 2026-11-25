@@ -25,6 +25,9 @@ export default function AppShell({
   children,
 }) {
   const { t } = useTranslation('shell');
+  // Electron: left 97 clears the macOS traffic lights (they end ~x:80).
+  // Web has none, so 18 sits flush with the edge.
+  const hamburgerLeft = host.isWeb ? 18 : 97;
   const mainEl = (
     <main style={{
       flex: 1, minWidth: 0, minHeight: 0,
@@ -34,6 +37,10 @@ export default function AppShell({
       // clear the traffic lights + floating hamburger when the sidebar isn't
       // docked over that corner. 0 when it is.
       '--titlebar-safe-top': `${titlebarSafeTop}px`,
+      // How far into the window a header that keeps its row in that corner
+      // (an expanded doc) starts it instead: past the hamburger, one
+      // button-step on. Window x, not main's; 0 when the sidebar is docked.
+      '--titlebar-safe-left': `${titlebarSafeTop ? hamburgerLeft + 44 : 0}px`,
       // Opt the content column out of the window drag region so clicks reach
       // outside-click handlers — Electron swallows events over drag regions
       // (desktop only; the web build has no drag regions).
@@ -59,9 +66,7 @@ export default function AppShell({
           className="icon-btn"
           style={{
             position: 'absolute',
-            // Electron: left 97 clears the macOS traffic lights (they end ~x:80).
-            // Web has none, so 18 sits flush with the edge.
-            top: 18, left: host.isWeb ? 18 : 97,
+            top: 18, left: hamburgerLeft,
             zIndex: 10,
             WebkitAppRegion: 'no-drag',
             opacity: showFloatingHamburger ? 1 : 0,

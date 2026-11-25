@@ -134,6 +134,8 @@
       "hoursAgo": "{count, plural, one {il y a # heure} other {il y a # heures}}",
       "daysAgo": "{count, plural, one {il y a # jour} other {il y a # jours}}",
       "replies": "{count, plural, one {# réponse} other {# réponses}}",
+      "replyPlaceholder": "Répondre…",
+      "replyAriaLabel": "Répondre à ce commentaire",
       "edited": "(modifié)",
       "unattachedTip": "La partie de l’artefact à laquelle ce commentaire faisait référence n’est plus disponible.",
       "generalTip": "Retour général sur l’ensemble de l’artefact.",
@@ -340,6 +342,8 @@
       "specificDesc": "Uniquement les personnes de votre liste"
     },
     "whoCanAccess": "Qui peut accéder à votre application",
+    "whoCanAccessDoc": "Qui peut accéder à votre document",
+    "updatesAsYouEdit": "Mis à jour à chaque modification",
     "addPassword": "Ajouter un mot de passe",
     "hide": "Masquer",
     "show": "Afficher",
@@ -928,7 +932,15 @@
     "sourceHint": "Modifier le texte et la mise en page",
     "commentsHint": "Laisser et consulter des retours",
     "statsHint": "Qui l’a consulté et combien de temps",
-    "commentsOpen": "Commentaires, {count} ouverts"
+    "commentsOpen": "Commentaires, {count} ouverts",
+    "openChat": "Ouvrir le chat",
+    "openChatHint": "Fermer l’aperçu et aller au chat où cela a été créé",
+    "openChatUnavailable": {
+      "noOrigin": "Pas créé dans un chat, ou créé avant l’enregistrement des chats",
+      "deleted": "Le chat où cela a été créé a été supprimé",
+      "colleague": "Créé dans le chat d’un collègue, que seule cette personne peut ouvrir",
+      "unreachable": "Le chat où cela a été créé est inaccessible pour le moment"
+    }
   },
   "liveEditPanel": {
     "close": "Fermer le panneau de modification en direct",

@@ -134,6 +134,8 @@
       "hoursAgo": "{count, plural, one {# hour ago} other {# hours ago}}",
       "daysAgo": "{count, plural, one {# day ago} other {# days ago}}",
       "replies": "{count, plural, one {# reply} other {# replies}}",
+      "replyPlaceholder": "Reply…",
+      "replyAriaLabel": "Reply to this comment",
       "edited": "(edited)",
       "unattachedTip": "The part of the artifact this comment referred to is no longer available.",
       "generalTip": "General feedback about the whole artifact.",
@@ -340,6 +342,8 @@
       "specificDesc": "Only the people you list"
     },
     "whoCanAccess": "Who can access your app",
+    "whoCanAccessDoc": "Who can access your doc",
+    "updatesAsYouEdit": "Updates as you edit",
     "addPassword": "Add a password",
     "hide": "Hide",
     "show": "Show",
@@ -928,7 +932,15 @@
     "sourceHint": "Change text and layout on the page",
     "commentsHint": "Leave and review feedback",
     "statsHint": "Who viewed and for how long",
-    "commentsOpen": "Comments, {count} open"
+    "commentsOpen": "Comments, {count} open",
+    "openChat": "Open chat",
+    "openChatHint": "Close the preview and go to the chat this was made in",
+    "openChatUnavailable": {
+      "noOrigin": "Not made in a chat, or made before chats were recorded",
+      "deleted": "The chat this was made in has been deleted",
+      "colleague": "Made in a colleague's chat, which only they can open",
+      "unreachable": "The chat this was made in can't be reached right now"
+    }
   },
   "liveEditPanel": {
     "close": "Close Live edit panel",

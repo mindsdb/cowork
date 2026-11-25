@@ -1,0 +1,89 @@
+/* Version history (DocVersions.jsx): the list under the header's clock, the
+   banner over a version being looked at, the confirmation before a restore and
+   the note after it. */
+
+/* The list */
+.doc-versions__head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  font-size: 13px; font-weight: 600; color: var(--ink); text-transform: none; letter-spacing: 0;
+}
+.doc-versions__head span + span { font-size: 12px; font-weight: 400; color: var(--ink-4); }
+.doc-versions__who {
+  width: 24px; height: 24px; border-radius: 50%;
+  display: inline-grid; place-items: center;
+  background: var(--surface-3); color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line-2);
+}
+.doc-versions__who--agent { background: var(--accent-bg); color: var(--accent-2); box-shadow: none; }
+.doc-versions__row { display: grid; min-width: 0; padding: 2px 0; line-height: 1.35; }
+.doc-versions__when { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.doc-versions__by { font-weight: 500; color: var(--ink-3); }
+.doc-versions__what { font-size: 12px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-versions__look { display: inline-flex; opacity: 0; color: var(--ink-4); }
+[data-highlighted] .doc-versions__look, .doc-versions__look--on { opacity: 1; }
+.doc-versions__look--on, .doc-versions__mark { display: inline-flex; color: var(--accent-2); }
+.doc-versions__foot { font-size: 12px; font-weight: 400; color: var(--ink-4); text-transform: none; letter-spacing: 0; }
+
+/* A version being looked at */
+.doc-version-bar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
+  padding: 8px 12px 8px 16px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  border-bottom: 1px solid var(--info-border);
+}
+.doc-version-bar__icon { display: inline-flex; color: var(--accent-2); }
+.doc-version-bar__text { flex: 1 1 220px; min-width: 0; display: grid; gap: 1px; }
+.doc-version-bar__title { font-size: var(--text-sm); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doc-version-bar__title b { font-weight: 600; color: var(--ink); }
+.doc-version-bar__what { color: var(--ink-3); }
+.doc-version-bar__legend { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); }
+.doc-version-bar__legend i, .doc-block--changed::after { background: var(--accent); border-radius: 2px; opacity: 0.8; }
+.doc-version-bar__legend i { width: 3px; height: 12px; }
+.doc-version-bar__actions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.doc-version-bar__step { display: inline-flex; gap: 2px; margin-right: 2px; }
+
+/* A block of that version which reads differently now */
+.doc-block--changed::after { content: ''; position: absolute; left: -14px; top: 2px; bottom: 2px; width: 3px; }
+
+/* The confirmation */
+.doc-restore { padding: 22px 22px 18px; }
+.doc-restore__icon {
+  width: 40px; height: 40px; border-radius: 50%; margin-bottom: 14px;
+  display: grid; place-items: center; background: var(--accent-bg); color: var(--accent-2);
+}
+.doc-restore__title { margin: 0 0 6px; font-size: 17px; font-weight: 600; color: var(--ink); }
+.doc-restore__lead { margin: 0 0 12px; font-size: 14px; line-height: 1.55; color: var(--ink-2); }
+.doc-restore__lead b { font-weight: 600; color: var(--ink); }
+.doc-restore__version {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+  padding: 8px 10px; border-radius: 10px; background: var(--surface-2);
+}
+.doc-restore__notes { list-style: none; margin: 0 0 18px; padding: 2px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.doc-restore__notes li { display: flex; gap: 10px; padding: 8px 0; font-size: 13px; line-height: 1.45; color: var(--ink-3); }
+.doc-restore__notes li + li { border-top: 1px solid var(--line); }
+.doc-restore__notes svg { flex: none; margin-top: 2px; }
+.doc-restore__actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* After a restore, at the foot of the pane */
+.doc-root { position: relative; }
+.doc-restored {
+  position: absolute; left: 50%; bottom: 20px; z-index: 5; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; white-space: nowrap;
+  padding: 8px 8px 8px 14px; border-radius: 10px;
+  background: var(--surface-3); border: 1px solid var(--line-2); box-shadow: var(--sh-popup);
+  font-size: 13px; color: var(--ink);
+  animation: doc-restored-in var(--dur-popover-in, 160ms) ease-out;
+}
+.doc-restored svg { color: var(--ok); }
+.doc-restored button { all: unset; box-sizing: border-box; cursor: pointer; padding: 4px 8px; border-radius: 6px; font-weight: 600; color: var(--accent-2); }
+.doc-restored button:focus-visible { box-shadow: 0 0 0 2px var(--accent-glow); }
+.doc-restored button:hover { background: var(--accent-bg); }
+@keyframes doc-restored-in { from { opacity: 0; transform: translate(-50%, 6px); } to { opacity: 1; transform: translate(-50%, 0); } }
+@media (prefers-reduced-motion: reduce) { .doc-restored { animation: none; } }
+
+/* The agent still writing as a restore is confirmed: the header's pulse, in the accent. */
+.doc-restore__notes li.doc-restore__agent { color: var(--ink-2); align-items: center; }
+.doc-restore__pulse {
+  flex: none; width: 7px; height: 7px; margin: 0 4px 0 3px; border-radius: 50%;
+  background: var(--accent); animation: doc-pulse 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) { .doc-restore__pulse { animation: none; } }

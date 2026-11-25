@@ -39,6 +39,11 @@ import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import ContextFileModal from '../components/project/ContextFileModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
+import DocCard from '../components/doc/DocCard';
+import DocColumn from '../components/doc/DocColumn';
+import { isDocArtifact } from '../components/doc/docArtifact';
+import { docGridColumns } from '../components/doc/docLayout';
+import { useDocBesideChat } from '../components/doc/useDocBesideChat';
 import SkillCard from '../components/SkillCard';
 import ConnectorDraftCard from '../components/ConnectorDraftCard';
 import AskUserCard from '../components/AskUserCard';
@@ -89,7 +94,7 @@ import { providerOverloadedButtons } from '../lib/turnErrorActions';
 import { isSkippedFailedAssistant, isOrphanUser as isOrphanUserPure, lastVisibleTurnIdx } from '../lib/turnVisibility';
 import { isThinkingActive } from '../lib/thinkingActive';
 import { splitTurnSegments, liveSegmentIndex } from '../lib/turnSegments';
-import { addonRowLabel, queuedReasonKey } from '../lib/addons';
+import { addonRowLabel, needsOwnTurn, queuedReasonKey } from '../lib/addons';
 import { linkFigureSteps } from '../lib/figureSources';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { billingActions, billingCopyKey, offersBilling } from '../lib/billingLinks';
@@ -647,20 +652,27 @@ export function artifactStepToCard(step, projectPath) {
 // down to the card because an artifact the agent created THIS turn cannot be in
 // an artifacts index that was loaded before it existed, and judging it against
 // one would mark a brand-new artifact "Deleted".
-function StepArtifacts({ steps, onOpen, onShare, projectPath, live = false }) {
+function StepArtifacts({ steps, onOpen, onShare, projectPath, live = false, activeDocId = null }) {
   const artifacts = steps?.filter((s) => s.badge === 'Artifact') || [];
   if (artifacts.length === 0) return null;
   return (
     <div className="flex flex-col gap-3 mt-1">
-      {artifacts.map((s) => (
-        <ArtifactCard
-          key={s.id}
-          artifact={artifactStepToCard(s, projectPath)}
-          onOpen={onOpen}
-          onShare={onShare}
-          live={live}
-        />
-      ))}
+      {artifacts.map((s) => {
+        const card = artifactStepToCard(s, projectPath);
+        // A doc opens beside the chat in the doc editor, not in the file viewer.
+        if (isDocArtifact(card)) {
+          return <DocCard key={s.id} artifact={card} onOpen={onOpen} live={live} active={!!activeDocId && card.id === activeDocId} />;
+        }
+        return (
+          <ArtifactCard
+            key={s.id}
+            artifact={card}
+            onOpen={onOpen}
+            onShare={onShare}
+            live={live}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -2194,7 +2206,15 @@ function lastUserMessageBefore(visibleMessages, i) {
   for (let j = i - 1; j >= 0; j--) {
     const m = visibleMessages[j];
     if (m?.role === 'user' && typeof m.content === 'string' && m.content) {
-      return { text: m.content, attachments: Array.isArray(m.attachments) ? m.attachments : [] };
+      // The doc it was sent beside, when this app sent it: a resend goes with
+      // that one, never with whatever doc is open now. Asked for as a doc, it
+      // is asked for as one again.
+      return {
+        text: m.content,
+        attachments: Array.isArray(m.attachments) ? m.attachments : [],
+        docContext: m.docContext || null,
+        output: m.output || null,
+      };
     }
   }
   return null;
@@ -2328,6 +2348,9 @@ export default function ChatView({
   onAddQueuedToTask,
   onMoveAddonToQueue,
   onResendQueued,
+  // A doc to open beside this chat as it shows, then `onDocDocked`.
+  dockDoc = null,
+  onDocDocked,
   agentLabel,
   // Conversation ids the server currently has an active producer for
   // (App.jsx's cross-client sync feed). Used to decide whether an
@@ -2408,7 +2431,9 @@ export default function ChatView({
   const effectiveRailOpen = !pane && !railFloats && railOpen;
   // A comparison pane never resends on its own: it would give one side a
   // turn the other never got, and the two would stop being comparable.
-  const sendAgain = pane ? undefined : (text, attachments) => onSend?.(text, attachments);
+  const sendAgain = pane ? undefined : (text, attachments, docContext = null, output = null) => (
+    onSend?.(text, attachments, { docContext, ...(output ? { output } : {}) })
+  );
   const railOverlayOpen = !pane && railFloats && railNarrowOpen;
   /* The floating rail drawer counts as an overlay, so the desktop browser
      pane's native view steps aside rather than draw over it. */
@@ -2427,15 +2452,38 @@ export default function ChatView({
   // Anything else still routes through the Electron OS handler via
   // openPath inside the card.
   const [previewArt, setPreviewArt] = useState(null);
+  const isStreaming = task.messages.some((m) => m.role === '_streaming');
+  // The doc open beside the chat. A doc the agent creates in this
+  // conversation opens here the moment it exists. A comparison pane has no
+  // right-hand column, so no doc opens there.
+  const docSide = useDocBesideChat({
+    taskId: task?.id, projectId: project?.id, streaming: isStreaming, onSend, enabled: !pane,
+  });
+  // A doc the app brought this chat up for ("Edit with agent" on a doc from
+  // the library) opens beside it, once.
+  useEffect(() => {
+    if (!dockDoc) return;
+    docSide.open(dockDoc);
+    onDocDocked?.();
+  }, [dockDoc, docSide.open, onDocDocked]);
   // A new object per Share click, so the viewer opens its panel once per click.
   const [previewShare, setPreviewShare] = useState(null);
   const handleArtifactOpen = (artifact) => {
+    if (isDocArtifact(artifact)) {
+      docSide.open(artifact);
+      return;
+    }
     // The card already filters: it only calls onOpen for previewable
     // types (HTML / md / txt / csv). Dispatch straight to the viewer.
     setPreviewShare(null);
     setPreviewArt(artifact);
   };
   const handleArtifactShare = (artifact) => {
+    // A doc shares from its own pane, which knows the page follows its edits.
+    if (isDocArtifact(artifact)) {
+      docSide.open(artifact);
+      return;
+    }
     setPreviewShare({});
     setPreviewArt(artifact);
   };
@@ -2488,7 +2536,6 @@ export default function ChatView({
   };
   const cancelTitleRename = () => setTitleEditing(false);
 
-  const isStreaming = task.messages.some((m) => m.role === '_streaming');
   // A mid-task send holds its queue slot while the server decides (ENG-4194);
   // the running turn already shows it as "Sending…", so the chip appears only
   // if that turn ends first.
@@ -2614,15 +2661,18 @@ export default function ChatView({
   const [openingBrowser, setOpeningBrowser] = useState(false);
   const [blankOpenedId, setBlankOpenedId] = useState(null);
   useEffect(() => { setOpeningBrowser(false); setBlankOpenedId(null); }, [task.id]);
-  const browserOpen = !pane && (host.isWeb || host.supportsInAppBrowser) && viewable(shownBrowserId);
-  const openingBrowserOpen = !pane && openingBrowser && !browserOpen && host.isWeb;
+  // A doc open beside the chat holds the right-hand column; the browser pane,
+  // in any of its states, comes back when the doc closes.
+  const docHoldsColumn = Boolean(docSide.doc);
+  const browserOpen = !pane && !docHoldsColumn && (host.isWeb || host.supportsInAppBrowser) && viewable(shownBrowserId);
+  const openingBrowserOpen = !pane && !docHoldsColumn && openingBrowser && !browserOpen && host.isWeb;
   /* The top-right Show browser icon, in a task whose browser is off or could
      not open: a blank page that asks where to go. The real pane takes its
      place as soon as the turn's Browser step arrives. */
   const [blankBrowser, setBlankBrowser] = useState(false);
   useEffect(() => { setBlankBrowser(false); }, [task.id]);
   useEffect(() => { if (browserOpen) setBlankBrowser(false); }, [browserOpen]);
-  const blankBrowserOpen = !pane && blankBrowser && !browserOpen && (host.isWeb || host.supportsInAppBrowser);
+  const blankBrowserOpen = !pane && !docHoldsColumn && blankBrowser && !browserOpen && (host.isWeb || host.supportsInAppBrowser);
   const browserPaneOpen = browserOpen || blankBrowserOpen || openingBrowserOpen;
   /* On a phone the pane docks at the top of the chat (no taller than half
      the screen) and minimizes to its header instead of closing. It expands
@@ -3150,7 +3200,9 @@ export default function ChatView({
       // row past the container — the scroll bar never appears. 1fr forces
       // the row to fill the container height so the inner overflowY can
       // create a real scroll context.
-      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-layout ease-out bg-transparent font-body text-ink-2 relative overflow-hidden ${browserPaneOpen && !paneFloats ? 'grid-cols-[minmax(0,1fr)_minmax(440px,50%)]' : effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
+      className={`flex-1 min-h-0 grid grid-rows-[1fr] ${docSide.resizing ? '' : 'transition-[grid-template-columns] duration-layout ease-out'} bg-transparent font-body text-ink-2 relative overflow-hidden ${browserPaneOpen && !paneFloats ? 'grid-cols-[minmax(0,1fr)_minmax(440px,50%)]' : effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
+      // A doc open beside the chat takes the right column (the rail steps aside).
+      style={docSide.doc && !isNarrow ? { gridTemplateColumns: docGridColumns(docSide.share, docSide.expanded) } : undefined}
     >
       <OrbitProvider
         canvasRef={convRef}
@@ -3583,7 +3635,7 @@ export default function ChatView({
                          nothing to switch to. */
                       onSwitchToAir={
                         onSwitchToAirAndResend && balanceResend && taskModelId !== MINDSHUB_AIR_MODEL_ID
-                          ? () => onSwitchToAirAndResend(balanceResend.text, balanceResend.attachments)
+                          ? () => onSwitchToAirAndResend(balanceResend.text, balanceResend.attachments, balanceResend.docContext)
                           : undefined
                       }
                     />
@@ -3683,7 +3735,7 @@ export default function ChatView({
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
-                      onRetry={resend && sendAgain ? () => sendAgain(resend.text, resend.attachments) : undefined}
+                      onRetry={resend && sendAgain ? () => sendAgain(resend.text, resend.attachments, resend.docContext, resend.output) : undefined}
                       reconnectable={m.reconnectable}
                       providerLabel={m.providerLabel}
                       errorText={m.content}
@@ -3774,7 +3826,7 @@ export default function ChatView({
                       title={t('chatView.errors.contentRecoveryTitle')}
                       body={t('chatView.errors.contentRecoveryBody')}
                       buttons={resend && sendAgain
-                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
+                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext, resend.output), primary: true }]
                         : []}
                     />
                   );
@@ -3825,7 +3877,7 @@ export default function ChatView({
                         ? t('chatView.errors.billingUnavailableBody')
                         : t('chatView.errors.providerUnauthorizedBody')}
                       buttons={resend && sendAgain
-                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
+                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext, resend.output), primary: true }]
                         : []}
                     />
                   );
@@ -3850,7 +3902,7 @@ export default function ChatView({
                       title={t('chatView.errors.workerUnresponsiveTitle')}
                       body={t('chatView.errors.workerUnresponsiveBody')}
                       buttons={resend && sendAgain
-                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
+                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext, resend.output), primary: true }]
                         : []}
                     />
                   );
@@ -3874,7 +3926,7 @@ export default function ChatView({
                         : t('chatView.errors.modelTimeoutOperatorBody')}
                       buttons={[
                         ...(resend && sendAgain
-                          ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
+                          ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext, resend.output), primary: true }]
                           : []),
                         ...(PLATFORM_UI ? [{ label: t('chatView.cards.openSettings'), onClick: () => onOpenSettings?.('agent') }] : []),
                       ]}
@@ -3898,7 +3950,7 @@ export default function ChatView({
                       title={t('chatView.errors.turnLostTitle')}
                       body={t('chatView.errors.turnLostBody')}
                       buttons={resend && sendAgain
-                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
+                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext, resend.output), primary: true }]
                         : []}
                     />
                   );
@@ -3926,7 +3978,7 @@ export default function ChatView({
                         {m._reconnecting && <Reconnecting />}
                       </>}
                       buttons={resend && !turnMayBeRunning && sendAgain
-                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
+                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext, resend.output), primary: true }]
                         : []}
                     />
                   );
@@ -3977,7 +4029,7 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       body={m.content}
                       retryAt={m.retryAt}
-                      onRetry={rlResend && sendAgain ? () => sendAgain(rlResend.text, rlResend.attachments) : undefined}
+                      onRetry={rlResend && sendAgain ? () => sendAgain(rlResend.text, rlResend.attachments, rlResend.docContext, rlResend.output) : undefined}
                     />
                   );
                 }
@@ -3998,7 +4050,7 @@ export default function ChatView({
                       title={t('chatView.errors.serverBusyTitle')}
                       body={m.content}
                       retryAt={m.retryAt}
-                      onRetry={busyResend && sendAgain ? () => sendAgain(busyResend.text, busyResend.attachments) : undefined}
+                      onRetry={busyResend && sendAgain ? () => sendAgain(busyResend.text, busyResend.attachments, busyResend.docContext, busyResend.output) : undefined}
                     />
                   );
                 }
@@ -4020,7 +4072,7 @@ export default function ChatView({
                       body={m.content}
                       retryAt={m.retryAt}
                       onRetry={unavailableResend && sendAgain
-                        ? () => sendAgain(unavailableResend.text, unavailableResend.attachments)
+                        ? () => sendAgain(unavailableResend.text, unavailableResend.attachments, unavailableResend.docContext, unavailableResend.output)
                         : undefined}
                     />
                   );
@@ -4168,7 +4220,7 @@ export default function ChatView({
                       onShare={handleArtifactShare}
                     />
                   )}
-                  <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} />
+                  <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} activeDocId={docSide.doc?.artifactId} />
                   <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
                   <StepConnectorDrafts steps={m.steps} onConnect={onConnectCustomConnector} />
                   {(() => {
@@ -4278,7 +4330,7 @@ export default function ChatView({
                     <StreamCursor />
                   </div>
                 )}
-                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} live />
+                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} activeDocId={docSide.doc?.artifactId} live />
                 <StepSkills steps={streamingMsg.steps} latestByKey={latestSkillCardByKey} messageIndex={visibleMessages.length} projectName={project?.name} />
                 <StepConnectorDrafts steps={streamingMsg.steps} onConnect={onConnectCustomConnector} />
               </AnswerTurn>
@@ -4367,7 +4419,7 @@ export default function ChatView({
                     ) : null}
                     {q.addonPending ? (
                       <span role="status" className="text-ink-3 text-[12px] px-1" aria-label={t('chatView.addon.addingToTask')}>…</span>
-                    ) : (onAddQueuedToTask && isStreaming && !q.paused && !String(task?.id ?? '').startsWith('tmp-') && !(q.attachments || []).length && (
+                    ) : (onAddQueuedToTask && isStreaming && !q.paused && !String(task?.id ?? '').startsWith('tmp-') && !(q.attachments || []).length && !needsOwnTurn(q) && (
                       <Tooltip content={t('chatView.addon.addToTask')}>
                         <button
                           type="button"
@@ -4449,6 +4501,9 @@ export default function ChatView({
           }}
         />
       )}
+      {docSide.doc && (
+        <DocColumn side={docSide} narrow={isNarrow} areaRef={chatRef} />
+      )}
       <aside
         /* Narrow: fixed overlay that slides in from the right.
            Wide: inline grid column.
@@ -4465,6 +4520,8 @@ export default function ChatView({
         } : {
           visibility: effectiveRailOpen ? 'visible' : 'hidden',
           opacity: effectiveRailOpen ? 1 : 0,
+          // The doc open beside the chat holds this column.
+          ...(docSide.doc ? { display: 'none' } : null),
         }}
       >
         {/* Rail header bar — collapse button. Stays visible on mobile
@@ -4512,6 +4569,7 @@ export default function ChatView({
           isStreaming={isStreaming}
           conversationId={task?.id || null}
           onAddressWithAgent={({ prompt }) => onSend?.(prompt)}
+          onOpenDoc={docSide.open}
         />
         <ContextBox
           projects={projects}

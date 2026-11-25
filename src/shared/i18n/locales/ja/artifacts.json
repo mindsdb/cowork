@@ -134,6 +134,8 @@
       "hoursAgo": "{count, plural, other {#時間前}}",
       "daysAgo": "{count, plural, other {#日前}}",
       "replies": "{count, plural, other {#件の返信}}",
+      "replyPlaceholder": "返信…",
+      "replyAriaLabel": "このコメントに返信",
       "edited": "（編集済み）",
       "unattachedTip": "このコメントが指していたアーティファクトの部分は、現在は存在しません。",
       "generalTip": "アーティファクト全体に対するフィードバックです。",
@@ -340,6 +342,8 @@
       "specificDesc": "指定したユーザーのみ"
     },
     "whoCanAccess": "アプリにアクセスできるユーザー",
+    "whoCanAccessDoc": "ドキュメントにアクセスできるユーザー",
+    "updatesAsYouEdit": "編集するたびに更新されます",
     "addPassword": "パスワードを追加",
     "hide": "非表示",
     "show": "表示",
@@ -928,7 +932,15 @@
     "sourceHint": "ページのテキストとレイアウトを変更",
     "commentsHint": "フィードバックを残して確認",
     "statsHint": "誰がどれだけ閲覧したか",
-    "commentsOpen": "コメント（未解決 {count} 件）"
+    "commentsOpen": "コメント（未解決 {count} 件）",
+    "openChat": "チャットを開く",
+    "openChatHint": "プレビューを閉じて、作成元のチャットに移動します",
+    "openChatUnavailable": {
+      "noOrigin": "チャットで作成されていないか、チャットが記録される前に作成されました",
+      "deleted": "作成元のチャットは削除されています",
+      "colleague": "同僚のチャットで作成されたため、その本人しか開けません",
+      "unreachable": "作成元のチャットに現在アクセスできません"
+    }
   },
   "liveEditPanel": {
     "close": "ライブ編集パネルを閉じる",

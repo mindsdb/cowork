@@ -134,6 +134,8 @@
       "hoursAgo": "{count, plural, other {# 小时前}}",
       "daysAgo": "{count, plural, other {# 天前}}",
       "replies": "{count, plural, other {# 条回复}}",
+      "replyPlaceholder": "回复…",
+      "replyAriaLabel": "回复此评论",
       "edited": "（已编辑）",
       "unattachedTip": "此评论所指的产物部分已不存在。",
       "generalTip": "针对整个产物的总体反馈。",
@@ -340,6 +342,8 @@
       "specificDesc": "仅限你列出的人"
     },
     "whoCanAccess": "谁可以访问你的应用",
+    "whoCanAccessDoc": "谁可以访问你的文档",
+    "updatesAsYouEdit": "随编辑实时更新",
     "addPassword": "添加密码",
     "hide": "隐藏",
     "show": "显示",
@@ -928,7 +932,15 @@
     "sourceHint": "修改页面上的文字和布局",
     "commentsHint": "留下并查看反馈",
     "statsHint": "谁看过以及看了多久",
-    "commentsOpen": "评论，{count} 条待处理"
+    "commentsOpen": "评论，{count} 条待处理",
+    "openChat": "打开聊天",
+    "openChatHint": "关闭预览并前往创建它的聊天",
+    "openChatUnavailable": {
+      "noOrigin": "不是在聊天中创建的，或创建于聊天记录功能推出之前",
+      "deleted": "创建它的聊天已被删除",
+      "colleague": "在同事的聊天中创建，只有该同事可以打开",
+      "unreachable": "暂时无法访问创建它的聊天"
+    }
   },
   "liveEditPanel": {
     "close": "关闭实时编辑面板",

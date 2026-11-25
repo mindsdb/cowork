@@ -134,6 +134,8 @@
       "hoursAgo": "{count, plural, one {há # hora} other {há # horas}}",
       "daysAgo": "{count, plural, one {há # dia} other {há # dias}}",
       "replies": "{count, plural, one {# resposta} other {# respostas}}",
+      "replyPlaceholder": "Responder…",
+      "replyAriaLabel": "Responder a este comentário",
       "edited": "(editado)",
       "unattachedTip": "A parte do artefato a que este comentário se referia não está mais disponível.",
       "generalTip": "Comentário geral sobre o artefato inteiro.",
@@ -340,6 +342,8 @@
       "specificDesc": "Só as pessoas que você listar"
     },
     "whoCanAccess": "Quem pode acessar seu app",
+    "whoCanAccessDoc": "Quem pode acessar seu documento",
+    "updatesAsYouEdit": "Atualiza conforme você edita",
     "addPassword": "Adicione uma senha",
     "hide": "Ocultar",
     "show": "Mostrar",
@@ -928,7 +932,15 @@
     "sourceHint": "Altere o texto e o layout da página",
     "commentsHint": "Deixe e revise feedback",
     "statsHint": "Quem viu e por quanto tempo",
-    "commentsOpen": "Comentários, {count} abertos"
+    "commentsOpen": "Comentários, {count} abertos",
+    "openChat": "Abrir chat",
+    "openChatHint": "Feche a pré-visualização e vá para o chat em que isto foi criado",
+    "openChatUnavailable": {
+      "noOrigin": "Não foi criado em um chat, ou foi criado antes de os chats serem registrados",
+      "deleted": "O chat em que isto foi criado foi excluído",
+      "colleague": "Criado no chat de um colega, que só essa pessoa pode abrir",
+      "unreachable": "Não é possível acessar agora o chat em que isto foi criado"
+    }
   },
   "liveEditPanel": {
     "close": "Fechar o painel de edição ao vivo",

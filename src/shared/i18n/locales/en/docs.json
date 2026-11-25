@@ -1,0 +1,314 @@
+{
+  "doc": "Doc",
+  "pane": {
+    "status": {
+      "agentWriting": "Agent is writing",
+      "notSaved": "Not saved yet",
+      "saving": "Saving…"
+    },
+    "showTabs": "Show tabs",
+    "showTabsChanged": "Show tabs (a tab has changed)",
+    "openSharedPage": "Open the shared page",
+    "openInBrowser": "Open in browser",
+    "shareToOpen": "Share it to open it in a browser",
+    "showChat": "Show the chat",
+    "expand": "Expand",
+    "close": "Close",
+    "closeDoc": "Close doc",
+    "renameDoc": "Rename doc: {title}",
+    "docName": "Doc name",
+    "loading": "Loading doc",
+    "gone": "This doc no longer exists.",
+    "openFailed": "Could not open this doc. {reason}",
+    "offline": "Can’t reach Cowork’s local server. Your edits are kept here and will save as soon as it’s back.",
+    "dismiss": "Dismiss",
+    "undo": "Undo"
+  },
+  "export": {
+    "label": "Export",
+    "downloadAs": "Download as",
+    "format": {
+      "docx": "Word (.docx)",
+      "pdf": "PDF",
+      "md": "Markdown",
+      "html": "HTML page"
+    },
+    "copyMarkdown": "Copy as Markdown",
+    "exporting": "Exporting {name}…",
+    "failed": "Export failed",
+    "failedStatus": "Export failed ({status})",
+    "copied": "Copied as Markdown",
+    "copyFailed": "Copy failed",
+    "copyDocFailed": "Couldn’t copy the doc"
+  },
+  "notice": {
+    "deletedTab": "Deleted the tab “{title}”",
+    "deletedColumn": "Deleted the column “{name}”",
+    "deletedRows": "{count, plural, one {Deleted a row} other {Deleted # rows}}",
+    "deletedBlocks": "{count, plural, one {Deleted a block} other {Deleted # blocks}}",
+    "cantUndo": "Can’t undo that: it has changed since.",
+    "cantRedo": "Can’t redo that: the doc has changed since.",
+    "editTooBig": "That edit was too large to save. The doc shows what is saved.",
+    "editFailed": "That edit couldn’t be saved. The doc shows what is saved.",
+    "imageFailed": "Couldn’t add that image",
+    "imageFailedStatus": "Couldn’t add that image ({status})",
+    "imageTooLarge": "That image is too large for a doc (10 MB at most).",
+    "openPageFailed": "Could not open the page",
+    "openInBrowserFailed": "Could not open this doc in a browser",
+    "requestFailed": "Doc request failed ({status})",
+    "timeout": "The server took too long to answer."
+  },
+  "card": {
+    "open": "Open doc: {title}",
+    "deleted": "Deleted doc: {title}",
+    "kindDeleted": "Doc · deleted",
+    "kindOpen": "Doc · open beside the chat",
+    "showing": "Showing",
+    "openButton": "Open"
+  },
+  "chip": {
+    "me": "You"
+  },
+  "column": {
+    "resize": "Resize the doc"
+  },
+  "page": {
+    "untitled": "Untitled",
+    "title": "Title",
+    "edited": "Edited {age}",
+    "new": "New doc",
+    "byAgent": "Written with the agent"
+  },
+  "tabs": {
+    "label": "Tabs",
+    "add": "Add tab",
+    "addHint": "Add a new tab to this doc",
+    "hide": "Hide tabs",
+    "changed": "Changed",
+    "showChanged": "Show the changed tab",
+    "name": "Tab name",
+    "menu": "{title} tab",
+    "options": "{title} options",
+    "rename": "Rename",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "delete": "Delete tab"
+  },
+  "block": {
+    "kind": {
+      "paragraph": "Paragraph",
+      "heading": "Heading {level}",
+      "listItem": "List item",
+      "task": "To-do",
+      "quote": "Quote",
+      "callout": "Callout",
+      "table": "Table",
+      "chart": "Chart",
+      "metrics": "Metrics",
+      "code": "Code",
+      "image": "Image",
+      "divider": "Divider",
+      "pending": "Section to write",
+      "other": "Block"
+    },
+    "empty": {
+      "paragraph": "Empty paragraph",
+      "heading": "Empty heading {level}",
+      "listItem": "Empty list item",
+      "task": "Empty to-do",
+      "quote": "Empty quote",
+      "callout": "Empty callout"
+    },
+    "named": "{kind} “{words}”",
+    "addBelow": "Add a block below {block}",
+    "options": "Options for {block}",
+    "optionsMenu": "Block options",
+    "startWriting": "Start writing, or type / for blocks",
+    "typeSlash": "Type / for blocks",
+    "markDone": "Mark done",
+    "markNotDone": "Mark not done"
+  },
+  "menu": {
+    "turnInto": "Turn into",
+    "calloutColor": "Callout color",
+    "editWithAgent": "Edit with agent…",
+    "duplicate": "Duplicate",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "delete": "Delete"
+  },
+  "insert": {
+    "label": "Insert a block",
+    "noMatch": "No blocks match “{query}”",
+    "group": {
+      "basic": "Basic",
+      "data": "Data",
+      "other": "Other",
+      "agent": "Agent"
+    },
+    "item": {
+      "paragraph": "Text",
+      "heading1": "Heading 1",
+      "heading2": "Heading 2",
+      "heading3": "Heading 3",
+      "bullet": "Bulleted list",
+      "numbered": "Numbered list",
+      "task": "To-do list",
+      "quote": "Quote",
+      "callout": "Callout",
+      "table": "Table",
+      "chart": "Chart",
+      "metrics": "Metrics",
+      "code": "Code",
+      "divider": "Divider",
+      "image": "Image",
+      "ask": "Ask the agent to write…"
+    }
+  },
+  "tone": {
+    "info": "Info",
+    "success": "Success",
+    "warning": "Warning",
+    "danger": "Danger",
+    "note": "Note"
+  },
+  "format": {
+    "label": "Format",
+    "bold": "Bold",
+    "italic": "Italic",
+    "strike": "Strikethrough",
+    "code": "Code",
+    "link": "Link",
+    "addLink": "Add link",
+    "linkAddress": "Link address",
+    "linkPlaceholder": "Paste a link and press Enter"
+  },
+  "ask": {
+    "label": "Edit with agent",
+    "request": "Request for the agent",
+    "placeholderWrite": "What should the agent write here?",
+    "placeholderChange": "What should change?",
+    "send": "Send"
+  },
+  "comments": {
+    "edit": "Edit",
+    "editHint": "Type in the doc",
+    "commentHint": "Comment — click a block, or select words"
+  },
+  "chart": {
+    "label": "Chart",
+    "title": "Chart title",
+    "kind": {
+      "bar": "Columns",
+      "hbar": "Bars",
+      "stacked": "Stacked",
+      "line": "Line",
+      "area": "Area",
+      "donut": "Donut"
+    },
+    "inUnit": "In {unit}",
+    "followsTable": "Updates with its table",
+    "showTable": "Show its table",
+    "makeTable": "Turn data into a table",
+    "tableGone": "This chart’s table isn’t in this tab any more.",
+    "noColumn": "Its table has no “{column}” column.",
+    "noNumbers": "No numbers to draw yet.",
+    "drawFrom": "Draw from a table",
+    "useTable": "Use a table…",
+    "tableOption": "Table {number}: {columns}",
+    "total": "Total",
+    "totalUnit": "Total ({unit})"
+  },
+  "table": {
+    "kind": {
+      "text": "Text",
+      "number": "Number",
+      "status": "Status",
+      "date": "Date"
+    },
+    "type": "Type",
+    "sortAsc": "Sort ascending",
+    "sortDesc": "Sort descending",
+    "insertLeft": "Insert column left",
+    "insertRight": "Insert column right",
+    "deleteColumn": "Delete column",
+    "columnName": "Column name",
+    "columnMenu": "{column} column",
+    "columnOptions": "{column} column options",
+    "addColumn": "Add column",
+    "rowOptions": "Row options",
+    "rowOptionsFor": "Row {number} options",
+    "insertAbove": "Insert row above",
+    "insertBelow": "Insert row below",
+    "deleteRow": "Delete row",
+    "newRow": "New row",
+    "other": "Other…",
+    "clear": "Clear",
+    "setValue": "Set {column}",
+    "newValue": "New {column}",
+    "cellValue": "{column}: {value}",
+    "cellEmpty": "{column}: empty",
+    "dateValue": "Date: {value}",
+    "dateEmpty": "Date: empty",
+    "cell": "{column}, row {number}"
+  },
+  "metrics": {
+    "label": "Label",
+    "change": "Change"
+  },
+  "code": {
+    "label": "Code",
+    "language": "Code language",
+    "plainText": "plain text",
+    "copy": "Copy code",
+    "copied": "Copied"
+  },
+  "image": {
+    "label": "Image",
+    "caption": "Add a caption"
+  },
+  "pending": {
+    "writing": "Writing:",
+    "toWrite": "To be written:"
+  },
+  "versions": {
+    "title": "Version history",
+    "saved": "Saved automatically",
+    "loading": "Loading versions…",
+    "loadFailed": "Couldn’t load the versions. Try again in a moment.",
+    "current": "Current version",
+    "none": "Earlier versions show here as the doc changes.",
+    "hint": "Pick a version to look at it before restoring.",
+    "viewing": "Viewing {when}",
+    "changedSince": "Changed since this version",
+    "older": "Older version",
+    "newer": "Newer version",
+    "back": "Back to current",
+    "restoreThis": "Restore this version",
+    "confirmTitle": "Restore this version?",
+    "confirmLead": "The doc goes back to how it looked {when}.",
+    "agentWriting": "Agent is still writing. What it writes next lands on the version you restore.",
+    "nothingLost": "Nothing is lost. The current version stays in version history, so you can switch back.",
+    "sharedUpdates": "The shared page updates too.",
+    "cancel": "Cancel",
+    "restore": "Restore",
+    "restoring": "Restoring…",
+    "restoredFrom": "Restored the version from {when}",
+    "undo": "Undo",
+    "openFailed": "Could not open that version",
+    "restoreFailed": "Could not restore that version",
+    "undoFailed": "Could not undo the restore",
+    "earlier": "Earlier changes",
+    "who": {
+      "agent": "Agent",
+      "user": "You"
+    },
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "whenTitle": "{day}, {time}",
+    "whenPhrase": "{day, select, today {today at {time}} yesterday {yesterday at {time}} other {{date} at {time}}}",
+    "justNow": "just now",
+    "minutesAgo": "{count, plural, other {# min ago}}",
+    "hoursAgo": "{count, plural, other {# hr ago}}"
+  }
+}

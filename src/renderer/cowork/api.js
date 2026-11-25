@@ -30,6 +30,7 @@ import { liveAppSharesFrom, sharedLiveAppsFrom } from './lib/liveAppSharing';
 import { liveAppStatesFrom } from './lib/liveAppState';
 import { liveAppAvailabilityFrom } from './lib/liveAppAvailability';
 import { getOrgMode } from '../lib/orgMode';
+import { getDocsEnabled } from '../lib/docsEnabled';
 import { isTaskBrowserOff } from './lib/taskBrowser';
 import { SHARING_OFF } from './lib/orgSharing';
 import { markWorkStarted } from './lib/documentWork';
@@ -699,6 +700,26 @@ export async function fetchOlderMessages(id, cursor, { timeoutMs } = {}) {
 }
 
 /**
+ * Whether conversation `id` can be opened, from its metadata alone (the
+ * preview's Open chat): 'ok'; 'not_found' when it is gone;
+ * 'forbidden' when it is someone else's; 'unavailable' on any other failure.
+ *
+ * @param {string} id
+ * @param {{timeoutMs?: number}} [options]
+ * @returns {Promise<'ok' | 'not_found' | 'forbidden' | 'unavailable'>}
+ */
+export async function fetchConversationStatus(id, { timeoutMs } = {}) {
+  try {
+    await req(`/conversations/${encodeURIComponent(id)}`, { timeoutMs });
+    return 'ok';
+  } catch (err) {
+    if (err?.status === 404) return 'not_found';
+    if (err?.status === 403) return 'forbidden';
+    return 'unavailable';
+  }
+}
+
+/**
  * Loader-facing conversation fetch. Unlike `fetchSession` (which collapses every
  * failure to `null`), this separates a gone conversation (`404 → 'not_found'`)
  * from an operational failure (auth / 5xx / network `→ 'unavailable'`) so the
@@ -819,7 +840,7 @@ export function sendablePicks(model, reasoningEffort) {
   return { sendsPicks, model: sentModel, reasoningEffort: sendsEffort ? reasoningEffort : null };
 }
 
-function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, resetPicks = [], attachmentIds = [], disabledConnections, browserOff = false, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
+function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, resetPicks = [], attachmentIds = [], disabledConnections, browserOff = false, output, docContext, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
   markWorkStarted();
   const ctrl = turnStreamController(onEvent);
   let userMessageId = null;
@@ -846,6 +867,7 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
   // operator-configured role settings, including restored tasks.
   const { sendsPicks, model: sentModel, reasoningEffort: sentEffort } = sendablePicks(model, reasoningEffort);
   const sendsEffort = sentEffort !== null;
+  const docsOn = getDocsEnabled();
   (async () => {
     try {
       bumpIdle();
@@ -882,6 +904,17 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           // The task's Browser switch is off (ENG-3188). Only sent then, so
           // an older server never sees the key.
           ...(browserOff ? { browser: 'off' } : {}),
+          // This app shows docs: the server gives the agent its doc tools
+          // only on a request that says so. A deployment without doc tools
+          // (/health's docs_enabled) gets none of the doc fields.
+          ...(docsOn ? { docs: true } : {}),
+          // The doc the person had open beside the conversation when they
+          // sent this message, with its own "Edit with agent" target, so
+          // "this section" means what they were looking at (the caller takes
+          // it then: a message that waited its turn keeps its own); and the
+          // composer's "Write it as a doc".
+          ...(docsOn && docContext ? { doc_context: docContext } : {}),
+          ...(docsOn && output ? { output } : {}),
         }),
         signal: ctrl.signal,
       });

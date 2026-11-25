@@ -134,6 +134,8 @@
       "hoursAgo": "{count, plural, other {#시간 전}}",
       "daysAgo": "{count, plural, other {#일 전}}",
       "replies": "{count, plural, other {답글 #개}}",
+      "replyPlaceholder": "답글…",
+      "replyAriaLabel": "이 댓글에 답글 달기",
       "edited": "(편집됨)",
       "unattachedTip": "이 댓글이 가리키던 아티팩트의 부분을 더 이상 사용할 수 없습니다.",
       "generalTip": "아티팩트 전체에 대한 일반 피드백입니다.",
@@ -340,6 +342,8 @@
       "specificDesc": "지정한 사람만"
     },
     "whoCanAccess": "앱에 액세스할 수 있는 사람",
+    "whoCanAccessDoc": "문서에 액세스할 수 있는 사람",
+    "updatesAsYouEdit": "편집할 때마다 업데이트됨",
     "addPassword": "비밀번호 추가",
     "hide": "숨기기",
     "show": "표시",
@@ -928,7 +932,15 @@
     "sourceHint": "페이지의 텍스트와 레이아웃 변경",
     "commentsHint": "피드백 남기기 및 검토",
     "statsHint": "누가 얼마나 오래 봤는지",
-    "commentsOpen": "댓글, 열린 댓글 {count}개"
+    "commentsOpen": "댓글, 열린 댓글 {count}개",
+    "openChat": "채팅 열기",
+    "openChatHint": "미리 보기를 닫고 이 항목을 만든 채팅으로 이동합니다",
+    "openChatUnavailable": {
+      "noOrigin": "채팅에서 만들어지지 않았거나 채팅이 기록되기 전에 만들어졌습니다",
+      "deleted": "이 항목을 만든 채팅이 삭제되었습니다",
+      "colleague": "동료의 채팅에서 만들어져 해당 동료만 열 수 있습니다",
+      "unreachable": "이 항목을 만든 채팅에 지금 연결할 수 없습니다"
+    }
   },
   "liveEditPanel": {
     "close": "실시간 편집 패널 닫기",

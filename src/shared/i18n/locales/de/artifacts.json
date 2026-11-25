@@ -134,6 +134,8 @@
       "hoursAgo": "{count, plural, one {vor # Stunde} other {vor # Stunden}}",
       "daysAgo": "{count, plural, one {vor # Tag} other {vor # Tagen}}",
       "replies": "{count, plural, one {# Antwort} other {# Antworten}}",
+      "replyPlaceholder": "Antworten…",
+      "replyAriaLabel": "Auf diesen Kommentar antworten",
       "edited": "(bearbeitet)",
       "unattachedTip": "Der Teil des Artefakts, auf den sich dieser Kommentar bezog, ist nicht mehr verfügbar.",
       "generalTip": "Allgemeines Feedback zum gesamten Artefakt.",
@@ -340,6 +342,8 @@
       "specificDesc": "Nur die von Ihnen angegebenen Personen"
     },
     "whoCanAccess": "Wer auf Ihre App zugreifen kann",
+    "whoCanAccessDoc": "Wer auf Ihr Dokument zugreifen kann",
+    "updatesAsYouEdit": "Wird beim Bearbeiten aktualisiert",
     "addPassword": "Passwort hinzufügen",
     "hide": "Ausblenden",
     "show": "Anzeigen",
@@ -928,7 +932,15 @@
     "sourceHint": "Text und Layout auf der Seite ändern",
     "commentsHint": "Feedback geben und prüfen",
     "statsHint": "Wer es angesehen hat und wie lange",
-    "commentsOpen": "Kommentare, {count} offen"
+    "commentsOpen": "Kommentare, {count} offen",
+    "openChat": "Chat öffnen",
+    "openChatHint": "Vorschau schließen und zum Chat wechseln, in dem dies erstellt wurde",
+    "openChatUnavailable": {
+      "noOrigin": "Nicht in einem Chat erstellt oder erstellt, bevor Chats erfasst wurden",
+      "deleted": "Der Chat, in dem dies erstellt wurde, wurde gelöscht",
+      "colleague": "In einem Chat einer Kollegin oder eines Kollegen erstellt, den nur diese Person öffnen kann",
+      "unreachable": "Der Chat, in dem dies erstellt wurde, ist gerade nicht erreichbar"
+    }
   },
   "liveEditPanel": {
     "close": "Live-Bearbeitungsbereich schließen",
