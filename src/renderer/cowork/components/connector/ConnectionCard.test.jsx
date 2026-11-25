@@ -126,6 +126,13 @@ describe('ConnectionCard', () => {
     expect(screen.queryByText(/Read only|Read and write|^Off$/)).not.toBeInTheDocument();
   });
 
+  it('shows no access label for a custom MCP connection, whose picked tools decide what runs', () => {
+    const custom = { engine: 'custom_mcp', label: 'Acme Tracker', name: 'cm-1', display_name: 'Acme Tracker', method: 'mcp' };
+    const { container } = render(<ConnectionCard connection={custom} />);
+    expect(container.querySelector('[title^="Tool access"]')).toBeNull();
+    expect(screen.queryByText(/Read only|Read and write|No tool access/)).not.toBeInTheDocument();
+  });
+
   it('disconnects only the selected connection, without opening its details', async () => {
     let resolve;
     const onDelete = vi.fn(() => new Promise(r => { resolve = r; }));

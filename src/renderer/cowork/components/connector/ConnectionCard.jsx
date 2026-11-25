@@ -7,6 +7,7 @@ import { Badge, Button } from '../ui';
 import { ItemActions, ItemCard, ListItem, StatusDot } from '../collection';
 import { connectionIdentity, connectorInitials, humanLabel, isLegacyEngine } from '../../lib/connectionIdentity';
 import { isDatasourceRow } from '../../lib/datasourceConnectionRows';
+import { isCustomMcp } from '../../lib/customMcp';
 import { useConfirm } from '../ConfirmModal';
 import Ico from '../Icons';
 import i18n, { useTranslation } from '../../../lib/i18n';
@@ -79,7 +80,8 @@ function useConnectionSlots({ connection, onDelete, onModify }) {
   const shared = connection.shared === true;
   const badge = shared ? t('share.shared') : managed ? t('connectionCard.managed') : null;
   // Only MCP connections have a tool-access setting; a missing mode runs as read.
-  const accessLabel = connection.method === 'mcp'
+  // A custom MCP connection runs the tools the user picked, so it has none.
+  const accessLabel = connection.method === 'mcp' && !isCustomMcp(engine)
     ? t(ACCESS_LABEL_KEYS[connection.access_mode] || ACCESS_LABEL_KEYS.read)
     : null;
   const openDetails = typeof onModify === 'function' ? () => onModify(connection) : undefined;
