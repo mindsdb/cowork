@@ -309,7 +309,11 @@
       "none": "无项目"
     },
     "chooseHarness": "选择运行环境",
-    "voiceCall": "语音通话"
+    "voiceCall": "语音模式",
+    "dictation": {
+      "start": "听写",
+      "stop": "停止听写"
+    }
   },
   "attachmentThumbnail": {
     "open": "打开图片",
@@ -753,7 +757,7 @@
     "talkTo": "与 {agent} 通话"
   },
   "voiceCall": {
-    "dialogLabel": "与 {agent} 语音通话",
+    "dialogLabel": "语音模式",
     "connecting": "正在连接…",
     "ending": "正在结束…",
     "working": "正在处理…",

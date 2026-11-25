@@ -105,7 +105,9 @@
       "missedLabelServer": "Si le serveur est indisponible à cette heure-là",
       "missedLabelApp": "Si MindsHub est fermé à cette heure-là",
       "missedOnceTitleServer": "L’heure de cette tâche ponctuelle est passée pendant que le serveur était indisponible",
-      "missedOnceTitleApp": "L’heure de cette tâche ponctuelle est passée pendant que MindsHub était fermé"
+      "missedOnceTitleApp": "L’heure de cette tâche ponctuelle est passée pendant que MindsHub était fermé",
+      "lateRunApp": "Prévue {when}. MindsHub était fermé ou votre ordinateur en veille.",
+      "lateRunServer": "Prévue {when}. Le serveur était indisponible ou occupé."
     },
     "stopScheduleRun": {
       "unreachable": "Impossible de joindre le serveur pour arrêter l’exécution. Réessayez.",
@@ -319,6 +321,7 @@
       "sections": {
         "mine": "Les vôtres",
         "sharedWithMe": "Partagés avec moi",
+        "sharedByOthers": "Partagés par d’autres",
         "team": "Mes équipes",
         "builtin": "Intégrées"
       },
@@ -588,6 +591,7 @@
     "lastFailed": "Dernier échec",
     "lastRunFailed": "Échec de la dernière exécution",
     "stoppedAtLimit": "Arrêtée à une limite",
+    "writesRefused": "Approbation requise",
     "done": "Terminée",
     "active": "Active"
   },
@@ -619,6 +623,7 @@
     "partialNote": "Certaines de ses actions ont pu aboutir. Vérifiez l’exécution avant de la relancer.",
     "limitTitle": "La dernière exécution s’est arrêtée à une limite",
     "limitNote": "Une partie du travail a pu être effectuée. Vérifiez l’exécution avant de la relancer.",
+    "approvalTitle": "Les modifications de la dernière exécution n’ont pas été approuvées",
     "failedTitle": "La dernière exécution a échoué",
     "resume": "Reprendre",
     "runNow": "Exécuter maintenant",
@@ -718,7 +723,8 @@
       "success": "Réussie",
       "failed": "Échec",
       "cancelled": "Arrêtée",
-      "stoppedAtLimit": "Arrêtée à une limite"
+      "stoppedAtLimit": "Arrêtée à une limite",
+      "writesRefused": "Non approuvée"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "En cours d’exécution",
@@ -735,6 +741,7 @@
     "scheduleAriaLabel": "Planification",
     "accountDefaultModel": "Modèle par défaut du compte",
     "ranOnDefaultModel": "Modèle par défaut",
+    "ranLate": "En retard",
     "modelUnavailable": "{model} n’est pas disponible ; cette exécution a donc utilisé votre modèle par défaut.",
     "succeededCount": "{total, plural, one {{succeeded} exécution réussie sur #} other {{succeeded} exécutions réussies sur #}}",
     "promptAriaLabel": "Requête",

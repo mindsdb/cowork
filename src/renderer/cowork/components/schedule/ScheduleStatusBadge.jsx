@@ -26,6 +26,12 @@ export function lastRunStoppedAtLimit(task) {
   return task.lastRun?.status === 'failed' && task.lastRun.outcome === 'stopped_at_limit';
 }
 
+// Whether the latest finished run's changes went unapproved: write approval
+// held them, and a scheduled run has nobody to approve.
+export function lastRunWritesRefused(task) {
+  return task.lastRun?.status === 'failed' && task.lastRun.outcome === 'writes_refused';
+}
+
 export function scheduleStatusBadge(task, failedLabel = label('lastFailed')) {
   const state = scheduleState(task);
   if (task.running) {
@@ -40,6 +46,7 @@ export function scheduleStatusBadge(task, failedLabel = label('lastFailed')) {
   // A one-off whose time passed while the app was closed; Run now runs it.
   if (state === 'missed') return { label: label('missed'), variant: 'warning' };
   if (lastRunStoppedAtLimit(task)) return { label: label('stoppedAtLimit'), variant: 'warning' };
+  if (lastRunWritesRefused(task)) return { label: label('writesRefused'), variant: 'warning' };
   if (lastRunFailed(task)) return { label: failedLabel, variant: 'danger' };
   if (state === 'done') return { label: label('done'), variant: 'muted' };
   return { label: label('active'), variant: 'success' };

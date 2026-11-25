@@ -48,8 +48,9 @@
   },
   "status": {
     "badge": {
+      "onlyYou": "Nur du",
       "public": "Öffentlich",
-      "password": "Passwort",
+      "publicPassword": "Öffentlich · Passwort",
       "restricted": "Eingeschränkt",
       "website": "Website"
     },
@@ -58,6 +59,7 @@
       "notShareable": "Nicht geteilt. Nur Webseiten und Markdown-Dokumente können als Link geteilt werden.",
       "orgRestricted": "Eingeschränkt. Öffnen Sie „Teilen“, um zu sehen, wer den Link öffnen kann.",
       "ownerOnly": "Geteilt, aber nur Sie können den Link öffnen.",
+      "password": "Alle mit dem Link und dem Passwort können es öffnen.",
       "chosenPeople": "Geteilt. Nur die von Ihnen ausgewählten Personen können den Link öffnen.",
       "unknown": "Geteilt. Wer den Link öffnen kann, ließ sich nicht bestätigen, daher gilt er als eingeschränkt.",
       "sharedWith": "Geteilt mit {names}",
@@ -71,7 +73,6 @@
     "stoppingSharing": "Teilen wird beendet…",
     "deleting": "Wird gelöscht…",
     "notShared": "Nicht geteilt",
-    "draft": "Entwurf",
     "unsharedChanges": "Nicht geteilte Änderungen"
   },
   "liveAppShare": {
@@ -557,11 +558,9 @@
       "noMatch": "Keine Artefakte entsprechen diesen Filtern.",
       "clear": "Filter zurücksetzen",
       "status": "Status",
-      "allStatuses": "Alle Status"
-    },
-    "owner": {
-      "you": "Du",
-      "youHint": "Deins, mit anderen geteilt."
+      "allStatuses": "Alle Status",
+      "access": "Zugriff",
+      "allAccess": "Alle Zugriffsstufen"
     },
     "openComments": "{count, plural, one {# offener Kommentar} other {# offene Kommentare}}",
     "openCommentsHint": "Vorschau mit den Kommentaren öffnen"

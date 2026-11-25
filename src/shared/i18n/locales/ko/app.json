@@ -266,10 +266,10 @@
     "stayQueued": "{agent}이(가) 지금은 받을 수 없습니다. 대기열에 남아 있습니다."
   },
   "voiceCall": {
-    "backToCall": "{agent}와(과)의 통화로 돌아가기",
-    "onCall": "{agent}와(과) 통화 중",
+    "backToCall": "음성 모드로 돌아가기",
+    "onCall": "음성 모드 사용 중",
     "callBackPending": "완료되면 {agent}이(가) 다시 전화합니다",
-    "call": "{agent}에게 전화",
+    "call": "음성 모드",
     "anotherCall": "다른 통화가 진행 중입니다"
   },
   "notion": {

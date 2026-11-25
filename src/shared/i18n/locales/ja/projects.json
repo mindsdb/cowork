@@ -105,7 +105,9 @@
       "missedLabelServer": "この時刻にサーバーが停止している場合",
       "missedLabelApp": "この時刻にMindsHubが閉じている場合",
       "missedOnceTitleServer": "サーバーの停止中に、この1回限りのタスクの実行時刻が過ぎました",
-      "missedOnceTitleApp": "MindsHubが閉じている間に、この1回限りのタスクの実行時刻が過ぎました"
+      "missedOnceTitleApp": "MindsHubが閉じている間に、この1回限りのタスクの実行時刻が過ぎました",
+      "lateRunApp": "予定: {when}。MindsHub が閉じていたか、コンピューターがスリープ中でした。",
+      "lateRunServer": "予定: {when}。サーバーが停止中か混雑していました。"
     },
     "stopScheduleRun": {
       "unreachable": "実行を停止するためにサーバーに接続できませんでした。もう一度お試しください。",
@@ -319,6 +321,7 @@
       "sections": {
         "mine": "自分のもの",
         "sharedWithMe": "自分と共有",
+        "sharedByOthers": "他のユーザーが共有",
         "team": "自分のチーム",
         "builtin": "組み込み"
       },
@@ -588,6 +591,7 @@
     "lastFailed": "前回失敗",
     "lastRunFailed": "前回の実行に失敗",
     "stoppedAtLimit": "上限で停止",
+    "writesRefused": "承認が必要",
     "done": "完了",
     "active": "有効"
   },
@@ -619,6 +623,7 @@
     "partialNote": "一部の操作は完了している可能性があります。再実行する前に実行内容を確認してください。",
     "limitTitle": "前回の実行は上限に達して停止しました",
     "limitNote": "作業の一部は完了している可能性があります。再実行する前に実行内容を確認してください。",
+    "approvalTitle": "前回の実行の変更は承認されませんでした",
     "failedTitle": "前回の実行に失敗しました",
     "resume": "再開",
     "runNow": "今すぐ実行",
@@ -718,7 +723,8 @@
       "success": "成功",
       "failed": "失敗",
       "cancelled": "停止",
-      "stoppedAtLimit": "上限で停止"
+      "stoppedAtLimit": "上限で停止",
+      "writesRefused": "未承認"
     },
     "sentence": "{when}（{zone}）",
     "runningNow": "現在実行中",
@@ -735,6 +741,7 @@
     "scheduleAriaLabel": "スケジュール",
     "accountDefaultModel": "アカウントのデフォルトモデル",
     "ranOnDefaultModel": "デフォルトモデル",
+    "ranLate": "遅延",
     "modelUnavailable": "{model}は利用できないため、この実行ではデフォルトモデルを使用しました。",
     "succeededCount": "{total, plural, other {#回中{succeeded}回成功}}",
     "promptAriaLabel": "プロンプト",

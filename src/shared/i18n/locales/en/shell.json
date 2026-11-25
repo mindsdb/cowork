@@ -190,17 +190,47 @@
     }
   },
   "comingSoon": {
-    "cloudTitle": "Coming soon to Cloud",
+    "cloudTitle": "This runs in the Desktop app",
+    "cloudTitleNamed": "{feature} runs in the Desktop app",
     "unavailableTitle": "Feature unavailable",
-    "cloudBodyNamed": "{feature} isn’t available on Cloud just yet. In the meantime, you can use it in the desktop app.",
-    "cloudBody": "This feature isn’t available on Cloud just yet. In the meantime, you can use it in the desktop app.",
-    "cloudBodyCustom": "{feature} isn’t available on Cloud just yet. You can connect it now as a custom connector.",
+    "cloudBodyNamed": "{feature} runs in the Desktop app today. Download it to connect {feature} there.",
+    "cloudBody": "This runs in the Desktop app today. Download it to use it there.",
+    "mobileBodyNamed": "{feature} runs in the Desktop app on a computer.",
+    "mobileBody": "This runs in the Desktop app on a computer.",
+    "cloudBodyCustom": "{feature} runs in the Desktop app today. Here, you can connect it now as a custom connector.",
     "unavailableBodyNamed": "{feature} isn’t available in this deployment.",
     "unavailableBody": "This feature isn’t available in this deployment.",
     "notNow": "Not now",
-    "download": "Download the app",
+    "download": "Download the Desktop app",
     "connectCustom": "Connect your custom {feature}",
     "buildCustom": "Build a custom connector"
+  },
+  "desktopOffer": {
+    "tag": "Desktop",
+    "notNow": "Not now",
+    "download": "Download the Desktop app",
+    "platforms": "For Mac, Windows and Linux.",
+    "code": {
+      "title": "Code mode runs in the Desktop app",
+      "body": "Code mode works on the code on your computer, so it needs the Desktop app. There, Cowork can:",
+      "points": {
+        "files": "Read and change code in your own folders and repositories",
+        "commands": "Run commands and tests on your machine",
+        "agents": "Hand a task to Claude Code or Codex"
+      }
+    },
+    "folder": {
+      "projectTitle": "Use a folder on your computer in the Desktop app",
+      "chatTitle": "Working folders are in the Desktop app",
+      "projectBody": "The browser can't reach the files on your computer. The Desktop app can start a project in a folder you already have, and Cowork works on the files in it.",
+      "chatBody": "The browser can't reach the files on your computer. In the Desktop app you can add folders from your computer to a chat, and Cowork works in them.",
+      "points": {
+        "inPlace": "No uploading: it uses the files where they are",
+        "saved": "What it makes is saved on your computer",
+        "kept": "Removing the folder from Cowork leaves your files in place"
+      },
+      "note": "For Mac, Windows and Linux. Here in the browser, you can still upload files."
+    }
   },
   "loadStatus": {
     "retry": "Retry",

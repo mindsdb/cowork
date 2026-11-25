@@ -309,7 +309,11 @@
       "none": "プロジェクトなし"
     },
     "chooseHarness": "ハーネスを選択",
-    "voiceCall": "音声通話"
+    "voiceCall": "音声モード",
+    "dictation": {
+      "start": "音声入力",
+      "stop": "音声入力を停止"
+    }
   },
   "attachmentThumbnail": {
     "open": "画像を開く",
@@ -753,7 +757,7 @@
     "talkTo": "{agent} と話す"
   },
   "voiceCall": {
-    "dialogLabel": "{agent}との音声通話",
+    "dialogLabel": "音声モード",
     "connecting": "接続中…",
     "ending": "終了中…",
     "working": "対応中…",

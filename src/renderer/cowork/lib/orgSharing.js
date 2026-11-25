@@ -482,41 +482,87 @@ export function groupSkillsBySection(skills, { orgName = null } = {}) {
 }
 
 /**
- * The section the Artifacts page lists an artifact under, owner first:
- * someone else's artifact is "shared_with_me", however it reached the
- * caller; the caller's own is "org" when shared with everyone (or the org's
- * default team), "team" when shared with a team, else "mine". Someone else's
- * artifact comes with `capabilities.role` "reviewer" (or an owner the server
- * could not name). An audience the card does not know counts as "mine".
+ * The section the Artifacts page lists an artifact under: whose it is, and
+ * nothing else (ENG-4647). The caller's own is "mine" whoever it reaches;
+ * someone else's is "shared_with_me", however it reached the caller. Grouping
+ * by who an artifact reaches as well put the caller's own org-wide artifact
+ * under "Everyone at the org" instead of "Yours", so the groups overlapped;
+ * who it reaches is its access badge and the Access filter
+ * (artifactAudienceChoice). Someone else's artifact comes with
+ * `capabilities.role` "reviewer" (or an owner the server could not name).
  */
-export function artifactSection(artifact, { teams = [] } = {}) {
+export function artifactSection(artifact) {
   const capabilities = artifact?.capabilities || null;
   const owner = !(capabilities?.role === 'reviewer' || capabilities?.ownerUnknown === true);
-  if (!owner) return 'shared_with_me';
-  const audience = readArtifactAudience(artifact);
-  if (audience) {
-    if (audience.orgAllowed || namesDefaultTeam(audience.teamIds, teams)) return 'org';
-    if (audience.teamIds.length > 0) return 'team';
-  }
-  return 'mine';
+  return owner ? 'mine' : 'shared_with_me';
 }
 
-// The Artifacts page's order: the caller's own first (theirs alone, then
-// shared with a team, then with everyone), what others shared with them last.
-const ARTIFACT_SECTIONS = ['mine', 'team', 'org', 'shared_with_me'];
+// The Artifacts page's order: the caller's own first, then what others shared.
+const ARTIFACT_SECTIONS = ['mine', 'shared_with_me'];
+const ARTIFACT_SECTION_TITLES = {
+  mine: () => tr('sections.mine'),
+  shared_with_me: () => tr('sections.sharedByOthers'),
+};
 
 /**
  * The Artifacts page's groups, in ARTIFACT_SECTIONS' order, empty ones left
- * out; each keeps the order it was given.
+ * out; each keeps the order it was given. Every artifact is in exactly one.
  *
  * @returns {Array<{ id: string, title: string, artifacts: object[] }>}
  */
-export function groupArtifactsBySection(artifacts, { orgName = null, teams = [] } = {}) {
-  const buckets = { mine: [], shared_with_me: [], team: [], org: [] };
-  for (const artifact of artifacts || []) buckets[artifactSection(artifact, { teams })].push(artifact);
+export function groupArtifactsBySection(artifacts) {
+  const buckets = { mine: [], shared_with_me: [] };
+  for (const artifact of artifacts || []) buckets[artifactSection(artifact)].push(artifact);
   return ARTIFACT_SECTIONS
-    .map((id) => ({ id, title: SECTION_TITLES[id](orgName), artifacts: buckets[id] }))
+    .map((id) => ({ id, title: ARTIFACT_SECTION_TITLES[id](), artifacts: buckets[id] }))
     .filter((group) => group.artifacts.length > 0);
+}
+
+/* ── Who an artifact reaches ──────────────────────────────────────────
+   Its AUDIENCE_CHOICE, the same values its Share panel offers, for its badge
+   and the Artifacts page's Access filter (ENG-4647), the same rule whichever
+   group it sits in. */
+
+/** Narrowest first: the Access filter's order. */
+export const ARTIFACT_AUDIENCE_ORDER = Object.freeze([
+  AUDIENCE_CHOICE.PRIVATE, AUDIENCE_CHOICE.SPECIFIC, AUDIENCE_CHOICE.ORG, AUDIENCE_CHOICE.PASSWORD, AUDIENCE_CHOICE.PUBLIC,
+  AUDIENCE_CHOICE.WEBSITE,
+]);
+
+/**
+ * Who can open an artifact, as the AUDIENCE_CHOICE it is at:
+ * - `private`: the caller's own, not shared yet, or shared with nobody else.
+ * - `specific`: shared with chosen teams or people, or with an audience that
+ *   isn't known (fail closed: never reads wider than it may be).
+ * - `org`: shared with everyone at the org (or its default team).
+ * - `password`: anyone with the link and its password.
+ * - `public`: anyone with the link.
+ * - `website`: anyone, at the artifact's own web address.
+ *
+ * Unlike artifactShareState (what its Share button says), an artifact with no
+ * access mode here is `specific`, not public: a list badge must never read
+ * wider than the artifact may be.
+ *
+ * In MindsHub mode (`orgMode`) a card's own audience fields don't count: only
+ * one the page read from the access route (`audienceRead`, from
+ * useArtifactAudiences), as the badge has always required. An access mode
+ * the app doesn't know is `specific`: modes are compared by name, so a
+ * string such as "constructor" is just unknown, never an inherited property.
+ */
+export function artifactAudienceChoice(artifact, { orgMode = false, teams = [] } = {}) {
+  const own = artifactSection(artifact) === 'mine';
+  if (!artifact?.publishedUrl) return own ? AUDIENCE_CHOICE.PRIVATE : AUDIENCE_CHOICE.SPECIFIC;
+  const mode = artifact.accessMode || (artifact.accessProtected ? 'password' : null);
+  if (mode === 'public') return AUDIENCE_CHOICE.PUBLIC;
+  if (mode === AUDIENCE_CHOICE.WEBSITE) return AUDIENCE_CHOICE.WEBSITE;
+  if (mode === 'password') return AUDIENCE_CHOICE.PASSWORD;
+  if (mode !== 'restricted') return AUDIENCE_CHOICE.SPECIFIC;
+  const read = readArtifactAudience(artifact);
+  const known = read && (!orgMode || artifact.audienceRead === true) ? read : null;
+  if (!known) return AUDIENCE_CHOICE.SPECIFIC;
+  if (known.orgAllowed || namesDefaultTeam(known.teamIds, teams)) return AUDIENCE_CHOICE.ORG;
+  if (own && isOwnerOnlyAccess(artifact)) return AUDIENCE_CHOICE.PRIVATE;
+  return AUDIENCE_CHOICE.SPECIFIC;
 }
 
 /* Artifact access, as a card, a save's answer or the access route reports it. */
