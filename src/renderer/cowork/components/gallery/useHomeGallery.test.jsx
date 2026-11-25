@@ -151,6 +151,16 @@ describe('useHomeGallery', () => {
     expect(trackGalleryShown).toHaveBeenCalledWith('auto');
   });
 
+  it('holds even a replayed first run until the task list has answered', async () => {
+    const { result, rerender } = mount({ preview: true, tasksStatus: 'loading', tasks: [] });
+    await waitFor(() => expect(result.current.manifest).not.toBeNull());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(result.current.open).toBe(false);
+    rerender({ preview: true, tasksStatus: 'ready', tasks: [{ id: 't1' }] });
+    await waitFor(() => expect(result.current.open).toBe(true));
+    expect(trackGalleryShown).toHaveBeenCalledWith('preview');
+  });
+
   it('decides again once a task list that failed to load comes back empty', async () => {
     const { result, rerender } = mount({ tasksStatus: 'failed', tasks: [] });
     await waitFor(() => expect(result.current.manifest).not.toBeNull());
