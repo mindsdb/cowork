@@ -2701,6 +2701,12 @@ export default function ChatView({
       ? tc('browser.overlayHandOverWatching', { reason: browserWaitNeed.text, agent: harnessLabel(task?.harness) || 'Anton' })
       : tc('browser.overlayHandOver', { reason: browserWaitNeed.text }))
     : tc('browser.overlayQuestion', { agent: harnessLabel(task?.harness) || 'Anton' });
+  /* The live region announces content CHANGES, so its text is held in state
+     and written from an effect rather than rendered straight from
+     `browserWaitMessage`: a region whose first commit already has the text
+     is silent (AskUserCard.jsx's own announcement does the same). */
+  const [browserWaitAnnouncement, setBrowserWaitAnnouncement] = useState('');
+  useEffect(() => { setBrowserWaitAnnouncement(browserWaitMessage); }, [browserWaitMessage]);
   const phoneBrowserExpanded = Boolean(browserDock) && browserPaneOpen && !browserMinimized;
   // While it is expanded the page under it stays put: no scroll, so typing in
   // the address row can't move the screen.
@@ -2798,6 +2804,36 @@ export default function ChatView({
     };
     openUrlInTask(null).then((id) => { if (!id) fallBack(); }, fallBack);
   };
+  const closeBrowserPanel = () => {
+    // A closed pane shows this browser no more: a hand-back waiting for its viewer ends.
+    dropHandBack(shownBrowserId);
+    openSeqRef.current += 1;
+    setOpeningBrowser(false);
+    setShownBrowserId(null);
+  };
+  const closeBlankBrowser = () => { openSeqRef.current += 1; setBlankBrowser(false); };
+  /* The pane's footer, overlay mode only: a live region, mounted whether or
+     not anything is waiting (so its first text change is heard, not its
+     first mount), plus the visible strip while something is. A hand-over
+     gets the message and no button: its whole instruction is to work in the
+     page, so a button whose only effect takes the page away is the wrong
+     offer; a plain question's button closes the pane it sits on (each panel
+     closes itself differently) and returns to the card. */
+  const browserWaitFooter = (closePane) => (browserPaneOverlay ? (
+    <>
+      <div className="sr-only" role="status" aria-live="polite">{browserWaitAnnouncement}</div>
+      {browserWaitMessage && (
+        <div className="browser-panel__wait-strip">
+          <p>{browserWaitMessage}</p>
+          {browserWaitNeed?.kind !== 'handOver' && (
+            <Button size="sm" onClick={() => { closePane(); scrollToBottom(); }}>
+              {tc('browser.overlayGoToQuestion')}
+            </Button>
+          )}
+        </div>
+      )}
+    </>
+  ) : null);
   const browserNode = (
     <>
       {(browserOpen || openingBrowserOpen) && (
@@ -2805,13 +2841,7 @@ export default function ChatView({
           sessionId={browserOpen ? shownBrowserId : null}
           startBlank={openingBrowserOpen || (browserOpen && shownBrowserId === blankOpenedId)}
           agentLabel={harnessLabel(task?.harness) || 'Anton'}
-          onClose={() => {
-            // A closed pane shows this browser no more: a hand-back waiting for its viewer ends.
-            dropHandBack(shownBrowserId);
-            openSeqRef.current += 1;
-            setOpeningBrowser(false);
-            setShownBrowserId(null);
-          }}
+          onClose={closeBrowserPanel}
           extraActions={projectBrowsers}
           dock={browserDock}
           onControl={onBrowserControl}
@@ -2820,6 +2850,7 @@ export default function ChatView({
           onSend={onSend ? (text) => onSend(text) : undefined}
           onDraft={(text) => setComposerPrefill((prev) => ({ text, bump: (prev?.bump || 0) + 1, append: true }))}
           onOpenUrl={openUrlInTask}
+          footer={browserWaitFooter(closeBrowserPanel)}
         />
       )}
       {blankBrowserOpen && (
@@ -2829,8 +2860,9 @@ export default function ChatView({
           browserOn={!!browserOn}
           onSend={onSend ? (text) => onSend(text) : undefined}
           onOpenUrl={openUrlInTask}
-          onClose={() => { openSeqRef.current += 1; setBlankBrowser(false); }}
+          onClose={closeBlankBrowser}
           dock={browserDock}
+          footer={browserWaitFooter(closeBlankBrowser)}
         />
       )}
     </>
