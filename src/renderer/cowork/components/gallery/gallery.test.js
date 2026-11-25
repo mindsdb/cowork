@@ -51,6 +51,15 @@ describe('readGalleryManifest', () => {
     expect(prospect.sample.prompt).toMatch(/Fernhill Freight/);
   });
 
+  it("keeps the list's start action, and no action for a value it does not know", () => {
+    const raw = {
+      ...RAW,
+      entries: RAW.entries.map((e, i) => ({ ...e, start: ['send', 'fill', 'launch'][i] })),
+    };
+    expect(read(raw).entries.map((e) => e.start)).toEqual(['send', 'fill', null]);
+    expect(read().entries.map((e) => e.start)).toEqual([null, null, null]);
+  });
+
   it('leaves out an example Cowork has no prompt for, wherever it is named', () => {
     const raw = {
       ...RAW,

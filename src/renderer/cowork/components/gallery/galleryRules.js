@@ -2,15 +2,13 @@
 
 const STORAGE_KEY = 'anton.gallery.settled';
 
-// An example that takes the person's own material says so in `needs`:
-// "Nothing" runs on a sample alone, "Nothing, or your …" can take one,
-// anything else needs one.
-export const takesOwnFile = (needs) => Boolean(needs) && needs !== 'Nothing';
-
-// Starting an example that needs nothing sends it at once; one that can take
-// the person's file, or says nothing of what it needs, fills the box instead,
-// since its prompt may wait for one.
-export const sendsAtOnce = (entry) => entry?.needs === 'Nothing';
+// How an example starts is the list's `start`, never its `needs` copy, so
+// rewording that copy cannot change what a click does. 'send' runs it at once
+// on its sample; 'fill' places it in the box and offers the person's own file.
+// An example without a known `start` only fills the box, so it never spends
+// the person's allowance unasked.
+export const sendsAtOnce = (entry) => entry?.start === 'send';
+export const takesOwnFile = (entry) => entry?.start === 'fill';
 
 /**
  * Where the column exists at all: Desktop and hosted Cowork Web. Not the

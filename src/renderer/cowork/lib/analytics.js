@@ -68,13 +68,13 @@ const EVENTS = {
   COMPOSER_READY:           'composer_ready',           // { entry_source, example_id, prefilled, composer_blocked, entry_placement?, first_visit? } — a console handoff reached Home; composer_blocked when the provider panel stood in for the composer
   ONBOARDING_ROW_CLICKED:   'onboarding_row_clicked',   // { step_id } — a checklist row was clicked (a finished row is inert and sends nothing)
   ONBOARDING_STEP_COMPLETED:'onboarding_step_completed',// { step_id, via: 'checklist'|'composer' } — once per step per browser
-  EXAMPLE_PICKED:           'example_picked',           // { example_id, list: 'examples'|<task mode id>|'gallery' } — an example was placed in Home's composer; from the gallery, one that needs nothing is then sent at once
+  EXAMPLE_PICKED:           'example_picked',           // { example_id, list: 'examples'|<task mode id>|'gallery' } — an example was placed in Home's composer; from the gallery, one the list marks start 'send' is then sent at once
   // The Use Case Gallery column beside Home. Its own names, apart
   // from the console Gallery's gallery_* events, so neither funnel counts the other.
   HOME_GALLERY_SHOWN:       'home_gallery_shown',       // { how: 'auto'|'button'|'checklist'|'preview' } — the column opened (not sent when it was already open); 'preview' is a replayed first run (?gallery=first-run, never production)
   HOME_GALLERY_CLOSED:      'home_gallery_closed',      // { how: 'button'|'escape'|'started'|'own_work'|'own_task' } — it folded away; 'started' = an example was started from it, 'own_work' = Use my own file, 'own_task' = the person started a task of their own while it was open
   HOME_GALLERY_EXAMPLE_OPENED: 'home_gallery_example_opened', // { example_id, from: 'start_here'|'list'|'search'|'step' }
-  HOME_GALLERY_EXAMPLE_STARTED: 'home_gallery_example_started', // { example_id, sends_at_once } — Try this example (needs nothing: sent at once) or Start from this example (composer filled, nothing sent)
+  HOME_GALLERY_EXAMPLE_STARTED: 'home_gallery_example_started', // { example_id, sends_at_once } — Try this example (start 'send': sent at once) or Start from this example (composer filled, nothing sent)
   HOME_GALLERY_SEARCHED:    'home_gallery_searched',    // { query_length, results } — once a typed search settles; never the text
   HOME_GALLERY_UNAVAILABLE: 'home_gallery_unavailable', // { reason: 'network'|'http'|'invalid'|'empty' } — the console's list did not load
   NEW_TASK_MESSAGE_SENT:    'new_task_message_sent',    // { start_kind: 'own_work'|'example'|'onboarding_step'|'free_text', example_id?, via: 'checklist'|'console_link'|'composer'|'app'|'gallery', attachments, has_link, chars, added_chars?, task_mode?, mode_line?: 'appended'|'replaced_example'|'example', example_placed? } — the first message of a new task; never carries its text

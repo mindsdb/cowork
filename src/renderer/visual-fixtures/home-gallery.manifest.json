@@ -47,6 +47,7 @@
    "title": "Make a merge puzzle game",
    "description": "A sliding puzzle where matching planets merge into bigger ones. Built in one go from one prompt.",
    "needs": "Nothing",
+   "start": "send",
    "example": {
     "src": "/gallery-examples/celestial-merge.html",
     "viewUrl": "https://view.mindshub.ai/view/acc7252b2/0a8e03ec",
@@ -67,6 +68,7 @@
    "title": "Build a KPI dashboard",
    "description": "Monthly sales, marketing, product and support metrics with trend charts, on sample data you can replace. Built on the free MindsHub Air.",
    "needs": "Nothing",
+   "start": "send",
    "example": {
     "src": "/gallery-examples/kpi-dashboard.html",
     "viewUrl": "https://view.mindshub.ai/view/acc7252b2/e7057702",
@@ -87,6 +89,7 @@
    "title": "Research a prospect and draft outreach",
    "description": "For a made-up regional freight company, Cowork researched what businesses like it are facing right now, worked out what its revenue operations lead likely cares about, and wrote a brief and a first email.",
    "needs": "Nothing",
+   "start": "send",
    "answer": {
     "note": "researched 12 Nov 2026",
     "draft": {
@@ -135,6 +138,7 @@
    "title": "Plan a project rollout timeline",
    "description": "A 12-week plan as a swimlane Gantt chart, grouped by phase and colored by team. Click any bar for its details, or replace the sample with your own plan.",
    "needs": "Nothing",
+   "start": "send",
    "example": {
     "src": "/gallery-examples/rollout-timeline.html",
     "viewUrl": "https://view.mindshub.ai/view/dab6a7755/abfcfcba",
@@ -155,6 +159,7 @@
    "title": "Turn a bank statement into a spreadsheet",
    "description": "Cowork made a sample one-month bank statement, turned it into a workbook with one transaction per row and a running balance, and checked that the totals match.",
    "needs": "Nothing, or your statement",
+   "start": "fill",
    "answer": {
     "blocks": [
      {
@@ -218,6 +223,7 @@
    "title": "Make a study guide from course material",
    "description": "Cowork wrote sample lecture notes on contract law, then a study guide from them: key concepts, definitions in the notes’ exact words, a glossary and a 10-question quiz with answers.",
    "needs": "Nothing, or your course material",
+   "start": "fill",
    "answer": {
     "blocks": [
      {

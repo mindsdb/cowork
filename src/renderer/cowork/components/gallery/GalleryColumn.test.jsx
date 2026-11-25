@@ -16,7 +16,7 @@ vi.mock('../../lib/analytics', async (importOriginal) => ({
 
 const CONSOLE = 'https://console.example.test';
 const entry = (over) => ({
-  category: 'Sales and research', badge: 'Brief and email', description: 'A brief and a first email.', needs: 'Nothing',
+  category: 'Sales and research', badge: 'Brief and email', description: 'A brief and a first email.', needs: 'Nothing', start: 'send',
   thumbnail: '/gallery-examples/thumbs/x.webp', answer: { blocks: [{ type: 'paragraph', text: 'The brief is done.' }] },
   run: { model: 'MindsHub Air', seconds: 187 }, ...over,
 });
@@ -32,7 +32,7 @@ const manifest = readGalleryManifest({
     entry({ id: 'research-a-prospect-and-draft-outreach', mode: 'wide-research', title: 'Research a prospect and draft outreach' }),
     entry({
       id: 'turn-a-bank-statement-into-a-spreadsheet', mode: 'spreadsheet', title: 'Turn a bank statement into a spreadsheet',
-      category: 'Your documents', badge: 'Workbook', needs: 'Nothing, or your statement',
+      category: 'Your documents', badge: 'Workbook', needs: 'Nothing, or your statement', start: 'fill',
       files: [{ label: 'The workbook', name: 's.xlsx', what: 'One row per transaction', href: '/gallery-examples/s.xlsx' }],
     }),
     entry({
@@ -184,6 +184,24 @@ describe('GalleryColumn example', () => {
     expect(screen.getByText('Puts the message in the box. Nothing runs until you press Send.')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Start from this example' }));
     expect(onStart).toHaveBeenCalledWith(expect.objectContaining({ id: 'turn-a-bank-statement-into-a-spreadsheet' }));
+  });
+
+  it('starts as the list says, whatever its needs copy reads', async () => {
+    const { user } = setup({ manifest: readGalleryManifest({
+      version: 1,
+      sections: [{ category: 'Sales and research', line: '', ids: ['research-a-prospect-and-draft-outreach', 'turn-a-bank-statement-into-a-spreadsheet'] }],
+      startHere: [],
+      entries: [
+        entry({ id: 'research-a-prospect-and-draft-outreach', mode: 'wide-research', title: 'Research a prospect and draft outreach', needs: 'No files needed', start: 'send' }),
+        entry({ id: 'turn-a-bank-statement-into-a-spreadsheet', mode: 'spreadsheet', title: 'Turn a bank statement into a spreadsheet', needs: 'Nothing', start: 'fill' }),
+      ],
+    }, `${CONSOLE}/gallery-examples/manifest.json`) });
+    await user.click(rows()[0]);
+    expect(screen.getByRole('button', { name: 'Try this example' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Use my own file' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Next example' }));
+    expect(screen.getByRole('button', { name: 'Start from this example' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Use my own file' })).toBeInTheDocument();
   });
 
   it('opens a live example in the browser and frames nothing', async () => {

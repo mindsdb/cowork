@@ -68,6 +68,9 @@ function readFile(file, base) {
   return { label: text(file.label), name: text(file.name), what: text(file.what), href };
 }
 
+// How the column starts an example (galleryRules.js); anything else is no action.
+const START_ACTIONS = ['send', 'fill'];
+
 // The console publishes `surfaces` only for an example that runs on one of
 // them; omitted means both.
 const runsOn = (raw, surface) => !surface || !Array.isArray(raw.surfaces) || raw.surfaces.includes(surface);
@@ -94,6 +97,7 @@ function readEntry(raw, base, surface) {
     badge: text(raw.badge),
     category: text(raw.category),
     needs: text(raw.needs),
+    start: START_ACTIONS.includes(raw.start) ? raw.start : null,
     thumbnail,
     example,
     answer,

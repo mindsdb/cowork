@@ -151,7 +151,7 @@ function Detail({ entry, position, total, query, onBack, onStep, onCategory, onS
         <ActionBar
           size="md"
           primary={{ label: t(sendsAtOnce(entry) ? 'gallery.tryIt' : 'gallery.start'), onClick: () => onStart(entry) }}
-          secondary={takesOwnFile(entry.needs) && onOwnWork ? { label: t('gallery.ownFile'), onClick: onOwnWork } : null}
+          secondary={takesOwnFile(entry) && onOwnWork ? { label: t('gallery.ownFile'), onClick: onOwnWork } : null}
         />
         <p className="m-0 text-[12px] text-ink-3 text-right">{t(sendsAtOnce(entry) ? 'gallery.tryItNote' : 'gallery.startNote')}</p>
       </div>

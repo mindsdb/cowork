@@ -1,6 +1,6 @@
 // An example started from the Use Case Gallery column lands in the composer
 // like a picked example, its mode on and the send credited to the gallery. One
-// that needs nothing is sent at once; one that can take the person's file
+// the list says to send runs at once; one that can take the person's file
 // waits, editable, for them to press Send.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useState } from 'react';
@@ -81,7 +81,7 @@ describe('HomeView gallery start', () => {
   it('sends an example that needs nothing at once, in its mode, credited to the gallery', async () => {
     const onSend = vi.fn(async () => true);
     render(<Home onSend={onSend} />);
-    pickFromGallery({ needs: 'Nothing' });
+    pickFromGallery({ start: 'send' });
 
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
     const [message, meta] = onSend.mock.calls[0];
@@ -95,16 +95,16 @@ describe('HomeView gallery start', () => {
   it('waits for Send instead when files are already attached on Home, so they never ride along unseen', async () => {
     const onSend = vi.fn(async () => true);
     render(<Home onSend={onSend} attachments={[{ id: 'a1', name: 'notes.pdf' }]} />);
-    pickFromGallery({ needs: 'Nothing' });
+    pickFromGallery({ start: 'send' });
     await screen.findByDisplayValue(found.sample.prompt);
     await new Promise((r) => setTimeout(r, 50));
     expect(onSend).not.toHaveBeenCalled();
   });
 
-  it('places but does not send an example that does not say what it needs', async () => {
+  it('places but does not send an example the list does not say to send, whatever its needs copy reads', async () => {
     const onSend = vi.fn(async () => true);
     render(<Home onSend={onSend} />);
-    pickFromGallery({ needs: undefined });
+    pickFromGallery({ needs: 'Nothing', start: null });
     await screen.findByDisplayValue(found.sample.prompt);
     await new Promise((r) => setTimeout(r, 50));
     expect(onSend).not.toHaveBeenCalled();

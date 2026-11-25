@@ -669,7 +669,7 @@ export default function HomeView({
 
   // An example started from the gallery is placed once the composer is usable,
   // exactly as one picked under the composer: its mode selected, its prompt in
-  // the box. One that needs nothing from the person is then sent as if Send
+  // the box. One the list says to send is then sent as if Send
   // were pressed; one that can take their file waits for them. The person
   // chose it, so it replaces what is there.
   useEffect(() => {
