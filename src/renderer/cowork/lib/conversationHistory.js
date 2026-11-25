@@ -7,6 +7,7 @@
 // (dispatches to the data-vault store) and `loadSessionMessagesWithRetry`
 // (async, hits the API) — the latter just calls `applySessionMessages` here.
 import { withQuickEditGroup } from './quickEditGroup';
+import { planFailureFields } from './subscriptionPlan';
 import { answerBody, initialStreamState, reduceStream } from './responseStreamAdapter';
 import { foldAddonMessages } from './addons';
 import { rebaseFigureSources } from './figureSources';
@@ -350,6 +351,9 @@ export function failedEventMeta(events) {
        render time: the server deliberately doesn't parse it, since only the
        client knows the viewer's timezone. */
     resetAt: typeof ev.reset_at === 'string' ? ev.reset_at : null,
+    // window_allowance_exhausted / model_not_in_tier (ENG-4186): which plan
+    // window filled, and which tier covers the model.
+    ...planFailureFields(ev),
     // budget_exceeded: whose budget is spent (org, workspace, api_key); absent from an older server.
     budgetScope: typeof ev.budget_scope === 'string' ? ev.budget_scope : null,
     budgetPeriod: typeof ev.budget_period === 'string' ? ev.budget_period : null,

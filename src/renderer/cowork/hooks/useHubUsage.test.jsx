@@ -5,6 +5,7 @@ const apiMock = vi.hoisted(() => ({ fetchHubUsage: vi.fn() }));
 vi.mock('../api', () => apiMock);
 
 import { useHubUsage } from './useHubUsage';
+import { usagePlanTier } from '../lib/usagePlanTier';
 
 const USER = { sub: 'user-1' };
 const VIEW = { reachable: true, isBillingOwner: true, freeTokens: { limit: 100, used: 10, remaining: 90 }, balance: null, autoTopUp: null };
@@ -48,5 +49,22 @@ describe('useHubUsage', () => {
     apiMock.fetchHubUsage.mockResolvedValue({ reachable: false });
     const { result } = renderHook(() => useHubUsage(USER, { pollMs: 0 }));
     await waitFor(() => expect(result.current.usage).toEqual({ reachable: false }));
+  });
+
+  // Analytics stamps this tier over the realm roles, so the poll must write it.
+  it('records the plan tier the read names for analytics, and clears it on sign-out', async () => {
+    apiMock.fetchHubUsage.mockResolvedValue({
+      ...VIEW,
+      plan: { tier: 'plus', status: 'active', renewsAt: null, cancelAtPeriodEnd: false, windows: [] },
+    });
+    const { result, rerender } = renderHook(
+      ({ user }) => useHubUsage(user, { pollMs: 0 }),
+      { initialProps: { user: USER } },
+    );
+    await waitFor(() => expect(usagePlanTier()).toBe('plus'));
+    // A failed poll keeps the last good read, so sign-out is what clears it.
+    rerender({ user: null });
+    await waitFor(() => expect(result.current.usage).toEqual({ reachable: false }));
+    expect(usagePlanTier()).toBeNull();
   });
 });

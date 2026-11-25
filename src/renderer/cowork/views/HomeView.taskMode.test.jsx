@@ -203,3 +203,13 @@ describe('HomeView task modes — hidden in Coding Mode', () => {
     expect(screen.queryByRole('button', { name: 'Create slides' })).not.toBeInTheDocument();
   });
 });
+
+it('offers task notifications while the first prompt is still a draft', async () => {
+  const user = userEvent.setup();
+  const onComposeTask = vi.fn();
+  const props = renderHome({ onComposeTask });
+  expect(onComposeTask).not.toHaveBeenCalled();
+  await user.type(screen.getByRole('textbox'), 'Draft a launch email');
+  expect(onComposeTask).toHaveBeenCalledOnce();
+  expect(props.onSend).not.toHaveBeenCalled();
+});

@@ -122,6 +122,7 @@ describe('ComposerLip', () => {
   it.each([
     ['included_allowance_exhausted', 'Your included allowance is used up', 'included_allowance_exhausted'],
     ['free_air_daily_spend_fuse_exceeded', 'Free MindsHub Air is paused', 'free_serving_paused'],
+    ['window_allowance_exhausted', 'Your included allowance is used up', 'window_allowance_exhausted'],
   ])('offers credits when %s blocks the turn until a reset', (code, title, billingTrigger) => {
     const { onAddCredits } = renderFailure(code, 'upstream 429');
     expect(screen.getByText(`${title}.`)).toBeInTheDocument();
@@ -130,6 +131,17 @@ describe('ComposerLip', () => {
     // not as a drained wallet.
     expect(onAddCredits).toHaveBeenCalledWith(billingTrigger);
     expect(screen.getByRole('button', { name: 'More options' })).toBeInTheDocument();
+  });
+
+  it('offers credits or another model when the plan does not cover the model', async () => {
+    const user = userEvent.setup();
+    const { onAddCredits, onChooseModel } = renderFailure('model_not_in_tier', 'upstream 403');
+    expect(screen.getByText('GPT 5.6 Sol needs credits.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add credits' }));
+    expect(onAddCredits).toHaveBeenCalledWith('model_not_in_tier');
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Choose another model' }));
+    expect(onChooseModel).toHaveBeenCalledOnce();
   });
 
   it('names a spent budget, opens Budgets, offers a model change for MindsHub Air, and never credits', async () => {

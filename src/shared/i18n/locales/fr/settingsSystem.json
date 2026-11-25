@@ -221,6 +221,21 @@
       "tryAgain": "Réessayer",
       "bodyMobile": "MindsHub n’a pas répondu."
     },
-    "empty": "Aucune utilisation à afficher pour ce compte pour l’instant."
+    "empty": "Aucune utilisation à afficher pour ce compte pour l’instant.",
+    "plan": {
+      "title": "{tier, select, plus {Forfait Plus} pro {Forfait Pro} other {Forfait}}",
+      "renewsOn": "Renouvellement le {date}",
+      "endsOn": "Se termine le {date}",
+      "ending": "Se termine",
+      "pastDue": "Échec du paiement",
+      "pastDueBody": "Nous n’avons pas pu renouveler votre forfait. Mettez à jour votre carte dans Gérer pour le conserver.",
+      "windowName": "{window, select, 7d {Quota hebdomadaire} other {Quota de 5 heures}}",
+      "windowUsed": "{percent} utilisé",
+      "windowUsedResets": "{percent} utilisé · réinitialisation à {time}",
+      "windowMeterLabel": "{window, select, 7d {Quota hebdomadaire utilisé} other {Quota de 5 heures utilisé}}",
+      "afterCap": "Au-delà de l’un ou l’autre quota, les tâches utilisent votre solde aux tarifs API ou sont en pause jusqu’à la réinitialisation.",
+      "upgrade": "{tier, select, plus {Passer à Plus} pro {Passer à Pro} other {Changer de forfait}}",
+      "manage": "Gérer"
+    }
   }
 }

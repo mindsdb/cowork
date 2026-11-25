@@ -82,10 +82,27 @@ function makeController(overrides = {}) {
   };
 }
 
+// The access card is a dropdown (ENG-4455): it opens the options as radios,
+// and picking another one starts the change. The access already chosen is
+// edited from "Edit list" (a Specific list), not picked again.
+async function openPicker(user) {
+  await user.click(await screen.findByTestId('access-dropdown'));
+}
+
+async function pickAccess(user, option) {
+  const choice = screen.getByRole('radio', { name: option });
+  if (choice.getAttribute('aria-checked') === 'true') {
+    await user.click(screen.getByTestId('access-dropdown'));
+    await user.click(screen.getByText('Edit list'));
+  } else {
+    await user.click(choice);
+  }
+}
+
 async function openAccessChange(user, option = /^Specific teams and people/) {
   await user.click(screen.getByText('Share'));
-  await user.click(screen.getByText('Change'));
-  if (option) await user.click(screen.getByRole('radio', { name: option }));
+  await openPicker(user);
+  if (option) await pickAccess(user, option);
 }
 
 // The Share trigger, whatever it reads: on an org card it says "Share" until
@@ -94,8 +111,18 @@ const trigger = () => screen.getByRole('button', { name: /^Share/ });
 
 async function openChange(user) {
   await user.click(trigger());
-  await user.click(screen.getByText('Change'));
+  await openPicker(user);
 }
+
+// Opens the access view on the stored list, to edit the people on it.
+async function openListEdit(user) {
+  await user.click(trigger());
+  await user.click(await screen.findByText('Edit list'));
+}
+
+// The dropdown names the access it shows (in the summary, the live one; in
+// the access view, the one drafted).
+const dropdown = () => screen.getByTestId('access-dropdown');
 
 const radio = (name) => screen.getByRole('radio', { name });
 const recipients = () => screen.getByRole('list', { name: 'Recipients' });
@@ -141,7 +168,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
       allowed_user_ids: [],
       allowed_emails: [],
       owner_only: false,
-    });
+    }, expect.anything());
   });
 
   describe('who may share with everyone at the org', () => {
@@ -168,7 +195,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
 
       expect(screen.queryByTestId('org-option-locked')).toBeNull();
       await user.click(screen.getByRole('button', { name: 'Update' }));
-      expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({ org_allowed: true, owner_only: false }));
+      expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({ org_allowed: true, owner_only: false }), expect.anything());
     });
 
     // artifacts.share_org decides it, not skills.share_org.
@@ -195,31 +222,48 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
       render(<PublishMenu controller={pub} />);
       await openAccessChange(user, null);
 
+      // The summary says so already, before any change starts.
+      expect(screen.getByRole('alert')).toHaveTextContent("Couldn't reach MindsHub to check what you can share.");
       expect(radio(/^Everyone at Acme/)).toHaveAttribute('aria-disabled', 'true');
       await user.hover(screen.getByTestId('org-option-locked'));
       expect(await screen.findByText("Couldn't reach MindsHub")).toBeInTheDocument();
       expect(screen.queryByText("Your role can't share with everyone in the organization")).toBeNull();
+
+      // The access view, once a change starts, says so too and offers Retry.
+      await user.click(radio(/^Specific teams and people/));
       expect(screen.getByRole('alert')).toHaveTextContent("Couldn't reach MindsHub to check what you can share.");
       await user.click(screen.getByRole('button', { name: 'Retry' }));
       expect(retry).toHaveBeenCalledTimes(1);
+      // Its dropdown keeps the same lock.
+      await openPicker(user);
+      expect(radio(/^Everyone at Acme/)).toHaveAttribute('aria-disabled', 'true');
     });
   });
 
-  it('unfolds the recipient field inside the Specific card, before Password protected', async () => {
+  it('shows the recipient field under the dropdown once Specific is picked, never inside the options', async () => {
     const user = userEvent.setup();
     render(<PublishMenu controller={makeController()} />);
     await openAccessChange(user, null);
-    expect(screen.queryByTestId('specific-recipients')).toBeNull();
+    // The options only switch: no field opens among them.
+    expect(screen.queryByTestId('access-editor')).toBeNull();
+    expect(screen.queryByRole('combobox')).toBeNull();
 
     await user.click(radio(/^Specific teams and people/));
-    const editor = screen.getByTestId('specific-recipients');
+    // The pick closes the options and drafts Specific in the access view.
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(dropdown()).toHaveAccessibleName('Who can access your app: Specific teams and people');
+    const editor = screen.getByTestId('access-editor');
     expect(within(editor).getByRole('combobox', { name: 'Add teams, people or emails' })).toBeInTheDocument();
     const follows = (a, b) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(follows(radio(/^Specific teams and people/), editor)).toBe(true);
-    expect(follows(editor, radio(/^Password protected/))).toBe(true);
-    // Directly under its own card, in the same wrapper.
-    expect(editor.parentElement).toContainElement(radio(/^Specific teams and people/));
-    expect(editor.parentElement).not.toContainElement(radio(/^Password protected/));
+    expect(follows(dropdown(), editor)).toBe(true);
+    expect(screen.getByRole('button', { name: 'Update' })).toBeDisabled();
+
+    // Reopened, the options still carry no field.
+    await openPicker(user);
+    expect(radio(/^Specific teams and people/)).toHaveAttribute('aria-checked', 'true');
+    const options = screen.getByRole('radiogroup', { name: 'Who can access your app' });
+    expect(within(options).queryByRole('combobox')).toBeNull();
+    expect(options).not.toContainElement(editor);
   });
 
   it('sends teams, people in the org and outside emails apart', async () => {
@@ -250,7 +294,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
       owner_only: false,
       // Exactly the people this save adds.
       notify: { user_ids: ['u-ana'], emails: ['zed@partner.io'] },
-    });
+    }, expect.anything());
   });
 
   it('keeps Update disabled until Specific names someone', async () => {
@@ -267,7 +311,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
 
     expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({
       allowed_team_ids: ['t-platform'], org_allowed: false, owner_only: false,
-    }));
+    }), expect.anything());
   });
 
   it('reads org_allowed with no lists as Everyone at the org', async () => {
@@ -286,6 +330,8 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
     await openChange(user);
 
     expect(radio(/^Specific teams and people/)).toHaveAttribute('aria-checked', 'true');
+    // The people on it are edited from Edit list.
+    await pickAccess(user, /^Specific teams and people/);
     await waitFor(() => expect(recipients()).toHaveTextContent('Bo Chen'));
     expect(recipients()).toHaveTextContent('Platform');
     expect(recipients()).toHaveTextContent('Unknown person');
@@ -322,7 +368,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
     await user.click(screen.getByRole('button', { name: 'Update' }));
     expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({
       org_allowed: false, allowed_team_ids: ['t-platform'],
-    }));
+    }), expect.anything());
   });
 
   it('summarizes Everyone at the org on the summary card', () => {
@@ -349,24 +395,25 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
     const user = userEvent.setup();
     const pub = makeController({ allowedUserIds: ['u-bo', 'u-gone'], ownerOnly: false });
     render(<PublishMenu controller={pub} />);
-    await openChange(user);
+    await openListEdit(user);
 
     await user.click(await screen.findByRole('button', { name: 'Remove Unknown person' }));
     await user.click(screen.getByRole('button', { name: 'Update' }));
 
     expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({
       allowed_user_ids: ['u-bo'], allowed_emails: [], owner_only: false,
-    }));
+    }), expect.anything());
   });
 
   it('offers Specific people by email only without sharing in MindsHub mode', async () => {
     const user = userEvent.setup();
     const pub = makeController({ orgSharing: orgSharing({ capabilities: SHARING_OFF }) });
     render(<PublishMenu controller={pub} />);
-    await openAccessChange(user, /^Specific people/);
+    await openAccessChange(user, null);
 
     expect(screen.queryByRole('radio', { name: /^Everyone/ })).toBeNull();
     expect(radio(/^Specific people/)).toHaveTextContent('Only the people you list');
+    await pickAccess(user, /^Specific people/);
     const field = screen.getByRole('combobox', { name: 'Add people by email' });
     await user.click(field);
     expect(screen.queryByRole('listbox')).toBeNull();
@@ -381,7 +428,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
     expect(pub.publish).toHaveBeenCalledWith({
       mode: 'restricted', org_allowed: false, owner_only: false,
       allowed_emails: ['zed@partner.io'], allowed_team_ids: [], allowed_user_ids: [],
-    });
+    }, expect.anything());
     expect(within(document.body).queryByText(/Acme/)).toBeNull();
   });
 
@@ -399,22 +446,34 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
     await user.type(screen.getByRole('combobox', { name: 'Add people by email' }), 'zed@partner.io{Enter}');
     await user.click(screen.getByRole('button', { name: 'Update' }));
     await user.click(screen.getByRole('button', { name: "Don't notify" }));
-    expect(pub.publish).toHaveBeenCalledWith({ mode: 'restricted', emails: ['zed@partner.io'], org_allowed: false, owner_only: false });
+    expect(pub.publish).toHaveBeenCalledWith({ mode: 'restricted', emails: ['zed@partner.io'], org_allowed: false, owner_only: false }, expect.anything());
   });
 
   describe('before the sharing capabilities are known', () => {
     const update = () => screen.getByRole('button', { name: 'Update' });
+    // The summary offers no dropdown to start a change from, and no Update.
+    const expectNoChange = () => {
+      expect(screen.queryByTestId('access-dropdown')).toBeNull();
+      expect(screen.queryByRole('radio')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Update' })).toBeNull();
+    };
 
     it('shows no chooser and saves nothing while they load', async () => {
       const user = userEvent.setup();
-      const pub = makeController({ orgSharing: orgSharing({ status: 'loading', capabilities: SHARING_OFF }) });
+      const pub = makeController({
+        allowedTeamIds: ['t-platform'], ownerOnly: false,
+        orgSharing: orgSharing({ status: 'loading', capabilities: SHARING_OFF }),
+      });
       render(<PublishMenu controller={pub} />);
-      await openAccessChange(user, null);
+      await user.click(trigger());
 
-      expect(screen.getByRole('status')).toHaveTextContent('Loading sharing settings…');
-      expect(screen.queryByRole('radio')).toBeNull();
-      expect(update()).toBeDisabled();
-      await user.click(update());
+      // In the body: the footer's up-to-date tag is a status too.
+      const loading = () => within(screen.getByTestId('publish-menu-body')).getByRole('status');
+      expect(loading()).toHaveTextContent('Loading sharing settings…');
+      expectNoChange();
+
+      // Nor Edit list: no change can start until they are known.
+      expect(screen.queryByText('Edit list')).toBeNull();
       expect(pub.publish).not.toHaveBeenCalled();
     });
 
@@ -434,13 +493,15 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
     it('offers Retry when they could not be read, and saves nothing', async () => {
       const user = userEvent.setup();
       const retry = vi.fn();
-      const pub = makeController({ orgSharing: orgSharing({ status: 'error', retry, capabilities: SHARING_OFF }) });
+      const pub = makeController({
+        allowedTeamIds: ['t-platform'], ownerOnly: false,
+        orgSharing: orgSharing({ status: 'error', retry, capabilities: SHARING_OFF }),
+      });
       render(<PublishMenu controller={pub} />);
-      await openAccessChange(user, null);
+      await user.click(trigger());
 
       expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load the sharing settings.");
-      expect(screen.queryByRole('radio')).toBeNull();
-      expect(update()).toBeDisabled();
+      expectNoChange();
       await user.click(screen.getByRole('button', { name: 'Retry' }));
       expect(retry).toHaveBeenCalledTimes(1);
       expect(pub.publish).not.toHaveBeenCalled();
@@ -450,10 +511,11 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
       const user = userEvent.setup();
       const pub = makeController({ allowedTeamIds: ['t-platform'], ownerOnly: false });
       const { rerender } = render(<PublishMenu controller={{ ...pub, orgSharing: orgSharing({ status: 'loading', capabilities: SHARING_OFF }) }} />);
-      await openChange(user);
-      expect(screen.queryByRole('radio')).toBeNull();
+      await user.click(trigger());
+      expectNoChange();
 
       rerender(<PublishMenu controller={pub} />);
+      await openPicker(user);
       await user.click(radio(/^Only me/));
       await user.click(update());
 
@@ -461,7 +523,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
       expect(pub.publish).toHaveBeenCalledWith({
         mode: 'restricted', org_allowed: false, owner_only: true,
         allowed_emails: [], allowed_team_ids: [], allowed_user_ids: [],
-      });
+      }, expect.anything());
       expect(pub.publish.mock.calls[0][0]).not.toHaveProperty('emails');
     });
   });
@@ -470,20 +532,25 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
     const sharedWith = () => screen.getByRole('list', { name: 'Shared with' });
     const names = () => within(sharedWith()).getAllByRole('listitem').map((row) => row.querySelector('span.truncate').textContent);
 
-    it('lists who it is shared with, without clicking Change', async () => {
+    it('lists who it is shared with, without opening the dropdown', async () => {
       const user = userEvent.setup();
       render(<PublishMenu controller={makeController({
         allowedTeamIds: ['t-platform'], allowedUserIds: ['u-ana'], accessEmails: ['zed@partner.io'], ownerOnly: false,
       })} />);
       await open(user);
 
-      expect(screen.getByTestId('access-summary')).toHaveTextContent('Specific teams and people');
-      expect(screen.getByTestId('access-summary')).toHaveTextContent('1 team · 1 person · 1 outside Acme');
+      // The dropdown names the access; the list follows it, in the summary.
+      const summary = screen.getByTestId('access-summary');
+      expect(within(summary).getByTestId('access-dropdown')).toHaveAccessibleName('Who can access your app: Specific teams and people');
+      expect(summary).toContainElement(sharedWith());
       await waitFor(() => expect(names()).toEqual(['Platform', 'Ana Ruiz', 'zed@partner.io']));
       expect(sharedWith()).toHaveTextContent('Outside Acme');
-      // Read only.
+      // The card's line counts who is on the list.
+      expect(within(summary).getByTestId('access-dropdown')).toHaveTextContent('1 team · 1 person · 1 outside Acme');
+      // Read only: the people are edited from Edit list.
       expect(within(sharedWith()).queryByRole('button')).toBeNull();
       expect(screen.queryByRole('combobox')).toBeNull();
+      expect(screen.queryByRole('radio')).toBeNull();
     });
 
     it('shows the first four and +N more, which expands the rest', async () => {
@@ -515,9 +582,9 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
         orgSharing: orgSharing({ capabilities: SHARING_OFF }),
       })} />);
       await open(user);
-      expect(screen.getByTestId('access-summary')).toHaveTextContent('Specific people');
-      expect(screen.getByTestId('access-summary')).toHaveTextContent('2 people');
+      expect(dropdown()).toHaveAccessibleName('Who can access your app: Specific people');
       expect(names()).toEqual(['zed@partner.io', 'amy@partner.io']);
+      expect(dropdown()).toHaveTextContent('2 people');
       expect(people.byIds).not.toHaveBeenCalled();
     });
   });
@@ -527,7 +594,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
       const user = userEvent.setup();
       const pub = makeController({ allowedUserIds: ['u-bo'], ownerOnly: false });
       render(<PublishMenu controller={pub} />);
-      await openChange(user);
+      await openListEdit(user);
 
       const field = screen.getByRole('combobox', { name: 'Add teams, people or emails' });
       await user.type(field, 'ana');
@@ -548,7 +615,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
       expect(pub.publish).toHaveBeenCalledTimes(1);
       expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({
         allowed_user_ids: ['u-bo', 'u-ana'], allowed_emails: ['a@x.io', 'b@x.io', 'c@x.io'],
-      }));
+      }), expect.anything());
       // Don't notify sends no notify at all.
       expect(pub.publish.mock.calls[0][0]).not.toHaveProperty('notify');
     });
@@ -566,14 +633,14 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
 
       expect(screen.getByTestId('notify-confirm')).toHaveTextContent('Let 1 new person know by email?');
       await user.click(screen.getByRole('button', { name: 'Notify' }));
-      expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({ allowed_user_ids: ['u-ana'], notify: { user_ids: ['u-ana'], emails: [] } }));
+      expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({ allowed_user_ids: ['u-ana'], notify: { user_ids: ['u-ana'], emails: [] } }), expect.anything());
     });
 
     it('does not ask when only teams are added', async () => {
       const user = userEvent.setup();
       const pub = makeController({ allowedUserIds: ['u-bo'], ownerOnly: false });
       render(<PublishMenu controller={pub} />);
-      await openChange(user);
+      await openListEdit(user);
       await user.click(screen.getByRole('combobox'));
       await user.click(screen.getByRole('option', { name: /Platform/ }));
       await user.click(screen.getByRole('button', { name: 'Update' }));
@@ -581,7 +648,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
       expect(screen.queryByTestId('notify-confirm')).toBeNull();
       expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({
         allowed_team_ids: ['t-platform'], allowed_user_ids: ['u-bo'],
-      }));
+      }), expect.anything());
       expect(pub.publish.mock.calls[0][0]).not.toHaveProperty('notify');
     });
 
@@ -589,7 +656,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
       const user = userEvent.setup();
       const pub = makeController({ allowedUserIds: ['u-bo'], ownerOnly: false, modified: true });
       render(<PublishMenu controller={pub} />);
-      await openChange(user);
+      await openListEdit(user);
       await user.click(screen.getByRole('button', { name: 'Update' }));
 
       expect(screen.queryByTestId('notify-confirm')).toBeNull();
@@ -599,7 +666,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
       const user = userEvent.setup();
       const pub = makeController({ ownerOnly: false, allowedTeamIds: ['t-platform'] });
       render(<PublishMenu controller={pub} />);
-      await openChange(user);
+      await openListEdit(user);
       await user.type(screen.getByRole('combobox'), 'ana');
       await user.click(await screen.findByRole('option', { name: /Ana Ruiz/ }));
       await user.click(screen.getByRole('button', { name: 'Update' }));
@@ -657,19 +724,21 @@ describe('PublishMenu on an org card, driven by usePublish', () => {
     workspace.load.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
     workspace.save.mockResolvedValue({ url: 'https://share/abc', ...SHARED_WITH_PLATFORM, allowedUserIds: ['u-ana'] });
     render(<OrgPanel />);
-    await openChange(user);
+    await user.click(trigger());
 
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Loading current access…'));
-    // Nothing to pick from the card's unknown audience, and nothing to save.
+    // In the body: the footer's up-to-date tag is a status too.
+    await waitFor(() => expect(within(screen.getByTestId('publish-menu-body')).getByRole('status')).toHaveTextContent('Loading current access…'));
+    // Nothing to pick from the card's unknown audience, and nothing to save:
+    // the summary offers no dropdown, no Edit list and no Update.
+    expect(screen.queryByTestId('access-dropdown')).toBeNull();
+    expect(screen.queryByText('Edit list')).toBeNull();
     expect(screen.queryByRole('radio')).toBeNull();
-    const update = screen.getByRole('button', { name: 'Update' });
-    expect(update).toBeDisabled();
-    expect(update).toHaveAttribute('title', 'Loading current access…');
-    await user.click(update);
+    expect(screen.queryByRole('button', { name: 'Update' })).toBeNull();
     expect(workspace.save).not.toHaveBeenCalled();
 
     await act(async () => { answer(SHARED_WITH_PLATFORM); });
-    await waitFor(() => expect(radio(/^Specific teams and people/)).toHaveAttribute('aria-checked', 'true'));
+    await waitFor(() => expect(dropdown()).toHaveAccessibleName('Who can access your app: Specific teams and people'));
+    await user.click(screen.getByText('Edit list'));
     await user.type(screen.getByRole('combobox', { name: 'Add teams, people or emails' }), 'ana');
     await user.click(await screen.findByRole('option', { name: /Ana Ruiz/ }));
     await user.click(screen.getByRole('button', { name: 'Update' }));
@@ -703,8 +772,8 @@ describe('PublishMenu on an org card, driven by usePublish', () => {
     render(<ReloadingPanel />);
     // The trigger reads "Shared" once the access route has answered.
     await waitFor(() => expect(trigger()).toHaveTextContent(/Shared/));
-    await openChange(user);
-    await waitFor(() => expect(radio(/^Specific teams and people/)).toHaveAttribute('aria-checked', 'true'));
+    await openListEdit(user);
+    expect(dropdown()).toHaveAccessibleName('Who can access your app: Specific teams and people');
 
     // A fresh card with no audience, `modified` flipped by an edit that
     // autopublish has not caught up with yet.
@@ -732,22 +801,24 @@ describe('PublishMenu on an org card, driven by usePublish', () => {
     render(<OrgPanel />);
     await user.click(trigger());
 
-    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't load the current access.");
+    const failed = await screen.findByRole('alert');
+    expect(failed).toHaveTextContent("Couldn't load the current access.");
     // A failed read says nothing about who it reaches: neither the trigger nor
     // the panel claims "Shared".
     expect(trigger()).toHaveTextContent(/^Share$/);
     expect(within(screen.getByRole('dialog')).queryByText('Shared')).toBeNull();
     expect(screen.queryByTestId('access-summary')).toBeNull();
-    await user.click(screen.getByText('Change'));
-    expect(screen.getByRole('alert')).toHaveTextContent("Couldn't load the current access.");
+    // No way into a change from an unknown audience.
+    expect(screen.queryByTestId('access-dropdown')).toBeNull();
+    expect(screen.queryByText('Edit list')).toBeNull();
     expect(screen.queryByRole('radio')).toBeNull();
-    const update = screen.getByRole('button', { name: 'Update' });
-    expect(update).toBeDisabled();
-    // It isn't loading any more; the alert says what happened.
-    expect(update).not.toHaveAttribute('title');
+    expect(screen.queryByRole('button', { name: 'Update' })).toBeNull();
 
-    await user.click(screen.getByRole('button', { name: 'Retry' }));
-    await waitFor(() => expect(radio(/^Specific teams and people/)).toHaveAttribute('aria-checked', 'true'));
+    // Its own Retry, not the viewer analytics' one below it.
+    await user.click(within(failed).getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(dropdown()).toHaveAccessibleName('Who can access your app: Specific teams and people'));
+    await openPicker(user);
+    expect(radio(/^Specific teams and people/)).toHaveAttribute('aria-checked', 'true');
     expect(workspace.load).toHaveBeenCalledTimes(2);
     expect(workspace.save).not.toHaveBeenCalled();
   });
@@ -787,10 +858,12 @@ describe('PublishMenu on an org card, driven by usePublish', () => {
     });
     render(<OrgPanel />);
     await waitFor(() => expect(trigger()).toHaveTextContent(/Shared/));
-    await openChange(user);
-    await waitFor(() => expect(radio(/^Specific teams and people/)).toHaveAttribute('aria-checked', 'true'));
+    await user.click(trigger());
+    // The Share panel, before the dropdown adds its own dialog.
     const panel = screen.getByRole('dialog');
     expect(within(panel).getByText('Shared')).toBeInTheDocument();
+    await openPicker(user);
+    expect(radio(/^Specific teams and people/)).toHaveAttribute('aria-checked', 'true');
 
     await user.click(radio(/^Only me/));
     await user.click(screen.getByRole('button', { name: 'Update' }));

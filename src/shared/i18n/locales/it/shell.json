@@ -135,6 +135,27 @@
       "haveCopyTitle": "Hai già una copia. Eliminala per duplicare di nuovo l’app.",
       "duplicateAriaLabel": "Duplica {name}",
       "duplicatedToast": "Duplicata in questo progetto."
+    },
+    "workingFolders": {
+      "title": "Cartelle di lavoro",
+      "add": "Aggiungi una cartella a questa chat",
+      "adding": "Aggiunta in corso…",
+      "emptyHint": "Aggiungi una cartella in cui l’agente possa lavorare.",
+      "loadingFiles": "Caricamento dei file…",
+      "emptyFolder": "Nessun file in questa cartella.",
+      "showFiles": "Mostra i file in {name}",
+      "hideFiles": "Nascondi i file in {name}",
+      "unavailable": "Cartella non disponibile",
+      "removeTooltip": "Rimuovi da questa chat",
+      "removeAriaLabel": "Rimuovi {name} da questa chat",
+      "removeTitle": "Rimuovere «{name}» da questa chat?",
+      "fallbackName": "cartella",
+      "removeMessage": "L’agente non lavorerà più in questa cartella. La cartella e i suoi file restano sul tuo computer.",
+      "loadFailed": "Impossibile caricare le cartelle di lavoro.",
+      "listFailed": "Impossibile elencare questa cartella.",
+      "pickerFailed": "Impossibile aprire il selettore di cartelle.",
+      "addFailed": "Impossibile aggiungere questa cartella.",
+      "removeFailed": "Impossibile rimuovere questa cartella."
     }
   },
   "confirm": {
@@ -169,17 +190,47 @@
     }
   },
   "comingSoon": {
-    "cloudTitle": "Presto disponibile su Cloud",
+    "cloudTitle": "Funziona nell’app desktop",
+    "cloudTitleNamed": "{feature} funziona nell’app desktop",
     "unavailableTitle": "Funzione non disponibile",
-    "cloudBodyNamed": "{feature} non è ancora disponibile su Cloud. Nel frattempo puoi usarla nell’app desktop.",
-    "cloudBody": "Questa funzione non è ancora disponibile su Cloud. Nel frattempo puoi usarla nell’app desktop.",
-    "cloudBodyCustom": "{feature} non è ancora disponibile su Cloud. Puoi collegarlo subito come connettore personalizzato.",
+    "cloudBodyNamed": "Oggi {feature} funziona nell’app desktop. Scaricala per collegare {feature} lì.",
+    "cloudBody": "Oggi funziona nell’app desktop. Scaricala per usarla lì.",
+    "mobileBodyNamed": "{feature} funziona nell’app desktop, su un computer.",
+    "mobileBody": "Questa funzione è disponibile nell’app desktop, su un computer.",
+    "cloudBodyCustom": "Oggi {feature} funziona nell’app desktop. Qui puoi collegarlo subito come connettore personalizzato.",
     "unavailableBodyNamed": "{feature} non è disponibile in questa installazione.",
     "unavailableBody": "Questa funzione non è disponibile in questa installazione.",
     "notNow": "Non ora",
-    "download": "Scarica l’app",
+    "download": "Scarica l’app desktop",
     "connectCustom": "Collega il tuo connettore personalizzato {feature}",
     "buildCustom": "Crea un connettore personalizzato"
+  },
+  "desktopOffer": {
+    "tag": "Desktop",
+    "notNow": "Non ora",
+    "download": "Scarica l’app desktop",
+    "platforms": "Per Mac, Windows e Linux.",
+    "code": {
+      "title": "La modalità codice funziona nell’app desktop",
+      "body": "La modalità codice lavora sul codice del tuo computer, quindi serve l’app desktop. Lì Cowork può:",
+      "points": {
+        "files": "Leggere e modificare il codice nelle tue cartelle e nei tuoi repository",
+        "commands": "Eseguire comandi e test sul tuo computer",
+        "agents": "Affidare un’attività a Claude Code o Codex"
+      }
+    },
+    "folder": {
+      "projectTitle": "Usa una cartella del tuo computer nell’app desktop",
+      "chatTitle": "Le cartelle di lavoro sono nell’app desktop",
+      "projectBody": "Il browser non può accedere ai file del tuo computer. L’app desktop può avviare un progetto in una cartella che hai già, e Cowork lavora sui suoi file.",
+      "chatBody": "Il browser non può accedere ai file del tuo computer. Nell’app desktop puoi aggiungere a una chat cartelle del tuo computer, e Cowork ci lavora.",
+      "points": {
+        "inPlace": "Niente caricamenti: usa i file dove si trovano",
+        "saved": "Quello che crea viene salvato sul tuo computer",
+        "kept": "Se rimuovi la cartella da Cowork, i tuoi file restano dove sono"
+      },
+      "note": "Per Mac, Windows e Linux. Qui nel browser puoi comunque caricare file."
+    }
   },
   "loadStatus": {
     "retry": "Riprova",
@@ -187,6 +238,8 @@
     "loading": "Caricamento: {what}…"
   },
   "upToDate": "Aggiornato",
+  "upToDateSaving": "Salvataggio…",
+  "upToDateSaved": "Salvato",
   "usageBar": {
     "hideAllowance": "Nascondi quota",
     "hide": "Nascondi"
@@ -414,7 +467,8 @@
     "signupWelcome": {
       "fromDesktop": "Il tuo account è pronto. Puoi iniziare subito qui, oppure tornare all’app {product} e accedere.",
       "dismiss": "Chiudi"
-    }
+    },
+    "ownWorkHeading": "Su cosa deve lavorare {product}?"
   },
   "logout": {
     "title": "Uscire da {product}?",

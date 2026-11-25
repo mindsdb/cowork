@@ -114,13 +114,23 @@
       "viewBudgets": "Budgets anzeigen",
       "balanceRanOutMobile": "Ihr Guthaben war aufgebraucht, bevor diese Aufgabe abgeschlossen war.",
       "autoTopUpFailedBodyMobile": "Ihre Karte konnte nicht belastet werden.",
-      "connectProviderBodyMobile": "Verbinden Sie Ihren eigenen Anbieter in den Einstellungen."
+      "connectProviderBodyMobile": "Verbinden Sie Ihren eigenen Anbieter in den Einstellungen.",
+      "windowUsedUpTitle": "Plan-Kontingent aufgebraucht",
+      "windowPausedUntil": "Ihr {window, select, 7d {Wochenkontingent} 5h {5-Stunden-Kontingent} other {Plan-Kontingent}} ist aufgebraucht und Ihr Guthaben ist leer. Pausiert bis {time}. Laden Sie Guthaben auf, um weiterzumachen.",
+      "windowPaused": "Ihr {window, select, 7d {Wochenkontingent} 5h {5-Stunden-Kontingent} other {Plan-Kontingent}} ist aufgebraucht und Ihr Guthaben ist leer. Pausiert bis zum Zurücksetzen. Laden Sie Guthaben auf, um weiterzumachen.",
+      "windowPausedUntilMobile": "Ihr {window, select, 7d {Wochenkontingent} 5h {5-Stunden-Kontingent} other {Plan-Kontingent}} ist aufgebraucht. Pausiert bis {time}.",
+      "windowPausedMobile": "Ihr {window, select, 7d {Wochenkontingent} 5h {5-Stunden-Kontingent} other {Plan-Kontingent}} ist aufgebraucht. Pausiert bis zum Zurücksetzen."
     },
     "usageAlert": {
       "freeLow": "Air-Gratiskontingent: noch {percent}",
       "freeLowRefills": "Air-Gratiskontingent: noch {percent} · wird um {time} aufgefüllt",
       "freeUsed": "Air-Gratiskontingent aufgebraucht · Ihr Guthaben wird jetzt verwendet",
-      "freeUsedUntil": "Air-Gratiskontingent aufgebraucht · Ihr Guthaben wird bis {time} verwendet"
+      "freeUsedUntil": "Air-Gratiskontingent aufgebraucht · Ihr Guthaben wird bis {time} verwendet",
+      "windowLow": "{percent} Ihres {window, select, 7d {Wochenkontingents} other {5-Stunden-Kontingents}} verbraucht",
+      "windowLowResets": "{percent} Ihres {window, select, 7d {Wochenkontingents} other {5-Stunden-Kontingents}} verbraucht · wird um {time} zurückgesetzt",
+      "windowUsed": "{window, select, 7d {Wochenkontingent aufgebraucht} other {5-Stunden-Kontingent aufgebraucht}}",
+      "windowUsedUntil": "{window, select, 7d {Wochenkontingent aufgebraucht} other {5-Stunden-Kontingent aufgebraucht}} · pausiert bis {time}",
+      "windowOnWallet": "{window, select, 7d {Wochenkontingent aufgebraucht} other {5-Stunden-Kontingent aufgebraucht}} · Ihr Guthaben wird zu API-Preisen verwendet"
     },
     "reconnect": {
       "couldNotReconnect": "Erneute Verbindung fehlgeschlagen. Melden Sie sich ab und wieder an.",
@@ -149,7 +159,9 @@
       "needsCreditsBody": "Ihr Guthaben reicht für dieses Modell nicht aus. Laden Sie Ihr Guthaben auf, um es zu nutzen.",
       "disabledBody": "Dieses Modell ist für Ihren Arbeitsbereich deaktiviert. Wählen Sie in den Einstellungen ein anderes Modell.",
       "topUpBalance": "Guthaben aufladen",
-      "needsCreditsBodyMobile": "Ihr Guthaben reicht für dieses Modell nicht aus."
+      "needsCreditsBodyMobile": "Ihr Guthaben reicht für dieses Modell nicht aus.",
+      "notInTierTitle": "{model} ist nicht in Ihrem Plan enthalten",
+      "notInTierBody": "{tier, select, plus {{model} ist in Plus enthalten.} pro {{model} ist in Pro enthalten.} other {Ihr Plan enthält {model} nicht.}} Upgraden Sie oder laden Sie Guthaben auf, um es zu API-Preisen zu nutzen."
     },
     "overloaded": {
       "theModelProvider": "Der Modellanbieter",
@@ -297,7 +309,11 @@
       "none": "Kein Projekt"
     },
     "chooseHarness": "Harness wählen",
-    "voiceCall": "Sprachanruf"
+    "voiceCall": "Sprachmodus",
+    "dictation": {
+      "start": "Diktieren",
+      "stop": "Diktieren beenden"
+    }
   },
   "attachmentThumbnail": {
     "open": "Bild öffnen",
@@ -497,7 +513,8 @@
         "1": "Wettbewerbsumfeld und Positionierung analysieren",
         "2": "Wöchentliche Team-Statusberichte automatisieren",
         "3": "Marktchancen für eine Produkteinführung recherchieren",
-        "4": "Update dieser Woche auf Basis der letzten Woche entwerfen"
+        "4": "Update dieser Woche auf Basis der letzten Woche entwerfen",
+        "5": "Einen Bericht in eine Präsentation umwandeln"
       }
     },
     "website": {
@@ -542,7 +559,8 @@
         "3": "Führende VLM-Modelle anhand von Hugging-Face-Daten vergleichen",
         "4": "IRR für Investitions-Cashflows berechnen",
         "5": "Meine Tabelle bereinigen und als Diagramm darstellen",
-        "6": "Wichtige Vertragsbedingungen herausziehen"
+        "6": "Wichtige Vertragsbedingungen herausziehen",
+        "7": "Einen Kontoauszug in eine Tabelle umwandeln"
       }
     },
     "visualization": {
@@ -573,7 +591,10 @@
         "7": "Überblick, was diese Woche bei mir ansteht",
         "8": "Einen Interessenten recherchieren und die Erstansprache entwerfen",
         "9": "Mich anhand eines Gesprächstranskripts zu einem Deal beraten",
-        "10": "Besprechungsnotizen in Aufgaben umwandeln"
+        "10": "Besprechungsnotizen in Aufgaben umwandeln",
+        "11": "Die Go-to-Market-Strategie eines Wettbewerbers erfassen",
+        "12": "Einen Lernleitfaden aus Kursmaterial erstellen",
+        "13": "Eine priorisierte Lead-Liste erstellen"
       }
     },
     "games": {
@@ -594,7 +615,11 @@
       "placeholder": "Wählen Sie ein Beispiel oder beschreiben Sie Ihre eigene Aufgabe"
     },
     "samplePrompts": "Beispiel-Prompts",
-    "pillsAriaLabel": "Aufgabentypen"
+    "pillsAriaLabel": "Aufgabentypen",
+    "own-work": {
+      "chipLabel": "Ihre Arbeit",
+      "placeholder": "Fügen Sie Text oder einen Link ein oder hängen Sie eine Datei an"
+    }
   },
   "taskRows": {
     "openProject": "{project} öffnen",
@@ -732,7 +757,7 @@
     "talkTo": "Mit {agent} sprechen"
   },
   "voiceCall": {
-    "dialogLabel": "Sprachanruf mit {agent}",
+    "dialogLabel": "Sprachmodus",
     "connecting": "Verbindung wird hergestellt…",
     "ending": "Wird beendet…",
     "working": "In Arbeit…",
@@ -796,5 +821,50 @@
     "fallbackName": "Bild",
     "alt": "Erzeugtes Bild {name}",
     "notShown": "{name} kann nicht angezeigt werden. Die Datei wurde möglicherweise verschoben oder gelöscht."
+  },
+  "ownWork": {
+    "needsMaterial": "Fügen Sie jetzt hinzu, woran es arbeiten soll: Hängen Sie eine Datei an oder fügen Sie nach der Aufgabe Text oder einen Link ein.",
+    "waysLabel": "Möglichkeiten, Ihre Arbeit einzubringen",
+    "attach": "Datei anhängen",
+    "orPaste": "oder fügen Sie oben Text oder einen Link ein",
+    "jobsHeading": "Wählen Sie bei Bedarf eine Aufgabe",
+    "kindsLabel": "Art der Arbeit",
+    "groups": {
+      "finance": "Finanzen und Verwaltung",
+      "sales": "Vertrieb und Marketing",
+      "operations": "Betrieb",
+      "legal": "Verträge und Recherche"
+    },
+    "jobs": {
+      "finance": {
+        "0": "Diese Kontoauszüge oder Rechnungen in einer Tabelle zusammenfassen.",
+        "1": "Aus diesen Zahlen den nächsten Monatsbericht erstellen.",
+        "2": "Diese Auszüge auf Fehler oder ungewöhnliche Posten prüfen."
+      },
+      "sales": {
+        "0": "Diese Kundenliste bereinigen und Duplikate markieren.",
+        "1": "Diese zwei Preislisten vergleichen und Änderungen zeigen.",
+        "2": "Aus diesen Gesprächsnotizen Follow-up-E-Mails entwerfen."
+      },
+      "operations": {
+        "0": "Aus diesen Besprechungsnotizen Entscheidungen und To-dos machen.",
+        "1": "Aus diesen Notizen eine einseitige Zusammenfassung machen.",
+        "2": "Aus diesem Prozessdokument eine Schritt-für-Schritt-Checkliste machen."
+      },
+      "legal": {
+        "0": "Die wichtigsten Bedingungen und Risiken dieses Vertrags zusammenfassen.",
+        "1": "Diesen Bericht zusammenfassen und die wichtigen Zahlen hervorheben.",
+        "2": "Diese Seite lesen und erklären, was für uns wichtig ist."
+      }
+    }
+  },
+  "reportContent": {
+    "title": "Inhalt melden",
+    "message": "Diesen Inhalt als unsicher oder anstößig melden? Sein Text oder Verweis und deine Kontokennungen werden zur Prüfung an das MindsHub-Team gesendet.",
+    "submit": "Meldung senden",
+    "sent": "Meldung erhalten.",
+    "failed": "Die Meldung konnte nicht gesendet werden. Bitte versuche es erneut.",
+    "rateLimited": "Tägliches Meldelimit erreicht. Bitte versuche es später erneut.",
+    "retryAt": "Tägliches Meldelimit erreicht. Versuche es am {when, date, short} um {when, time, short} erneut."
   }
 }

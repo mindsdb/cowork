@@ -135,6 +135,27 @@
       "haveCopyTitle": "你已有一个副本。删除它后才能再次复制此应用。",
       "duplicateAriaLabel": "创建 {name} 的副本",
       "duplicatedToast": "已复制到此项目。"
+    },
+    "workingFolders": {
+      "title": "工作文件夹",
+      "add": "向此聊天添加文件夹",
+      "adding": "正在添加…",
+      "emptyHint": "添加一个文件夹供智能体在其中工作。",
+      "loadingFiles": "正在加载文件…",
+      "emptyFolder": "此文件夹中没有文件。",
+      "showFiles": "显示 {name} 中的文件",
+      "hideFiles": "隐藏 {name} 中的文件",
+      "unavailable": "文件夹不可用",
+      "removeTooltip": "从此聊天中移除",
+      "removeAriaLabel": "从此聊天中移除 {name}",
+      "removeTitle": "从此聊天中移除“{name}”？",
+      "fallbackName": "文件夹",
+      "removeMessage": "智能体将不再在此文件夹中工作。文件夹及其文件仍保留在你的电脑上。",
+      "loadFailed": "无法加载工作文件夹。",
+      "listFailed": "无法列出此文件夹的内容。",
+      "pickerFailed": "无法打开文件夹选择器。",
+      "addFailed": "无法添加此文件夹。",
+      "removeFailed": "无法移除此文件夹。"
     }
   },
   "confirm": {
@@ -169,17 +190,47 @@
     }
   },
   "comingSoon": {
-    "cloudTitle": "即将登陆 Cloud",
+    "cloudTitle": "此功能在桌面应用中可用",
+    "cloudTitleNamed": "{feature} 在桌面应用中可用",
     "unavailableTitle": "功能不可用",
-    "cloudBodyNamed": "{feature} 暂未在 Cloud 上提供。在此之前，你可以在桌面应用中使用。",
-    "cloudBody": "此功能暂未在 Cloud 上提供。在此之前，你可以在桌面应用中使用。",
-    "cloudBodyCustom": "{feature} 暂未在 Cloud 上提供。你现在可以将它作为自定义连接器接入。",
+    "cloudBodyNamed": "目前 {feature} 可在桌面应用中使用。下载桌面应用，即可在其中连接 {feature}。",
+    "cloudBody": "目前此功能可在桌面应用中使用。下载桌面应用，即可在其中使用。",
+    "mobileBodyNamed": "{feature} 可在电脑上的桌面应用中使用。",
+    "mobileBody": "此功能可在电脑上的桌面应用中使用。",
+    "cloudBodyCustom": "目前 {feature} 可在桌面应用中使用。在这里，你现在就可以将它作为自定义连接器接入。",
     "unavailableBodyNamed": "{feature} 在此部署中不可用。",
     "unavailableBody": "此功能在此部署中不可用。",
     "notNow": "以后再说",
-    "download": "下载应用",
+    "download": "下载桌面应用",
     "connectCustom": "连接你的自定义 {feature} 连接器",
     "buildCustom": "构建自定义连接器"
+  },
+  "desktopOffer": {
+    "tag": "桌面版",
+    "notNow": "以后再说",
+    "download": "下载桌面应用",
+    "platforms": "适用于 Mac、Windows 和 Linux。",
+    "code": {
+      "title": "代码模式在桌面应用中可用",
+      "body": "代码模式处理的是你电脑上的代码，因此需要桌面应用。在桌面应用中，Cowork 可以：",
+      "points": {
+        "files": "读取和修改你自己文件夹和仓库中的代码",
+        "commands": "在你的电脑上运行命令和测试",
+        "agents": "把任务交给 Claude Code 或 Codex"
+      }
+    },
+    "folder": {
+      "projectTitle": "在桌面应用中使用你电脑上的文件夹",
+      "chatTitle": "工作文件夹在桌面应用中可用",
+      "projectBody": "浏览器无法访问你电脑上的文件。桌面应用可以在你已有的文件夹中创建项目，Cowork 会处理其中的文件。",
+      "chatBody": "浏览器无法访问你电脑上的文件。在桌面应用中，你可以把电脑上的文件夹添加到对话中，Cowork 会在其中工作。",
+      "points": {
+        "inPlace": "无需上传：直接使用原位置的文件",
+        "saved": "它生成的内容会保存在你的电脑上",
+        "kept": "从 Cowork 中移除文件夹后，你的文件仍保留在原处"
+      },
+      "note": "适用于 Mac、Windows 和 Linux。在浏览器中，你仍然可以上传文件。"
+    }
   },
   "loadStatus": {
     "retry": "重试",
@@ -187,6 +238,8 @@
     "loading": "正在加载 {what}…"
   },
   "upToDate": "已是最新版本",
+  "upToDateSaving": "正在保存…",
+  "upToDateSaved": "已保存",
   "usageBar": {
     "hideAllowance": "隐藏额度",
     "hide": "隐藏"
@@ -414,7 +467,8 @@
     "signupWelcome": {
       "fromDesktop": "你的账户已准备就绪。你可以直接在这里开始，或返回 {product} 应用并登录。",
       "dismiss": "关闭"
-    }
+    },
+    "ownWorkHeading": "{product} 应该处理什么？"
   },
   "logout": {
     "title": "退出 {product} 登录？",

@@ -9,44 +9,71 @@
 //
 // phase: 'publishing' | 'updating' | 'unpublishing' | 'deleting' | 'failed' | undefined(idle)
 
+import { createContext, useContext } from 'react';
 import Ico from '../Icons';
 import { Badge, Tooltip } from '../ui';
-import { isOwnerOnlyAccess } from '../../lib/orgSharing';
+import {
+  AUDIENCE_CHOICE, artifactAudienceChoice, everyoneAtDesc, everyoneAtLabel, isOwnerOnlyAccess,
+} from '../../lib/orgSharing';
+import { readArtifactAudience } from '../../lib/sharingContract';
+import { useRecipientItems } from '../RecipientRows';
 import i18n, { useTranslation } from '../../../lib/i18n';
 import { ArtifactAuthorshipBadge } from './ArtifactAuthorshipBadge';
 
-// One mode-aware badge per published artifact (ENG-1212). ONLY a genuinely
-// public artifact gets the green "success" treatment — password/restricted
-// are neutral so a protected artifact can never read as "Shared / available
-// to all". Every badge carries a `dot` (the "this is live" affordance that the
-// old green "Shared" pill provided — draft/"Not shared" has none) plus an icon,
-// then the plain text label. The pill is inline-flex + nowrap and sizes to its
-// content, so the label is always shown (ENG-1475); when a tight cell also holds
-// the "Unshared changes" badge the two wrap to a second line.
-const ACCESS_BADGE = {
-  public: { variant: 'success', icon: Ico.globe(12), labelKey: 'status.badge.public' },
-  password: { variant: 'default', icon: Ico.lock(12), labelKey: 'status.badge.password' },
-  restricted: { variant: 'default', icon: Ico.people(12), labelKey: 'status.badge.restricted' },
+// One badge per artifact for who can open it (ENG-1212, ENG-4647), from its
+// audience (artifactAudienceChoice, the Share panel's AUDIENCE_CHOICE): the same rule in every group and for
+// every kind of file. ONLY a genuinely public artifact gets the green
+// "success" treatment, so a protected one can never read as available to all.
+// A shared artifact's badge carries a `dot` (the "this is live" affordance);
+// one only its owner can open has none until it is shared. Public and
+// password-protected differ by their icon (a globe, a lock) and their label.
+// The pill is inline-flex + nowrap and sizes to its content, so the label is
+// always shown (ENG-1475); when a tight cell also holds the "Unshared
+// changes" badge the two wrap to a second line.
+const AUDIENCE_BADGE = {
+  [AUDIENCE_CHOICE.PRIVATE]: { variant: 'default', icon: Ico.user(12), labelKey: 'status.badge.onlyYou' },
+  [AUDIENCE_CHOICE.SPECIFIC]: { variant: 'default', icon: Ico.people(12), labelKey: 'status.badge.restricted' },
+  [AUDIENCE_CHOICE.ORG]: { variant: 'default', icon: Ico.building(12), labelKey: null },
+  [AUDIENCE_CHOICE.PASSWORD]: { variant: 'default', icon: Ico.lock(12), labelKey: 'status.badge.publicPassword' },
+  [AUDIENCE_CHOICE.PUBLIC]: { variant: 'success', icon: Ico.globe(12), labelKey: 'status.badge.public' },
 };
 
-// Fail CLOSED: only a positively-recognised mode gets its badge, and only
-// `public` is ever green. An unrecognised mode (server adds `org`/`link`/… ),
-// or an artifact whose access state hasn't loaded (neither accessMode nor the
-// legacy accessProtected flag — e.g. a synthesized chat-bubble stub, cf.
-// usePublish `hasServerAccess`), must NEVER read as "available to all", so it
-// resolves to a neutral protected pill instead of defaulting to Public.
-// `Object.hasOwn` (not `mode in`/`ACCESS_BADGE[mode]`) also stops a mode string
-// like `constructor`/`__proto__` from yielding a blank inherited-property pill.
-const UNKNOWN_BADGE = { variant: 'default', icon: Ico.lock(12), labelKey: 'status.badge.restricted' };
+/** The label of an audience, for its badge and the Access filter. */
+export function audienceChoiceLabel(choice, orgName = null) {
+  const badge = AUDIENCE_BADGE[choice] || AUDIENCE_BADGE[AUDIENCE_CHOICE.SPECIFIC];
+  return badge.labelKey ? i18n.t(badge.labelKey, { ns: 'artifacts' }) : everyoneAtLabel(orgName);
+}
 
 function accessMode(artifact) {
   const mode = artifact.accessMode || (artifact.accessProtected ? 'password' : null);
-  return mode && Object.hasOwn(ACCESS_BADGE, mode) ? mode : null;
+  return mode && ['public', 'password', 'restricted'].includes(mode) ? mode : null;
 }
 
-function accessBadge(artifact) {
-  const mode = accessMode(artifact);
-  return mode ? ACCESS_BADGE[mode] : UNKNOWN_BADGE;
+/** The org's name for "Everyone at ‹org›", from the page around the badges:
+    one lookup for a whole list, not one per row. */
+export const ArtifactStatusOrgName = createContext(null);
+/** The org's teams, from the page around the badges: an artifact shared with
+    the default team reaches everyone at the org. */
+export const ArtifactStatusTeams = createContext([]);
+// Names a hover lists before "and N more".
+const HINT_NAMES = 5;
+
+/* Who a restricted artifact reaches, named, for its badge's hover once its
+   card knows (MindsHub mode reads it: useArtifactAudiences). Mounted only
+   while the hover is open, so a list of rows asks nothing until then. */
+function AudienceHint({ audience, orgName }) {
+  const { t } = useTranslation('artifacts');
+  const items = useRecipientItems(
+    { teamIds: audience.teamIds, userIds: audience.userIds, emails: audience.emails },
+    { orgName },
+  );
+  if (audience.orgAllowed) return everyoneAtDesc();
+  if (items.length === 0) return hint('ownerOnly');
+  const names = items.slice(0, HINT_NAMES).map((item) => item.primary).join(', ');
+  const more = items.length - HINT_NAMES;
+  return more > 0
+    ? t('status.hint.sharedWithMore', { names, count: more })
+    : t('status.hint.sharedWith', { names });
 }
 
 /** A restricted artifact's line when its card doesn't say who it reaches. */
@@ -82,6 +109,7 @@ export function artifactStatusHint(artifact, publishable = true, { orgMode = fal
       : hint('chosenPeople');
   }
   if (!mode) return hint('unknown');
+  if (mode === 'password') return hint('password');
   return '';
 }
 
@@ -101,6 +129,8 @@ export function artifactStatusHint(artifact, publishable = true, { orgMode = fal
 // (artifactStatusHint).
 export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, inlineChanges = false, authorship = null, pageBadge = true, orgMode = false }) {
   const { t } = useTranslation('artifacts');
+  const orgName = useContext(ArtifactStatusOrgName);
+  const teams = useContext(ArtifactStatusTeams);
   const tag = authorship ? <ArtifactAuthorshipBadge authorship={authorship} /> : null;
   const withExtra = (primary) => (tag
     ? <span className="inline-flex items-center gap-[10px] min-w-0 flex-wrap">{primary}{tag}</span>
@@ -132,25 +162,40 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
   if (phase === 'unpublishing') return withExtra(<Badge variant="default" size="sm">{t('status.stoppingSharing')}</Badge>);
   if (phase === 'deleting') return withExtra(<Badge variant="default" size="sm">{t('status.deleting')}</Badge>);
 
-  // Idle — persisted state.
+  // Idle: who can open it. An artifact not shared yet is its owner's alone
+  // ("Only you"), whatever its kind: there is no separate "Draft" or "Not
+  // shared" badge (ENG-4647); its hover says whether it can be shared.
+  const audience = artifactAudienceChoice(artifact, { orgMode, teams });
+  const badge = AUDIENCE_BADGE[audience];
+  const label = audienceChoiceLabel(audience, orgName);
   if (!artifact?.publishedUrl) {
     if (!pageBadge) return tag;
+    // Not live yet: no dot, and no "Unshared changes" beside it.
     return withExtra(
       <Tooltip content={artifactStatusHint(artifact, publishable, { orgMode })}>
-        <Badge variant="default" size="sm">{publishable ? t('status.notShared') : t('status.draft')}</Badge>
+        <Badge variant={badge.variant} size="sm" icon={badge.icon}>{label}</Badge>
       </Tooltip>,
     );
   }
-  const badge = accessBadge(artifact);
+  // A restricted artifact whose audience the page read names who it reaches
+  // on hover. In MindsHub mode only an audience read from the access route
+  // counts (useArtifactAudiences' `audienceRead`): a card's own fields there
+  // could be stale or planted, so they name nobody.
+  const read = accessMode(artifact) === 'restricted' ? readArtifactAudience(artifact) : null;
+  const known = read && (!orgMode || artifact.audienceRead === true) ? read : null;
+  let hover;
+  if (known && orgMode && audience !== AUDIENCE_CHOICE.PRIVATE) hover = <AudienceHint audience={known} orgName={orgName} />;
+  else if (audience === AUDIENCE_CHOICE.ORG) hover = everyoneAtDesc();
+  else hover = artifactStatusHint(artifact, publishable, { orgMode: orgMode && !known });
   return (
-    // Fills the status area: access badge on the left, the "Unpublished
-    // changes" warning pushed to the right (margin-left:auto). On a tight
-    // card it wraps to its own line, still right-aligned there. `tag` sits
-    // between them, in the same row.
+    // Fills the status area: access badge on the left, the "Unshared changes"
+    // warning pushed to the right (margin-left:auto). On a tight card it wraps
+    // to its own line, still right-aligned there. `tag` sits between them, in
+    // the same row.
     <span className="flex items-center gap-[10px] w-full min-w-0 flex-wrap">
-      <Tooltip content={artifactStatusHint(artifact, publishable, { orgMode })}>
+      <Tooltip content={hover}>
         <Badge variant={badge.variant} size="sm" dot icon={badge.icon}>
-          {t(badge.labelKey)}
+          {label}
         </Badge>
       </Tooltip>
       {tag}

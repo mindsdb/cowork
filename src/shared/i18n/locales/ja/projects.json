@@ -6,7 +6,8 @@
         "addFunds": "残高を追加",
         "setUpAutoTopUp": "自動チャージを設定",
         "manageAutoTopUp": "自動チャージを管理",
-        "updatePaymentMethod": "支払い方法を更新"
+        "updatePaymentMethod": "支払い方法を更新",
+        "upgrade": "{tier, select, plus {Plusにする} pro {Proにアップグレード} other {アップグレード}}"
       },
       "noFreeGrant": "このアカウントにはMindsHub Airの無料トークンが含まれていません。MindsHub Airも他のモデルと同様に残高を使用します。",
       "allowanceStop": {
@@ -68,6 +69,20 @@
       "budgetExceeded": {
         "raise": "{hasModel, select, true {{scope, select, org {オーナーまたは管理者が「予算」で上限を引き上げるまで、{model} は実行できません。ほかのモデルは引き続き使えます。} other {管理者が「予算」で上限を引き上げるまで、{model} は実行できません。ほかのモデルは引き続き使えます。}}} other {{scope, select, org {オーナーまたは管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。} other {管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。}}}}",
         "airHasRoom": "{hasModel, select, true {{scope, select, org {オーナーまたは管理者が「予算」で上限を引き上げるまで、{model} は実行できません。ほかのモデルは引き続き使えます。} other {管理者が「予算」で上限を引き上げるまで、{model} は実行できません。ほかのモデルは引き続き使えます。}}} other {{scope, select, org {オーナーまたは管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。MindsHub Airは無料枠が残っている間は引き続き利用できます。} other {管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。MindsHub Airは無料枠が残っている間は引き続き利用できます。}}}}"
+      },
+      "window": {
+        "usedUpTitle": "{window, select, 7d {週間の利用枠を使い切りました} other {5時間の利用枠を使い切りました}}",
+        "onWallet": "リセットされるまで、残高からAPI料金で支払います。",
+        "onWalletWithTime": "{time}にリセットされるまで、残高からAPI料金で支払います。",
+        "paused": "リセットされるまで、プランでのタスクは一時停止します。続けるには残高を追加してください。",
+        "pausedWithTime": "{time}まで、プランでのタスクは一時停止します。続けるには残高を追加してください。",
+        "pausedMobile": "リセットされるまで、プランでのタスクは一時停止します。",
+        "pausedWithTimeMobile": "{time}まで、プランでのタスクは一時停止します。",
+        "lowTitle": "{window, select, 7d {週間} other {5時間}}の利用枠の{percent}を使用済み",
+        "lowThenWallet": "その後は、リセットされるまで残高からAPI料金で支払います。",
+        "lowThenWalletWithTime": "その後は、{time}にリセットされるまで残高からAPI料金で支払います。",
+        "lowThenPause": "その後は、リセットされるまでタスクが一時停止します。",
+        "lowThenPauseWithTime": "その後は、{time}までタスクが一時停止します。"
       }
     },
     "scheduleWhen": {
@@ -90,7 +105,9 @@
       "missedLabelServer": "この時刻にサーバーが停止している場合",
       "missedLabelApp": "この時刻にMindsHubが閉じている場合",
       "missedOnceTitleServer": "サーバーの停止中に、この1回限りのタスクの実行時刻が過ぎました",
-      "missedOnceTitleApp": "MindsHubが閉じている間に、この1回限りのタスクの実行時刻が過ぎました"
+      "missedOnceTitleApp": "MindsHubが閉じている間に、この1回限りのタスクの実行時刻が過ぎました",
+      "lateRunApp": "予定: {when}。MindsHub が閉じていたか、コンピューターがスリープ中でした。",
+      "lateRunServer": "予定: {when}。サーバーが停止中か混雑していました。"
     },
     "stopScheduleRun": {
       "unreachable": "実行を停止するためにサーバーに接続できませんでした。もう一度お試しください。",
@@ -304,6 +321,7 @@
       "sections": {
         "mine": "自分のもの",
         "sharedWithMe": "自分と共有",
+        "sharedByOthers": "他のユーザーが共有",
         "team": "自分のチーム",
         "builtin": "組み込み"
       },
@@ -361,6 +379,7 @@
     "artifactAuthorship": {
       "unknownOwner": "不明なオーナー",
       "otherMemberDescription": "このプロジェクトの別のメンバーが作成しました。確認はできますが、変更はできません。",
+      "namedOwnerDescription": "このプロジェクトの別のメンバーである{name}が作成しました。確認はできますが、変更はできません。",
       "unknownOwnerDescription": "このアーティファクトのオーナーは記録されていません。"
     },
     "artifactExport": {
@@ -477,6 +496,10 @@
       "budgetReached": {
         "tag": "予算上限に到達",
         "title": "このモデルを対象とする予算を使い切りました。管理者が「予算」で上限を引き上げられます。"
+      },
+      "notInTier": {
+        "tag": "{tier, select, plus {Plusが必要} pro {Proが必要} other {アップグレードが必要}}",
+        "title": "このモデルはプランの利用枠の対象外です。アップグレードするか、クレジットを追加するとAPI料金で使用できます。"
       }
     },
     "settingsTransform": {
@@ -568,6 +591,7 @@
     "lastFailed": "前回失敗",
     "lastRunFailed": "前回の実行に失敗",
     "stoppedAtLimit": "上限で停止",
+    "writesRefused": "承認が必要",
     "done": "完了",
     "active": "有効"
   },
@@ -599,6 +623,7 @@
     "partialNote": "一部の操作は完了している可能性があります。再実行する前に実行内容を確認してください。",
     "limitTitle": "前回の実行は上限に達して停止しました",
     "limitNote": "作業の一部は完了している可能性があります。再実行する前に実行内容を確認してください。",
+    "approvalTitle": "前回の実行の変更は承認されませんでした",
     "failedTitle": "前回の実行に失敗しました",
     "resume": "再開",
     "runNow": "今すぐ実行",
@@ -698,7 +723,8 @@
       "success": "成功",
       "failed": "失敗",
       "cancelled": "停止",
-      "stoppedAtLimit": "上限で停止"
+      "stoppedAtLimit": "上限で停止",
+      "writesRefused": "未承認"
     },
     "sentence": "{when}（{zone}）",
     "runningNow": "現在実行中",
@@ -715,6 +741,7 @@
     "scheduleAriaLabel": "スケジュール",
     "accountDefaultModel": "アカウントのデフォルトモデル",
     "ranOnDefaultModel": "デフォルトモデル",
+    "ranLate": "遅延",
     "modelUnavailable": "{model}は利用できないため、この実行ではデフォルトモデルを使用しました。",
     "succeededCount": "{total, plural, other {#回中{succeeded}回成功}}",
     "promptAriaLabel": "プロンプト",

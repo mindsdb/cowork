@@ -18,7 +18,7 @@ const { version } = JSON.parse(readFileSync(join(__dirname, 'package.json'), 'ut
 
 const config: CapacitorConfig = {
   appId: 'ai.mindshub.cowork',
-  appName: 'MindsHub Cowork',
+  appName: 'MindsHub',
   webDir: 'www',
   // Bridge diagnostics include plugin arguments, including session tokens.
   loggingBehavior: 'none',

@@ -100,7 +100,7 @@ describe.each([
     await waitFor(() => expect(onArtifactChanged).toHaveBeenCalled());
     expect(api.publishArtifact).toHaveBeenCalledWith(unpublished.path, {
       mode: 'restricted', emails: ['ana@partner.io'], org_allowed: false, owner_only: false,
-    });
+    }, { approvedDatasources: [] });
     return onArtifactChanged.mock.calls.at(-1)[0];
   }
 
@@ -163,7 +163,8 @@ describe.each([
     expect(await sharePublicly()).toEqual({ title: message, type: 'danger' });
     expect(screen.queryByText('Sharing failed')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
-    expect(screen.getByText('Not shared')).toBeInTheDocument();
+    // Still its owner's alone (ENG-4647: "Only you", no longer "Not shared").
+    expect(screen.getByText('Only you')).toBeInTheDocument();
   });
 
   it('keeps Sharing failed and Try again for a failure asking again can help', async () => {

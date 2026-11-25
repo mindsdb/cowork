@@ -33,7 +33,7 @@ describe('quickEditGroupOf', () => {
     expect(group).toMatchObject({ artifactSlug: 'launch-brief', artifactTitle: 'Launch brief' });
     expect(group.edits).toHaveLength(2);
     expect(group.edits[1]).toEqual({
-      editId: 'e2', request: 'bigger', summary: 'Bigger.', changed: [], revisionId: null, at: null, model: null, undone: true,
+      editId: 'e2', messageId: 'm1', request: 'bigger', summary: 'Bigger.', changed: [], revisionId: null, at: null, model: null, undone: true,
     });
   });
 

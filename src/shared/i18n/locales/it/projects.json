@@ -6,7 +6,8 @@
         "addFunds": "Aggiungi fondi",
         "setUpAutoTopUp": "Configura ricarica automatica",
         "manageAutoTopUp": "Gestisci ricarica automatica",
-        "updatePaymentMethod": "Aggiorna metodo di pagamento"
+        "updatePaymentMethod": "Aggiorna metodo di pagamento",
+        "upgrade": "{tier, select, plus {Passa a Plus} pro {Passa a Pro} other {Cambia piano}}"
       },
       "noFreeGrant": "Questo account non include token gratuiti di MindsHub Air. MindsHub Air usa il tuo saldo, come tutti gli altri modelli.",
       "allowanceStop": {
@@ -68,6 +69,20 @@
       "budgetExceeded": {
         "raise": "{hasModel, select, true {{scope, select, org {{model} non può essere usato finché un proprietario o un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.} other {{model} non può essere usato finché un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.}}} other {{scope, select, org {I modelli a pagamento non possono essere usati finché un proprietario o un amministratore non aumenta il limite in «Budget».} other {I modelli a pagamento non possono essere usati finché un amministratore non aumenta il limite in «Budget».}}}}",
         "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} non può essere usato finché un proprietario o un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.} other {{model} non può essere usato finché un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.}}} other {{scope, select, org {I modelli a pagamento non possono essere usati finché un proprietario o un amministratore non aumenta il limite in «Budget». MindsHub Air funziona ancora finché dura la quota gratuita.} other {I modelli a pagamento non possono essere usati finché un amministratore non aumenta il limite in «Budget». MindsHub Air funziona ancora finché dura la quota gratuita.}}}}"
+      },
+      "window": {
+        "usedUpTitle": "{window, select, 7d {Quota settimanale esaurita} other {Quota di 5 ore esaurita}}",
+        "onWallet": "Usi il tuo saldo a tariffe API fino al rinnovo.",
+        "onWalletWithTime": "Usi il tuo saldo a tariffe API fino al rinnovo alle {time}.",
+        "paused": "Le attività del tuo piano sono in pausa fino al rinnovo. Aggiungi fondi per continuare.",
+        "pausedWithTime": "Le attività del tuo piano sono in pausa fino alle {time}. Aggiungi fondi per continuare.",
+        "pausedMobile": "Le attività del tuo piano sono in pausa fino al rinnovo.",
+        "pausedWithTimeMobile": "Le attività del tuo piano sono in pausa fino alle {time}.",
+        "lowTitle": "Hai usato il {percent} della quota {window, select, 7d {settimanale} other {di 5 ore}}",
+        "lowThenWallet": "Dopo, le attività usano il tuo saldo a tariffe API fino al rinnovo.",
+        "lowThenWalletWithTime": "Dopo, le attività usano il tuo saldo a tariffe API fino al rinnovo alle {time}.",
+        "lowThenPause": "Dopo, le attività vanno in pausa fino al rinnovo.",
+        "lowThenPauseWithTime": "Dopo, le attività vanno in pausa fino alle {time}."
       }
     },
     "scheduleWhen": {
@@ -90,7 +105,9 @@
       "missedLabelServer": "Se a quell’ora il server non è attivo",
       "missedLabelApp": "Se a quell’ora MindsHub è chiuso",
       "missedOnceTitleServer": "L’ora di questa attività singola è passata mentre il server non era attivo",
-      "missedOnceTitleApp": "L’ora di questa attività singola è passata mentre MindsHub era chiuso"
+      "missedOnceTitleApp": "L’ora di questa attività singola è passata mentre MindsHub era chiuso",
+      "lateRunApp": "Prevista {when}. MindsHub era chiuso o il computer in stop.",
+      "lateRunServer": "Prevista {when}. Il server non era disponibile o era occupato."
     },
     "stopScheduleRun": {
       "unreachable": "Impossibile raggiungere il server per interrompere l’esecuzione. Riprova.",
@@ -304,6 +321,7 @@
       "sections": {
         "mine": "Tuoi",
         "sharedWithMe": "Condivisi con me",
+        "sharedByOthers": "Condivisi da altri",
         "team": "I miei team",
         "builtin": "Integrati"
       },
@@ -361,6 +379,7 @@
     "artifactAuthorship": {
       "unknownOwner": "Proprietario sconosciuto",
       "otherMemberDescription": "Creato da un altro membro di questo progetto. Puoi consultarlo, ma non modificarlo.",
+      "namedOwnerDescription": "Creato da {name}, un altro membro di questo progetto. Puoi consultarlo, ma non modificarlo.",
       "unknownOwnerDescription": "Per questo artefatto non risulta alcun proprietario."
     },
     "artifactExport": {
@@ -477,6 +496,10 @@
       "budgetReached": {
         "tag": "Budget raggiunto",
         "title": "Un budget che copre questo modello è esaurito. Un amministratore può aumentarlo in «Budget»."
+      },
+      "notInTier": {
+        "tag": "{tier, select, plus {Serve Plus} pro {Serve Pro} other {Serve un upgrade}}",
+        "title": "La quota del tuo piano non copre questo modello. Cambia piano o aggiungi crediti per usarlo a tariffe API."
       }
     },
     "settingsTransform": {
@@ -568,6 +591,7 @@
     "lastFailed": "Ultima non riuscita",
     "lastRunFailed": "Ultima esecuzione non riuscita",
     "stoppedAtLimit": "Interrotta a un limite",
+    "writesRefused": "Richiede approvazione",
     "done": "Completata",
     "active": "Attiva"
   },
@@ -599,6 +623,7 @@
     "partialNote": "Alcune delle sue azioni potrebbero essere state completate. Controlla l’esecuzione prima di ripeterla.",
     "limitTitle": "L’ultima esecuzione si è interrotta a un limite",
     "limitNote": "Parte del lavoro potrebbe essere stata completata. Controlla l’esecuzione prima di ripeterla.",
+    "approvalTitle": "Le modifiche dell’ultima esecuzione non sono state approvate",
     "failedTitle": "L’ultima esecuzione non è riuscita",
     "resume": "Riprendi",
     "runNow": "Esegui ora",
@@ -698,7 +723,8 @@
       "success": "Riuscita",
       "failed": "Non riuscita",
       "cancelled": "Interrotta",
-      "stoppedAtLimit": "Interrotta a un limite"
+      "stoppedAtLimit": "Interrotta a un limite",
+      "writesRefused": "Non approvata"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "In esecuzione ora",
@@ -715,6 +741,7 @@
     "scheduleAriaLabel": "Pianificazione",
     "accountDefaultModel": "Modello predefinito dell’account",
     "ranOnDefaultModel": "Modello predefinito",
+    "ranLate": "In ritardo",
     "modelUnavailable": "{model} non è disponibile, quindi questa esecuzione ha usato il tuo modello predefinito.",
     "succeededCount": "{total, plural, one {{succeeded} esecuzione riuscita su #} other {{succeeded} esecuzioni riuscite su #}}",
     "promptAriaLabel": "Prompt",

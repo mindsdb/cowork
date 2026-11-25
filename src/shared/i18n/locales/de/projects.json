@@ -6,7 +6,8 @@
         "addFunds": "Guthaben aufladen",
         "setUpAutoTopUp": "Automatische Aufladung einrichten",
         "manageAutoTopUp": "Automatische Aufladung verwalten",
-        "updatePaymentMethod": "Zahlungsmethode aktualisieren"
+        "updatePaymentMethod": "Zahlungsmethode aktualisieren",
+        "upgrade": "{tier, select, plus {Plus holen} pro {Auf Pro upgraden} other {Upgraden}}"
       },
       "noFreeGrant": "Dieses Konto enthält keine kostenlosen MindsHub Air-Tokens. MindsHub Air wird wie jedes andere Modell über Ihr Guthaben abgerechnet.",
       "allowanceStop": {
@@ -68,6 +69,20 @@
       "budgetExceeded": {
         "raise": "{hasModel, select, true {{scope, select, org {{model} ist gesperrt, bis ein Inhaber oder Administrator das Budget unter „Budgets“ erhöht. Andere Modelle funktionieren weiterhin.} other {{model} ist gesperrt, bis ein Administrator das Budget unter „Budgets“ erhöht. Andere Modelle funktionieren weiterhin.}}} other {{scope, select, org {Kostenpflichtige Modelle sind gesperrt, bis ein Inhaber oder Administrator das Budget unter „Budgets“ erhöht.} other {Kostenpflichtige Modelle sind gesperrt, bis ein Administrator das Budget unter „Budgets“ erhöht.}}}}",
         "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} ist gesperrt, bis ein Inhaber oder Administrator das Budget unter „Budgets“ erhöht. Andere Modelle funktionieren weiterhin.} other {{model} ist gesperrt, bis ein Administrator das Budget unter „Budgets“ erhöht. Andere Modelle funktionieren weiterhin.}}} other {{scope, select, org {Kostenpflichtige Modelle sind gesperrt, bis ein Inhaber oder Administrator das Budget unter „Budgets“ erhöht. MindsHub Air funktioniert weiterhin, solange das Gratiskontingent reicht.} other {Kostenpflichtige Modelle sind gesperrt, bis ein Administrator das Budget unter „Budgets“ erhöht. MindsHub Air funktioniert weiterhin, solange das Gratiskontingent reicht.}}}}"
+      },
+      "window": {
+        "usedUpTitle": "{window, select, 7d {Wochenkontingent aufgebraucht} other {5-Stunden-Kontingent aufgebraucht}}",
+        "onWallet": "Bis zum Zurücksetzen wird Ihr Guthaben zu API-Preisen verwendet.",
+        "onWalletWithTime": "Bis zum Zurücksetzen um {time} wird Ihr Guthaben zu API-Preisen verwendet.",
+        "paused": "Aufgaben in Ihrem Plan sind bis zum Zurücksetzen pausiert. Laden Sie Guthaben auf, um weiterzumachen.",
+        "pausedWithTime": "Aufgaben in Ihrem Plan sind bis {time} pausiert. Laden Sie Guthaben auf, um weiterzumachen.",
+        "pausedMobile": "Aufgaben in Ihrem Plan sind bis zum Zurücksetzen pausiert.",
+        "pausedWithTimeMobile": "Aufgaben in Ihrem Plan sind bis {time} pausiert.",
+        "lowTitle": "{percent} Ihres {window, select, 7d {Wochenkontingents} other {5-Stunden-Kontingents}} verbraucht",
+        "lowThenWallet": "Danach nutzen Aufgaben bis zum Zurücksetzen Ihr Guthaben zu API-Preisen.",
+        "lowThenWalletWithTime": "Danach nutzen Aufgaben bis zum Zurücksetzen um {time} Ihr Guthaben zu API-Preisen.",
+        "lowThenPause": "Danach pausieren Aufgaben bis zum Zurücksetzen.",
+        "lowThenPauseWithTime": "Danach pausieren Aufgaben bis {time}."
       }
     },
     "scheduleWhen": {
@@ -90,7 +105,9 @@
       "missedLabelServer": "Wenn der Server zu diesem Zeitpunkt nicht erreichbar ist",
       "missedLabelApp": "Wenn MindsHub zu diesem Zeitpunkt geschlossen ist",
       "missedOnceTitleServer": "Der Termin dieser einmaligen Aufgabe ist verstrichen, während der Server nicht erreichbar war",
-      "missedOnceTitleApp": "Der Termin dieser einmaligen Aufgabe ist verstrichen, während MindsHub geschlossen war"
+      "missedOnceTitleApp": "Der Termin dieser einmaligen Aufgabe ist verstrichen, während MindsHub geschlossen war",
+      "lateRunApp": "Fällig {when}. MindsHub war geschlossen oder Ihr Computer im Ruhezustand.",
+      "lateRunServer": "Fällig {when}. Der Server war nicht erreichbar oder ausgelastet."
     },
     "stopScheduleRun": {
       "unreachable": "Der Server ist nicht erreichbar, die Ausführung konnte nicht gestoppt werden. Versuchen Sie es erneut.",
@@ -304,6 +321,7 @@
       "sections": {
         "mine": "Meine",
         "sharedWithMe": "Mit mir geteilt",
+        "sharedByOthers": "Von anderen geteilt",
         "team": "Meine Teams",
         "builtin": "Integriert"
       },
@@ -361,6 +379,7 @@
     "artifactAuthorship": {
       "unknownOwner": "Unbekannter Inhaber",
       "otherMemberDescription": "Von einem anderen Mitglied dieses Projekts erstellt. Sie können es ansehen, aber nicht ändern.",
+      "namedOwnerDescription": "Von {name} erstellt, einem anderen Mitglied dieses Projekts. Sie können es ansehen, aber nicht ändern.",
       "unknownOwnerDescription": "Für dieses Artefakt ist kein Inhaber hinterlegt."
     },
     "artifactExport": {
@@ -477,6 +496,10 @@
       "budgetReached": {
         "tag": "Budget erreicht",
         "title": "Ein Budget für dieses Modell ist aufgebraucht. Ein Administrator kann es unter „Budgets“ erhöhen."
+      },
+      "notInTier": {
+        "tag": "{tier, select, plus {Plus erforderlich} pro {Pro erforderlich} other {Upgrade erforderlich}}",
+        "title": "Das Kontingent Ihres Plans deckt dieses Modell nicht ab. Upgraden Sie oder laden Sie Guthaben auf, um es zu API-Preisen zu nutzen."
       }
     },
     "settingsTransform": {
@@ -568,6 +591,7 @@
     "lastFailed": "Zuletzt fehlgeschlagen",
     "lastRunFailed": "Letzte Ausführung fehlgeschlagen",
     "stoppedAtLimit": "An Limit gestoppt",
+    "writesRefused": "Freigabe nötig",
     "done": "Fertig",
     "active": "Aktiv"
   },
@@ -599,6 +623,7 @@
     "partialNote": "Einige Aktionen wurden möglicherweise abgeschlossen. Prüfen Sie die Ausführung, bevor Sie sie wiederholen.",
     "limitTitle": "Die letzte Ausführung wurde an einem Limit gestoppt",
     "limitNote": "Ein Teil der Arbeit ist möglicherweise erledigt. Prüfen Sie die Ausführung, bevor Sie sie wiederholen.",
+    "approvalTitle": "Die Änderungen des letzten Laufs wurden nicht freigegeben",
     "failedTitle": "Die letzte Ausführung ist fehlgeschlagen",
     "resume": "Fortsetzen",
     "runNow": "Jetzt ausführen",
@@ -698,7 +723,8 @@
       "success": "Erfolgreich",
       "failed": "Fehlgeschlagen",
       "cancelled": "Gestoppt",
-      "stoppedAtLimit": "An Limit gestoppt"
+      "stoppedAtLimit": "An Limit gestoppt",
+      "writesRefused": "Nicht freigegeben"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "Läuft gerade",
@@ -715,6 +741,7 @@
     "scheduleAriaLabel": "Zeitplan",
     "accountDefaultModel": "Standardmodell des Kontos",
     "ranOnDefaultModel": "Standardmodell",
+    "ranLate": "Verspätet",
     "modelUnavailable": "{model} ist nicht verfügbar, daher wurde für diese Ausführung Ihr Standardmodell verwendet.",
     "succeededCount": "{total, plural, one {{succeeded} von # Ausführung erfolgreich} other {{succeeded} von # Ausführungen erfolgreich}}",
     "promptAriaLabel": "Prompt",
