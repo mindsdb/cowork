@@ -28,6 +28,7 @@ import { renameClipboardImages } from '../lib/clipboardImageName';
 import { AttachmentChip } from './AttachmentChip';
 import { useSkills } from '../lib/skillsStore';
 import { useDraft } from '../hooks/useDraft';
+import { joinDictated, useDictation } from '../lib/voice/useDictation';
 import { host } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { modelPickerMode, operatorEffortLevels } from '../../lib/modelPicker';
@@ -120,6 +121,9 @@ export default function Composer({
   onUpdateConnectorMute,
   /** Starts a voice call with the agent (prototype); null hides it from the + menu. */
   onStartVoiceCall = null,
+  /** Shows the dictate mic beside Send (ENG-4630): it fills the box with what
+      the person says, through the voice call's lane. */
+  dictationAvailable = false,
   /**
    * The shared browser for this task or the next one, shown as a Browser
    * switch in the + menu. Null hides it.
@@ -332,6 +336,9 @@ export default function Composer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const recognitionRef = useRef(null);
+  const dictation = useDictation({
+    onText: (delta, fresh) => setValue((v) => joinDictated(v, delta, fresh)),
+  });
 
   // All fence-context lookups in this component MUST consume this memoized result.
   // Never call parseFences(value) directly — it walks the full string on every call.
@@ -909,6 +916,8 @@ export default function Composer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
   const handleSend = async () => {
+    // What is sent is what is in the box: dictation stops with it.
+    if (dictation.active) dictation.stop();
     if (disabled || !sendable) return;
     setBusy(true);
     try {
@@ -1557,10 +1566,27 @@ export default function Composer({
                 menuLabel={t('composer.model.effort')}
               />
             )}
-            {/* Mic / voice input intentionally hidden — voice flow isn't
-                wired through anton yet. We keep speechSupported state
-                around so we can reinstate later by re-rendering the
-                button (e.g. behind a `showMic` prop). */}
+            {/* Dictate (ENG-4630): between the model picker and Send. It
+                only fills the box; the voice call is the sidebar's button.
+                Shown while dictating even if it stops being offered, so it
+                can always be stopped. */}
+            {dictation.error && !dictation.active && dictationAvailable && (
+              <span className="dictate-error" role="alert" title={dictation.error}>{dictation.error}</span>
+            )}
+            {(dictationAvailable || dictation.active) && (
+              <Tooltip content={dictation.active ? t('composer.dictation.stop') : t('composer.dictation.start')}>
+                <button
+                  type="button"
+                  className={`dictate-btn${dictation.active ? ' is-live' : ''}`}
+                  onClick={dictation.toggle}
+                  disabled={dictation.phase === 'finishing'}
+                  aria-pressed={dictation.active}
+                  aria-label={dictation.active ? t('composer.dictation.stop') : t('composer.dictation.start')}
+                >
+                  {dictation.phase === 'starting' ? <span className="dictate-btn__dot" aria-hidden="true" /> : Ico.mic(16)}
+                </button>
+              </Tooltip>
+            )}
             {streaming && onStop ? (
               <Tooltip content={t('composer.stop')}>
               <button

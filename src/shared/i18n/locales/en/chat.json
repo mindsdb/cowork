@@ -315,7 +315,11 @@
       "none": "No project"
     },
     "chooseHarness": "Choose harness",
-    "voiceCall": "Voice call"
+    "voiceCall": "Voice mode",
+    "dictation": {
+      "start": "Dictate",
+      "stop": "Stop dictating"
+    }
   },
   "attachmentThumbnail": {
     "open": "Open image",
@@ -759,7 +763,7 @@
     "talkTo": "Talk to {agent}"
   },
   "voiceCall": {
-    "dialogLabel": "Voice call with {agent}",
+    "dialogLabel": "Voice mode",
     "connecting": "Connecting…",
     "ending": "Ending…",
     "working": "Working on it…",

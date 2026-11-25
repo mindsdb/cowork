@@ -208,13 +208,13 @@ describe('PublishMenu — owner-only summary (ENG-1769)', () => {
 });
 
 describe('PublishMenu — a first share with the platform UI on', () => {
-  it('starts on Public, described as reaching the internet', () => {
+  it('starts on Only me, with Public described as reaching the internet', () => {
     render(<PublishMenu controller={makeController()} />);
     fireEvent.click(screen.getByText('Share'));
 
-    expect(screen.getByRole('radio', { name: /Public/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: /Only me/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: /Public/ })).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByText('Anyone on the internet with the URL')).toBeInTheDocument();
-    expect(screen.getByText('Only me')).toBeInTheDocument();
   });
 });
 
@@ -317,7 +317,7 @@ describe('PublishMenu — password share', () => {
     await userEvent.type(screen.getByPlaceholderText('Add a password'), 'hunter2');
     const buttons = screen.getAllByRole('button').filter((b) => /publish|share|save/i.test(b.textContent) && !b.disabled);
     fireEvent.click(buttons.at(-1));
-    expect(ctrl.publish).toHaveBeenCalledWith(expect.objectContaining({ mode: 'password', password: 'hunter2' }));
+    expect(ctrl.publish).toHaveBeenCalledWith(expect.objectContaining({ mode: 'password', password: 'hunter2' }), expect.anything());
   });
 
   it('changes a public share to a password one', async () => {
@@ -331,6 +331,6 @@ describe('PublishMenu — password share', () => {
     const editor = screen.getByTestId('access-editor');
     await user.type(within(editor).getByPlaceholderText('Add a password'), 'hunter2');
     await user.click(screen.getByRole('button', { name: 'Update' }));
-    expect(ctrl.publish).toHaveBeenCalledWith(expect.objectContaining({ mode: 'password', password: 'hunter2' }));
+    expect(ctrl.publish).toHaveBeenCalledWith(expect.objectContaining({ mode: 'password', password: 'hunter2' }), expect.anything());
   });
 });

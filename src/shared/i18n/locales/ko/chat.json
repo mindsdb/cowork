@@ -315,7 +315,11 @@
       "none": "프로젝트 없음"
     },
     "chooseHarness": "하네스 선택",
-    "voiceCall": "음성 통화"
+    "voiceCall": "음성 모드",
+    "dictation": {
+      "start": "받아쓰기",
+      "stop": "받아쓰기 중지"
+    }
   },
   "attachmentThumbnail": {
     "open": "이미지 열기",
@@ -759,7 +763,7 @@
     "talkTo": "{agent}와(과) 대화"
   },
   "voiceCall": {
-    "dialogLabel": "{agent}와(과)의 음성 통화",
+    "dialogLabel": "음성 모드",
     "connecting": "연결 중…",
     "ending": "종료 중…",
     "working": "작업 중…",

@@ -1273,6 +1273,23 @@ export async function notionFetchPage(name: string, page: string): Promise<Notio
   return null;
 }
 
+export type PublishApprovalBridgeResult = NotionPagesBridgeResult;
+
+// Desktop: main sends the app secret an approval needs. An Electron shell from
+// before this bridge answers `unsupported`, so the dialog asks for an app
+// update instead of sending a request the server refuses. The web build has
+// no secret to send and gets null: the caller makes the request itself.
+export async function publishWithApproval(opts: {
+  kind: 'publish' | 'update';
+  path: string;
+  access?: Record<string, unknown>;
+  approvedDatasources: { engine: string; name: string }[];
+}): Promise<PublishApprovalBridgeResult | { ok: false; reason: 'unsupported' } | null> {
+  if (!isElectron) return null;
+  if (typeof bridge.publishWithApproval !== 'function') return { ok: false, reason: 'unsupported' };
+  return bridge.publishWithApproval(opts);
+}
+
 export interface DrivePickerFile {
   id: string;
   name: string;
@@ -2126,6 +2143,7 @@ export const host = {
   customMcpDisconnect,
   notionSearchPages,
   notionFetchPage,
+  publishWithApproval,
   onOAuthRefreshError,
   pickDriveFiles,
   cancelDrivePicker,

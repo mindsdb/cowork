@@ -190,17 +190,47 @@
     }
   },
   "comingSoon": {
-    "cloudTitle": "Próximamente en Cloud",
+    "cloudTitle": "Esto funciona en la app de escritorio",
+    "cloudTitleNamed": "{feature} funciona en la app de escritorio",
     "unavailableTitle": "Función no disponible",
-    "cloudBodyNamed": "{feature} aún no está disponible en Cloud. Mientras tanto, puedes usarlo en la app de escritorio.",
-    "cloudBody": "Esta función aún no está disponible en Cloud. Mientras tanto, puedes usarla en la app de escritorio.",
-    "cloudBodyCustom": "{feature} aún no está disponible en Cloud. Ya puedes conectarlo como un conector personalizado.",
+    "cloudBodyNamed": "Hoy {feature} funciona en la app de escritorio. Descárgala para conectar {feature} allí.",
+    "cloudBody": "Hoy esto funciona en la app de escritorio. Descárgala para usarlo allí.",
+    "mobileBodyNamed": "{feature} funciona en la app de escritorio, en un ordenador.",
+    "mobileBody": "Esto funciona en la app de escritorio, en un ordenador.",
+    "cloudBodyCustom": "Hoy {feature} funciona en la app de escritorio. Aquí puedes conectarlo ya como un conector personalizado.",
     "unavailableBodyNamed": "{feature} no está disponible en esta implementación.",
     "unavailableBody": "Esta función no está disponible en esta implementación.",
     "notNow": "Ahora no",
-    "download": "Descargar la app",
+    "download": "Descargar la app de escritorio",
     "connectCustom": "Conectar tu conector personalizado de {feature}",
     "buildCustom": "Crear un conector personalizado"
+  },
+  "desktopOffer": {
+    "tag": "Escritorio",
+    "notNow": "Ahora no",
+    "download": "Descargar la app de escritorio",
+    "platforms": "Para Mac, Windows y Linux.",
+    "code": {
+      "title": "El modo código funciona en la app de escritorio",
+      "body": "El modo código trabaja con el código de tu computadora, así que necesita la app de escritorio. Allí, Cowork puede:",
+      "points": {
+        "files": "Leer y cambiar código en tus propias carpetas y repositorios",
+        "commands": "Ejecutar comandos y pruebas en tu equipo",
+        "agents": "Pasar una tarea a Claude Code o Codex"
+      }
+    },
+    "folder": {
+      "projectTitle": "Usa una carpeta de tu computadora en la app de escritorio",
+      "chatTitle": "Las carpetas de trabajo están en la app de escritorio",
+      "projectBody": "El navegador no puede acceder a los archivos de tu computadora. La app de escritorio puede iniciar un proyecto en una carpeta que ya tienes, y Cowork trabaja con sus archivos.",
+      "chatBody": "El navegador no puede acceder a los archivos de tu computadora. En la app de escritorio puedes agregar carpetas de tu computadora a un chat, y Cowork trabaja en ellas.",
+      "points": {
+        "inPlace": "Sin subir nada: usa los archivos donde están",
+        "saved": "Lo que crea se guarda en tu computadora",
+        "kept": "Quitar la carpeta de Cowork deja tus archivos donde están"
+      },
+      "note": "Para Mac, Windows y Linux. Aquí en el navegador aún puedes subir archivos."
+    }
   },
   "loadStatus": {
     "retry": "Reintentar",

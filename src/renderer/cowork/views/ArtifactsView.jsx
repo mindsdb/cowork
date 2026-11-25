@@ -21,7 +21,7 @@ import { badgeVariants } from '../components/ui/Badge';
 import { cn } from '../lib/cn';
 import {
   revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
-  publishTargetPath, artifactServeUrl, openArtifactFile,
+  publishTargetPath, artifactServeUrl, openArtifactFile, fetchPendingDatasources,
 } from '../api';
 import { copyText } from '../lib/clipboard';
 import { projectNameOf } from '../lib/artifactProject';
@@ -56,19 +56,26 @@ import {
   isAccessDraftValid,
   buildAccessPayload,
 } from '../components/artifact/publish/AccessChooser';
-import { AUDIENCE_CHOICE, groupArtifactsBySection, isOrgSharingOn } from '../lib/orgSharing';
+import {
+  ARTIFACT_AUDIENCE_ORDER, AUDIENCE_CHOICE, artifactAudienceChoice, groupArtifactsBySection, isOrgSharingOn,
+} from '../lib/orgSharing';
 import { useArtifactAudiencesState } from '../hooks/useArtifactAudiences';
 import { useKnownPeople, useMindsHubTeams, useSharingCapabilities, useSharingOrgName } from '../hooks/useOrgSharing';
 import { artifactOwnerUserId } from '../lib/artifactAuthorship';
 import { LOAD_STATUS, readAudienceAnswer, readAudienceRequest } from '../lib/sharingContract';
-import { publishFailureReason, publishRefusalMessage } from '../components/artifact/publish/publishErrors';
+import {
+  isDatasourceApprovalError, pendingDatasourcesFromError, publishFailureReason, publishRefusalMessage, unapprovedDatasourcesNotice,
+} from '../components/artifact/publish/publishErrors';
+import { DatasourceApprovalNotice } from '../components/artifact/publish/DatasourceApprovalNotice';
 import {
   publishedPageId, reportAccessChangeFailed, reportAccessChanged, reportLinkCopied, reportShareOpened, reportWithdrawal,
   shareSnapshot,
 } from '../lib/artifactShareAnalytics';
 import { republishNotice, stopSharingNotice } from '../components/artifact/publish/linkLeftLive';
 import { ArtifactIcon, splitArtifactName, displayTitle, fileNameOf, isWebAppArtifact } from '../components/artifacts/ArtifactIcon';
-import { ArtifactStatus, ArtifactStatusOrgName } from '../components/artifacts/ArtifactStatus';
+import {
+  ArtifactStatus, ArtifactStatusOrgName, ArtifactStatusTeams, audienceChoiceLabel,
+} from '../components/artifacts/ArtifactStatus';
 import { ArtifactOwnerNamesProvider, useArtifactAuthorship } from '../hooks/useArtifactAuthorship';
 import {
   PageHeader,
@@ -106,13 +113,16 @@ const LIST_CLASS = 'mx-8 mb-[60px]';
 // never leaves it loading (ENG-4585).
 export const GROUPING_WAIT_MS = 4000;
 
-// With sharing in the org, artifacts are grouped as skills are (Mine, Shared
-// with me, a team, everyone at the org), with the Skills page's icons.
+// One empty list, so a page without teams doesn't hand a new array to the
+// badges' context and memos on every render.
+const NO_TEAMS = Object.freeze([]);
+
+// With sharing in the org, artifacts are grouped by whose they are (ENG-4647):
+// Yours, and Shared by others. Who each reaches is its badge and the Access
+// filter, never its group.
 const SECTION_ICONS = {
-  mine: Ico.lock,
-  shared_with_me: Ico.user,
-  team: Ico.people,
-  org: Ico.building,
+  mine: Ico.user,
+  shared_with_me: Ico.people,
 };
 
 function SectionTitle({ section }) {
@@ -169,11 +179,10 @@ function ownerKeyOf(a) {
   return artifactOwnerUserId(caps) || OWNER_UNKNOWN;
 }
 
-// The status a row shows, for the Status filter: shared, not shared yet (a
-// kind that can be), or a draft (one that can't).
+// For the Status filter: shared or not. There is no separate "Draft" status
+// for a kind that can't be shared yet (ENG-4647): it isn't shared either.
 function statusOf(a) {
-  if (a?.publishedUrl) return 'shared';
-  return isPublishableArtifact(a) ? 'not_shared' : 'draft';
+  return a?.publishedUrl ? 'shared' : 'not_shared';
 }
 
 function kindOf(a) {
@@ -210,12 +219,26 @@ export function titleCompare(a, b) {
 // Password / Restricted UI and its validation live in one place now.
 // On confirm it hands back the access payload. Re-publishing pre-fills
 // the existing selection.
-function PublishDialog({ artifact, onCancel, onConfirm }) {
+function PublishDialog({ artifact, initialDraft, initialPending, onCancel, onConfirm }) {
   const { t } = useTranslation('artifacts');
-  const [draft, setDraft] = useState(() => accessDraftFromArtifact(artifact));
+  const [draft, setDraft] = useState(() => initialDraft || accessDraftFromArtifact(artifact));
+  const [pending, setPending] = useState(() => initialPending || []);
+  useEffect(() => {
+    let live = true;
+    // A dialog reopened after a 409 already holds the server's newest list.
+    if (artifact?.path && !initialPending) {
+      // Inside the promise chain, so a call that throws synchronously cannot
+      // escape the effect.
+      Promise.resolve()
+        .then(() => fetchPendingDatasources(publishTargetPath(artifact)))
+        .then((list) => { if (live) setPending(Array.isArray(list) ? list : []); })
+        .catch(() => { if (live) setPending([]); });
+    }
+    return () => { live = false; };
+  }, [artifact, initialPending]);
   if (!artifact) return null;
   const canConfirm = isAccessDraftValid(draft);
-  const submit = () => { if (canConfirm) onConfirm(buildAccessPayload(draft)); };
+  const submit = () => { if (canConfirm) onConfirm(buildAccessPayload(draft), pending, draft); };
 
   return (
     <Modal open onClose={onCancel} size="sm" width="min(440px, 94vw)" maxHeight="min(600px, 90vh)" labelledBy="publish-dialog-title">
@@ -230,6 +253,7 @@ function PublishDialog({ artifact, onCancel, onConfirm }) {
           {t('publish.whoCanAccess')}
         </div>
         <AccessChooser value={draft} onChange={setDraft} onSubmit={submit} />
+        <DatasourceApprovalNotice pending={pending} className="mt-3" />
       </ModalBody>
       <ModalFooter cancel={<Button variant="subtle" onClick={onCancel}>{t('common.cancel')}</Button>}>
         <Button variant="primary" onClick={submit} disabled={!canConfirm}>
@@ -286,13 +310,6 @@ async function downloadWithFeedback(artifact, toastManager, { note } = {}) {
   if (note) toastManager.add({ title: note });
 }
 
-// The owner tag of the viewer's own artifact where a section shares it with
-// others (My teams, Everyone at the org): there, whose it is isn't a given.
-function useOwnTag(markOwn) {
-  const { t } = useTranslation('artifacts');
-  return markOwn ? { label: t('artifactsView.owner.you'), description: t('artifactsView.owner.youHint') } : null;
-}
-
 // Open comments on one of the caller's own artifacts (ENG-4560): an accent
 // pill with the count, drawn only when there is at least one. A click opens
 // the preview on its Comments panel, and only that: the row or card under it
@@ -330,7 +347,7 @@ function OpenCommentsCounter({ count, onOpen }) {
   );
 }
 
-function ArtifactBubble({ artifact, projects = [], onOpenViewer, onOpenComments, openComments = null, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject, liveLines = null, liveAppCard = false, liveAppAddress = '', markOwn = false }) {
+function ArtifactBubble({ artifact, projects = [], onOpenViewer, onOpenComments, openComments = null, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject, liveLines = null, liveAppCard = false, liveAppAddress = '' }) {
   /* Same open rules as the list row: the body opens the best destination, and
      ↗ opens the artifact outside the app. */
   const { target, openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer, { liveAppCard, liveAppAddress });
@@ -371,8 +388,7 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onOpenComments,
   // The owner's name, "Another member" or "Unknown owner" (ENG-2979,
   // ENG-4455). Null for the viewer's own artifact, so ArtifactStatus renders
   // exactly what it did before.
-  const ownTag = useOwnTag(markOwn);
-  const authorship = useArtifactAuthorship(artifact.capabilities) || ownTag;
+  const authorship = useArtifactAuthorship(artifact.capabilities);
   const { base, secondary } = splitArtifactName(artifact);
   // A duplicated live app says whose it was, in the line a web app leaves empty.
   const received = liveLines?.received ?? null;
@@ -618,10 +634,9 @@ function ArtifactProject({ artifact, projects, onOpenProject }) {
 
 // Status badges carry tooltips and a Try again link, so they sit above the
 // stretched open button.
-function ArtifactStatusSlot({ artifact, phase, onRetry, inlineChanges = false, pageBadge = true, markOwn = false }) {
+function ArtifactStatusSlot({ artifact, phase, onRetry, inlineChanges = false, pageBadge = true }) {
   const orgMode = useOrgMode();
-  const ownTag = useOwnTag(markOwn);
-  const authorship = useArtifactAuthorship(artifact.capabilities) || ownTag;
+  const authorship = useArtifactAuthorship(artifact.capabilities);
   return (
     <ItemActions className="min-w-0 shrink">
       <ArtifactStatus
@@ -773,7 +788,7 @@ function rowMenuItems({ artifact, orgMode, liveApps = false, onOpen, onOpenShare
     }));
 }
 
-function ArtifactRow({ artifact, projects, onOpenViewer, onOpenComments, openComments = null, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onShareLiveApp: doShareLiveApp, onLaunchLiveApp: doLaunchLiveApp, onDelete: doDelete, onOpenProject, phase, onRetry, isMacPlatform, liveLines = null, liveAppCard = false, liveAppAddress = '', markOwn = false }) {
+function ArtifactRow({ artifact, projects, onOpenViewer, onOpenComments, openComments = null, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onShareLiveApp: doShareLiveApp, onLaunchLiveApp: doLaunchLiveApp, onDelete: doDelete, onOpenProject, phase, onRetry, isMacPlatform, liveLines = null, liveAppCard = false, liveAppAddress = '' }) {
   const { orgMode, toastManager, published, target, openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer, { liveAppCard, liveAppAddress });
   const liveApps = useLiveApps();
   const menuItems = rowMenuItems({
@@ -818,7 +833,6 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onOpenComments, openCom
             onRetry={onRetry}
             inlineChanges
             pageBadge={!liveAppCard}
-            markOwn={markOwn}
           />
           {openComments > 0 && target === 'preview' && onOpenComments && (
             <ItemActions>
@@ -859,8 +873,18 @@ export default function ArtifactsView({
   // both sites or one view silently keeps the desktop-only actions.
   const orgMode = useOrgMode();
   // In MindsHub mode a restricted card doesn't say who it reaches; read it,
-  // so its section, badge and hover say (useArtifactAudiences).
-  const { list, settled: audiencesSettled } = useArtifactAudiencesState(cards, { enabled: orgMode });
+  // so its badge, hover and Access filter say (useArtifactAudiences).
+  const { list } = useArtifactAudiencesState(cards, { enabled: orgMode });
+  // Sections, where the org shares (as on the Skills page); one list elsewhere.
+  // The teams tell an artifact shared with the org's default team, which
+  // reaches everyone there.
+  const sharingState = useSharingCapabilities();
+  const sharingCapabilities = sharingState.capabilities;
+  const sectionsOn = isOrgSharingOn(sharingCapabilities);
+  const orgName = useSharingOrgName(sectionsOn);
+  const teamsState = useMindsHubTeams(sectionsOn);
+  const teams = teamsState?.teams || NO_TEAMS;
+  const audienceChoiceOf = (a) => artifactAudienceChoice(a, { orgMode, teams });
   const liveApps = useLiveApps();
   // App hands down a new list after each turn, so the states re-read with it.
   const liveAppStates = useLiveAppStates(liveApps, list);
@@ -909,6 +933,9 @@ export default function ArtifactsView({
   // Artifact awaiting the publish visibility choice (public vs password).
   // Null when the chooser is closed.
   const [publishTarget, setPublishTarget] = useState(null);
+  // The choice and connection list to restore when the dialog reopens after
+  // the server asked for connection approval.
+  const [publishRetry, setPublishRetry] = useState(null);
   // Resolver for the promise returned by `handlePublish`, so a delegated
   // caller (the preview's Publish button) can await the whole dialog +
   // POST flow for its busy state. Settled when the chooser confirms,
@@ -986,19 +1013,22 @@ export default function ArtifactsView({
     // Settle any prior unresolved flow before starting a new one so a
     // delegated awaiter is never left hanging.
     settlePublish();
+    setPublishRetry(null);
     setPublishTarget(artifact);
     reportShareOpened(artifact, { entry: 'list', isShared: shareSnapshot(artifact).shared });
     return new Promise((resolve) => { publishResolveRef.current = resolve; });
   };
 
-  const confirmPublish = async (access) => {
+  const confirmPublish = async (access, approvedDatasources = [], draft = null) => {
     const artifact = publishTarget;
+    let reopened = false;
     setPublishTarget(null);
+    setPublishRetry(null);
     if (!artifact?.path || busyPaths.has(artifact.path)) { settlePublish(); return; }
     setBusy(artifact.path, true);
     setPhase(artifact.path, 'publishing');
     try {
-      const r = await publishArtifact(publishTargetPath(artifact), access);
+      const r = await publishArtifact(publishTargetPath(artifact), access, { approvedDatasources });
       if (r?.url) {
         // Server is authoritative (it degrades an empty restricted/password
         // selection back to public); fall back to the requested access.
@@ -1032,12 +1062,23 @@ export default function ArtifactsView({
           kind: 'ok',
           message: t('artifactsView.sharedToast', { mode: m === 'password' || m === 'restricted' ? m : 'other', url: r.url }),
         });
+        const unapproved = unapprovedDatasourcesNotice(r);
+        if (unapproved) showToast({ kind: 'warning', message: unapproved });
       } else {
         setPhase(artifact.path, 'failed');
         showToast({ kind: 'error', message: t('publish.errors.noUrl') });
       }
     } catch (e) {
       reportAccessChangeFailed(artifact, { entry: 'list', reason: publishFailureReason(e) });
+      if (isDatasourceApprovalError(e)) {
+        // The dialog is open again with the new list, which says what to do,
+        // so no toast; the caller keeps waiting for the dialog.
+        reopened = true;
+        setPublishRetry({ draft, pending: pendingDatasourcesFromError(e) });
+        setPublishTarget(artifact);
+        setPhase(artifact.path, null);
+        return;
+      }
       const msg = e?.message || String(e);
       // Map the failures a user can act on to a clearer message.
       const refusal = publishRefusalMessage(e);
@@ -1052,7 +1093,7 @@ export default function ArtifactsView({
       showToast({ kind: 'error', message: friendly });
     } finally {
       setBusy(artifact.path, false);
-      settlePublish();
+      if (!reopened) settlePublish();
     }
   };
 
@@ -1088,6 +1129,8 @@ export default function ArtifactsView({
       updateOne({ ...artifact, modified: false, publishedUrl: r?.url || artifact.publishedUrl });
       const replaced = republishNotice(r);
       showToast(replaced ? { kind: 'warning', message: replaced } : { kind: 'ok', message: t('artifactsView.updated') });
+      const unapproved = unapprovedDatasourcesNotice(r);
+      if (unapproved) showToast({ kind: 'warning', message: unapproved });
     } catch (e) {
       const message = publishRefusalMessage(e) ?? t('publish.errors.updateFailed', { message: String(e?.message || e) });
       showToast({ kind: 'error', message });
@@ -1143,8 +1186,15 @@ export default function ArtifactsView({
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const statuses = useMemo(
-    () => ['shared', 'not_shared', 'draft'].filter((s) => (list || []).some((a) => statusOf(a) === s)),
+    () => ['shared', 'not_shared'].filter((s) => (list || []).some((a) => statusOf(a) === s)),
     [list],
+  );
+  // Access (ENG-4647): who can open it, as its badge says.
+  const [accessFilter, setAccessFilter] = useState('all');
+  const accessChoices = useMemo(
+    () => ARTIFACT_AUDIENCE_ORDER.filter((choice) => (list || []).some((a) => audienceChoiceOf(a) === choice)),
+    // audienceChoiceOf reads orgMode and teams.
+    [list, orgMode, teams],
   );
   const [ownerFilter, setOwnerFilter] = useState('all');
   const kinds = useMemo(() => [...new Set((list || []).map(kindOf))].sort(), [list]);
@@ -1162,10 +1212,10 @@ export default function ArtifactsView({
   useEffect(() => { if (typeFilter !== 'all' && !kinds.includes(typeFilter)) setTypeFilter('all'); }, [kinds, typeFilter]);
   useEffect(() => { if (ownerFilter !== 'all' && !ownerKeys.includes(ownerFilter)) setOwnerFilter('all'); }, [ownerKeys, ownerFilter]);
   useEffect(() => { if (statusFilter !== 'all' && !statuses.includes(statusFilter)) setStatusFilter('all'); }, [statuses, statusFilter]);
+  useEffect(() => { if (accessFilter !== 'all' && !accessChoices.includes(accessFilter)) setAccessFilter('all'); }, [accessChoices, accessFilter]);
   const STATUS_LABELS = {
     shared: t('publish.shared'),
     not_shared: t('status.notShared'),
-    draft: t('status.draft'),
   };
   const filters = [
     kinds.length > 1 && {
@@ -1190,6 +1240,17 @@ export default function ArtifactsView({
         ...statuses.map((s) => ({ value: s, label: STATUS_LABELS[s] })),
       ],
     },
+    accessChoices.length > 1 && {
+      id: 'access',
+      label: t('artifactsView.filter.access'),
+      value: accessFilter,
+      allValue: 'all',
+      onChange: setAccessFilter,
+      options: [
+        { value: 'all', label: t('artifactsView.filter.allAccess') },
+        ...accessChoices.map((choice) => ({ value: choice, label: audienceChoiceLabel(choice, orgName) })),
+      ],
+    },
     ownerKeys.length > 1 && {
       id: 'owner',
       label: t('artifactsView.filter.owner'),
@@ -1206,13 +1267,14 @@ export default function ArtifactsView({
       ],
     },
   ].filter(Boolean);
-  const clearFilters = () => { setTypeFilter('all'); setStatusFilter('all'); setOwnerFilter('all'); };
+  const clearFilters = () => { setTypeFilter('all'); setStatusFilter('all'); setAccessFilter('all'); setOwnerFilter('all'); };
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     let out = (list || []).slice();
     if (typeFilter !== 'all') out = out.filter((a) => kindOf(a) === typeFilter);
     if (statusFilter !== 'all') out = out.filter((a) => statusOf(a) === statusFilter);
+    if (accessFilter !== 'all') out = out.filter((a) => audienceChoiceOf(a) === accessFilter);
     if (ownerFilter !== 'all') out = out.filter((a) => ownerKeyOf(a) === ownerFilter);
     if (q) out = out.filter((a) =>
       (a.title || '').toLowerCase().includes(q)
@@ -1237,7 +1299,8 @@ export default function ArtifactsView({
       }
     });
     return out;
-  }, [list, search, sort, typeFilter, statusFilter, ownerFilter]);
+    // audienceChoiceOf reads orgMode and teams.
+  }, [list, search, sort, typeFilter, statusFilter, accessFilter, ownerFilter, orgMode, teams]);
 
   // Open comments on the caller's own artifacts the page shows, read after it
   // paints (useOpenCommentCounts).
@@ -1246,21 +1309,14 @@ export default function ArtifactsView({
   const total = (list || []).length;
   const { artifactsNote } = surfaceCopy(host.isWeb);
 
-  // Sections, where the org shares (as on the Skills page); one list elsewhere.
-  const sharingState = useSharingCapabilities();
-  const sharingCapabilities = sharingState.capabilities;
-  const sectionsOn = isOrgSharingOn(sharingCapabilities);
-  const orgName = useSharingOrgName(sectionsOn);
-  const teamsState = useMindsHubTeams(sectionsOn);
   // The page shows once, in its final sections (ENG-4585): the skeleton stays
   // until, in MindsHub mode, sharing is known (off draws one list, on draws
-  // sections) and restricted artifacts' audiences are read (unknown files
-  // under Yours), and, wherever sections are on, the teams are in (a default
-  // team counts as the org). Once shown it never goes back to the skeleton,
-  // so a list that changes after a turn just updates in place.
-  const groupingSettled = (!orgMode || sharingState.status !== LOAD_STATUS.LOADING)
-    && (!sectionsOn || teamsState.status === LOAD_STATUS.READY)
-    && audiencesSettled;
+  // sections). Sections follow only whose an artifact is (ENG-4647), which
+  // every card says, so nothing else is waited on: who an artifact reaches
+  // (its audience, the org's default team) only fills in its badge, in place.
+  // Once shown it never goes back to the skeleton, so a list that changes
+  // after a turn just updates in place.
+  const groupingSettled = !orgMode || sharingState.status !== LOAD_STATUS.LOADING;
   const [shownOnce, setShownOnce] = useState(false);
   const bodyReady = !loading && (shownOnce || groupingSettled);
   useEffect(() => {
@@ -1272,16 +1328,13 @@ export default function ArtifactsView({
     return () => clearTimeout(timer);
   }, [loading, shownOnce]);
   const sections = useMemo(
-    () => (sectionsOn ? groupArtifactsBySection(visible, { orgName, teams: teamsState?.teams || [] }) : null),
-    [sectionsOn, visible, orgName, teamsState?.teams],
+    () => (sectionsOn ? groupArtifactsBySection(visible) : null),
+    [sectionsOn, visible],
   );
 
-  // `section`: the section the item sits in, when the page is grouped.
-  const sharedSection = (section) => section === 'team' || section === 'org';
-  const renderCard = (a, section) => (
+  const renderCard = (a) => (
     <ArtifactBubble
       key={a.id || a.path}
-      markOwn={sharedSection(section)}
       artifact={a}
       projects={projects}
       onOpenViewer={openViewer}
@@ -1299,10 +1352,9 @@ export default function ArtifactsView({
       liveAppAddress={liveAddressOf(a)}
     />
   );
-  const renderRow = (a, section) => (
+  const renderRow = (a) => (
     <ArtifactRow
       key={a.id || a.path}
-      markOwn={sharedSection(section)}
       artifact={a}
       projects={projects}
       onOpenViewer={openViewer}
@@ -1383,6 +1435,7 @@ export default function ArtifactsView({
       {/* Every card's owner named in one lookup (ENG-4455), and the org's
           name for "Everyone at ‹org›" badges once for the list. */}
       <ArtifactStatusOrgName.Provider value={orgName}>
+      <ArtifactStatusTeams.Provider value={teams}>
       <ArtifactOwnerNamesProvider capabilitiesList={visible.map((a) => a.capabilities)}>
       <CollectionState
         loading={!bodyReady}
@@ -1422,7 +1475,7 @@ export default function ArtifactsView({
                     <span className="font-normal text-ink-4" data-testid="section-count">{section.artifacts.length}</span>
                   </div>
                   <div className="artifacts-grid">
-                    {section.artifacts.map((a) => renderCard(a, section.id))}
+                    {section.artifacts.map((a) => renderCard(a))}
                   </div>
                 </section>
               ))}
@@ -1445,7 +1498,7 @@ export default function ArtifactsView({
                   title={<SectionTitle section={section} />}
                   description={<span data-testid="section-count">{section.artifacts.length}</span>}
                 >
-                  {section.artifacts.map((a) => renderRow(a, section.id))}
+                  {section.artifacts.map((a) => renderRow(a))}
                 </ListGroup>
               ))}
             </div>
@@ -1457,6 +1510,7 @@ export default function ArtifactsView({
         )}
       </CollectionState>
       </ArtifactOwnerNamesProvider>
+      </ArtifactStatusTeams.Provider>
       </ArtifactStatusOrgName.Provider>
 
       {/* A doc opens in the doc editor; every other artifact in the file viewer. */}
@@ -1501,8 +1555,11 @@ export default function ArtifactsView({
 
       {publishTarget && (
         <PublishDialog
+          key={publishTarget.path}
           artifact={publishTarget}
-          onCancel={() => { setPublishTarget(null); settlePublish(); }}
+          initialDraft={publishRetry?.draft}
+          initialPending={publishRetry?.pending}
+          onCancel={() => { setPublishTarget(null); setPublishRetry(null); settlePublish(); }}
           onConfirm={confirmPublish}
         />
       )}

@@ -315,7 +315,11 @@
       "none": "Kein Projekt"
     },
     "chooseHarness": "Harness wählen",
-    "voiceCall": "Sprachanruf"
+    "voiceCall": "Sprachmodus",
+    "dictation": {
+      "start": "Diktieren",
+      "stop": "Diktieren beenden"
+    }
   },
   "attachmentThumbnail": {
     "open": "Bild öffnen",
@@ -759,7 +763,7 @@
     "talkTo": "Mit {agent} sprechen"
   },
   "voiceCall": {
-    "dialogLabel": "Sprachanruf mit {agent}",
+    "dialogLabel": "Sprachmodus",
     "connecting": "Verbindung wird hergestellt…",
     "ending": "Wird beendet…",
     "working": "In Arbeit…",

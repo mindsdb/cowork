@@ -315,7 +315,11 @@
       "none": "Sin proyecto"
     },
     "chooseHarness": "Elegir entorno de ejecución",
-    "voiceCall": "Llamada de voz"
+    "voiceCall": "Modo de voz",
+    "dictation": {
+      "start": "Dictar",
+      "stop": "Dejar de dictar"
+    }
   },
   "attachmentThumbnail": {
     "open": "Abrir imagen",
@@ -759,7 +763,7 @@
     "talkTo": "Hablar con {agent}"
   },
   "voiceCall": {
-    "dialogLabel": "Llamada de voz con {agent}",
+    "dialogLabel": "Modo de voz",
     "connecting": "Conectando…",
     "ending": "Terminando…",
     "working": "Trabajando en ello…",

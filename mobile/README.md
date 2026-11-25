@@ -32,7 +32,7 @@ vitest, electron-builder) reads it.
 The web app (`src/renderer/`) relies on these. Changing any of them is a
 breaking change for the shell and needs a matching web change.
 
-- **App id / bundle id / Android package:** `ai.mindshub.cowork`. App name: `MindsHub Cowork`.
+- **App id / bundle id / Android package:** `ai.mindshub.cowork`. App name: `MindsHub`.
 - **Remote URL:** production `https://cowork.mindshub.ai`, staging
   `https://cowork.staging.mindshub.ai`. Each build loads its own deployment in the
   webview. Links to the other deployment open in the system browser. Cleartext is off.

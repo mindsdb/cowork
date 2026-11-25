@@ -105,7 +105,9 @@
       "missedLabelServer": "Se o servidor estiver fora do ar nesse horário",
       "missedLabelApp": "Se o MindsHub estiver fechado nesse horário",
       "missedOnceTitleServer": "O horário desta tarefa única passou enquanto o servidor estava fora do ar",
-      "missedOnceTitleApp": "O horário desta tarefa única passou enquanto o MindsHub estava fechado"
+      "missedOnceTitleApp": "O horário desta tarefa única passou enquanto o MindsHub estava fechado",
+      "lateRunApp": "Prevista para {when}. O MindsHub estava fechado ou o computador em repouso.",
+      "lateRunServer": "Prevista para {when}. O servidor estava fora do ar ou ocupado."
     },
     "stopScheduleRun": {
       "unreachable": "Não foi possível acessar o servidor para parar a execução. Tente novamente.",
@@ -319,6 +321,7 @@
       "sections": {
         "mine": "Suas",
         "sharedWithMe": "Compartilhadas comigo",
+        "sharedByOthers": "Compartilhados por outros",
         "team": "Minhas equipes",
         "builtin": "Integradas"
       },
@@ -588,6 +591,7 @@
     "lastFailed": "Última falhou",
     "lastRunFailed": "Última execução falhou",
     "stoppedAtLimit": "Parada em um limite",
+    "writesRefused": "Requer aprovação",
     "done": "Concluída",
     "active": "Ativa"
   },
@@ -619,6 +623,7 @@
     "partialNote": "Algumas das ações podem ter sido concluídas. Revise a execução antes de executá-la novamente.",
     "limitTitle": "A última execução parou em um limite",
     "limitNote": "Parte do trabalho pode ter sido concluída. Revise a execução antes de executá-la novamente.",
+    "approvalTitle": "As alterações da última execução não foram aprovadas",
     "failedTitle": "A última execução falhou",
     "resume": "Retomar",
     "runNow": "Executar agora",
@@ -718,7 +723,8 @@
       "success": "Concluída",
       "failed": "Falhou",
       "cancelled": "Parada",
-      "stoppedAtLimit": "Parada em um limite"
+      "stoppedAtLimit": "Parada em um limite",
+      "writesRefused": "Não aprovada"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "Em execução agora",
@@ -735,6 +741,7 @@
     "scheduleAriaLabel": "Agendamento",
     "accountDefaultModel": "Modelo padrão da conta",
     "ranOnDefaultModel": "Modelo padrão",
+    "ranLate": "Atrasada",
     "modelUnavailable": "{model} não está disponível, então esta execução usou seu modelo padrão.",
     "succeededCount": "{total, plural, one {{succeeded} de # execução concluída} other {{succeeded} de # execuções concluídas}}",
     "promptAriaLabel": "Prompt",

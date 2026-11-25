@@ -43,6 +43,7 @@ import { shareStateIcon } from '../../ShareStateLabel';
 import { UpToDateTag, useSaveStatus } from '../../UpToDateTag';
 import { useArtifactStats } from '../stats/useArtifactStats';
 import { ViewerAnalyticsSettings } from './ViewerAnalyticsSettings';
+import { DatasourceApprovalNotice } from './DatasourceApprovalNotice';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
@@ -433,7 +434,7 @@ export function PublishMenu({
     return commitAccess(d, null);
   };
   const commitAccess = async (d, notify) => {
-    const ok = await pub.publish(accessPayload(d, notify));
+    const ok = await pub.publish(accessPayload(d, notify), { approvedDatasources: pub.pendingDatasources });
     if (ok) setView('summary');
     return ok;
   };
@@ -475,7 +476,7 @@ export function PublishMenu({
   const doSavePassword = async () => {
     const value = pwd.value.trim();
     if (!value || value === (pub.accessPassword || '')) return;
-    const ok = await pub.publish({ mode: 'password', password: value });
+    const ok = await pub.publish({ mode: 'password', password: value }, { approvedDatasources: pub.pendingDatasources });
     if (ok) { setView('summary'); setPwd({ value: '', reveal: false }); }
   };
   const doUnpublish = async () => {
@@ -600,6 +601,7 @@ export function PublishMenu({
                       </>
                     )}
                   </div>
+                  <DatasourceApprovalNotice pending={pub.pendingDatasources} className={ALERT_ROW} />
                   <NoticeRow message={pub.notice} />
                   <ErrorRow message={pub.error} />
                   <div className="flex justify-end py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line">
@@ -745,6 +747,7 @@ export function PublishMenu({
                     )}
                   </div>
   
+                  <DatasourceApprovalNotice pending={pub.pendingDatasources} className={ALERT_ROW} />
                   <NoticeRow message={pub.notice || (pub.linkOwnerRecorded === false ? unrecordedLinkWarning() : '')} />
                   <ErrorRow message={pub.error} />
   
@@ -790,7 +793,7 @@ export function PublishMenu({
                     ) : followsEdits ? (
                       <UpToDateTag label={t('publish.updatesAsYouEdit')} />
                     ) : pub.modified ? (
-                      <FooterButton primary onClick={pub.update} disabled={pub.busy}
+                      <FooterButton primary onClick={() => pub.update({ approvedDatasources: pub.pendingDatasources })} disabled={pub.busy}
                         busy={pub.phase === 'updating'} busyLabel={t('status.updating')}>
                         {t('publish.update')}
                       </FooterButton>

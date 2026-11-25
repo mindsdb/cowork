@@ -266,10 +266,10 @@
     "stayQueued": "{agent} non può accettarlo ora. Resta in coda."
   },
   "voiceCall": {
-    "backToCall": "Torna alla chiamata con {agent}",
-    "onCall": "In chiamata con {agent}",
+    "backToCall": "Torna alla modalità vocale",
+    "onCall": "Modalità vocale attiva",
     "callBackPending": "{agent} ti richiamerà quando avrà finito",
-    "call": "Chiama {agent}",
+    "call": "Modalità vocale",
     "anotherCall": "È in corso un’altra chiamata"
   },
   "notion": {
