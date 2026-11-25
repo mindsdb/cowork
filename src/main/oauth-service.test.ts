@@ -519,6 +519,12 @@ describe('authorizeInBrowser', () => {
 
     const flow = authorizeInBrowser(BROWSER_OPTS);
     const authUrl = await nextAuthUrl();
+    // The browser opens exactly what the shared builder makes, so the client check cannot drift from it.
+    expect(authUrl.href).toBe(buildAuthorizeUrl(BROWSER_OPTS, {
+      redirectUri: authUrl.searchParams.get('redirect_uri') as string,
+      state: authUrl.searchParams.get('state') as string,
+      codeChallenge: authUrl.searchParams.get('code_challenge') as string,
+    }));
     expect(authUrl.searchParams.get('resource')).toBe('https://mcp.example.com/mcp');
     expect(authUrl.searchParams.has('scope')).toBe(false);
     await hitCallback(authUrl, { code: 'the-code', state: authUrl.searchParams.get('state') as string });
