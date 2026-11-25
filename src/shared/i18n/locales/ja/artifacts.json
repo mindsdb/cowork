@@ -48,8 +48,9 @@
   },
   "status": {
     "badge": {
+      "onlyYou": "自分のみ",
       "public": "公開",
-      "password": "パスワード",
+      "publicPassword": "公開 · パスワード",
       "restricted": "制限付き"
     },
     "hint": {
@@ -57,6 +58,7 @@
       "notShareable": "共有されていません。リンクで共有できるのはWebページとMarkdownドキュメントのみです。",
       "orgRestricted": "制限付きです。リンクを開ける人は「共有」から確認できます。",
       "ownerOnly": "共有済みですが、リンクを開けるのはあなただけです。",
+      "password": "リンクとパスワードを知っている人なら誰でも開けます。",
       "chosenPeople": "共有済みです。リンクを開けるのは選択したユーザーのみです。",
       "unknown": "共有済みです。リンクを開ける人を確認できなかったため、制限付きとして扱われます。",
       "sharedWith": "{names} と共有",
@@ -70,7 +72,6 @@
     "stoppingSharing": "共有を停止中…",
     "deleting": "削除中…",
     "notShared": "未共有",
-    "draft": "下書き",
     "unsharedChanges": "未共有の変更"
   },
   "liveAppShare": {
@@ -552,11 +553,9 @@
       "noMatch": "これらのフィルターに一致するアーティファクトはありません。",
       "clear": "フィルターをクリア",
       "status": "状態",
-      "allStatuses": "すべての状態"
-    },
-    "owner": {
-      "you": "あなた",
-      "youHint": "あなたのもので、ほかの人と共有しています。"
+      "allStatuses": "すべての状態",
+      "access": "アクセス",
+      "allAccess": "すべてのアクセスレベル"
     },
     "openComments": "{count, plural, other {未解決のコメント # 件}}",
     "openCommentsHint": "コメントを表示してプレビューを開く"

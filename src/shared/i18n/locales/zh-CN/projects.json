@@ -321,6 +321,7 @@
       "sections": {
         "mine": "我的",
         "sharedWithMe": "与我分享",
+        "sharedByOthers": "他人分享",
         "team": "我的团队",
         "builtin": "内置"
       },

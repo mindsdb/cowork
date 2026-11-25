@@ -321,6 +321,7 @@
       "sections": {
         "mine": "Tuyas",
         "sharedWithMe": "Compartidas conmigo",
+        "sharedByOthers": "Compartidos por otros",
         "team": "Mis equipos",
         "builtin": "Integradas"
       },
