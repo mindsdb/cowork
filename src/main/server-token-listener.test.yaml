@@ -74,6 +74,11 @@ requests:
     frame: main
     authorized: false
     proved: false
+  - name: a main-window fetch to localhost at the server's port, which can reach another listener on ::1
+    url: http://localhost:26866/api/v1/conversations
+    frame: main
+    authorized: false
+    proved: false
   - name: a main-window call when no server was launched
     url: http://127.0.0.1:26866/api/v1/conversations
     frame: main

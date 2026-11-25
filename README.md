@@ -265,6 +265,8 @@ page, and removes a window proof from any other request
 (`src/renderer/dev-api-proxy.ts`). Press `Ctrl-C` once for a clean
 shutdown — vite quiesces first, then the python child.
 
+`dev:web` gives up the window proof's protection. Vite's proxy trusts a request's `Origin`, `Host` and `Referer` headers, and only a browser sets those honestly. Any local process, including an agent's, can send `Origin: http://localhost:5173` and get both values added. Test that an agent can't answer for the person in `npm run dev` or a packaged build.
+
 ### Build a production bundle
 
 ```bash
@@ -419,6 +421,8 @@ Desktop main makes three values fresh for every launch of the sidecar, each 32 r
 - **Bearer token**: the session's one `onBeforeSendHeaders` listener (`src/main/server-token-listener.ts`) adds it to every renderer request to the sidecar, except from the document preview frame, a frame inside it, or a request with no frame.
 - **Window proof** (`X-Cowork-Window-Proof`): the same listener adds it only to a fetch or XMLHttpRequest from the main window's own top-level frame, and removes it from every other request to the sidecar. A frame inside the window, an image, a navigation, a download, another window and a request with no frame go without it. Desktop main's own requests carry both values through `authHeader()`.
 - **App secret** (`X-Cowork-App-Secret`): only desktop main's requests on the routes that hold MCP access tokens carry it, once the sidecar has proved over `/health` that it holds the secret.
+
+The listener and `authHeader()` get the bearer token and the window proof only once the sidecar has proved over `/health` that it holds the app secret, and lose both when it stops or exits on its own. While a start is pending, the listener holds every renderer request to `127.0.0.1:<port>` and lets it go when the start publishes both values, or ends without them (`untilServerStartSettles` in `src/main/server-process.ts`). So no renderer request reaches whatever holds the port during a start, and one the sidecar would refuse for want of a token waits for the token instead. Desktop main's own requests are not held.
 
 The Claude Code terminal runs with this app's environment minus `COWORK_*`, `MINDSHUB_*`, `CLAUDE_CODE_*`, `CLAUDECODE` and `ANTHROPIC_*`. The git calls in a task's repository run with it minus `COWORK_*` and `MINDSHUB_*` only. Desktop main sets no `OPENAI_*` or `ANTHROPIC_*` variable, so the user's own `OPENAI_*` values reach both, and their `ANTHROPIC_*` values reach the git calls. On Windows, where variable names ignore case, these names match in any case (`src/main/agent-env.ts`).
 

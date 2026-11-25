@@ -130,6 +130,10 @@ describe('the main window wiring in app.ts', () => {
     expect(listener).toContain('mainWindow: () => (proofWindow.isDestroyed() ? null : proofWindow.webContents),');
   });
 
+  it("holds the server's requests while a start is pending, before the Minds gate sees them", () => {
+    expect(listener).toMatch(/gate: gatesInOrder\(\s*holdWhileServerStarts\(getServerPort, untilServerStartSettles\),\s*\(details, settle\) => gateMindsResponseCreationRequest\(/);
+  });
+
   it('leaves the frame to the listener and hands the Minds gate\'s answer back to it', () => {
     expect(listener).not.toContain('.frame');
     expect(listener).toContain('gateMindsResponseCreationRequest(');

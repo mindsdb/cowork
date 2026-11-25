@@ -10,6 +10,10 @@ import type { DocumentPreviewGuard, GuardedFrame } from './document-preview-guar
  * webRequest event, so every rule about both headers lives in this one
  * function.
  *
+ * The local server here means 127.0.0.1 at the server's port, or an /api/
+ * path on Vite's port when the renderer is served from Vite. A request to
+ * `localhost` at the server's port gets neither header.
+ *
  * The bearer goes on every request to the local server from a frame the
  * document preview guard allows. The proof goes only on a fetch or
  * XMLHttpRequest (Electron's `xhr` resource type) from the main window's own
@@ -90,6 +94,51 @@ function isMainWindowFetch(details: TokenRequestDetails, mainWindow: () => MainW
   }
 }
 
+/* Whether the URL is the server's own address. The server binds 127.0.0.1
+   only, and the window addresses it there (getApiOrigin in
+   src/renderer/platform/host.ts). `localhost` can resolve to ::1, where
+   another process can listen on the same port. */
+function isServerAddress(url: URL, serverPort: number): boolean {
+  return url.hostname === '127.0.0.1' && url.port === String(serverPort);
+}
+
+export type RequestGate = ServerTokenListenerDeps['gate'];
+
+/* A gate that holds every request to the server's address while `untilSettled`
+   returns a pending start's promise, and lets it go when that resolves. The
+   listener reads the token and the proof as the request goes out, so a start
+   that published sends both and one that ended without trust sends neither.
+   A request elsewhere, one whose URL does not parse, and every request while
+   no start is pending go straight on. */
+export function holdWhileServerStarts(
+  serverPort: () => number,
+  untilSettled: () => Promise<void> | null,
+): RequestGate {
+  return (details, settle) => {
+    const settled = untilSettled();
+    if (!settled) return false;
+    try {
+      if (!isServerAddress(new URL(details.url), serverPort())) return false;
+    } catch {
+      return false;
+    }
+    void settled.then(() => settle(true));
+    return true;
+  };
+}
+
+/* A gate that runs `first`, then `second` once `first` lets the request go.
+   Either one's cancel cancels it. */
+export function gatesInOrder(first: RequestGate, second: RequestGate): RequestGate {
+  return (details, settle) => {
+    const held = first(details, (ready) => {
+      if (!ready) settle(false);
+      else if (!second(details, settle)) settle(true);
+    });
+    return held || second(details, settle);
+  };
+}
+
 /* Removes the header under any capitalization the request used. */
 function removeHeader(headers: Record<string, string>, name: string): void {
   const lower = name.toLowerCase();
@@ -105,7 +154,7 @@ export function serverTokenListener(deps: ServerTokenListenerDeps): ServerTokenL
     const forward = () => {
       try {
         const url = new URL(details.url);
-        const isDirectServerCall = url.port === String(deps.serverPort());
+        const isDirectServerCall = isServerAddress(url, deps.serverPort());
         /* In dev mode the renderer loads from Vite, so its API calls go to
            Vite's own port and Vite proxies them to the sidecar. This
            listener never sees the proxied request, so it adds the headers to

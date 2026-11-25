@@ -13,7 +13,7 @@ import * as http from 'http';
 import { installHideOnClose, shouldQuitWhenAllWindowsClosed } from './window-close';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
-import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, activeStoreRoot, activeAccountDataRoot, runningServerPort, serverClearsPendingCredentials, SERVER_STOP_CEILING_MS } from './server-process';
+import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, activeStoreRoot, activeAccountDataRoot, runningServerPort, serverClearsPendingCredentials, SERVER_STOP_CEILING_MS, untilServerStartSettles } from './server-process';
 import { markStoresForSignOut, storesToClearAtSignOut } from './pending-credential-clear';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { recordUpdatePhase, registerUpdateJournalHandlers } from './update-journal';
@@ -90,12 +90,12 @@ import { getAppDisplayVersion } from './server-source';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
 import { detectClaudeCode } from './coding-mode';
 import { folderPickerDefaultPath } from './folder-picker';
-import { isSelfReload, normalizeExternalBrowserUrl } from './external-url';
+import { isDevServerNavigation, isSelfReload, normalizeExternalBrowserUrl } from './external-url';
 import { registerRendererPermissions } from './renderer-permissions';
 import { guardDocumentPreviewFrames } from './document-preview-guard';
 import { mainWindowWebPreferences } from './main-window-preferences';
 import { addRedoOnCmdY, EDIT_MENU_ID } from './edit-menu';
-import { serverTokenListener } from './server-token-listener';
+import { gatesInOrder, holdWhileServerStarts, serverTokenListener } from './server-token-listener';
 import {
   startCodingTerminal,
   writeToCodingTerminal,
@@ -496,9 +496,12 @@ function createWindow() {
     { urls: ['http://127.0.0.1/*', 'http://localhost/*'] },
     // The document preview frame, any frame inside it and a request with no
     // frame get no token (server-token-listener.ts, document-preview-guard.ts).
-    // Only a fetch from this window's top-level frame gets the proof. The
-    // Minds gate holds response-creation requests until the resumed
-    // credential is ready, and cancels them when it never is.
+    // Only a fetch from this window's top-level frame gets the proof. While a
+    // server start is pending, every request to the server's address waits
+    // until the start publishes the launch's values or ends without them
+    // (untilServerStartSettles in server-process.ts). Then the Minds gate
+    // holds response-creation requests until the resumed credential is ready,
+    // and cancels them when it never is.
     serverTokenListener({
       guard: previewGuard,
       serverPort: getServerPort,
@@ -506,18 +509,21 @@ function createWindow() {
       windowProof: getWindowProof,
       mainWindow: () => (proofWindow.isDestroyed() ? null : proofWindow.webContents),
       viteDevPort,
-      gate: (details, settle) => gateMindsResponseCreationRequest(
-        details,
-        getServerPort(),
-        isMindsResumeCredentialGateActive(),
-        runtimeMindsCredentialRequirement,
-        waitForMindsResumeCredential,
-        (ready) => {
-          if (!ready) {
-            diagnostic("main.app", "WARNING", "minds_auth_response_creation_aborted_while_the_resumed_credential_remained_unavailable", '[minds-auth] response creation aborted while the resumed credential remained unavailable');
-          }
-          settle(ready);
-        },
+      gate: gatesInOrder(
+        holdWhileServerStarts(getServerPort, untilServerStartSettles),
+        (details, settle) => gateMindsResponseCreationRequest(
+          details,
+          getServerPort(),
+          isMindsResumeCredentialGateActive(),
+          runtimeMindsCredentialRequirement,
+          waitForMindsResumeCredential,
+          (ready) => {
+            if (!ready) {
+              diagnostic("main.app", "WARNING", "minds_auth_response_creation_aborted_while_the_resumed_credential_remained_unavailable", '[minds-auth] response creation aborted while the resumed credential remained unavailable');
+            }
+            settle(ready);
+          },
+        ),
       ),
     }),
   );
@@ -586,8 +592,8 @@ function createWindow() {
   });
 
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    // Allow dev server reloads
-    if (!app.isPackaged && url.startsWith('http://localhost')) return;
+    // Allow dev server reloads, to Vite's own origin only
+    if (!app.isPackaged && isDevServerNavigation(url, viteDevPort)) return;
     // And a packaged document reloading ITSELF, which arrives here too: the
     // account switch, the organization switch and the sign-out all replace the
     // document rather than trying to scrub it, and blocking that is silent —

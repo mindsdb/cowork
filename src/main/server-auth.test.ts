@@ -16,6 +16,7 @@ import {
   getServerAuthToken,
   getWindowProof,
   newServerCredentials,
+  publishServerCredentials,
 } from './server-auth';
 
 afterEach(() => {
@@ -30,8 +31,17 @@ describe('the server credentials', () => {
     expect(readEnvFile).not.toHaveBeenCalled();
   });
 
-  it("are the launch's own, from memory and never from the dotenv", () => {
+  it('are none for a launch that has not published them', () => {
+    newServerCredentials();
+
+    expect(getServerAuthToken()).toBeNull();
+    expect(getWindowProof()).toBeNull();
+    expect(authHeader()).toEqual({});
+  });
+
+  it("are the published launch's own, from memory and never from the dotenv", () => {
     const launch = newServerCredentials();
+    publishServerCredentials(launch);
 
     expect(getServerAuthToken()).toBe(launch.authToken);
     expect(getWindowProof()).toBe(launch.windowProof);
@@ -41,6 +51,7 @@ describe('the server credentials', () => {
 
   it('are two different 32-byte hex values, fresh for every launch', () => {
     const first = newServerCredentials();
+    publishServerCredentials(first);
     const second = newServerCredentials();
 
     for (const value of [first.authToken, first.windowProof, second.authToken, second.windowProof]) {
@@ -49,17 +60,22 @@ describe('the server credentials', () => {
     expect(first.authToken).not.toBe(first.windowProof);
     expect(second.authToken).not.toBe(first.authToken);
     expect(second.windowProof).not.toBe(first.windowProof);
+    expect(getServerAuthToken()).toBe(first.authToken);
+
+    publishServerCredentials(second);
+
     expect(getServerAuthToken()).toBe(second.authToken);
   });
 
   it("give desktop main's own requests the bearer token and the window proof", () => {
     const launch = newServerCredentials();
+    publishServerCredentials(launch);
 
     expect(authHeader()).toEqual({ Authorization: `Bearer ${launch.authToken}`, [WINDOW_PROOF_HEADER]: launch.windowProof });
   });
 
   it('are gone once cleared', () => {
-    newServerCredentials();
+    publishServerCredentials(newServerCredentials());
     clearServerCredentials();
 
     expect(getServerAuthToken()).toBeNull();
@@ -69,19 +85,34 @@ describe('the server credentials', () => {
 });
 
 describe('the dotenv the renderer reads', () => {
+  /* Keys as readEnvFile returns them: the trimmed line's text before its
+     first `=`, so a key keeps its quotes and any spaces before the `=`. */
   it.each([
     ['COWORK_AUTH_TOKEN'],
     ['export COWORK_AUTH_TOKEN'],
     ['COWORK_AUTH_TOKEN '],
     ['cowork_auth_token'],
+    ["'COWORK_AUTH_TOKEN'"],
+    ['"COWORK_AUTH_TOKEN"'],
+    ["export 'COWORK_AUTH_TOKEN'"],
+    ['export "COWORK_AUTH_TOKEN"'],
+    ["'cowork_auth_token'"],
+    ["'COWORK_AUTH_TOKEN' "],
+    ['export\tCOWORK_AUTH_TOKEN'],
   ])('leaves out a %j line', (key) => {
     const vars = { ANTON_TERMS_CONSENT: 'true', [key]: 'ab'.repeat(32), COWORK_KEYCHAIN: 'true' };
 
     expect(envForRenderer(vars)).toEqual({ ANTON_TERMS_CONSENT: 'true', COWORK_KEYCHAIN: 'true' });
   });
 
-  it('keeps every other line, including ones whose names only contain the token name', () => {
-    const vars = { COWORK_AUTH_TOKEN_NOTE: 'x', MY_COWORK_AUTH_TOKEN: 'y', ANTON_MINDS_URL: 'https://example.test' };
+  it('keeps every other line, including ones whose names only contain the token name or mismatch its quotes', () => {
+    const vars = {
+      COWORK_AUTH_TOKEN_NOTE: 'x',
+      COWORK_AUTH_TOKEN_OLD: 'x',
+      MY_COWORK_AUTH_TOKEN: 'y',
+      [`'COWORK_AUTH_TOKEN"`]: 'z',
+      ANTON_MINDS_URL: 'https://example.test',
+    };
 
     expect(envForRenderer(vars)).toEqual(vars);
   });

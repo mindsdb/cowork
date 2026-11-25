@@ -9,8 +9,11 @@ import { PREVIEW_FRAME_NAME } from '../shared/document-preview';
 import { WINDOW_PROOF_HEADER } from '../shared/server-launch';
 import { guardDocumentPreviewFrames, type DocumentPreviewGuard, type GuardedFrame } from './document-preview-guard';
 import {
+  gatesInOrder,
+  holdWhileServerStarts,
   serverTokenListener,
   type MainWindowContents,
+  type RequestGate,
   type ServerTokenListener,
   type ServerTokenListenerDeps,
   type SettleHeldRequest,
@@ -264,5 +267,122 @@ describe('a request the gate holds', () => {
     expect(responses).toEqual([{ cancel: true }]);
     expect(token).not.toHaveBeenCalled();
     expect(windowProof).not.toHaveBeenCalled();
+  });
+});
+
+describe('a request a pending server start holds', () => {
+  /* A start that has not settled yet, and the call that settles it. */
+  function pendingStart() {
+    let settle!: () => void;
+    const settled = new Promise<void>((resolve) => { settle = resolve; });
+    return { settled, settle };
+  }
+
+  it('waits for the start, then goes out with the values the start published', async () => {
+    const { guard, main } = guardedFrames();
+    const start = pendingStart();
+    let launch: { token: string | null; proof: string | null } = { token: null, proof: null };
+    const listener = listenerWith({
+      guard,
+      token: () => launch.token,
+      windowProof: () => launch.proof,
+      gate: holdWhileServerStarts(() => SERVER_PORT, () => start.settled),
+    });
+    const responses = send(listener, mainWindowFetch(main));
+    expect(responses).toEqual([]);
+
+    launch = { token: TOKEN, proof: PROOF };
+    start.settle();
+    await start.settled;
+
+    expect(responses).toEqual([withToken(TOKEN, PROOF)]);
+  });
+
+  it('goes out with neither header, and is not canceled, when the start ends without trust', async () => {
+    const { guard, main } = guardedFrames();
+    const start = pendingStart();
+    const listener = listenerWith({
+      guard,
+      token: () => null,
+      windowProof: () => null,
+      gate: holdWhileServerStarts(() => SERVER_PORT, () => start.settled),
+    });
+    const responses = send(listener, mainWindowFetch(main));
+
+    start.settle();
+    await start.settled;
+
+    expect(responses).toEqual([withoutToken]);
+  });
+
+  it.each([
+    ['localhost at the server\'s port', `http://localhost:${SERVER_PORT}/api/v1/conversations`],
+    ['an /api/ call through Vite', 'http://localhost:5173/api/v1/conversations'],
+    ['another loopback port', 'http://127.0.0.1:9999/api/v1/conversations'],
+    ['a URL that does not parse', 'not a url'],
+  ])('lets %s go at once', (_label, url) => {
+    const { guard, main } = guardedFrames();
+    const listener = listenerWith({
+      guard,
+      viteDevPort: '5173',
+      gate: holdWhileServerStarts(() => SERVER_PORT, () => pendingStart().settled),
+    });
+
+    expect(send(listener, mainWindowFetch(main, { url }))).toHaveLength(1);
+  });
+
+  it('lets a request to the server go at once when no start is pending', () => {
+    const { guard, main } = guardedFrames();
+    const listener = listenerWith({ guard, gate: holdWhileServerStarts(() => SERVER_PORT, () => null) });
+
+    expect(send(listener, mainWindowFetch(main))).toEqual([withToken(TOKEN, PROOF)]);
+  });
+});
+
+describe('two gates in order', () => {
+  /* A gate that holds every request until `settle(ready)` is called on it. */
+  function heldGate() {
+    const held: SettleHeldRequest[] = [];
+    const gate: RequestGate = (_details, settle) => { held.push(settle); return true; };
+    return { gate, held };
+  }
+  const passing: RequestGate = () => false;
+
+  it('runs the second only after the first lets the request go', () => {
+    const { guard, main } = guardedFrames();
+    const first = heldGate();
+    const second = heldGate();
+    const responses = send(listenerWith({ guard, gate: gatesInOrder(first.gate, second.gate) }), mainWindowFetch(main));
+    expect(second.held).toHaveLength(0);
+
+    first.held[0](true);
+    expect(second.held).toHaveLength(1);
+    expect(responses).toEqual([]);
+
+    second.held[0](true);
+    expect(responses).toEqual([withToken(TOKEN, PROOF)]);
+  });
+
+  it('leaves the request to the second when the first does not hold it, and sends it when neither does', () => {
+    const { guard, main } = guardedFrames();
+    const second = heldGate();
+    const heldBySecond = send(listenerWith({ guard, gate: gatesInOrder(passing, second.gate) }), mainWindowFetch(main));
+    expect(heldBySecond).toEqual([]);
+    second.held[0](false);
+    expect(heldBySecond).toEqual([{ cancel: true }]);
+
+    expect(send(listenerWith({ guard, gate: gatesInOrder(passing, passing) }), mainWindowFetch(main))).toEqual([withToken(TOKEN, PROOF)]);
+  });
+
+  it("cancels the request on the first gate's cancel without asking the second", () => {
+    const { guard, main } = guardedFrames();
+    const first = heldGate();
+    const second = vi.fn<RequestGate>(() => false);
+    const responses = send(listenerWith({ guard, gate: gatesInOrder(first.gate, second) }), mainWindowFetch(main));
+
+    first.held[0](false);
+
+    expect(responses).toEqual([{ cancel: true }]);
+    expect(second).not.toHaveBeenCalled();
   });
 });

@@ -16,6 +16,7 @@ import * as http from 'http';
 import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
+import type { BeforeSendResponse } from 'electron';
 
 vi.mock('electron', () => ({
   app: { isPackaged: true, getPath: () => '/tmp/cowork-test-logs' },
@@ -97,9 +98,12 @@ import {
   activeAccountDataRoot,
   isServerStarting,
   runningServerPort,
+  forceReapServer,
+  untilServerStartSettles,
 } from './server-process';
 import { NON_PROD_POSTHOG_KEY } from './analytics-env';
 import { authHeader, getServerAuthToken, getWindowProof } from './server-auth';
+import { holdWhileServerStarts, serverTokenListener } from './server-token-listener';
 import { APP_SECRET_HEADER, appSecretHeader, isAppSecretProtected, isCustomMcpAvailable, serverMayReceiveTokens } from './app-secret';
 import { HANDOFF_PROTOCOL, WINDOW_PROOF_HEADER } from '../shared/server-launch';
 import * as crypto from 'crypto';
@@ -1964,5 +1968,168 @@ describe('health proof per store, and after a crash', () => {
     expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
     expect(isAppSecretProtected()).toBe(true);
     expect(appSecretHeader()[APP_SECRET_HEADER]).toBe(JSON.parse(fresh.stdin.written).app_secret);
+  });
+});
+
+/*
+ * What the main window's fetches to the server carry while a start runs and
+ * after the server exits on its own. A process can take the port between the
+ * reap and the child's bind and answer the window's requests in that time, so
+ * the window's requests wait for the start instead of reaching the port, and
+ * neither value goes out before the server proves the app secret.
+ */
+describe("the window's requests to the server across a start and an exit", () => {
+  afterEach(async () => {
+    setServerStartedHook(null);
+    if (isServerRunning()) await stopServer();
+  });
+
+  /** A fetch from the main window's top-level frame to the server, through
+   *  the listener and the start hold as app.ts wires them. `sent` resolves
+   *  with what the listener hands Electron once it lets the fetch go. */
+  function windowFetch(): { sent: Promise<BeforeSendResponse>; isSent: () => boolean } {
+    const listener = serverTokenListener({
+      guard: { mayCarryServerToken: () => true },
+      serverPort: () => PORT,
+      token: getServerAuthToken,
+      windowProof: getWindowProof,
+      mainWindow: () => ({ id: 1, mainFrame: { frameTreeNodeId: 7 } }),
+      viteDevPort: null,
+      gate: holdWhileServerStarts(() => PORT, untilServerStartSettles),
+    });
+    let isSent = false;
+    const sent = new Promise<BeforeSendResponse>((resolve) => {
+      listener(
+        {
+          url: `http://127.0.0.1:${PORT}/api/v1/conversations`,
+          method: 'GET',
+          frame: { frameTreeNodeId: 7, name: '', url: 'file:///index.html', parent: null },
+          resourceType: 'xhr',
+          webContentsId: 1,
+          requestHeaders: {},
+        },
+        (response) => { isSent = true; resolve(response); },
+      );
+    });
+    return { sent, isSent: () => isSent };
+  }
+
+  /** What a fetch goes out with when it carries the launch's two values. */
+  const withBothOf = (child: { stdin: { written: string } }): BeforeSendResponse => ({
+    requestHeaders: {
+      Authorization: `Bearer ${handoffOf(child).auth_token}`,
+      [WINDOW_PROOF_HEADER]: handoffOf(child).window_proof,
+    },
+  });
+  const withNeither: BeforeSendResponse = { requestHeaders: {} };
+
+  /** A stop's signal makes the child exit, as a real one does. */
+  function exitOnSignal(child: ReturnType<typeof makeChild>): void {
+    vi.mocked(process.kill).mockImplementation(((pid: number, signal?: string) => {
+      signals.push([pid, String(signal)]);
+      child.exitCode = 0;
+      setTimeout(() => child.emit('exit', 0), 0);
+      return true;
+    }) as never);
+  }
+
+  it('holds a fetch sent mid-start and sends it with both values once the server proves the secret', async () => {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => child) as never);
+    exitOnSignal(child);
+    let inHook: BeforeSendResponse | null = null;
+    setServerStartedHook(async () => {
+      const request = windowFetch();
+      inHook = request.isSent() ? await request.sent : null;
+    });
+
+    const start = startServer({ port: PORT, readyTimeoutMs: 5_000 });
+    /* Spawned and handed its values, while nothing on the port answers
+       /health yet. Read now and checked once the start settles, so a failure
+       leaves no start running into the next test. */
+    await vi.waitFor(() => expect(child.stdin.ended).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const held = windowFetch();
+    const before = { held: !held.isSent(), main: authHeader() };
+
+    healthOwner = spawnedOwner();
+    expect((await start).ok).toBe(true);
+
+    expect(before).toEqual({ held: true, main: {} });
+    expect(await held.sent).toEqual(withBothOf(child));
+    expect(inHook).toEqual(withBothOf(child));
+  });
+
+  it('sends a fetch held through a failed start with neither value, rather than canceling it', async () => {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { child.exitCode = 1; child.emit('exit', 1); }, 400);
+      return child as never;
+    }) as never);
+
+    const start = startServer({ port: PORT, readyTimeoutMs: 5_000 });
+    await vi.waitFor(() => expect(child.stdin.ended).toBe(true));
+    const held = windowFetch();
+    const heldDuringStart = !held.isSent();
+
+    expect((await start).ok).toBe(false);
+
+    expect(heldDuringStart).toBe(true);
+    expect(await held.sent).toEqual(withNeither);
+    expect(untilServerStartSettles()).toBeNull();
+  });
+
+  it("holds nothing after the server exits on its own, and sends the next launch's values once it proves the secret", async () => {
+    const crashed = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = spawnedOwner(); }, 0);
+      return crashed as never;
+    }) as never);
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    const live = windowFetch();
+    expect(live.isSent()).toBe(true);
+    expect(await live.sent).toEqual(withBothOf(crashed));
+
+    crashed.exitCode = 1;
+    crashed.emit('exit', 1, null);
+
+    const afterExit = windowFetch();
+    expect(untilServerStartSettles()).toBeNull();
+    expect(afterExit.isSent()).toBe(true);
+    expect(await afterExit.sent).toEqual(withNeither);
+    expect(authHeader()).toEqual({});
+
+    const fresh = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { fresh.exitCode = 0; fresh.emit('exit', 0); }, 0);
+      return fresh as never;
+    }) as never);
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+
+    const next = windowFetch();
+    expect(next.isSent()).toBe(true);
+    expect(await next.sent).toEqual(withBothOf(fresh));
+    expect(handoffOf(fresh).window_proof).not.toBe(handoffOf(crashed).window_proof);
+    expect(handoffOf(fresh).auth_token).not.toBe(handoffOf(crashed).auth_token);
+  });
+
+  /* stopServer queues behind a start on the lifecycle lock, so the stop that
+     lands mid-start is the quit path's forced reap. */
+  it('sends a fetch held when a stop ends the start with neither value', async () => {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => child) as never);
+    exitOnSignal(child);
+
+    const start = startServer({ port: PORT, readyTimeoutMs: 5_000 });
+    await vi.waitFor(() => expect(child.stdin.ended).toBe(true));
+    const held = windowFetch();
+    const heldDuringStart = !held.isSent();
+
+    await forceReapServer();
+
+    expect((await start).ok).toBe(false);
+    expect(heldDuringStart).toBe(true);
+    expect(await held.sent).toEqual(withNeither);
+    expect(untilServerStartSettles()).toBeNull();
   });
 });
