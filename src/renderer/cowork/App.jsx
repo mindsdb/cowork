@@ -78,6 +78,8 @@ import {
 import { loadCachedSettings } from './lib/settingsCache';
 import { useOrgMode } from '../lib/orgMode';
 import { clearDraft, moveDraft } from './lib/draftStore';
+import { clearDraftAttachments, getDraftAttachments, reloadDraftAttachmentsAfterPurge, setDraftAttachments } from './lib/draftAttachments';
+import { useDraftAttachments } from './hooks/useDraftAttachments';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useBrowseAvailable } from './hooks/useBrowseAvailable';
 import { useGoogleDrivePicker } from './hooks/useGoogleDrivePicker';
@@ -1027,7 +1029,6 @@ function AppCore() {
   // merged into it would vanish the next time one ran — including on a visit
   // to the connections page.
   const [datasourceConnectors, setDatasourceConnectors] = useState([]);
-  const [composerAttachments, setComposerAttachments] = useState([]);
   /** Muted vault connections for the next send (all composers); persisted on stream. */
   const [composerDisabledConnections, setComposerDisabledConnections] = useState([]);
   /** The + menu's Browser switch, off for the next new task (ENG-3188). */
@@ -1685,13 +1686,7 @@ function AppCore() {
     // shared slot (that discards an earlier drain's text).
     //
     // The files those queued messages were carrying ride the SAME entry as the
-    // text, because they have to travel together: the removal above
-    // deletes the only other reference to them, while `composerAttachments` is a
-    // single app-wide list that is not keyed by task. Staging them here would
-    // therefore put task A's files on whatever task happens to be on screen, and
-    // sending from there would upload and send them against the wrong
-    // conversation. They are staged when — and only when — this task's redirect
-    // is consumed, by the ChatView actually showing this task.
+    // text, so both are staged together when ChatView consumes the redirect.
     setComposerRedirects((prev) => ({
       ...prev,
       [plan.taskId]: {
@@ -2851,6 +2846,19 @@ function AppCore() {
     projectDetailPending != null &&
     !(selectedProject && (selectedProject.id === projectDetailPending || selectedProject.name === projectDetailPending));
   const selectedProjectForView = projectDetailResolving ? null : selectedProject;
+  // Attachments are drafted per composer, under the same key as its text
+  // (see Composer's useDraft), so they survive switching threads.
+  const composerDraftKey = route === 'task'
+    ? (currentTask?.id ?? activeTaskId ?? null)
+    : route === 'projects' && selectedProjectForView
+      ? `project:${selectedProjectForView.id || selectedProjectForView.name}`
+      : 'new';
+  const [composerAttachments, setComposerAttachments] = useDraftAttachments(composerDraftKey);
+  // Clears only what was sent, so a file added while the send ran stays drafted.
+  const clearSentComposerAttachments = (sent) => {
+    const ids = new Set(sent.map((a) => a?.id));
+    setComposerAttachments((prev) => prev.filter((a) => !ids.has(a.id)));
+  };
   const currentTaskProject = resolveTaskProject(currentTask, runnableProjects) || runnableSelectedProject;
   const currentTaskModel = currentTask?.model
     ? (sendableModelId(currentTask.model) === MODEL_ROUTER_ID
@@ -3137,10 +3145,6 @@ function AppCore() {
   const selectTask = (id) => {
     if (sidebarPopout) setNavPopoutOpen(false);
     setWorkspaceMode('cowork');
-    // Clear the composer here (the sync nav intent), not in openConversation:
-    // that runs after the async loader and would wipe a queued-message redirect
-    // ChatView stages for the conversation. Matches staging's ordering.
-    setComposerAttachments([]);
     setActiveTaskId(id);
     setRoute('task');
   };
@@ -3293,7 +3297,6 @@ function AppCore() {
     if (sidebarPopout) setNavPopoutOpen(false);
     setWorkspaceMode('cowork');
     setActiveTaskId(null);
-    setComposerAttachments([]);
     setComposerPrefill(null);
     setRoute('home');
   };
@@ -3301,7 +3304,8 @@ function AppCore() {
   const handleNavigateHomeWithPrefill = (text, projectName) => {
     setWorkspaceMode('cowork');
     setActiveTaskId(null);
-    setComposerAttachments([]);
+    // The prefill starts Home's draft over.
+    clearDraftAttachments('new');
     setComposerPrefill({ text, bump: Date.now() });
     const targetName = projectName || 'general';
     const proj = projects.find((p) => p.name === targetName);
@@ -3398,7 +3402,6 @@ function AppCore() {
       attachments: [],
     }, ...prev]);
     setActiveTaskId(tempId);
-    setComposerAttachments([]);
     setRoute('task');
 
 
@@ -3710,7 +3713,6 @@ function AppCore() {
       attachments: [],
     }, ...prev]);
     setActiveTaskId(tempId);
-    setComposerAttachments([]);
     setRoute('task');
 
     if (hasLiteralForm) {
@@ -3878,6 +3880,8 @@ function AppCore() {
     // caches its localStorage keys into a module-level variable at import
     // time, so removing the keys alone leaves that snapshot stale.
     if (purgedStaleAccount) resetOnboardingProgress();
+    // The attachment store read storage above this purge; drop what it read.
+    if (purgedStaleAccount) reloadDraftAttachmentsAfterPurge();
 
     /**
      * A document that has already rendered for another account reloads rather
@@ -4322,7 +4326,7 @@ function AppCore() {
       }, ...prev]);
       setActiveTaskId(taskId);
       setRoute('task');
-      setComposerAttachments([]);
+      // Nothing was sent, so the drafted files stay.
       return false;
     }
 
@@ -4340,14 +4344,16 @@ function AppCore() {
     const effectiveProjectPath = requestedProject?.path || generalProject?.path || null;
 
     // A caller that is not the composer (the artifact viewer) passes its own
-    // mutes and attachments; the composer is still cleared, as the new chat opens.
+    // mutes and attachments, and leaves the composer's draft alone.
     const disabledForSend = normalizeComposerDisabledConnections(
       meta?.disabledConnections ?? composerDisabledConnections,
     );
     // Only the composer's own switch: the browser is off only when switched off.
     const browserOffForSend = newTaskBrowserOff({ callerBrowserOff: meta?.browserOff, browserOnInSettings, composerBrowserOff });
 
-    const rawComposer = meta?.attachments ?? composerAttachments;
+    // Only the composer's own sends carry its drafted files; other callers
+    // (connect buttons, the sidebar) must not pick up a draft left on Home.
+    const rawComposer = meta?.attachments ?? (meta?.fromComposer ? composerAttachments : []);
     const hasPendingFiles = rawComposer.some(isPendingFileAttachment);
     const suppliedConversationId = meta?.conversationId || null;
     // The browser open beside Home or the project on a page: the task is
@@ -4372,7 +4378,7 @@ function AppCore() {
     ].filter(Boolean).join('\n\n');
     if (carried) void carryBrowserInto(taskId, carried);
     // A chat started in the background leaves the composer as it was.
-    if (!meta?.background) setComposerAttachments([]);
+    if (meta?.fromComposer && !meta?.background) clearSentComposerAttachments(rawComposer);
 
     // Two-phase send so the new-task experience matches the in-chat
     // send. Previously we shipped the user message + placeholder in the
@@ -4685,7 +4691,7 @@ function AppCore() {
     if (homeComposerSendingRef.current) return false;
     homeComposerSendingRef.current = true;
     try {
-      return await handleSendFromHome(text, meta);
+      return await handleSendFromHome(text, { ...meta, fromComposer: true });
     } finally {
       homeComposerSendingRef.current = false;
     }
@@ -4734,9 +4740,7 @@ function AppCore() {
             }
           : t,
       ));
-      // Only a fresh send owns the live composer's attachments; a drained
-      // queued item must not clear the composer of whatever task is on screen.
-      if (queuedAttachments == null) setComposerAttachments([]);
+      // Nothing was sent, so the drafted files stay.
       return false;
     }
 
@@ -4763,11 +4767,11 @@ function AppCore() {
       // exists to prevent.
       const orphaned = queuedAttachments ?? composerAttachments;
       if (queuedAttachments != null && queuedAttachments.length > 0) {
-        setComposerAttachments((prev) => {
-          const have = new Set(prev.map((a) => a.id));
-          const back = queuedAttachments.filter((a) => a && !have.has(a.id));
-          return back.length > 0 ? [...prev, ...back] : prev;
-        });
+        // Back to the drained task's own draft, not whichever one is on screen.
+        const prev = getDraftAttachments(id);
+        const have = new Set(prev.map((a) => a.id));
+        const back = queuedAttachments.filter((a) => a && !have.has(a.id));
+        if (back.length > 0) setDraftAttachments(id, [...prev, ...back]);
       }
       if (orphaned.length > 0) {
         toastManager.add({
@@ -4861,7 +4865,7 @@ function AppCore() {
       );
       // A voice call that sent it follows its queue item to its own turn.
       opts.onQueued?.(queuedId);
-      if (queuedAttachments == null) setComposerAttachments([]);
+      if (queuedAttachments == null) clearSentComposerAttachments(composerAttachments);
       // Queued counts as sent: the drain runs it when the slot frees, so a
       // repair waiting on this prompt will get its turn.
       return true;
@@ -4990,7 +4994,7 @@ function AppCore() {
     // A fresh send just consumed the live composer's attachments; a
     // drained queued item brought its own, so don't wipe whatever the
     // user may have started composing since.
-    if (queuedAttachments == null) setComposerAttachments([]);
+    if (queuedAttachments == null) clearSentComposerAttachments(composerAttachments);
 
     let streamState = initialStreamState();
     // `id` is the local task id we started with. If it's a temporary
@@ -6107,6 +6111,7 @@ function AppCore() {
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
     // Its unsent reply draft has nowhere to go back to.
     clearDraft(taskId);
+    clearDraftAttachments(taskId);
     // Optimistically remove from pins so the sidebar clears immediately.
     setPins((prev) => prev.filter((p) => p.item_id !== taskId));
     if (activeTaskId === taskId) {
@@ -6688,7 +6693,8 @@ function AppCore() {
     // The project's own composer draft, plus every draft belonging to a
     // conversation the server is about to cascade-delete.
     clearDraft(`project:${project.id || project.name}`);
-    doomedTaskIds.forEach((id) => clearDraft(id));
+    clearDraftAttachments(`project:${project.id || project.name}`);
+    doomedTaskIds.forEach((id) => { clearDraft(id); clearDraftAttachments(id); });
     doomedTaskIds.forEach((id) => addons.forgetConversation(id));
     // The server confirmed deletion, so it is now safe to update local state.
     setProjects((prev) => prev.filter((p) => p.name !== project.name));
@@ -7271,12 +7277,9 @@ function AppCore() {
             newTask();
             setExamplesRequest(Date.now());
           }}
-          // A file already attached on Home is the material that mode asks
-          // for, so it stays; newTask would drop it.
+          // Home's drafted files stay: they are the material that mode asks for.
           onOpenOwnWork={() => {
-            const keep = route === 'home' && !activeTaskId ? composerAttachments : [];
             newTask();
-            if (keep.length) setComposerAttachments(keep);
             setOwnWorkRequest(Date.now());
           }}
           // Hold the tip while the popout drawer is shut: Sidebar sees
@@ -7492,19 +7495,13 @@ function AppCore() {
             inFlightSet={inFlightSet}
             composerRedirects={composerRedirects}
             onComposerRedirectConsumed={(taskId, attachments) => {
-              // The drained files are staged here, at consumption time, and never
-              // at drain time: `composerAttachments` is app-wide, so staging a
-              // background task's files early would show them as chips on
-              // whatever conversation is open and send them there. The consumer
-              // hands them back because it is the one that knows the redirect was
-              // for the task on screen.
+              // Drained files are staged with the text, under the redirect's own task.
               const back = Array.isArray(attachments) ? attachments : [];
-              if (back.length > 0) {
-                setComposerAttachments((prev) => {
-                  const have = new Set(prev.map((a) => a.id));
-                  const fresh = back.filter((a) => a && !have.has(a.id));
-                  return fresh.length > 0 ? [...prev, ...fresh] : prev;
-                });
+              if (taskId && back.length > 0) {
+                const prev = getDraftAttachments(taskId);
+                const have = new Set(prev.map((a) => a.id));
+                const fresh = back.filter((a) => a && !have.has(a.id));
+                if (fresh.length > 0) setDraftAttachments(taskId, [...prev, ...fresh]);
               }
               setComposerRedirects((prev) => {
                 if (!taskId || !prev[taskId]) return prev;

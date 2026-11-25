@@ -19,6 +19,7 @@ import {
   DOCUMENT_ORGANIZATION_EPOCH,
 } from './organizationTransitionState';
 import { storageKeyForOrganizationIdentity } from './organizationCacheIdentity';
+import { clearAllDraftAttachments, moveDraftAttachments } from './draftAttachments';
 import { markWorkStarted } from './documentWork';
 
 const BASE_KEY = 'anton.composerDrafts';
@@ -132,6 +133,7 @@ export function setDraft(key, text) {
 // is typing while that first turn streams disappears mid-keystroke.
 export function moveDraft(fromKey, toKey) {
   if (!fromKey || !toKey || fromKey === toKey) return;
+  moveDraftAttachments(fromKey, toKey);
   const text = getDraft(fromKey);
   if (!text) return;
   setDraft(toKey, text);
@@ -145,6 +147,7 @@ export function moveDraft(fromKey, toKey) {
  */
 function clearAllDrafts() {
   if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+  clearAllDraftAttachments();
   currentDrafts().clear();
   try {
     /**
