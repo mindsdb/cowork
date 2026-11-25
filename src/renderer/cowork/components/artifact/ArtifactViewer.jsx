@@ -56,7 +56,7 @@ import { trackArtifactStatsOpened } from '../../lib/analytics';
 import { UNKNOWN_SHARE_SNAPSHOT, reportWithdrawal, shareSnapshot } from '../../lib/artifactShareAnalytics';
 import { diagnostic } from '../../../../shared/diagnostics';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
-import { isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
+import { isFilePageArtifact, isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
 import { useBlobImageSrc } from '../AttachmentThumbnail';
 import { Modal } from '../ui/Modal';
 import { ConfirmModal } from '../ConfirmModal';
@@ -1263,10 +1263,18 @@ export function ArtifactViewer({
   const [barEffort, setBarEffort] = useState(null);
 
   // Quick edits (ENG-4227): offered in Preview to whoever can edit, when the
-  // server turned them on. A file the viewer only previews has nothing to edit.
-  const canQuickEdit = workspace.capabilities?.canQuickEdit === true
-    && workspace.capabilities?.canEdit !== false
-    && !documentType;
+  // server turned them on. A document the viewer previews (a PDF, Word, Excel
+  // or PowerPoint file) gets the bar only when it shares as a page of its own
+  // (ENG-4687), and then every message goes to the chat: the agent changes the
+  // file there, since its text can't be edited in place.
+  // Such a document loads no workspace (previewOnly), so its bar asks only
+  // that the person may change it and that there is a chat to send to.
+  const chatOnlyEdits = Boolean(documentType) && isFilePageArtifact(artifact);
+  const canQuickEdit = chatOnlyEdits
+    ? canManage && Boolean(onAddressWithAgent)
+    : workspace.capabilities?.canQuickEdit === true
+      && workspace.capabilities?.canEdit !== false
+      && !documentType;
   // The chat the artifact belongs to, chosen the way a comment repair chooses
   // it: this chat, else the one that made the artifact.
   const resolveArtifactConversation = async () => conversationId
@@ -1278,7 +1286,8 @@ export function ArtifactViewer({
     enabled: open && canQuickEdit,
     // Without a decisions model every message goes to the chat. An older
     // server that sends no flag edits directly, as it did before the flag.
-    direct: workspace.capabilities?.quickEditDirect !== false,
+    // A previewed document always goes to the chat (chatOnlyEdits).
+    direct: workspace.capabilities?.quickEditDirect !== false && !chatOnlyEdits,
     headRevisionId: workspace.currentRevision?.id || null,
     resolveConversation: async () => (await resolveArtifactConversation()) || null,
     // Same send the comment repair uses, with a fresh chat as the last resort.
@@ -1408,7 +1417,10 @@ export function ArtifactViewer({
   // workspace load names (`publishedRevision`).
   const unsharedFrom = workspace.publishedRevision?.id || null;
   const unsharedTo = workspace.currentRevision?.id || null;
-  const canReviewUnshared = open && canManage && publishable && !!pub.publishedUrl && !!pub.modified
+  // A file shared as a page of its own (a PDF, a spreadsheet: ENG-4687) has no
+  // page text to compare, so its changes go live from Share's Update instead.
+  const canReviewUnshared = open && canManage && publishable && !isFilePageArtifact(artifact)
+    && !!pub.publishedUrl && !!pub.modified
     && !!unsharedFrom && !!unsharedTo && unsharedFrom !== unsharedTo;
   const reviewUnshared = useCallback(() => {
     if (!canReviewUnshared || workspace.comparison) return;

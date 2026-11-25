@@ -55,7 +55,7 @@
     },
     "hint": {
       "notSharedYet": "Non ancora condiviso. Aprilo e scegli Condividi per ottenere un link web.",
-      "notShareable": "Non condiviso. Solo le pagine web e i documenti Markdown possono essere condivisi tramite link.",
+      "notShareable": "Non condiviso. Pagine web, documenti, fogli di calcolo, presentazioni, PDF, CSV e file di testo possono essere condivisi tramite link; questo tipo di file no.",
       "orgRestricted": "Limitato. Apri Condividi per vedere chi può aprire il link.",
       "ownerOnly": "Condiviso, ma solo tu puoi aprire il link.",
       "password": "Chiunque abbia il link e la password può aprirlo.",
@@ -530,7 +530,7 @@
     "openViewer": "Apri visualizzatore",
     "showInExplorer": "Mostra in Esplora file",
     "deleteItem": "Elimina artefatto",
-    "onlyHtmlMd": "Solo gli artefatti HTML e Markdown possono essere condivisi.",
+    "onlyHtmlMd": "Solo pagine web, documenti, fogli di calcolo, presentazioni, PDF, CSV e file di testo possono essere condivisi.",
     "sharedToast": "{mode, select, password {Condiviso (protetto da password): {url}} restricted {Condiviso (limitato): {url}} other {Condiviso: {url}}}",
     "mindsApiKey": "Imposta la tua chiave API Minds in Impostazioni per condividere gli artefatti.",
     "stoppedOnMindsHub": "Condivisione su MindsHub interrotta.",

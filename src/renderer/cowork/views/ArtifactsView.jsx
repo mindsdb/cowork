@@ -379,10 +379,11 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onOpenComments,
     onMenuOpen?.(artifact, kebabRef.current.getBoundingClientRect());
   };
 
-  // Publishable = HTML + Markdown (isPublishableArtifact — the same predicate
-  // the Publish action + backend use); those show "Unpublished", everything
-  // else "Draft". Distinct from isWebAppArtifact (icon / name-only), so a .md
-  // is a "file" (shows its extension) yet still publishable. The name renders
+  // Publishable = HTML, Markdown and files shared as a page of their own
+  // (isPublishableArtifact, the same predicate the Share action and the
+  // backend use); the badge's hover says whether an unshared one can be
+  // shared. Distinct from isWebAppArtifact (icon / name-only), so a .md is a
+  // "file" (shows its extension) yet still publishable. The name renders
   // base-truncated with the extension always visible.
   const publishable = isPublishableArtifact(artifact);
   // The owner's name, "Another member" or "Unknown owner" (ENG-2979,
@@ -643,9 +644,9 @@ function ArtifactStatusSlot({ artifact, phase, onRetry, inlineChanges = false, p
         orgMode={orgMode}
         artifact={artifact}
         phase={phase}
-        // Publishable = HTML + Markdown (isPublishableArtifact — the same
-        // predicate the Share action + backend use); those show "Not shared",
-        // everything else "Draft".
+        // Publishable = HTML, Markdown and files shared as a page of their own
+        // (isPublishableArtifact, the same predicate the Share action and the
+        // backend use); the badge's hover says whether an unshared one can be.
         publishable={isPublishableArtifact(artifact)}
         onRetry={onRetry}
         inlineChanges={inlineChanges}

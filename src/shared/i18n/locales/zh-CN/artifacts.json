@@ -55,7 +55,7 @@
     },
     "hint": {
       "notSharedYet": "尚未分享。打开后选择“分享”即可获取网页链接。",
-      "notShareable": "未分享。只有网页和 Markdown 文档可以通过链接分享。",
+      "notShareable": "未分享。网页、文档、电子表格、演示文稿、PDF、CSV 和文本文件可以通过链接分享；这种文件不能。",
       "orgRestricted": "受限。打开“分享”可查看谁能打开此链接。",
       "ownerOnly": "已分享，但只有你能打开此链接。",
       "password": "任何拥有链接和密码的人都可以打开。",
@@ -530,7 +530,7 @@
     "openViewer": "打开查看器",
     "showInExplorer": "在资源管理器中显示",
     "deleteItem": "删除产物",
-    "onlyHtmlMd": "只有 HTML 和 Markdown 产物可以分享。",
+    "onlyHtmlMd": "只有网页、文档、电子表格、演示文稿、PDF、CSV 和文本文件可以分享。",
     "sharedToast": "{mode, select, password {已分享（密码保护）— {url}} restricted {已分享（受限）— {url}} other {已分享 — {url}}}",
     "mindsApiKey": "请先在“设置”中填写你的 Minds API 密钥，然后再分享产物。",
     "stoppedOnMindsHub": "已停止在 MindsHub 上分享。",

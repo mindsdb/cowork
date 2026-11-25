@@ -55,7 +55,7 @@
     },
     "hint": {
       "notSharedYet": "まだ共有されていません。開いて「共有」を選ぶと、Webリンクを取得できます。",
-      "notShareable": "共有されていません。リンクで共有できるのはWebページとMarkdownドキュメントのみです。",
+      "notShareable": "共有されていません。リンクで共有できるのは、Webページ、ドキュメント、スプレッドシート、プレゼンテーション、PDF、CSV、テキストファイルです。この種類のファイルは共有できません。",
       "orgRestricted": "制限付きです。リンクを開ける人は「共有」から確認できます。",
       "ownerOnly": "共有済みですが、リンクを開けるのはあなただけです。",
       "password": "リンクとパスワードを知っている人なら誰でも開けます。",
@@ -530,7 +530,7 @@
     "openViewer": "ビューアで開く",
     "showInExplorer": "エクスプローラーで表示",
     "deleteItem": "アーティファクトを削除",
-    "onlyHtmlMd": "共有できるのはHTMLとMarkdownのアーティファクトのみです。",
+    "onlyHtmlMd": "共有できるのは、Webページ、ドキュメント、スプレッドシート、プレゼンテーション、PDF、CSV、テキストファイルのみです。",
     "sharedToast": "{mode, select, password {共有しました（パスワード保護） — {url}} restricted {共有しました（制限付き） — {url}} other {共有しました — {url}}}",
     "mindsApiKey": "アーティファクトを共有するには、設定でMinds APIキーを設定してください。",
     "stoppedOnMindsHub": "MindsHubでの共有を停止しました。",

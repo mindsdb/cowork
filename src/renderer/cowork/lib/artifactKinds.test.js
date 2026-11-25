@@ -4,7 +4,8 @@ import { resolve } from 'node:path';
 import { load } from 'js-yaml';
 import {
   canDownloadArtifact, canDownloadOrgDraft, canShowInBrowserTab,
-  canPreviewLocally, canPreviewOrgDraft, isImageArtifact, isInlinePreviewable,
+  canPreviewLocally, canPreviewOrgDraft, isFilePageArtifact, isImageArtifact, isInlinePreviewable,
+  isPublishableArtifact, PUBLISHABLE_FILE_EXTS,
 } from './artifactKinds';
 
 const FIXTURES = load(readFileSync(resolve(import.meta.dirname, 'artifactSurfaces.yaml'), 'utf-8'));
@@ -31,6 +32,34 @@ describe('isImageArtifact', () => {
   it('is false for null/undefined', () => {
     expect(isImageArtifact(null)).toBe(false);
     expect(isImageArtifact(undefined)).toBe(false);
+  });
+});
+
+// ENG-4687: a PDF, Word, Excel, PowerPoint, CSV or text file shares as a
+// read-only page of its own, like a web page or Markdown.
+describe('isPublishableArtifact', () => {
+  it('covers web pages, Markdown and files shared as a page, by declared ext or path', () => {
+    for (const path of ['/a/index.html', '/a/report.md', '/a/r.pdf', '/a/u.docx', '/a/m.xlsx', '/a/d.pptx', '/a/rows.csv', '/a/n.txt']) {
+      expect(isPublishableArtifact({ path })).toBe(true);
+    }
+    expect(isPublishableArtifact({ ext: '.pdf', path: '/a/report' })).toBe(true);
+  });
+
+  it('leaves out what has no page: images, code, archives', () => {
+    for (const path of ['/a/logo.png', '/a/main.py', '/a/bundle.zip']) {
+      expect(isPublishableArtifact({ path })).toBe(false);
+    }
+    expect(isPublishableArtifact(null)).toBe(false);
+  });
+
+  it('tells a file shared as a page from a page itself', () => {
+    expect(isFilePageArtifact({ path: '/a/m.xlsx' })).toBe(true);
+    expect(isFilePageArtifact({ path: '/a/index.html' })).toBe(false);
+    expect(isFilePageArtifact({ path: '/a/report.md' })).toBe(false);
+  });
+
+  it('lists the same kinds cowork-server renders a page for (file_page.PUBLISHABLE_FILE_SUFFIXES)', () => {
+    expect([...PUBLISHABLE_FILE_EXTS]).toEqual(['.pdf', '.docx', '.xlsx', '.pptx', '.csv', '.txt']);
   });
 });
 
