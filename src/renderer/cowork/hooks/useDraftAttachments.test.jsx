@@ -67,6 +67,16 @@ describe('useDraftAttachments', () => {
     expect(composer.result.current[0].map((a) => a.name)).toEqual(['clipboard_1.png']);
   });
 
+  it('counts a pasted image as work started, so the organization landing waits', async () => {
+    const { useDraftAttachments } = await load(backend);
+    const work = await import('../lib/documentWork');
+    work.__resetWorkStartedForTests();
+    const composer = mount(useDraftAttachments, 'new');
+    expect(work.hasWorkStarted()).toBe(false);
+    act(() => composer.result.current[1]([image()]));
+    expect(work.hasWorkStarted()).toBe(true);
+  });
+
   it('binds the setter to the key it was created with', async () => {
     const { useDraftAttachments, getDraftAttachments } = await load(backend);
     const composer = mount(useDraftAttachments, 'task-a');

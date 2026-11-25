@@ -13,6 +13,7 @@ import {
   DOCUMENT_ORGANIZATION_EPOCH,
 } from './organizationTransitionState';
 import { storageKeyForOrganizationIdentity } from './organizationCacheIdentity';
+import { markWorkStarted } from './documentWork';
 
 const BASE_KEY = 'anton.composerDrafts.attachments';
 const CACHE_VERSION = 1;
@@ -309,6 +310,8 @@ export function setDraftAttachments(key, list) {
   const next = Array.isArray(list) ? list.filter(Boolean) : EMPTY;
   // Unchanged: the Code composer writes its draft on every keystroke.
   if (next.length === previous.length && next.every((a, i) => a === previous[i])) return;
+  // A paste fires no input event, so hold off the organization landing reload here.
+  if (next.length) markWorkStarted();
   touched.add(key);
   dirty.add(key);
   values.delete(key); // re-insert so iteration order stays recency-ordered
