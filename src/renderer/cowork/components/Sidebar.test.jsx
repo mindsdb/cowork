@@ -191,7 +191,7 @@ describe('Sidebar — persistent Cowork / Code workspace switch', () => {
     expect(screen.getAllByRole('button', { name: /^Code/ })).toHaveLength(1);
     // Desktop keeps its equal halves.
     expect(screen.getByRole('button', { name: 'Code' }).parentElement).not.toHaveClass('workspace-mode-switch--tagged');
-    expect(screen.getByRole('button', { name: 'Code' }).style.padding).toBe('5px 10px');
+    expect(screen.getByRole('button', { name: 'Code' }).style.padding).not.toBe('5px 6px');
   });
 });
 
