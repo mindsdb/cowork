@@ -5645,7 +5645,7 @@ function AppCore() {
       onHide={gallery.hide}
       onStart={gallery.start}
       filesAttached={composerAttachments.length > 0}
-      setupNeeded={(health.config_ready ?? settings.configReady) === false}
+      setupNeeded={(health.config_ready ?? settings.configReady) !== true}
       onOwnWork={() => {
         gallery.hide('own_work');
         setOwnWorkRequest(Date.now());
@@ -7603,6 +7603,7 @@ function AppCore() {
             onOwnWorkRequestConsumed={() => setOwnWorkRequest(0)}
             galleryPick={gallery.pick}
             onGalleryPickConsumed={gallery.clearPick}
+            onGalleryPickHeld={gallery.holdPick}
             onOpenGallery={gallery.available && !galleryShown ? () => gallery.show('button') : null}
             codingModeEnabled={false}
           />

@@ -135,6 +135,12 @@ export function useHomeGallery({
     hide('started');
   }, [hide]);
 
+  // A pick Home could not take in the visit it was clicked in keeps its
+  // example but no longer sends by itself.
+  const holdPick = useCallback(() => {
+    setPick((current) => (current?.send ? { ...current, send: false } : current));
+  }, []);
+
   // A task of the person's own while the column is open (typed in Home's
   // box, which moves them to the task) passes it over: it folds, and counts
   // as settled like a fold, so returning to Home or reloading does not bring
@@ -163,6 +169,7 @@ export function useHomeGallery({
     start,
     pick,
     clearPick: () => setPick(null),
+    holdPick,
     focusSearch,
     place,
     setPlace,

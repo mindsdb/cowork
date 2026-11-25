@@ -291,6 +291,8 @@ export default function HomeView({
   // placed like a picked example, then reported consumed.
   galleryPick = null,
   onGalleryPickConsumed,
+  // Turns a waiting one-click pick into a plain prefill.
+  onGalleryPickHeld,
   // Opens the Use Case Gallery column; null while it is open or not offered.
   onOpenGallery = null,
   codingModeEnabled = false,
@@ -676,6 +678,21 @@ export default function HomeView({
   // the box. One the click said to send (galleryRules.startsNow) is then sent
   // as if Send were pressed, on its own: without the page open in the browser
   // beside Home. The person chose it, so it replaces what is there.
+  // A one-click send belongs to the visit it was clicked in. A pick still
+  // waiting when setup blocks Home, or when the person leaves it, only fills
+  // the box once Home can take it: the send needs a fresh click.
+  const waitingPickRef = useRef(null);
+  waitingPickRef.current = galleryPick;
+  const holdPickRef = useRef(onGalleryPickHeld);
+  holdPickRef.current = onGalleryPickHeld;
+  useEffect(() => {
+    if (galleryPick?.send && blocked) onGalleryPickHeld?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [galleryPick, blocked]);
+  useEffect(() => () => {
+    if (waitingPickRef.current?.send) holdPickRef.current?.();
+  }, []);
+
   useEffect(() => {
     if (!galleryPick || !composerUsable || codingModeEnabled || !onPrefill) return;
     const { entry } = galleryPick;
@@ -683,8 +700,9 @@ export default function HomeView({
     setTaskMode(entry.mode);
     setPickedSample(entry.sample);
     setHandoffHint(false);
-    // Files attached since the click would ride along; the example then waits.
-    const send = Boolean(galleryPick.send) && !(attachments?.length);
+    // Files attached since the click would ride along, and a provider not yet
+    // known to be set up may not be; the example then waits for Send.
+    const send = Boolean(galleryPick.send) && configReady === true && !(attachments?.length);
     autoSendRef.current = send ? entry.sample.prompt : null;
     setGalleryHint(send ? null : entry.title);
     trackExamplePicked(entry.id, 'gallery');

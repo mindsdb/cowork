@@ -4,7 +4,7 @@
 // waits, editable, for them to press Send.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useState } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import HomeView from './HomeView';
 import { findSample } from '../lib/consoleHandoff';
@@ -57,6 +57,40 @@ function Home({ onSend, onOpenGallery = null, ownWorkRequest = 0, attachments = 
     />
   );
 }
+
+// App's side of a pick: it outlives Home, which can be left and come back.
+let setHost;
+function Host({ onSend }) {
+  const [state, setState] = useState({ pick: null, home: true, configReady: true, serverOnline: true, skipIntro: true });
+  const [prefill, setPrefill] = useState(null);
+  setHost = (over) => setState((s) => ({ ...s, ...over }));
+  if (!state.home) return null;
+  return (
+    <HomeView
+      onSend={onSend}
+      attachments={[]}
+      activeTasks={[]}
+      onSelectTask={vi.fn()}
+      onClearActive={vi.fn()}
+      project={{ name: 'general' }}
+      projects={[{ name: 'general' }]}
+      models={[]}
+      onProjectChange={vi.fn()}
+      onModelChange={vi.fn()}
+      configReady={state.configReady}
+      onOpenSettings={vi.fn()}
+      serverOnline={state.serverOnline}
+      skipIntro={state.skipIntro}
+      prefill={prefill}
+      onPrefill={(text, select, send) => setPrefill({ text, bump: Date.now(), select, send })}
+      onPrefillConsumed={() => setPrefill(null)}
+      galleryPick={state.pick}
+      onGalleryPickConsumed={() => setState((s) => ({ ...s, pick: null }))}
+      onGalleryPickHeld={() => setState((s) => ({ ...s, pick: s.pick && { ...s.pick, send: false } }))}
+    />
+  );
+}
+const tryPick = () => ({ entry: { ...entry, start: 'send' }, send: true, bump: Date.now() });
 
 beforeEach(() => {
   window.localStorage.clear();
@@ -125,6 +159,56 @@ describe('HomeView gallery start', () => {
     const onSend = vi.fn(async () => true);
     render(<Home onSend={onSend} />);
     setPickDirectly({ entry: { ...entry, needs: 'Nothing', start: 'send' }, send: false, bump: Date.now() });
+    await screen.findByDisplayValue(found.sample.prompt);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('only fills the box when the person left Home before a queued Try could send', async () => {
+    const onSend = vi.fn(async () => true);
+    render(<Host onSend={onSend} />);
+    // Clicked while Home is still starting up, so it cannot take it yet.
+    act(() => setHost({ home: false }));
+    act(() => setHost({ home: true, skipIntro: false, serverOnline: false }));
+    act(() => setHost({ pick: tryPick() }));
+    act(() => setHost({ home: false }));
+    act(() => setHost({ home: true, skipIntro: true, serverOnline: true }));
+    await screen.findByDisplayValue(found.sample.prompt);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('still sends a queued Try for a person who stays on Home until it can', async () => {
+    const onSend = vi.fn(async () => true);
+    render(<Host onSend={onSend} />);
+    act(() => setHost({ home: false }));
+    act(() => setHost({ home: true, skipIntro: false, serverOnline: false }));
+    act(() => setHost({ pick: tryPick() }));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(onSend).not.toHaveBeenCalled();
+    act(() => setHost({ serverOnline: true }));
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1), { timeout: 8000 });
+  }, 10000);
+
+  it('only fills the box when setup turned out to be needed after the click, once setup is done', async () => {
+    const onSend = vi.fn(async () => true);
+    render(<Host onSend={onSend} />);
+    // Clicked while Home is still loading and readiness is not known, then
+    // reported missing; the person sets a provider up and Home finishes.
+    act(() => setHost({ home: false }));
+    act(() => setHost({ home: true, skipIntro: false, serverOnline: false, configReady: undefined }));
+    act(() => setHost({ pick: tryPick() }));
+    act(() => setHost({ configReady: false }));
+    act(() => setHost({ configReady: true, serverOnline: true }));
+    await screen.findByDisplayValue(found.sample.prompt, {}, { timeout: 8000 });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(onSend).not.toHaveBeenCalled();
+  }, 10000);
+
+  it('does not send by itself while provider readiness is still unknown', async () => {
+    const onSend = vi.fn(async () => true);
+    render(<Host onSend={onSend} />);
+    act(() => setHost({ configReady: undefined, pick: tryPick() }));
     await screen.findByDisplayValue(found.sample.prompt);
     await new Promise((r) => setTimeout(r, 50));
     expect(onSend).not.toHaveBeenCalled();

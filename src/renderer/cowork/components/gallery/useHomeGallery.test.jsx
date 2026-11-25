@@ -94,6 +94,15 @@ describe('useHomeGallery', () => {
     expect(trackGalleryExampleStarted).toHaveBeenLastCalledWith(entry.id, true);
   });
 
+  it('keeps a held pick but stops it sending by itself', async () => {
+    const { result } = mount();
+    await waitFor(() => expect(result.current.open).toBe(true));
+    const entry = result.current.manifest.entries[0];
+    act(() => result.current.start(entry, true));
+    act(() => result.current.holdPick());
+    expect(result.current.pick).toMatchObject({ entry, send: false });
+  });
+
   it('opens from the button with the search focused', async () => {
     window.localStorage.setItem('anton.gallery.settled', '1');
     const { result } = mount();
