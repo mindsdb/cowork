@@ -142,8 +142,11 @@ export function initializeEventFeeder(): (text: string) => boolean {
       started = true;
       if (text.startsWith('\uFEFF')) text = text.slice(1);
     }
-    if (skipLf && text.startsWith('\n')) text = text.slice(1);
-    if (text !== '') skipLf = false;
+    // The LF of a CRLF split across chunks is consumed once, then the flag clears.
+    if (skipLf && text !== '') {
+      skipLf = false;
+      if (text.startsWith('\n')) text = text.slice(1);
+    }
     let start = 0;
     const ending = /\r\n|\n|\r/g;
     for (let match = ending.exec(text); match; match = ending.exec(text)) {
@@ -249,6 +252,7 @@ export async function registerClient(
       response_types: ['code'],
       token_endpoint_auth_method: requested,
     }),
+    decodeBody: (status) => status === 200 || status === 201,
   });
   if (response.status !== 200 && response.status !== 201) {
     throw new McpOAuthError('registration_failed', `registration answered ${response.status}`);
@@ -539,7 +543,14 @@ function scopesFrom(metadata: { scopes_supported?: unknown } | null): string | u
 /* A JSON object from `url` when it answers 200 with one, else null. */
 async function optionalJson(url: string, fetchFn: GuardedFetch): Promise<Record<string, unknown> | null> {
   // Only a 200 body is read; an undecodable error page still means "none there".
-  const response = await fetchFn(url, { headers: { accept: 'application/json' }, decodeBody: (status) => status === 200 });
+  let response: Response;
+  try {
+    response = await fetchFn(url, { headers: { accept: 'application/json' }, decodeBody: (status) => status === 200 });
+  } catch (err) {
+    // An undecodable 200 body is an unusable document; transport, policy, timeout and size errors propagate.
+    if (err instanceof GuardedFetchError && err.code === 'bad_response') return null;
+    throw err;
+  }
   if (response.status !== 200) return null;
   try {
     const parsed: unknown = await response.json();

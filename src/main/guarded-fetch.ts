@@ -293,19 +293,34 @@ function isEncoded(res: IncomingMessage): boolean {
 
 /* Decodes a body the server compressed despite `accept-encoding: identity`.
    An encoding this cannot decode is an error, never raw bytes read as text. */
+/* What node:zlib returns with `info: true`; its typings omit this overload. */
+type DecodeResult = { buffer: Buffer; engine: { bytesWritten: number } };
+
 function decodeBody(res: IncomingMessage, body: Buffer, maxBytes: number): Buffer {
   if (!isEncoded(res) || NO_BODY_STATUSES.has(res.statusCode ?? 0)) return body;
   const encoding = contentEncoding(res);
-  const options = { maxOutputLength: maxBytes };
+  const options = { maxOutputLength: maxBytes, info: true as const };
   try {
+    let result: DecodeResult | undefined;
     switch (encoding) {
       case 'gzip':
       case 'x-gzip':
-        return gunzipSync(body, options);
+        result = gunzipSync(body, options) as unknown as DecodeResult;
+        break;
       case 'deflate':
-        return inflateSync(body, options);
+        result = inflateSync(body, options) as unknown as DecodeResult;
+        break;
       case 'br':
-        return brotliDecompressSync(body, options);
+        result = brotliDecompressSync(body, options) as unknown as DecodeResult;
+        break;
+    }
+    if (result) {
+      // The decoder may stop early; unread bytes mean a malformed body. Only
+      // zero padding after a gzip member is tolerated.
+      const tail = body.subarray(result.engine.bytesWritten);
+      const padding = encoding !== 'deflate' && encoding !== 'br' && tail.every((byte) => byte === 0);
+      if (tail.length > 0 && !padding) throw new Error('trailing bytes');
+      return result.buffer;
     }
   } catch (err) {
     if ((err as { code?: string }).code === 'ERR_BUFFER_TOO_LARGE') {

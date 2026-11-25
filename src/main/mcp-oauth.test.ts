@@ -595,6 +595,20 @@ describe('discoverMcpAuth through the guarded fetch', () => {
     expect(await discoverMcpAuth(SERVER, fetchFn)).toEqual({ needsLogin: false });
   });
 
+  it('settles an open stream whose CRLF terminator arrives as CR, LF, LF chunks', async () => {
+    const { fetchFn } = guardedFetch({ 'content-type': 'text/event-stream' }, ['data: ' + RESULT + '\r', '\n', '\n'], true);
+    expect(await discoverMcpAuth(SERVER, fetchFn)).toEqual({ needsLogin: false });
+    const feed = initializeEventFeeder();
+    expect(feed('data: ' + RESULT + '\r')).toBe(false);
+    expect(feed('\n')).toBe(false);
+    expect(feed('\n')).toBe(true);
+  });
+
+  it('does not settle an open stream that never sends the blank line', async () => {
+    const { fetchFn } = guardedFetch({ 'content-type': 'text/event-stream' }, ['data: ' + RESULT + '\r', '\n'], true);
+    expect(await failure(discoverMcpAuth(SERVER, fetchFn))).toBe('timeout');
+  });
+
   it('strips only one byte order mark and only at the start', () => {
     const feed = initializeEventFeeder();
     expect(feed('﻿﻿data: ' + RESULT + '\n\n')).toBe(false);
@@ -618,6 +632,22 @@ describe('discoverMcpAuth through the guarded fetch', () => {
         resource: SERVER,
         authorizationServer: { tokenEndpoint: 'https://mcp.example.com/token' },
       });
+    });
+
+    it('treats an undecodable metadata 200 as no document and tries the next candidate', async () => {
+      const first = guardedFetch({ 'www-authenticate': 'Bearer' }, [], false, 401).fetchFn;
+      const broken = guardedFetch(junk, ['junk'], false, 200).fetchFn;
+      let calls = 0;
+      const fetchFn: GuardedFetch = (input, init) => (calls++ === 0 ? first(input, init) : broken(input, init));
+      const found = await discoverMcpAuth(SERVER, fetchFn);
+      expect(found).toMatchObject({ needsLogin: true, authorizationServer: { tokenEndpoint: 'https://mcp.example.com/token' } });
+      expect(calls).toBeGreaterThan(2);
+    });
+
+    it.each([403, 500])('maps an undecodable registration %i to registration_failed', async (status) => {
+      const { fetchFn } = guardedFetch(junk, ['junk'], false, status);
+      const as = { ...AS, registrationEndpoint: 'https://auth.example.com/register' };
+      expect(await failure(registerClient(as, 'http://127.0.0.1:47295/callback', fetchFn))).toBe('registration_failed');
     });
 
     it('keeps a token endpoint 401 as grant_refused', async () => {

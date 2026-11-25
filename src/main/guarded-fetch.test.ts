@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
-import { gzipSync } from 'node:zlib';
+import { brotliCompressSync, deflateSync, gzipSync } from 'node:zlib';
 import * as http from 'node:http';
 import * as https from 'node:https';
 import * as net from 'node:net';
@@ -314,6 +314,21 @@ describe('createGuardedFetch', () => {
     it.each(['compress', 'gzip, br', 'zstd'])('rejects the encoding %s as bad_response', async (encoding) => {
       const { fetchFn } = guarded(encoded(encoding, Buffer.from(text)));
       expect(await refusal(fetchFn('https://mcp.example.com/'))).toBe('bad_response');
+    });
+
+    it.each([
+      ['gzip', gzipSync],
+      ['deflate', deflateSync],
+      ['br', brotliCompressSync],
+    ] as const)('rejects trailing bytes after a %s stream as bad_response', async (encoding, compress) => {
+      const body = Buffer.concat([compress(text), Buffer.from([0, 9, 9])]);
+      const { fetchFn } = guarded(encoded(encoding, body));
+      expect(await refusal(fetchFn('https://mcp.example.com/'))).toBe('bad_response');
+    });
+
+    it('tolerates zero padding after a gzip member', async () => {
+      const { fetchFn } = guarded(encoded('gzip', Buffer.concat([gzipSync(text), Buffer.alloc(4)])));
+      expect(await (await fetchFn('https://mcp.example.com/')).text()).toBe(text);
     });
 
     it('rejects a corrupt gzip body as bad_response', async () => {
