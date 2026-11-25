@@ -701,6 +701,7 @@
       "needsClientId": "Ce serveur a besoin d'un ID client. Ajoutez-le dans Avancé.",
       "timeout": "Le serveur a mis trop de temps à répondre. Réessayez.",
       "loginFailed": "La connexion n'a pas abouti : {reason}",
+      "stoppedWaiting": "L'attente de la connexion a été arrêtée. Si vous l'avez déjà terminée, le serveur apparaît dans vos connexions.",
       "unavailable": "Les serveurs MCP par URL ne sont pas disponibles pour le moment. Redémarrez l'application et réessayez.",
       "keychain": "Le trousseau du système n'est pas disponible, donc la connexion ne peut pas être enregistrée en sécurité.",
       "serverChanged": "L'application a changé de compte ou redémarré pendant la connexion. Réessayez.",

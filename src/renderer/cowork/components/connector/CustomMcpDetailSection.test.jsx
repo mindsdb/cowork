@@ -8,8 +8,10 @@ const bridge = vi.hoisted(() => ({
   customMcpSetTools: vi.fn(),
   customMcpReconnect: vi.fn(),
 }));
-const shell = vi.hoisted(() => ({ isWeb: false }));
-vi.mock('../../../platform/host', () => ({ host: { ...bridge, get isWeb() { return shell.isWeb; } } }));
+const shell = vi.hoisted(() => ({ isWeb: false, isMobileShell: false }));
+vi.mock('../../../platform/host', () => ({
+  host: { ...bridge, get isWeb() { return shell.isWeb; }, get isMobileShell() { return shell.isMobileShell; } },
+}));
 
 import CustomMcpDetailSection from './CustomMcpDetailSection';
 
@@ -34,9 +36,19 @@ beforeEach(() => {
 afterEach(() => {
   for (const fn of Object.values(bridge)) fn.mockReset();
   shell.isWeb = false;
+  shell.isMobileShell = false;
 });
 
 describe('CustomMcpDetailSection', () => {
+  it('offers no Reconnect in the mobile app, whose webview opens no sign-in pop-up', async () => {
+    shell.isWeb = true;
+    shell.isMobileShell = true;
+    renderSection();
+
+    expect(await screen.findByRole('button', { name: 'Disconnect' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Reconnect' })).toBeNull();
+  });
+
   it('shows the held label and URL and every tool with its switch', async () => {
     renderSection();
 

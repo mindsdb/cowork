@@ -144,7 +144,7 @@ describe('the status poll', () => {
     await vi.waitFor(() => expect(readStatus).toHaveBeenCalledTimes(1));
     cancelCustomMcpSignIn();
 
-    expect(await polling).toMatchObject({ ok: false, code: 'login_failed' });
+    expect(await polling).toMatchObject({ ok: false, code: 'stopped_waiting' });
     expect(popup.close).toHaveBeenCalled();
     answer({ ok: true, data: { status: 'success' } });
     expect(readStatus).toHaveBeenCalledTimes(1);

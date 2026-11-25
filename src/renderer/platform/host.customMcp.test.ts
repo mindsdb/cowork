@@ -168,11 +168,37 @@ describe('custom MCP on web', () => {
     expect(calls).toHaveLength(2);
 
     await host.oauthCancel();
-    expect(await connecting).toMatchObject({ ok: false, code: 'login_failed' });
+    expect(await connecting).toMatchObject({ ok: false, code: 'stopped_waiting' });
     expect(calls[1].signal.aborted).toBe(false);
     await vi.advanceTimersByTimeAsync(30_000);
     expect(calls[1].signal.aborted).toBe(true);
-    expect(calls).toHaveLength(2);
+    // The one status read after Cancel, for a sign-in the finish page already saved.
+    expect(calls.map((call) => call.path)).toEqual(['/connect', '/status?state=st', '/status?state=st']);
+  });
+
+  it('announces a sign-in the finish page saved before Cancel, so the list shows it', async () => {
+    vi.spyOn(window, 'open').mockImplementation(() => fakePopup() as unknown as Window);
+    let statusReads = 0;
+    answer = (call) => {
+      if (call.path === '/connect') return { status: 200, body: { status: 'pending', auth_url: 'https://auth.example.com/a', state: 'st', name: NAME } };
+      statusReads += 1;
+      return statusReads === 1 ? 'hang' : { status: 200, body: { status: 'success', name: NAME, label: 'Tracker', server_url: URL_, tools_on: 1, tools_unavailable: false } };
+    };
+    const changed = vi.fn();
+    window.addEventListener('anton:connections-changed', changed);
+    try {
+      vi.useFakeTimers();
+      const connecting = host.customMcpConnect({ label: 'Tracker', url: URL_, confirmedLoginHosts: ['auth.example.com'] });
+      await untilSent(1);
+      await vi.advanceTimersByTimeAsync(3000);
+      await untilSent(2);
+
+      await host.oauthCancel();
+      expect(await connecting).toMatchObject({ ok: false, code: 'stopped_waiting' });
+      await vi.waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
+    } finally {
+      window.removeEventListener('anton:connections-changed', changed);
+    }
   });
 
   it('reads the tools, falls back to the stored ones, and saves with their revision', async () => {
@@ -239,7 +265,7 @@ describe('custom MCP on web', () => {
       const connecting = host.customMcpConnect({ label: 'Tracker', url: URL_, confirmedLoginHosts: ['auth.example.com'] });
       await untilSent(1);
       await host.oauthCancel();
-      expect(await connecting).toMatchObject({ ok: false, code: 'login_failed' });
+      expect(await connecting).toMatchObject({ ok: false, code: 'stopped_waiting' });
       expect(changed).not.toHaveBeenCalled();
 
       finishConnect({ status: 200, body: { status: 'connected', name: NAME, label: 'Tracker', server_url: URL_, tools_on: 1, tools_unavailable: false } });
@@ -265,7 +291,7 @@ describe('custom MCP on web', () => {
     await host.oauthCancel();
     finishConnect();
 
-    expect(await connecting).toMatchObject({ ok: false, code: 'login_failed' });
+    expect(await connecting).toMatchObject({ ok: false, code: 'stopped_waiting' });
     expect(popup.location.href).toBe('');
     expect(calls.map((call) => call.path)).toEqual(['/connect']);
   });

@@ -14,7 +14,8 @@ export const CUSTOM_MCP_POLL_MS = 3000;
 // Inside auth's 20 minute pending sign-in, long enough for a slow login page.
 export const CUSTOM_MCP_SIGN_IN_MS = 10 * 60 * 1000;
 
-const CANCELLED = Object.freeze({ ok: false, code: 'login_failed', reason: 'The connection was cancelled.' });
+// Cancel only stops this tab waiting: a sign-in the finish page already saved still stands.
+const CANCELLED = Object.freeze({ ok: false, code: 'stopped_waiting', reason: '' });
 // Reading the status does not consume it, so a gateway or throttling answer is retried too.
 const TRANSIENT = new Set(['timeout', 'unreachable', 'http_429', 'http_502', 'http_503', 'http_504']);
 

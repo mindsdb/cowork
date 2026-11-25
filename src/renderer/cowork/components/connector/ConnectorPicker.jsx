@@ -349,8 +349,9 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
 
   // The host says whether custom MCP servers can be added here: on desktop main,
   // on the web cowork-server's config. Asked on each open, hidden until it answers.
-  // Desktop keeps them out of org mode, where its server refuses them.
-  const offersMcpUrl = Boolean(onAddMcpUrl) && (host.isWeb || !orgMode);
+  // Desktop keeps them out of org mode, where its server refuses them. The mobile
+  // app's webview opens no sign-in pop-up, so it offers none.
+  const offersMcpUrl = Boolean(onAddMcpUrl) && (host.isWeb || !orgMode) && !host.isMobileShell;
   const [mcpUrlAllowed, setMcpUrlAllowed] = useState(false);
   useEffect(() => {
     if (!open || !offersMcpUrl || typeof host.customMcpAvailable !== 'function') return undefined;

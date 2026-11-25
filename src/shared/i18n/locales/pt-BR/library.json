@@ -701,6 +701,7 @@
       "needsClientId": "Este servidor precisa de um ID do cliente. Adicione em Avançado.",
       "timeout": "O servidor demorou demais para responder. Tente de novo.",
       "loginFailed": "O login não terminou: {reason}",
+      "stoppedWaiting": "Paramos de esperar o login. Se você já o concluiu, o servidor aparece nas suas conexões.",
       "unavailable": "Servidores MCP por URL não estão disponíveis agora. Reinicie o app e tente de novo.",
       "keychain": "O chaveiro do sistema não está disponível, então a conexão não pode ser guardada com segurança.",
       "serverChanged": "O app trocou de conta ou reiniciou durante o login. Tente de novo.",

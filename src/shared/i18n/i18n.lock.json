@@ -103529,6 +103529,40 @@
       "text": "d86b5e493a8e"
     }
   },
+  "library:customMcp.error.stoppedWaiting": {
+    "de": {
+      "from": "9ee94efd2a5f",
+      "text": "c9dd5eb3c8bf"
+    },
+    "es": {
+      "from": "9ee94efd2a5f",
+      "text": "efa455f115bf"
+    },
+    "fr": {
+      "from": "9ee94efd2a5f",
+      "text": "04db8a6f42af"
+    },
+    "it": {
+      "from": "9ee94efd2a5f",
+      "text": "8b5a844e7f15"
+    },
+    "ja": {
+      "from": "9ee94efd2a5f",
+      "text": "42d1fdd6ad3c"
+    },
+    "ko": {
+      "from": "9ee94efd2a5f",
+      "text": "8dcd8d342a47"
+    },
+    "pt-BR": {
+      "from": "9ee94efd2a5f",
+      "text": "8999b0a0da27"
+    },
+    "zh-CN": {
+      "from": "9ee94efd2a5f",
+      "text": "06e040532484"
+    }
+  },
   "library:customMcp.error.timeout": {
     "de": {
       "from": "d214f25ff6e6",

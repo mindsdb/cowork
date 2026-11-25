@@ -1301,14 +1301,22 @@ function connectionPath(id: string): string {
 }
 
 /** The sign-in after a start or reconnect answered `pending`: the login page
- *  in the pop-up, then the status poll. Closes the pop-up whatever the end. */
+ *  in the pop-up, then the status poll. Closes the pop-up whatever the end.
+ *  After Cancel the status is read once more: a sign-in the finish page saved
+ *  before it is announced, so the connections list shows it as after a success. */
 async function customMcpWebSignIn(signIn: CustomMcpSignIn, started: { auth_url?: unknown; state?: unknown }): Promise<CustomMcpWebAnswer> {
   try {
     if (typeof started.state !== 'string' || !started.state) return { ok: false, code: 'unreadable_response', reason: '' };
     const opened = openLoginPage(signIn, started.auth_url);
     if (!opened.ok) return opened;
     const query = `/status?state=${encodeURIComponent(started.state)}`;
-    return await pollCustomMcpSignIn(signIn, () => customMcpRequest('GET', query, CUSTOM_MCP_LISTING_TIMEOUT_MS));
+    const finished = await pollCustomMcpSignIn(signIn, () => customMcpRequest('GET', query, CUSTOM_MCP_LISTING_TIMEOUT_MS));
+    if (signIn.cancelled) {
+      void customMcpRequest('GET', query, CUSTOM_MCP_LISTING_TIMEOUT_MS).then((late) => {
+        if (late.ok && late.data?.status === 'success') window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+      });
+    }
+    return finished;
   } finally {
     endCustomMcpSignIn(signIn);
   }
