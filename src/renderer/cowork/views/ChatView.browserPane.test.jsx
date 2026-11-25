@@ -799,6 +799,19 @@ describe("ChatView shared browser pane, shown only when the person is needed (th
     expect(within(waitStrip()).queryByRole('button')).toBeNull();
   });
 
+  /* A hand-over whose prompt doesn't match the two-paragraph shape anton
+     writes (changed wording, a blank reason line) still carries the
+     `browser:` id: the message and the button must agree it is a hand-over,
+     or the strip would send the person to a chat with nothing for them. */
+  it("at 800px a hand-over card whose prompt doesn't parse still gets the hand-over message, with no button", async () => {
+    const HAND_OVER_UNPARSEABLE = { ...HAND_OVER, data: { ...HAND_OVER.data, prompt: 'Your turn on example.com' } };
+    setWidth(800);
+    render(<ChatView task={task('ov-2c', [asked, live(HAND_OVER_UNPARSEABLE)])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    expect(waitStrip()?.querySelector('p')?.textContent).toBe('Your turn on a new tab: Your turn on example.com.');
+    expect(within(waitStrip()).queryByRole('button')).toBeNull();
+  });
+
   it('at 800px a watching hand-over card says the agent carries on by itself', async () => {
     const HAND_OVER_WATCHING = {
       ...HAND_OVER,

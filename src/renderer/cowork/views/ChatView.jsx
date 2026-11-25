@@ -2697,15 +2697,19 @@ export default function ChatView({
   const browserWaitNeed = browserPaneOverlay ? openNeeds(streamingMsg?.steps)[0] || null : null;
   /* Whether the step is the person's turn in the browser, by its id prefix
      (isPersonsBrowserTurn's own test), not by whether `openNeed` managed to
-     parse its prompt into a hand-over: the button must stay off a hand-over
-     even when the prompt doesn't match the shape anton writes (changed
-     wording, a multi-line reason), where `openNeed` falls back to `kind:
-     'question'`. */
+     parse its prompt into a hand-over: both the message and the button must
+     agree on this even when the prompt doesn't match the shape anton writes
+     (changed wording, a multi-line reason), where `openNeed` falls back to
+     `kind: 'question'`. Disagreeing would tell the person to go to a chat
+     that has nothing for them (the question wording, no button) or hand them
+     a button that takes the page away mid hand-over. */
   const browserWaitIsHandOver = Boolean(browserWaitNeed) && /^browser:(?!approve:)/.test(browserWaitNeed.questionId);
   const browserWaitMessage = !browserWaitNeed ? ''
-    : browserWaitNeed.kind === 'handOver'
+    : browserWaitIsHandOver
     // The page's own host leads the reason, so a lookalike page can't pass
     // its words off as the app's (LocalBrowserStage's own hint, the same way).
+    // `site`/`watching` are unset when the prompt didn't parse; `text` is
+    // still the card's own text either way (its full prompt, in that case).
     ? (browserWaitNeed.watching
       ? tc('browser.overlayHandOverWatching', { site: browserWaitNeed.site || tc('browser.aNewTab'), reason: browserWaitNeed.text, agent: harnessLabel(task?.harness) || 'Anton' })
       : tc('browser.overlayHandOver', { site: browserWaitNeed.site || tc('browser.aNewTab'), reason: browserWaitNeed.text }))
