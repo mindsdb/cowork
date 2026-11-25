@@ -589,6 +589,18 @@ describe('discoverMcpAuth through the guarded fetch', () => {
     expect(await discoverMcpAuth(SERVER, fetchFn)).toEqual({ needsLogin: false });
   });
 
+  it('refuses a finite event stream that starts with two byte order marks, like an open one', async () => {
+    const text = '﻿﻿data: ' + RESULT + '\n\n';
+    const finite = replay({ [`POST ${SERVER}`]: { status: 200, headers: { 'content-type': 'text/event-stream' }, text } });
+    expect(await failure(discoverMcpAuth(SERVER, finite.fetchFn))).toBe('not_mcp');
+  });
+
+  it('accepts a finite event stream that starts with one byte order mark', async () => {
+    const text = '﻿data: ' + RESULT + '\n\n';
+    const finite = replay({ [`POST ${SERVER}`]: { status: 200, headers: { 'content-type': 'text/event-stream' }, text } });
+    expect(await discoverMcpAuth(SERVER, finite.fetchFn)).toEqual({ needsLogin: false });
+  });
+
   it('settles when the byte order mark is split across chunks', async () => {
     const bytes = Buffer.from('﻿data: ' + RESULT + '\n\n');
     const { fetchFn } = guardedFetch({ 'content-type': 'text/event-stream' }, [bytes.subarray(0, 2), bytes.subarray(2)], true);

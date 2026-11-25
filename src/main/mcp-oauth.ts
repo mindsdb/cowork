@@ -198,8 +198,13 @@ export async function discoverMcpAuth(serverUrl: string, fetchFn: GuardedFetch):
   });
   if (probe.ok) {
     // A 200 alone proves nothing: web pages and plain APIs answer it too.
-    const body = await probe.text();
-    if (!isInitializeAnswer(probe.headers.get('content-type'), body)) {
+    const contentType = probe.headers.get('content-type');
+    // Response.text() strips a leading BOM; the SSE feeder strips one itself, so
+    // keep the BOM here to treat the finite and open-stream paths alike.
+    const body = isEventStream(contentType)
+      ? new TextDecoder('utf-8', { ignoreBOM: true }).decode(await probe.arrayBuffer())
+      : await probe.text();
+    if (!isInitializeAnswer(contentType, body)) {
       throw new McpOAuthError('not_mcp', 'the server answered 200 but not with an MCP response');
     }
     return { needsLogin: false };
