@@ -122,23 +122,39 @@ function isMissing(error: unknown): boolean {
 }
 
 /* The file `requestUrl` names inside `root`, the real path of the target's
- * folder. A path that leaves the folder, or a link that resolves outside it,
- * is refused; only a missing path reads as not found, and any other failure
- * to read the disk is thrown. */
+ * folder. The lookup walks the folder one listing at a time and matches each
+ * request segment against the names the disk lists, so every path it builds
+ * comes from those names and never from the request: a `..` segment matches
+ * no listed name and is refused outright, and a link that resolves outside
+ * the folder is refused. Only a missing path reads as not found; any other
+ * failure to read the disk is thrown. */
 export async function lookUpLintFile(root: string, requestUrl: string): Promise<LintFileLookup> {
   const url = new URL(requestUrl);
   if (url.host !== LINT_HOST) return { refused: 'outside-folder' };
-  let relative: string;
+  let segments: string[];
   try {
-    relative = decodeURIComponent(url.pathname);
+    segments = decodeURIComponent(url.pathname).split('/').filter((segment) => segment !== '');
   } catch {
     return { refused: 'not-found' };
   }
-  const candidate = path.join(root, relative);
-  if (!isInside(root, candidate)) return { refused: 'outside-folder' };
+  if (segments.some((segment) => segment === '..' || segment === '.')) return { refused: 'outside-folder' };
+  if (segments.length === 0) return { refused: 'not-found' };
+  let listed = root;
+  for (const segment of segments) {
+    let names: string[];
+    try {
+      names = await fs.promises.readdir(listed);
+    } catch (error) {
+      if (isMissing(error)) return { refused: 'not-found' };
+      throw error;
+    }
+    const name = names.find((candidate) => candidate === segment);
+    if (name === undefined) return { refused: 'not-found' };
+    listed = path.join(listed, name);
+  }
   let real: string;
   try {
-    real = await fs.promises.realpath(candidate);
+    real = await fs.promises.realpath(listed);
   } catch (error) {
     if (isMissing(error)) return { refused: 'not-found' };
     throw error;

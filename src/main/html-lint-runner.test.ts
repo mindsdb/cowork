@@ -394,6 +394,25 @@ describe('the lint scheme: files from the target folder only', () => {
     expect((await serve(`${PAGE_DIR_URL}${climb}`)).status).toBe(403);
   });
 
+  it('refuses an encoded dot-dot segment even where it would stay inside the folder', async () => {
+    expect(await lookUpLintFile(folder, `${PAGE_DIR_URL}assets%2F..%2Fdata.json`)).toEqual({ refused: 'outside-folder' });
+    expect(await lookUpLintFile(folder, `${PAGE_DIR_URL}%2E%2E%2Fdata.json`)).toEqual({ refused: 'outside-folder' });
+  });
+
+  it('serves a name that only contains dots, and refuses a name the folder does not list', async () => {
+    fs.writeFileSync(path.join(folder, 'a..b.js'), 'x');
+
+    expect(await lookUpLintFile(folder, `${PAGE_DIR_URL}a..b.js`)).toEqual({ file: path.join(folder, 'a..b.js') });
+    expect(await lookUpLintFile(folder, `${PAGE_DIR_URL}assets%5C..%5Cdata.json`)).toEqual({ refused: 'not-found' });
+  });
+
+  it('builds the path it reads from the folder listing, not from the request', async () => {
+    const readdir = vi.spyOn(fs.promises, 'readdir');
+
+    expect(await lookUpLintFile(folder, `${PAGE_DIR_URL}assets/app.js`)).toEqual({ file: path.join(folder, 'assets', 'app.js') });
+    expect(readdir.mock.calls.map(([dir]) => dir)).toEqual([folder, path.join(folder, 'assets')]);
+  });
+
   it('keeps a dot-dot path inside the folder, as URL parsing clamps it at the root', async () => {
     expect(await lookUpLintFile(folder, `${PAGE_DIR_URL}../../data.json`)).toEqual({ file: path.join(folder, 'data.json') });
   });
