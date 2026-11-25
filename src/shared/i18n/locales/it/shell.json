@@ -468,7 +468,8 @@
       "fromDesktop": "Il tuo account è pronto. Puoi iniziare subito qui, oppure tornare all’app {product} e accedere.",
       "dismiss": "Chiudi"
     },
-    "ownWorkHeading": "Su cosa deve lavorare {product}?"
+    "ownWorkHeading": "Su cosa deve lavorare {product}?",
+    "galleryHint": "Dall'esempio {title}. Cambia quello che vuoi, poi premi Invia."
   },
   "logout": {
     "title": "Uscire da {product}?",
@@ -483,5 +484,42 @@
   },
   "shortcuts": {
     "showBrowser": "Mostra il browser"
+  },
+  "gallery": {
+    "open": "Galleria dei casi d'uso",
+    "title": "Galleria dei casi d'uso",
+    "welcomeTitle": "Ti diamo il benvenuto in {product}",
+    "welcomeIntro": "Non sai da dove iniziare? Ecco cosa ha fatto {product} da un solo messaggio. Aprine uno per vedere il risultato, poi parti da lì.",
+    "intro": "A corto di idee? Ecco cosa ha fatto {product} da un solo messaggio. Aprine uno per vedere il risultato, poi parti da lì.",
+    "hide": "Nascondi la galleria",
+    "searchLabel": "Cerca esempi",
+    "searchPlaceholder": "Cerca: slide, foglio di calcolo, studio…",
+    "tabsLabel": "Categorie",
+    "all": "Tutti",
+    "startHere": "Inizia da qui",
+    "allExamples": "Tutti gli esempi",
+    "results": "{count, plural, one {# esempio corrisponde} other {# esempi corrispondono}}",
+    "noResults": "Nessuna corrispondenza. Descrivi ciò che ti serve nella casella e {product} partirà da lì.",
+    "loading": "Caricamento degli esempi…",
+    "unavailable": "Gli esempi non si possono caricare ora.",
+    "retry": "Riprova",
+    "minutes": "{count, plural, one {Circa # minuto} other {Circa # minuti}}",
+    "builtWith": "Fatto con {model}",
+    "needs": "Serve: {needs}",
+    "backToAll": "Tutti gli esempi",
+    "backToResults": "Risultati per “{query}”",
+    "position": "{current} di {total}",
+    "previous": "Esempio precedente",
+    "next": "Esempio successivo",
+    "breadcrumb": "Percorso",
+    "whatItMade": "Cosa ha fatto {product}",
+    "download": "Scarica",
+    "sampleInput": "Il campione che gli abbiamo dato",
+    "playInBrowser": "Apri nel browser",
+    "start": "Parti da questo esempio",
+    "tryIt": "Prova questo esempio",
+    "startNote": "Mette il messaggio nella casella. Non parte nulla finché non premi Invia.",
+    "tryItNote": "Lo esegue subito con dati di esempio, come una nuova attività.",
+    "ownFile": "Usa il mio file"
   }
 }

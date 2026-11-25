@@ -468,7 +468,8 @@
       "fromDesktop": "Votre compte est prêt. Vous pouvez commencer ici, ou revenir dans l’app {product} et vous connecter.",
       "dismiss": "Fermer"
     },
-    "ownWorkHeading": "Sur quoi {product} doit-il travailler ?"
+    "ownWorkHeading": "Sur quoi {product} doit-il travailler ?",
+    "galleryHint": "D'après l'exemple {title}. Modifiez ce que vous voulez, puis appuyez sur Envoyer."
   },
   "logout": {
     "title": "Se déconnecter de {product} ?",
@@ -483,5 +484,42 @@
   },
   "shortcuts": {
     "showBrowser": "Afficher le navigateur"
+  },
+  "gallery": {
+    "open": "Galerie de cas d'usage",
+    "title": "Galerie de cas d'usage",
+    "welcomeTitle": "Bienvenue dans {product}",
+    "welcomeIntro": "Vous ne savez pas par où commencer ? Voici ce que {product} a fait à partir d'un seul message. Ouvrez un exemple pour voir le résultat, puis partez de là.",
+    "intro": "À court d'idées ? Voici ce que {product} a fait à partir d'un seul message. Ouvrez un exemple pour voir le résultat, puis partez de là.",
+    "hide": "Masquer la galerie",
+    "searchLabel": "Rechercher des exemples",
+    "searchPlaceholder": "Rechercher : diapositives, tableur, révisions…",
+    "tabsLabel": "Catégories",
+    "all": "Tous",
+    "startHere": "Commencer ici",
+    "allExamples": "Tous les exemples",
+    "results": "{count, plural, one {# exemple correspond} other {# exemples correspondent}}",
+    "noResults": "Rien ne correspond. Décrivez ce dont vous avez besoin dans la zone et {product} partira de là.",
+    "loading": "Chargement des exemples…",
+    "unavailable": "Les exemples ne peuvent pas être chargés pour le moment.",
+    "retry": "Réessayer",
+    "minutes": "{count, plural, one {Environ # minute} other {Environ # minutes}}",
+    "builtWith": "Fait avec {model}",
+    "needs": "Nécessite : {needs}",
+    "backToAll": "Tous les exemples",
+    "backToResults": "Résultats pour « {query} »",
+    "position": "{current} sur {total}",
+    "previous": "Exemple précédent",
+    "next": "Exemple suivant",
+    "breadcrumb": "Fil d'Ariane",
+    "whatItMade": "Ce que {product} a fait",
+    "download": "Télécharger",
+    "sampleInput": "L'exemple que nous lui avons donné",
+    "playInBrowser": "Ouvrir dans votre navigateur",
+    "start": "Partir de cet exemple",
+    "tryIt": "Essayer cet exemple",
+    "startNote": "Place le message dans la zone. Rien ne s'exécute tant que vous n'avez pas appuyé sur Envoyer.",
+    "tryItNote": "Le lance maintenant avec des données d’exemple, comme une nouvelle tâche.",
+    "ownFile": "Utiliser mon propre fichier"
   }
 }
