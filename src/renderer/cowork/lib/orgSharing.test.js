@@ -3,9 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('../../platform/host', () => ({ host: { isWeb: true } }));
 
 import {
-  ACCESS_LEVEL,
-  ACCESS_LEVELS,
-  artifactAccessLevel,
+  AUDIENCE_CHOICE,
+  ARTIFACT_AUDIENCE_ORDER,
+  artifactAudienceChoice,
   artifactSection,
   groupArtifactsBySection,
   artifactShareState,
@@ -461,7 +461,7 @@ describe('artifactSection and groupArtifactsBySection (ENG-4647)', () => {
   const theirs = { capabilities: { role: 'reviewer' } };
 
   it('groups by whose an artifact is, whoever it reaches', () => {
-    // The caller's own, at every access level: Yours.
+    // The caller's own, whoever it reaches: Yours.
     expect(artifactSection(art('a', { orgAllowed: true }))).toBe('mine');
     expect(artifactSection(art('b', { allowedTeamIds: ['t-all'] }))).toBe('mine');
     expect(artifactSection(art('c', { allowedTeamIds: ['t-1'] }))).toBe('mine');
@@ -494,7 +494,7 @@ describe('artifactSection and groupArtifactsBySection (ENG-4647)', () => {
   });
 });
 
-describe('artifactAccessLevel (ENG-4647)', () => {
+describe('artifactAudienceChoice (ENG-4647)', () => {
   const TEAMS = [{ id: 't-all', display_name: 'All members', is_default: true }, { id: 't-1', display_name: 'Platform' }];
   const live = { publishedUrl: 'https://x.test/a' };
   const mine = (extra = {}) => ({ capabilities: { role: 'owner' }, ...extra });
@@ -504,45 +504,45 @@ describe('artifactAccessLevel (ENG-4647)', () => {
   });
 
   it('counts the caller\'s own artifact not shared yet as only theirs, whatever its kind', () => {
-    expect(artifactAccessLevel(mine({ kind: 'html' }))).toBe(ACCESS_LEVEL.ONLY_ME);
-    expect(artifactAccessLevel(mine({ kind: 'xlsx' }))).toBe(ACCESS_LEVEL.ONLY_ME);
+    expect(artifactAudienceChoice(mine({ kind: 'html' }))).toBe(AUDIENCE_CHOICE.PRIVATE);
+    expect(artifactAudienceChoice(mine({ kind: 'xlsx' }))).toBe(AUDIENCE_CHOICE.PRIVATE);
   });
 
   it('reads public and password-protected links from their mode', () => {
-    expect(artifactAccessLevel(mine({ ...live, accessMode: 'public' }))).toBe(ACCESS_LEVEL.PUBLIC);
-    expect(artifactAccessLevel(mine({ ...live, accessMode: 'password' }))).toBe(ACCESS_LEVEL.PASSWORD);
-    expect(artifactAccessLevel(mine({ ...live, accessProtected: true }))).toBe(ACCESS_LEVEL.PASSWORD);
+    expect(artifactAudienceChoice(mine({ ...live, accessMode: 'public' }))).toBe(AUDIENCE_CHOICE.PUBLIC);
+    expect(artifactAudienceChoice(mine({ ...live, accessMode: 'password' }))).toBe(AUDIENCE_CHOICE.PASSWORD);
+    expect(artifactAudienceChoice(mine({ ...live, accessProtected: true }))).toBe(AUDIENCE_CHOICE.PASSWORD);
   });
 
   it('tells a restricted link apart by who it reaches', () => {
-    expect(artifactAccessLevel(mine(restricted({ ownerOnly: true })))).toBe(ACCESS_LEVEL.ONLY_ME);
-    expect(artifactAccessLevel(mine(restricted({ orgAllowed: true })))).toBe(ACCESS_LEVEL.ORG);
-    expect(artifactAccessLevel(mine(restricted({ allowedTeamIds: ['t-all'] })), { teams: TEAMS })).toBe(ACCESS_LEVEL.ORG);
-    expect(artifactAccessLevel(mine(restricted({ allowedTeamIds: ['t-1'] })), { teams: TEAMS })).toBe(ACCESS_LEVEL.RESTRICTED);
-    expect(artifactAccessLevel(mine(restricted({ accessEmails: ['a@b.com'] })))).toBe(ACCESS_LEVEL.RESTRICTED);
+    expect(artifactAudienceChoice(mine(restricted({ ownerOnly: true })))).toBe(AUDIENCE_CHOICE.PRIVATE);
+    expect(artifactAudienceChoice(mine(restricted({ orgAllowed: true })))).toBe(AUDIENCE_CHOICE.ORG);
+    expect(artifactAudienceChoice(mine(restricted({ allowedTeamIds: ['t-all'] })), { teams: TEAMS })).toBe(AUDIENCE_CHOICE.ORG);
+    expect(artifactAudienceChoice(mine(restricted({ allowedTeamIds: ['t-1'] })), { teams: TEAMS })).toBe(AUDIENCE_CHOICE.SPECIFIC);
+    expect(artifactAudienceChoice(mine(restricted({ accessEmails: ['a@b.com'] })))).toBe(AUDIENCE_CHOICE.SPECIFIC);
   });
 
   it('uses the same rule for someone else\'s artifact, which is never "only you"', () => {
-    expect(artifactAccessLevel(theirs({ ...live, accessMode: 'public' }))).toBe(ACCESS_LEVEL.PUBLIC);
-    expect(artifactAccessLevel(theirs(restricted({ orgAllowed: true })))).toBe(ACCESS_LEVEL.ORG);
-    expect(artifactAccessLevel(theirs(restricted({ ownerOnly: true })))).toBe(ACCESS_LEVEL.RESTRICTED);
-    expect(artifactAccessLevel(theirs())).toBe(ACCESS_LEVEL.RESTRICTED);
+    expect(artifactAudienceChoice(theirs({ ...live, accessMode: 'public' }))).toBe(AUDIENCE_CHOICE.PUBLIC);
+    expect(artifactAudienceChoice(theirs(restricted({ orgAllowed: true })))).toBe(AUDIENCE_CHOICE.ORG);
+    expect(artifactAudienceChoice(theirs(restricted({ ownerOnly: true })))).toBe(AUDIENCE_CHOICE.SPECIFIC);
+    expect(artifactAudienceChoice(theirs())).toBe(AUDIENCE_CHOICE.SPECIFIC);
   });
 
   it('fails closed: an unknown mode or audience is restricted, never wider', () => {
-    expect(artifactAccessLevel(mine({ ...live }))).toBe(ACCESS_LEVEL.RESTRICTED);
-    expect(artifactAccessLevel(mine({ ...live, accessMode: 'org' }))).toBe(ACCESS_LEVEL.RESTRICTED);
-    expect(artifactAccessLevel(mine({ ...live, accessMode: 'restricted', ownerOnly: null, orgAllowed: null, allowedTeamIds: null, allowedUserIds: null })))
-      .toBe(ACCESS_LEVEL.RESTRICTED);
+    expect(artifactAudienceChoice(mine({ ...live }))).toBe(AUDIENCE_CHOICE.SPECIFIC);
+    expect(artifactAudienceChoice(mine({ ...live, accessMode: 'org' }))).toBe(AUDIENCE_CHOICE.SPECIFIC);
+    expect(artifactAudienceChoice(mine({ ...live, accessMode: 'restricted', ownerOnly: null, orgAllowed: null, allowedTeamIds: null, allowedUserIds: null })))
+      .toBe(AUDIENCE_CHOICE.SPECIFIC);
   });
 
   it('in MindsHub mode, trusts only an audience the page read from the access route', () => {
     const card = mine(restricted({ ownerOnly: true }));
-    expect(artifactAccessLevel(card, { orgMode: true })).toBe(ACCESS_LEVEL.RESTRICTED);
-    expect(artifactAccessLevel({ ...card, audienceRead: true }, { orgMode: true })).toBe(ACCESS_LEVEL.ONLY_ME);
+    expect(artifactAudienceChoice(card, { orgMode: true })).toBe(AUDIENCE_CHOICE.SPECIFIC);
+    expect(artifactAudienceChoice({ ...card, audienceRead: true }, { orgMode: true })).toBe(AUDIENCE_CHOICE.PRIVATE);
   });
 
   it('lists the levels narrowest first', () => {
-    expect(ACCESS_LEVELS).toEqual(['only_me', 'restricted', 'org', 'password', 'public']);
+    expect(ARTIFACT_AUDIENCE_ORDER).toEqual(['private', 'specific', 'org', 'password', 'public']);
   });
 });

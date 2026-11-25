@@ -480,7 +480,7 @@ export function groupSkillsBySection(skills, { orgName = null } = {}) {
  * by who an artifact reaches as well put the caller's own org-wide artifact
  * under "Everyone at the org" instead of "Yours", so the groups overlapped;
  * who it reaches is its access badge and the Access filter
- * (artifactAccessLevel). Someone else's artifact comes with
+ * (artifactAudienceChoice). Someone else's artifact comes with
  * `capabilities.role` "reviewer" (or an owner the server could not name).
  */
 export function artifactSection(artifact) {
@@ -510,50 +510,48 @@ export function groupArtifactsBySection(artifacts) {
     .filter((group) => group.artifacts.length > 0);
 }
 
-/* ── Who an artifact reaches: its access level ─────────────────────────
-   One level per artifact, for its badge and the Artifacts page's Access
-   filter (ENG-4647), the same rule whichever group it sits in. */
+/* ── Who an artifact reaches ──────────────────────────────────────────
+   Its AUDIENCE_CHOICE, the same values its Share panel offers, for its badge
+   and the Artifacts page's Access filter (ENG-4647), the same rule whichever
+   group it sits in. */
 
-export const ACCESS_LEVEL = Object.freeze({
-  ONLY_ME: 'only_me',
-  RESTRICTED: 'restricted',
-  ORG: 'org',
-  PASSWORD: 'password',
-  PUBLIC: 'public',
-});
 /** Narrowest first: the Access filter's order. */
-export const ACCESS_LEVELS = Object.freeze([
-  ACCESS_LEVEL.ONLY_ME, ACCESS_LEVEL.RESTRICTED, ACCESS_LEVEL.ORG, ACCESS_LEVEL.PASSWORD, ACCESS_LEVEL.PUBLIC,
+export const ARTIFACT_AUDIENCE_ORDER = Object.freeze([
+  AUDIENCE_CHOICE.PRIVATE, AUDIENCE_CHOICE.SPECIFIC, AUDIENCE_CHOICE.ORG, AUDIENCE_CHOICE.PASSWORD, AUDIENCE_CHOICE.PUBLIC,
 ]);
 
 /**
- * Who can open an artifact:
- * - `only_me`: the caller's own, not shared yet, or shared with nobody else.
- * - `restricted`: shared with chosen teams or people, or with an audience
- *   that isn't known (fail closed: never reads wider than it may be).
+ * Who can open an artifact, as the AUDIENCE_CHOICE it is at:
+ * - `private`: the caller's own, not shared yet, or shared with nobody else.
+ * - `specific`: shared with chosen teams or people, or with an audience that
+ *   isn't known (fail closed: never reads wider than it may be).
  * - `org`: shared with everyone at the org (or its default team).
  * - `password`: anyone with the link and its password.
  * - `public`: anyone with the link.
  *
+ * Unlike artifactShareState (what its Share button says), an artifact with no
+ * access mode here is `specific`, not public: a list badge must never read
+ * wider than the artifact may be.
+ *
  * In MindsHub mode (`orgMode`) a card's own audience fields don't count: only
  * one the page read from the access route (`audienceRead`, from
  * useArtifactAudiences), as the badge has always required. An access mode
- * the app doesn't know is `restricted`: modes are compared by name, so a
+ * the app doesn't know is `specific`: modes are compared by name, so a
  * string such as "constructor" is just unknown, never an inherited property.
  */
-export function artifactAccessLevel(artifact, { orgMode = false, teams = [] } = {}) {
+export function artifactAudienceChoice(artifact, { orgMode = false, teams = [] } = {}) {
   const own = artifactSection(artifact) === 'mine';
-  if (!artifact?.publishedUrl) return own ? ACCESS_LEVEL.ONLY_ME : ACCESS_LEVEL.RESTRICTED;
+  if (!artifact?.publishedUrl) return own ? AUDIENCE_CHOICE.PRIVATE : AUDIENCE_CHOICE.SPECIFIC;
   const mode = artifact.accessMode || (artifact.accessProtected ? 'password' : null);
-  if (mode === 'public') return ACCESS_LEVEL.PUBLIC;
-  if (mode === 'password') return ACCESS_LEVEL.PASSWORD;
-  if (mode !== 'restricted') return ACCESS_LEVEL.RESTRICTED;
+  if (mode === 'public') return AUDIENCE_CHOICE.PUBLIC;
+  if (mode === 'password') return AUDIENCE_CHOICE.PASSWORD;
+  if (mode !== 'restricted') return AUDIENCE_CHOICE.SPECIFIC;
   const read = readArtifactAudience(artifact);
   const known = read && (!orgMode || artifact.audienceRead === true) ? read : null;
-  if (!known) return ACCESS_LEVEL.RESTRICTED;
-  if (known.orgAllowed || namesDefaultTeam(known.teamIds, teams)) return ACCESS_LEVEL.ORG;
-  if (own && isOwnerOnlyAccess(artifact)) return ACCESS_LEVEL.ONLY_ME;
-  return ACCESS_LEVEL.RESTRICTED;
+  if (!known) return AUDIENCE_CHOICE.SPECIFIC;
+  if (known.orgAllowed || namesDefaultTeam(known.teamIds, teams)) return AUDIENCE_CHOICE.ORG;
+  if (own && isOwnerOnlyAccess(artifact)) return AUDIENCE_CHOICE.PRIVATE;
+  return AUDIENCE_CHOICE.SPECIFIC;
 }
 
 /* Artifact access, as a card, a save's answer or the access route reports it. */

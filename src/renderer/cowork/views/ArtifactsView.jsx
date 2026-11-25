@@ -54,7 +54,7 @@ import {
   buildAccessPayload,
 } from '../components/artifact/publish/AccessChooser';
 import {
-  ACCESS_LEVELS, AUDIENCE_CHOICE, artifactAccessLevel, groupArtifactsBySection, isOrgSharingOn,
+  ARTIFACT_AUDIENCE_ORDER, AUDIENCE_CHOICE, artifactAudienceChoice, groupArtifactsBySection, isOrgSharingOn,
 } from '../lib/orgSharing';
 import { useArtifactAudiencesState } from '../hooks/useArtifactAudiences';
 import { useKnownPeople, useMindsHubTeams, useSharingCapabilities, useSharingOrgName } from '../hooks/useOrgSharing';
@@ -71,7 +71,7 @@ import {
 import { republishNotice, stopSharingNotice } from '../components/artifact/publish/linkLeftLive';
 import { ArtifactIcon, splitArtifactName, displayTitle, fileNameOf, isWebAppArtifact } from '../components/artifacts/ArtifactIcon';
 import {
-  ArtifactStatus, ArtifactStatusOrgName, ArtifactStatusTeams, accessLevelLabel,
+  ArtifactStatus, ArtifactStatusOrgName, ArtifactStatusTeams, audienceChoiceLabel,
 } from '../components/artifacts/ArtifactStatus';
 import { ArtifactOwnerNamesProvider, useArtifactAuthorship } from '../hooks/useArtifactAuthorship';
 import {
@@ -876,7 +876,7 @@ export default function ArtifactsView({
   const orgName = useSharingOrgName(sectionsOn);
   const teamsState = useMindsHubTeams(sectionsOn);
   const teams = teamsState?.teams || NO_TEAMS;
-  const accessLevelOf = (a) => artifactAccessLevel(a, { orgMode, teams });
+  const audienceChoiceOf = (a) => artifactAudienceChoice(a, { orgMode, teams });
   const liveApps = useLiveApps();
   // App hands down a new list after each turn, so the states re-read with it.
   const liveAppStates = useLiveAppStates(liveApps, list);
@@ -1181,11 +1181,11 @@ export default function ArtifactsView({
     () => ['shared', 'not_shared'].filter((s) => (list || []).some((a) => statusOf(a) === s)),
     [list],
   );
-  // Access (ENG-4647): who can open it, the level its badge shows.
+  // Access (ENG-4647): who can open it, as its badge says.
   const [accessFilter, setAccessFilter] = useState('all');
-  const accessLevels = useMemo(
-    () => ACCESS_LEVELS.filter((level) => (list || []).some((a) => accessLevelOf(a) === level)),
-    // accessLevelOf reads orgMode and teams.
+  const accessChoices = useMemo(
+    () => ARTIFACT_AUDIENCE_ORDER.filter((choice) => (list || []).some((a) => audienceChoiceOf(a) === choice)),
+    // audienceChoiceOf reads orgMode and teams.
     [list, orgMode, teams],
   );
   const [ownerFilter, setOwnerFilter] = useState('all');
@@ -1204,7 +1204,7 @@ export default function ArtifactsView({
   useEffect(() => { if (typeFilter !== 'all' && !kinds.includes(typeFilter)) setTypeFilter('all'); }, [kinds, typeFilter]);
   useEffect(() => { if (ownerFilter !== 'all' && !ownerKeys.includes(ownerFilter)) setOwnerFilter('all'); }, [ownerKeys, ownerFilter]);
   useEffect(() => { if (statusFilter !== 'all' && !statuses.includes(statusFilter)) setStatusFilter('all'); }, [statuses, statusFilter]);
-  useEffect(() => { if (accessFilter !== 'all' && !accessLevels.includes(accessFilter)) setAccessFilter('all'); }, [accessLevels, accessFilter]);
+  useEffect(() => { if (accessFilter !== 'all' && !accessChoices.includes(accessFilter)) setAccessFilter('all'); }, [accessChoices, accessFilter]);
   const STATUS_LABELS = {
     shared: t('publish.shared'),
     not_shared: t('status.notShared'),
@@ -1232,7 +1232,7 @@ export default function ArtifactsView({
         ...statuses.map((s) => ({ value: s, label: STATUS_LABELS[s] })),
       ],
     },
-    accessLevels.length > 1 && {
+    accessChoices.length > 1 && {
       id: 'access',
       label: t('artifactsView.filter.access'),
       value: accessFilter,
@@ -1240,7 +1240,7 @@ export default function ArtifactsView({
       onChange: setAccessFilter,
       options: [
         { value: 'all', label: t('artifactsView.filter.allAccess') },
-        ...accessLevels.map((level) => ({ value: level, label: accessLevelLabel(level, orgName) })),
+        ...accessChoices.map((choice) => ({ value: choice, label: audienceChoiceLabel(choice, orgName) })),
       ],
     },
     ownerKeys.length > 1 && {
@@ -1266,7 +1266,7 @@ export default function ArtifactsView({
     let out = (list || []).slice();
     if (typeFilter !== 'all') out = out.filter((a) => kindOf(a) === typeFilter);
     if (statusFilter !== 'all') out = out.filter((a) => statusOf(a) === statusFilter);
-    if (accessFilter !== 'all') out = out.filter((a) => accessLevelOf(a) === accessFilter);
+    if (accessFilter !== 'all') out = out.filter((a) => audienceChoiceOf(a) === accessFilter);
     if (ownerFilter !== 'all') out = out.filter((a) => ownerKeyOf(a) === ownerFilter);
     if (q) out = out.filter((a) =>
       (a.title || '').toLowerCase().includes(q)
@@ -1291,7 +1291,7 @@ export default function ArtifactsView({
       }
     });
     return out;
-    // accessLevelOf reads orgMode and teams.
+    // audienceChoiceOf reads orgMode and teams.
   }, [list, search, sort, typeFilter, statusFilter, accessFilter, ownerFilter, orgMode, teams]);
 
   // Open comments on the caller's own artifacts the page shows, read after it

@@ -13,7 +13,7 @@ import { createContext, useContext } from 'react';
 import Ico from '../Icons';
 import { Badge, Tooltip } from '../ui';
 import {
-  ACCESS_LEVEL, artifactAccessLevel, everyoneAtDesc, everyoneAtLabel, isOwnerOnlyAccess,
+  AUDIENCE_CHOICE, artifactAudienceChoice, everyoneAtDesc, everyoneAtLabel, isOwnerOnlyAccess,
 } from '../../lib/orgSharing';
 import { readArtifactAudience } from '../../lib/sharingContract';
 import { useRecipientItems } from '../RecipientRows';
@@ -21,7 +21,7 @@ import i18n, { useTranslation } from '../../../lib/i18n';
 import { ArtifactAuthorshipBadge } from './ArtifactAuthorshipBadge';
 
 // One badge per artifact for who can open it (ENG-1212, ENG-4647), from its
-// access level (artifactAccessLevel): the same rule in every group and for
+// audience (artifactAudienceChoice, the Share panel's AUDIENCE_CHOICE): the same rule in every group and for
 // every kind of file. ONLY a genuinely public artifact gets the green
 // "success" treatment, so a protected one can never read as available to all.
 // A shared artifact's badge carries a `dot` (the "this is live" affordance);
@@ -30,17 +30,17 @@ import { ArtifactAuthorshipBadge } from './ArtifactAuthorshipBadge';
 // The pill is inline-flex + nowrap and sizes to its content, so the label is
 // always shown (ENG-1475); when a tight cell also holds the "Unshared
 // changes" badge the two wrap to a second line.
-const LEVEL_BADGE = {
-  [ACCESS_LEVEL.ONLY_ME]: { variant: 'default', icon: Ico.user(12), labelKey: 'status.badge.onlyYou' },
-  [ACCESS_LEVEL.RESTRICTED]: { variant: 'default', icon: Ico.people(12), labelKey: 'status.badge.restricted' },
-  [ACCESS_LEVEL.ORG]: { variant: 'default', icon: Ico.building(12), labelKey: null },
-  [ACCESS_LEVEL.PASSWORD]: { variant: 'default', icon: Ico.lock(12), labelKey: 'status.badge.publicPassword' },
-  [ACCESS_LEVEL.PUBLIC]: { variant: 'success', icon: Ico.globe(12), labelKey: 'status.badge.public' },
+const AUDIENCE_BADGE = {
+  [AUDIENCE_CHOICE.PRIVATE]: { variant: 'default', icon: Ico.user(12), labelKey: 'status.badge.onlyYou' },
+  [AUDIENCE_CHOICE.SPECIFIC]: { variant: 'default', icon: Ico.people(12), labelKey: 'status.badge.restricted' },
+  [AUDIENCE_CHOICE.ORG]: { variant: 'default', icon: Ico.building(12), labelKey: null },
+  [AUDIENCE_CHOICE.PASSWORD]: { variant: 'default', icon: Ico.lock(12), labelKey: 'status.badge.publicPassword' },
+  [AUDIENCE_CHOICE.PUBLIC]: { variant: 'success', icon: Ico.globe(12), labelKey: 'status.badge.public' },
 };
 
-/** The label of an access level, for its badge and the Access filter. */
-export function accessLevelLabel(level, orgName = null) {
-  const badge = LEVEL_BADGE[level] || LEVEL_BADGE[ACCESS_LEVEL.RESTRICTED];
+/** The label of an audience, for its badge and the Access filter. */
+export function audienceChoiceLabel(choice, orgName = null) {
+  const badge = AUDIENCE_BADGE[choice] || AUDIENCE_BADGE[AUDIENCE_CHOICE.SPECIFIC];
   return badge.labelKey ? i18n.t(badge.labelKey, { ns: 'artifacts' }) : everyoneAtLabel(orgName);
 }
 
@@ -165,9 +165,9 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
   // Idle: who can open it. An artifact not shared yet is its owner's alone
   // ("Only you"), whatever its kind: there is no separate "Draft" or "Not
   // shared" badge (ENG-4647); its hover says whether it can be shared.
-  const level = artifactAccessLevel(artifact, { orgMode, teams });
-  const badge = LEVEL_BADGE[level];
-  const label = accessLevelLabel(level, orgName);
+  const audience = artifactAudienceChoice(artifact, { orgMode, teams });
+  const badge = AUDIENCE_BADGE[audience];
+  const label = audienceChoiceLabel(audience, orgName);
   if (!artifact?.publishedUrl) {
     if (!pageBadge) return tag;
     // Not live yet: no dot, and no "Unshared changes" beside it.
@@ -184,8 +184,8 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
   const read = accessMode(artifact) === 'restricted' ? readArtifactAudience(artifact) : null;
   const known = read && (!orgMode || artifact.audienceRead === true) ? read : null;
   let hover;
-  if (known && orgMode && level !== ACCESS_LEVEL.ONLY_ME) hover = <AudienceHint audience={known} orgName={orgName} />;
-  else if (level === ACCESS_LEVEL.ORG) hover = everyoneAtDesc();
+  if (known && orgMode && audience !== AUDIENCE_CHOICE.PRIVATE) hover = <AudienceHint audience={known} orgName={orgName} />;
+  else if (audience === AUDIENCE_CHOICE.ORG) hover = everyoneAtDesc();
   else hover = artifactStatusHint(artifact, publishable, { orgMode: orgMode && !known });
   return (
     // Fills the status area: access badge on the left, the "Unshared changes"
