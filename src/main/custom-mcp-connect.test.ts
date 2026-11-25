@@ -625,7 +625,125 @@ describe('connectCustomMcp', () => {
   });
 });
 
+describe('checking a typed client ID before the browser opens', () => {
+  const TYPED = { label: 'T', url: SERVER_URL, clientId: 'mine', confirmedLoginHosts: ['auth.example.com'] };
+
+  /** The login server, with the authorize endpoint answering `answer` to any query. */
+  function withAuthorize(answer: Answer | (() => Promise<Answer>)) {
+    const mcp = mcpServer(LOGIN_SERVER);
+    const checks: URL[] = [];
+    const fetchFn: GuardedFetch = async (input, init = {}) => {
+      const url = new URL(String(input));
+      if (`${url.origin}${url.pathname}` !== `${AUTH}/authorize`) return mcp.fetchFn(input, init);
+      checks.push(url);
+      const given = typeof answer === 'function' ? await answer() : answer;
+      return new Response(given.json === undefined ? '' : JSON.stringify(given.json), { status: given.status, headers: given.headers });
+    };
+    return { checks, ...deps(LOGIN_SERVER, { fetchFn }) };
+  }
+
+  it('reports a refused client without opening the browser or saving anything', async () => {
+    const { deps: d, authorize, checks } = withAuthorize({ status: 400 });
+
+    const result = await connectCustomMcp(TYPED, d);
+
+    expect(result).toMatchObject({ ok: false, code: 'client_refused' });
+    expect(authorize).not.toHaveBeenCalled();
+    expect(checks).toHaveLength(1);
+    expect(server.records.size).toBe(0);
+    expect(keychain.entries.size).toBe(0);
+  });
+
+  it('sends the check the query the browser login gets', async () => {
+    const { deps: d, authorize, checks } = withAuthorize({ status: 302, headers: { location: `${AUTH}/login` } });
+
+    await connectCustomMcp(TYPED, d);
+
+    const sent = checks[0].searchParams;
+    expect(authorize).toHaveBeenCalledWith(expect.objectContaining({
+      clientId: sent.get('client_id'),
+      scopes: sent.get('scope')!.split(' '),
+      extraAuthParams: { resource: sent.get('resource') },
+      redirectPort: 47295,
+      redirectHost: '127.0.0.1',
+    }));
+    expect(sent.get('client_id')).toBe('mine');
+    expect(sent.get('response_type')).toBe('code');
+    expect(sent.get('redirect_uri')).toBe('http://127.0.0.1:47295/callback');
+    expect(sent.get('code_challenge_method')).toBe('S256');
+    expect(sent.get('code_challenge')).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(sent.get('state')).toBeTruthy();
+  });
+
+  it.each([
+    ['a redirect to the login page', { status: 302, headers: { location: `${AUTH}/login` } }],
+    ['the login page itself', { status: 200 }],
+    ['an integrated sign-in challenge', { status: 401, headers: { 'www-authenticate': 'Negotiate' } }],
+    ['a 400 that redirects back', { status: 400, headers: { location: 'http://127.0.0.1:47295/callback?error=invalid_scope' } }],
+    ['a server error', { status: 500 }],
+  ])('opens the browser after %s', async (_name, answer) => {
+    const { deps: d, authorize } = withAuthorize(answer as Answer);
+
+    const result = await connectCustomMcp(TYPED, d);
+
+    expect(result.ok).toBe(true);
+    expect(authorize).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the browser when the check cannot reach the login server', async () => {
+    const { deps: d, authorize } = withAuthorize(async () => { throw new Error('network down'); });
+
+    expect((await connectCustomMcp(TYPED, d)).ok).toBe(true);
+    expect(authorize).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens no browser when cancelled while the check runs', async () => {
+    const { deps: d, authorize } = withAuthorize(async () => {
+      cancelCustomMcpConnects();
+      return { status: 302, headers: { location: `${AUTH}/login` } };
+    });
+
+    const result = await connectCustomMcp(TYPED, d);
+
+    expect(result).toEqual({ ok: false, code: 'login_failed', reason: 'The connection was cancelled.' });
+    expect(authorize).not.toHaveBeenCalled();
+  });
+
+  it('opens the browser without a check when asked to, with the confirmed hosts', async () => {
+    const { deps: d, authorize, checks } = withAuthorize({ status: 400 });
+
+    const result = await connectCustomMcp({ ...TYPED, skipClientCheck: true }, d);
+
+    expect(result.ok).toBe(true);
+    expect(checks).toHaveLength(0);
+    expect(authorize).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends no check for a client registered in this login', async () => {
+    const { deps: d, authorize, checks } = withAuthorize({ status: 400 });
+
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['auth.example.com'] }, d);
+
+    expect(result.ok).toBe(true);
+    expect(checks).toHaveLength(0);
+    expect(authorize).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('parseConnectRequest', () => {
+  it('keeps the client check flag only when it is true', () => {
+    expect(parseConnectRequest({ label: 'T', url: SERVER_URL, skipClientCheck: true })).toMatchObject({ skipClientCheck: true });
+    expect(parseConnectRequest({ label: 'T', url: SERVER_URL })).not.toHaveProperty('skipClientCheck');
+  });
+
+  it.each([
+    [{ label: 'T', url: SERVER_URL, skipClientCheck: 'true' }],
+    [{ label: 'T', url: SERVER_URL, skipClientCheck: 1 }],
+    [{ label: 'T', url: SERVER_URL, skipClientCheck: false }],
+  ])('refuses a client check flag that is not true: %j', (raw) => {
+    expect(typeof parseConnectRequest(raw)).toBe('string');
+  });
+
   it.each([
     [null],
     [{ url: SERVER_URL }],

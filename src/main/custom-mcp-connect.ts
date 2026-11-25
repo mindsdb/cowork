@@ -23,7 +23,7 @@ import {
   discoverMcpAuth, exchangeCode, givenClient, McpOAuthError, registerClient, revokeToken,
   type AuthorizationServer, type OAuthClient, type TokenSet,
 } from './mcp-oauth';
-import { authorizeInBrowser, CUSTOM_MCP_REDIRECT_PORT, CUSTOM_MCP_REDIRECT_URI, type BrowserAuthorizeOpts, type BrowserAuthorizeResult } from './oauth-service';
+import { authorizeInBrowser, base64UrlEncode, CUSTOM_MCP_REDIRECT_PORT, CUSTOM_MCP_REDIRECT_URI, type BrowserAuthorizeOpts, type BrowserAuthorizeResult } from './oauth-service';
 import { checkKeychain, CustomMcpKeychainError, deleteConnection as deleteKeychainEntries, writePart } from './custom-mcp-keychain';
 import { writeToolSwitch } from './custom-mcp-held';
 import { startRefreshLoop } from './custom-mcp-refresh';
@@ -38,6 +38,8 @@ export interface CustomMcpConnectRequest {
   clientSecret?: string;
   /** The login hosts the user was shown and accepted. */
   confirmedLoginHosts?: string[];
+  /** Opens the browser for a typed client ID even when the login server refused it. */
+  skipClientCheck?: true;
 }
 
 export type CustomMcpConnectResult =
@@ -93,12 +95,15 @@ export function parseConnectRequest(raw: unknown): CustomMcpConnectRequest | str
   if (clientId === null || clientSecret === null) return 'The client fields are not valid.';
   if (confirmedLoginHosts === null) return 'The confirmed login hosts are not valid.';
   if (clientSecret && !clientId) return 'A client secret needs a client ID.';
+  const skip = input.skipClientCheck;
+  if (skip !== undefined && skip !== null && skip !== true) return 'The client check flag is not valid.';
   return {
     label,
     url: input.url.trim(),
     ...(clientId ? { clientId } : {}),
     ...(clientSecret ? { clientSecret } : {}),
     ...(confirmedLoginHosts ? { confirmedLoginHosts } : {}),
+    ...(skip === true ? { skipClientCheck: true as const } : {}),
   };
 }
 
@@ -129,6 +134,40 @@ function allConfirmed(confirmed: string[] | undefined, hosts: string[]): boolean
   return !!confirmed && hosts.every((host) => confirmed.includes(host));
 }
 
+/**
+ * Asks the authorize endpoint, with the query the browser would send, whether
+ * it refuses this client. True only for a 400 with no redirect: RFC 6749
+ * 4.1.2.1 forbids redirecting an unknown client or redirect URI, so the
+ * browser would show the provider's error page and never come back. Any
+ * other answer, or a failed request, is false, and the browser opens as usual.
+ */
+async function authorizeRefusesClient(
+  authorizationEndpoint: string,
+  query: { clientId: string; scope?: string; resource: string },
+  fetchFn: GuardedFetch,
+): Promise<boolean> {
+  const url = new URL(authorizationEndpoint);
+  const challenge = base64UrlEncode(crypto.createHash('sha256').update(base64UrlEncode(crypto.randomBytes(32))).digest());
+  const params: Record<string, string> = {
+    response_type: 'code',
+    client_id: query.clientId,
+    redirect_uri: CUSTOM_MCP_REDIRECT_URI,
+    ...(query.scope ? { scope: query.scope } : {}),
+    state: base64UrlEncode(crypto.randomBytes(16)),
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
+    resource: query.resource,
+  };
+  for (const [name, value] of Object.entries(params)) url.searchParams.set(name, value);
+  try {
+    const response = await fetchFn(url, { method: 'GET' });
+    return response.status === 400 && !response.headers.has('location');
+  } catch (err) {
+    diagnostic('main.custom-mcp', 'INFO', 'custom_mcp_client_check_failed', `[custom-mcp] could not check the client before the login: ${errorName(err)}`);
+    return false;
+  }
+}
+
 /** Who logs in: a client the app already holds, a client ID the user
  *  typed, or neither, which registers one. */
 export interface LoginClient {
@@ -143,7 +182,7 @@ export interface LoginClient {
  *  Shared by connect and reconnect. */
 export async function logIn(
   serverUrl: string,
-  request: LoginClient & { confirmedLoginHosts?: string[]; cancelled?: () => boolean },
+  request: LoginClient & { confirmedLoginHosts?: string[]; cancelled?: () => boolean; skipClientCheck?: true },
   deps: ConnectDeps,
 ): Promise<Login | null | { ok: false; code: 'confirm_login_hosts'; loginHosts: string[] } | { ok: false; code: string; reason: string }> {
   const discovery = await discoverMcpAuth(serverUrl, deps.fetchFn);
@@ -161,10 +200,24 @@ export async function logIn(
       ? givenClient(request.clientId, request.clientSecret, authorizationServer)
       : await registerClient(authorizationServer, CUSTOM_MCP_REDIRECT_URI, deps.fetchFn));
   if (request.cancelled?.()) return CANCELLED;
+  const scopes = discovery.scope ? discovery.scope.split(' ').filter(Boolean) : [];
+  // Only a client ID the user typed in this call: a registered one was just
+  // accepted, and a held one has logged in before.
+  if (request.clientId && !request.skipClientCheck) {
+    const refused = await authorizeRefusesClient(
+      authorizationServer.authorizationEndpoint,
+      { clientId: client.clientId, ...(scopes.length ? { scope: scopes.join(' ') } : {}), resource },
+      deps.fetchFn,
+    );
+    if (request.cancelled?.()) return CANCELLED;
+    if (refused) {
+      return { ok: false, code: 'client_refused', reason: 'The login server refused the request for this client ID and redirect address.' };
+    }
+  }
   const browser = await deps.authorize({
     authUrl: authorizationServer.authorizationEndpoint,
     clientId: client.clientId,
-    scopes: discovery.scope ? discovery.scope.split(' ').filter(Boolean) : [],
+    scopes,
     extraAuthParams: { resource },
     redirectPort: CUSTOM_MCP_REDIRECT_PORT,
     redirectHost: '127.0.0.1',
