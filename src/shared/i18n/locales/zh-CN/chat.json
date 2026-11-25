@@ -496,7 +496,19 @@
       "missingType": "缺少图表类型",
       "unsupportedType": "不支持的图表类型：“{type}”。支持的类型：{supported}。",
       "invalidJson": "图表规范中的 JSON 无效",
-      "error": "错误：{error}"
+      "error": "错误：{error}",
+      "loading": "正在绘制图表…",
+      "chartLabel": "图表",
+      "diagramLabel": "示意图",
+      "copyImage": "复制为图片",
+      "downloadPng": "下载 PNG",
+      "showSource": "显示源码",
+      "hideSource": "隐藏源码",
+      "tooLarge": "规格超过 {limit} KB",
+      "tooManyDatasets": "数据集过多（{count}），上限为 {limit}",
+      "tooManyPoints": "数据点过多（{count}），上限为 {limit}",
+      "tooManyNodes": "节点过多（{count}），上限为 {limit}",
+      "emptyDiagram": "示意图为空"
     }
   },
   "taskModes": {

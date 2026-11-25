@@ -496,7 +496,19 @@
       "missingType": "Missing chart type",
       "unsupportedType": "Unsupported chart type: \"{type}\". Supported: {supported}.",
       "invalidJson": "Invalid JSON in chart specification",
-      "error": "ERROR: {error}"
+      "error": "ERROR: {error}",
+      "loading": "Drawing chart…",
+      "chartLabel": "Chart",
+      "diagramLabel": "Diagram",
+      "copyImage": "Copy as image",
+      "downloadPng": "Download PNG",
+      "showSource": "Show source",
+      "hideSource": "Hide source",
+      "tooLarge": "The specification is larger than {limit} KB",
+      "tooManyDatasets": "Too many datasets ({count}); the limit is {limit}",
+      "tooManyPoints": "Too many data points ({count}); the limit is {limit}",
+      "tooManyNodes": "Too many nodes ({count}); the limit is {limit}",
+      "emptyDiagram": "The diagram is empty"
     }
   },
   "taskModes": {

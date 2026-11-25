@@ -4082,6 +4082,39 @@ body[data-theme] .markdown-steps :is(strong, b) {
   color: var(--ink-3);
 }
 
+/* A ```chartjs / ```mermaid block (ChartBlock in markdown/ChartStates):
+   the code block's card and header, the drawing as its body, and the
+   fence's source as an ordinary code block under it on demand. */
+.anton-chart-block-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+/* Copy as image / Download PNG only once something has drawn. */
+.anton-chart-block:not(:has(.anton-chart-canvas, .anton-mermaid-svg)) .anton-chart-block-export {
+  display: none;
+}
+.anton-chart-block-body {
+  padding: 4px 14px 14px;
+  font-family: var(--font-body);
+}
+.anton-mermaid-svg {
+  display: flex;
+  justify-content: center;
+  max-height: 560px;
+  overflow: auto;
+}
+.anton-mermaid-svg svg {
+  max-width: 100%;
+  height: auto;
+}
+.anton-chart-block-source .anton-code-block {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+}
+
 /* Scoped highlight.js theme — dark (default). Only matches tokens
    inside our wrapper so the page can't accidentally inherit hljs
    styling elsewhere. The palette pulls from the cyberpunk accent set:
