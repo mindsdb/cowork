@@ -174,7 +174,10 @@ describe('CustomMcpConnectModal', () => {
     await user.type(screen.getByLabelText(/^Client ID/), 'my-client');
     await user.click(screen.getByRole('button', { name: 'Connect' }));
     await user.click(await screen.findByRole('button', { name: 'Continue' }));
-    await user.click(await screen.findByRole('button', { name: 'Open the browser anyway' }));
+    const anyway = await screen.findByRole('button', { name: 'Open the browser anyway' });
+    // Bordered, not the borderless ghost style that read as plain text in the app.
+    expect(anyway.className.split(' ')).toContain('default');
+    await user.click(anyway);
 
     expect(customMcpConnect).toHaveBeenCalledTimes(3);
     expect(customMcpConnect).toHaveBeenLastCalledWith({

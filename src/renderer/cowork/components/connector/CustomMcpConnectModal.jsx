@@ -188,7 +188,7 @@ function ConnectForm({ busy, setBusy, onClose, onConnected }) {
           {error && <Alert variant="danger">{error}</Alert>}
           {refusedHosts && !busy && (
             <div>
-              <Button type="button" variant="subtle" onClick={() => void connect(refusedHosts, true)}>{t('customMcp.openBrowserAnyway')}</Button>
+              <Button type="button" variant="default" size="sm" onClick={() => void connect(refusedHosts, true)}>{t('customMcp.openBrowserAnyway')}</Button>
             </div>
           )}
           {busy && loggingIn && <p className="text-sm text-ink-2" role="status">{t('customMcp.loginWaiting')}</p>}
