@@ -105,6 +105,8 @@ function ConnectForm({ busy, setBusy, onClose, onConnected }) {
   // The hosts the user confirmed for a login the server refused before the
   // browser opened; "Open the browser anyway" sends them again with the skip.
   const [refusedHosts, setRefusedHosts] = useState(null);
+  // True while a call that may open the browser runs: one with confirmed hosts.
+  const [loggingIn, setLoggingIn] = useState(false);
   const [connected, setConnected] = useState(null);
 
   const set = (field) => (next) => {
@@ -121,6 +123,7 @@ function ConnectForm({ busy, setBusy, onClose, onConnected }) {
    */
   async function connect(confirmedLoginHosts, skipClientCheck = false) {
     setBusy(true);
+    setLoggingIn(Boolean(confirmedLoginHosts));
     setError(null);
     setRefusedHosts(null);
     try {
@@ -149,6 +152,7 @@ function ConnectForm({ busy, setBusy, onClose, onConnected }) {
       setError(t('customMcp.error.generic', { reason: err?.message || '' }));
     } finally {
       setBusy(false);
+      setLoggingIn(false);
     }
   }
 
@@ -187,7 +191,7 @@ function ConnectForm({ busy, setBusy, onClose, onConnected }) {
               <Button type="button" variant="subtle" onClick={() => void connect(refusedHosts, true)}>{t('customMcp.openBrowserAnyway')}</Button>
             </div>
           )}
-          {busy && loginHosts && <p className="text-sm text-ink-2" role="status">{t('customMcp.loginWaiting')}</p>}
+          {busy && loggingIn && <p className="text-sm text-ink-2" role="status">{t('customMcp.loginWaiting')}</p>}
           {loginHosts ? (
             <div className="flex flex-col gap-2" role="group" aria-label={t('customMcp.confirmHosts')}>
               <p className="text-sm text-ink">{t('customMcp.confirmHosts')}</p>

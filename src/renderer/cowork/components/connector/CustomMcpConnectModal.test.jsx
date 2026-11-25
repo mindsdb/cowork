@@ -131,9 +131,12 @@ describe('CustomMcpConnectModal', () => {
 
   it('says to use Cancel while the browser login runs, and not before', async () => {
     const user = userEvent.setup();
+    let findLogin = () => {};
     let finish = () => {};
     customMcpConnect
-      .mockResolvedValueOnce({ ok: false, code: 'confirm_login_hosts', loginHosts: ['auth.example.com'] })
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        findLogin = () => resolve({ ok: false, code: 'confirm_login_hosts', loginHosts: ['auth.example.com'] });
+      }))
       .mockImplementationOnce(() => new Promise((resolve) => {
         finish = () => resolve({ ok: false, code: 'login_cancelled', reason: 'The connection was cancelled.' });
       }));
@@ -141,10 +144,12 @@ describe('CustomMcpConnectModal', () => {
 
     await fill(user);
     await user.click(screen.getByRole('button', { name: 'Connect' }));
-    await screen.findByRole('button', { name: 'Continue' });
+    // Busy finding the server: no browser can open yet.
+    expect(await screen.findByRole('button', { name: 'Connecting…' })).toBeTruthy();
     expect(screen.queryByText(/Finish signing in in your browser/)).toBeNull();
+    findLogin();
 
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(await screen.findByRole('button', { name: 'Continue' }));
 
     expect(await screen.findByText('Finish signing in in your browser. If it shows an error, select Cancel.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
@@ -155,10 +160,13 @@ describe('CustomMcpConnectModal', () => {
 
   it('opens the browser anyway after a refused client, with the confirmed hosts and the skip', async () => {
     const user = userEvent.setup();
+    let finish = () => {};
     customMcpConnect
       .mockResolvedValueOnce({ ok: false, code: 'confirm_login_hosts', loginHosts: ['auth.example.com'] })
       .mockResolvedValueOnce({ ok: false, code: 'client_refused', reason: 'x' })
-      .mockResolvedValueOnce({ ok: true, id: 'cm-1', label: 'Tracker', serverUrl: URL, toolsOn: 1, toolsUnavailable: false });
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        finish = () => resolve({ ok: true, id: 'cm-1', label: 'Tracker', serverUrl: URL, toolsOn: 1, toolsUnavailable: false });
+      }));
     renderModal();
 
     await fill(user);
@@ -172,6 +180,8 @@ describe('CustomMcpConnectModal', () => {
     expect(customMcpConnect).toHaveBeenLastCalledWith({
       label: 'Tracker', url: URL, clientId: 'my-client', confirmedLoginHosts: ['auth.example.com'], skipClientCheck: true,
     });
+    expect(await screen.findByText('Finish signing in in your browser. If it shows an error, select Cancel.')).toBeTruthy();
+    finish();
     expect(await screen.findByText('Connected. 1 read-only tool is on.')).toBeTruthy();
   });
 
