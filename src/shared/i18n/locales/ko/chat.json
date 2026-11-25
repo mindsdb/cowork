@@ -754,6 +754,10 @@
     "phoneWorking": "작업 중…",
     "phoneDone": "완료되었습니다. 최소화하여 답변을 확인하세요.",
     "phoneMinimize": "최소화",
+    "overlayQuestion": "{agent}의 질문이 채팅에서 기다리고 있습니다.",
+    "overlayHandOver": "진행해 주세요: {reason}.",
+    "overlayHandOverWatching": "진행해 주세요: {reason}. 완료되면 {agent}이(가) 알아서 이어 갑니다.",
+    "overlayGoToQuestion": "질문으로 이동",
     "talkTo": "{agent}와(과) 대화"
   },
   "voiceCall": {

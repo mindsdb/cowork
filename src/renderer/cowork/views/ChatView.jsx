@@ -68,6 +68,7 @@ import { isPersonsBrowserTurn, isPositionClickCard } from '../lib/browserApprova
 import { BROWSER_ACTION_BADGE, groupBrowserSteps } from '../lib/browserSteps';
 import { BROWSER_APPROVAL_BADGE, answeredBrowserStep } from '../lib/browserStepPrompt';
 import { BROWSER_HANDOVER_BADGE, finishedHandOverStep, isHandOverCard } from '../lib/browserHandOverPrompt';
+import { openNeeds } from '../lib/voice/callNeeds';
 import { BrowserHandOverContext } from '../lib/browserHandOverContext';
 import { dropHandBack } from '../lib/browserHandBack';
 import { useBrowserPrefs } from '../lib/browserPrefs';
@@ -2683,6 +2684,23 @@ export default function ChatView({
   const askingUser = (streamingMsg?.steps || []).some(
     (s) => s.badge === 'AskUser' && !s.data?.answer && !isPositionClickCard(s.data),
   );
+  /* Overlay mode only: below 640 the pane docks and carries the phone's own
+     strip; from 1160 up the pane sits beside the chat, already visible. */
+  const browserPaneOverlay = paneFloats && !isMobile;
+  /* What the overlay strip says is waiting, read from the card itself (not
+     `browserHandoff`/`handoffWatching` below, which come from the viewer and
+     can lag the card: a hand-over card can open before the viewer reports who
+     holds the browser). `openNeed` already excludes answered and
+     auto-approved cards and tells a hand-over from a plain question by the
+     card's own prompt; this is deliberately narrower than `askingUser` above,
+     which lets an auto-approved card through. */
+  const browserWaitNeed = browserPaneOverlay ? openNeeds(streamingMsg?.steps)[0] || null : null;
+  const browserWaitMessage = !browserWaitNeed ? ''
+    : browserWaitNeed.kind === 'handOver'
+    ? (browserWaitNeed.watching
+      ? tc('browser.overlayHandOverWatching', { reason: browserWaitNeed.text, agent: harnessLabel(task?.harness) || 'Anton' })
+      : tc('browser.overlayHandOver', { reason: browserWaitNeed.text }))
+    : tc('browser.overlayQuestion', { agent: harnessLabel(task?.harness) || 'Anton' });
   const phoneBrowserExpanded = Boolean(browserDock) && browserPaneOpen && !browserMinimized;
   // While it is expanded the page under it stays put: no scroll, so typing in
   // the address row can't move the screen.
