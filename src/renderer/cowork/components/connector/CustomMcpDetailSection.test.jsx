@@ -106,6 +106,19 @@ describe('CustomMcpDetailSection', () => {
     expect(await screen.findByText('Reconnected. Your tool choices are kept.')).toBeTruthy();
   });
 
+  it('says a reconnect login ran out of time, with no client ID advice', async () => {
+    bridge.customMcpReconnect
+      .mockResolvedValueOnce({ ok: false, code: 'confirm_login_hosts', loginHosts: ['auth.example.com'] })
+      .mockResolvedValueOnce({ ok: false, code: 'login_timed_out', reason: 'The browser login did not come back in time.' });
+    renderSection();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Reconnect' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+
+    const message = await screen.findByText("The browser login didn't come back in time. Try again.");
+    expect(message.textContent).not.toMatch(/client ID/i);
+  });
+
   it('keeps a switch made while the tools reload after a reconnect, then reloads', async () => {
     const both = [{ ...TOOLS[0] }, { ...TOOLS[1], allowed: true }];
     const added = [...TOOLS, { name: 'new_tool', description: 'Added later', readOnly: true, allowed: false }];
