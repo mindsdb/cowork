@@ -326,9 +326,8 @@ export function accessSummaryLabel(artifact, { orgSharing = false, orgName = nul
 // publisher reached with one shared publish token (cowork-server's
 // COWORK_PUBLISH_TOKEN) has no owner to let in, so it answers an owner-only
 // upload with a 400. Everyone at ‹org› shows only with sharing on.
-const DEFAULT_MODES = SHARED_TOKEN_PUBLISH
-  ? [AUDIENCE_CHOICE.ORG, AUDIENCE_CHOICE.SPECIFIC, AUDIENCE_CHOICE.PASSWORD, AUDIENCE_CHOICE.PUBLIC, AUDIENCE_CHOICE.WEBSITE]
-  : [AUDIENCE_CHOICE.PRIVATE, AUDIENCE_CHOICE.ORG, AUDIENCE_CHOICE.SPECIFIC, AUDIENCE_CHOICE.PASSWORD, AUDIENCE_CHOICE.PUBLIC, AUDIENCE_CHOICE.WEBSITE];
+const SHARED_TOKEN_MODES = [AUDIENCE_CHOICE.ORG, AUDIENCE_CHOICE.SPECIFIC, AUDIENCE_CHOICE.PASSWORD, AUDIENCE_CHOICE.PUBLIC, AUDIENCE_CHOICE.WEBSITE];
+const DEFAULT_MODES = SHARED_TOKEN_PUBLISH ? SHARED_TOKEN_MODES : [AUDIENCE_CHOICE.PRIVATE, ...SHARED_TOKEN_MODES];
 
 // `modes` lets a caller restrict the offered set (e.g. [PASSWORD, PUBLIC]);
 // defaults to every mode this build offers. `value`/`onChange` are the

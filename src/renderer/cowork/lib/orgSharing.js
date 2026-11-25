@@ -161,6 +161,12 @@ export const AUDIENCE_CHOICE = Object.freeze({
   WEBSITE: 'website',
 });
 
+/** A public website's visitors are not tracked, so it has no viewer analytics. */
+export const hasViewerAnalytics = (mode) => mode !== AUDIENCE_CHOICE.WEBSITE;
+
+/** Whether the Share panel offers the analytics setting: not for Only me, which nobody else opens. */
+export const offersViewerAnalytics = (mode) => mode !== AUDIENCE_CHOICE.PRIVATE && hasViewerAnalytics(mode);
+
 /** The private choice's title, on every surface. */
 export const ONLY_ME_TITLE = 'Only me';
 export const onlyMeTitle = () => tr('onlyMeTitle');

@@ -35,7 +35,7 @@ import {
   parseEmailList,
 } from './AccessChooser';
 import { SharedWithList, useRecipientItems } from '../../RecipientRows';
-import { AUDIENCE_CHOICE, mindsHubUnreachablePermissions, recipientSummary } from '../../../lib/orgSharing';
+import { AUDIENCE_CHOICE, hasViewerAnalytics, mindsHubUnreachablePermissions, offersViewerAnalytics, recipientSummary } from '../../../lib/orgSharing';
 import { LOAD_STATUS } from '../../../lib/sharingContract';
 import { LoadStatus, RetryAlert } from '../../LoadStatus';
 import { useArtifactShareState } from './useArtifactShareState';
@@ -68,10 +68,6 @@ function draftDiffers(draft, current) {
   }
   return false;
 }
-
-// Viewer analytics is not offered for Only me, which nobody else opens, nor
-// for a public website, whose visitors are not tracked.
-const NO_ANALYTICS_MODES = new Set([AUDIENCE_CHOICE.PRIVATE, AUDIENCE_CHOICE.WEBSITE]);
 
 // ── Small shared bits ───────────────────────────────────────────────────
 
@@ -355,7 +351,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
   // is open on a published artifact.
   // Not for a public website: its stats routes answer 404.
   const analytics = useArtifactStats(pub.artifact, {
-    enabled: open && isPublished && !!pub.artifact && pub.accessMode !== AUDIENCE_CHOICE.WEBSITE,
+    enabled: open && isPublished && !!pub.artifact && hasViewerAnalytics(pub.accessMode),
   });
   // The analytics switches save as they flip; the footer says so.
   const analyticsSave = useSaveStatus(!!analytics.trackingBusy, !!analytics.error);
@@ -749,9 +745,9 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
 
                     {/* Whatever access is picked or being changed: analytics
                         is its own setting, saved as it flips
-                        (NO_ANALYTICS_MODES says where it is not offered). */}
+                        (offersViewerAnalytics says where it is not offered). */}
                     {pub.artifact && view !== 'versions'
-                      && !NO_ANALYTICS_MODES.has(view === 'access' ? draft.mode : current.mode) && (
+                      && offersViewerAnalytics(view === 'access' ? draft.mode : current.mode) && (
                       <div className="py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line">
                         <SectionLabel>{t('analytics.title')}</SectionLabel>
                         <ViewerAnalyticsSettings controller={analytics} />
