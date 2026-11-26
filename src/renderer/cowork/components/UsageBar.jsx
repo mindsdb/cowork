@@ -6,7 +6,7 @@ import { trackBillingOpened } from '../lib/analytics';
 import { usageActionUrl } from '../lib/usageWarnings';
 import { useConsoleLink } from '../hooks/useConsoleLink';
 import { billingActions } from '../lib/billingLinks';
-import { useUsageBarDismiss, useStandingFigureHidden } from '../lib/usageBarDismiss';
+import { useUsageBarDismiss } from '../lib/usageBarDismiss';
 import { useTranslation } from '../../lib/i18n';
 import { useUsageActions } from '../hooks/useUpgradeOffer';
 
@@ -22,10 +22,6 @@ import { useUsageActions } from '../hooks/useUpgradeOffer';
 // -bg tokens are translucent, and the conversation scrolls behind the bar, so
 // each status tone paints its tint as an image over the solid page colour.
 const TONE = {
-  // `resting` is the standing allowance figure rather than a warning, so it
-  // borrows the app's own surface instead of a status colour: it stays in view
-  // until closed and must not read as something being wrong.
-  resting: 'bg-surface-2 border-line text-ink-3',
   info: 'bg-bg bg-[image:linear-gradient(var(--info-bg),var(--info-bg))] border-info-border text-info-text',
   warning: 'bg-bg bg-[image:linear-gradient(var(--warning-bg),var(--warning-bg))] border-warning-border text-warning-text',
   danger: 'bg-bg bg-[image:linear-gradient(var(--danger-bg),var(--danger-bg))] border-danger-border text-danger-text',
@@ -36,47 +32,33 @@ const TONE = {
 const keyOf = (d) => d.dismissKey ?? d.kind;
 
 // `usageKnown`: the poll has answered and nothing, for any pick, is worth
-// warning about. Only then does an at-rest bar mean "healthy", which is when
-// closed warnings are forgotten.
+// warning about. Only then is an empty bar "healthy", which is when closed
+// warnings are forgotten.
 export default function UsageBar({ warning, isBillingOwner = false, usageKnown = false, trigger = 'usage_notice' }) {
   const { t } = useTranslation('shell');
   const consoleLink = useConsoleLink();
   const [dismissed, dismiss] = useUsageBarDismiss({
-    // Closed warnings are forgotten once the bar is back at rest: the standing
-    // figure or nothing at all. Not while a warning is up, even one the person
-    // has closed, or "healthy" would just mean "closed".
-    resetWhenClear: usageKnown && (!warning || !!warning.resting),
+    // Closed warnings are forgotten once the bar is empty. Not while a warning
+    // is up, even one the person has closed, or "healthy" would just mean
+    // "closed".
+    resetWhenClear: usageKnown && !warning,
   });
-  // The standing figure closes too (ENG-2749), on its own flag: the reset
-  // above must never bring it back, and neither may the bar emptying for some
-  // other reason (a BYOK provider, an uncapped grant, a top-up).
-  const [figureHidden, hideFigure] = useStandingFigureHidden();
   // A plan upgrade on the bar (ENG-4186) shows only where one can be bought.
   const usageActions = useUsageActions();
-  // What the bar can show, outermost first: the warning, then what it steps
-  // down to when closed (a free warning steps down to the standing figure for
-  // someone with no balance to fall through to; see usageWarnings.js). The
-  // first one still open is what shows.
-  const closed = (d) => (d.resting ? figureHidden : dismissed.includes(keyOf(d)));
-  const shown = [warning, warning?.whenDismissed].filter(Boolean).find((d) => !closed(d)) || null;
+  const shown = warning && !dismissed.includes(keyOf(warning)) ? warning : null;
 
   // Announcing happens in a permanently mounted region, not through a role on
-  // the bar. The standing figure can sit on screen for a whole window, so a
-  // warning replacing it would only be promoting an existing node into a live
-  // region, and aria-live announces content CHANGES — the region has to be in
+  // the bar: aria-live announces content CHANGES, so the region has to be in
   // the DOM and empty first (same rule as AskUserCard). Polite, not assertive:
   // the allowance is worth saying at the next pause, never worth cutting into
-  // a sentence. A resting figure announces nothing at all.
-  const announce = shown && !shown.resting ? `${shown.title}. ${shown.body}` : '';
+  // a sentence.
+  const announce = shown ? `${shown.title}. ${shown.body}` : '';
   const [announcement, setAnnouncement] = useState('');
   useEffect(() => { setAnnouncement(announce); }, [announce]);
   const live = <div className="sr-only" role="status" aria-live="polite">{announcement}</div>;
 
   if (!shown) return live;
   const tone = TONE[shown.tone] || TONE.warning;
-  // Separated from `usage_notice` so the standing figure can be graded as a
-  // conversion surface on its own rather than inside the warning's number.
-  const clickTrigger = shown.resting ? 'usage_at_rest' : trigger;
   const actions = usageActions.visible(billingActions(shown.actions));
   return (
     <>
@@ -100,7 +82,7 @@ export default function UsageBar({ warning, isBillingOwner = false, usageKnown =
                     usageActions.openUpgrade(a, 'usage_bar');
                     return;
                   }
-                  trackBillingOpened(clickTrigger);
+                  trackBillingOpened(trigger);
                   host.openExternal(consoleLink(usageActionUrl(a, { isBillingOwner })));
                 }}
                 className="border-0 bg-transparent p-0 m-0 font-body text-[13px] font-semibold underline underline-offset-2 text-[color:inherit] cursor-pointer hover:opacity-80"
@@ -110,11 +92,9 @@ export default function UsageBar({ warning, isBillingOwner = false, usageKnown =
         )}
         <button
           type="button"
-          onClick={() => (shown.resting ? hideFigure() : dismiss(keyOf(shown)))}
-          // The label names what goes, since for a free user the figure's
-          // button is a permanent fixture rather than a passing warning's.
-          aria-label={shown.resting ? t('usageBar.hideAllowance') : t('ui.toast.dismiss')}
-          title={shown.resting ? t('usageBar.hide') : t('ui.toast.dismiss')}
+          onClick={() => dismiss(keyOf(shown))}
+          aria-label={t('ui.toast.dismiss')}
+          title={t('ui.toast.dismiss')}
           className="absolute top-1 right-1.5 inline-flex items-center justify-center w-7 h-7 rounded-md border-0 bg-transparent text-[color:inherit] opacity-70 cursor-pointer hover:opacity-100 hover:bg-[rgba(127,127,127,0.12)]"
         >
           <Icon of={X} size={14} />

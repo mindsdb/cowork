@@ -240,10 +240,6 @@
   "upToDate": "À jour",
   "upToDateSaving": "Enregistrement…",
   "upToDateSaved": "Enregistré",
-  "usageBar": {
-    "hideAllowance": "Masquer le quota",
-    "hide": "Masquer"
-  },
   "diagnostics": {
     "copy": "Copier les diagnostics",
     "copied": "Copié",

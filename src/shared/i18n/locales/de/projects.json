@@ -24,10 +24,6 @@
         "untilMobile": "Das kostenlose MindsHub Air ist für alle bis {until} pausiert. Ihr Kontingent wird dadurch nicht verbraucht.",
         "dailyResetMobile": "Das kostenlose MindsHub Air ist für alle pausiert, bis das Tagesbudget zurückgesetzt wird. Ihr Kontingent wird dadurch nicht verbraucht."
       },
-      "resting": {
-        "resetsAt": "Wird um {time} zurückgesetzt.",
-        "noReset": "Air nutzt diese, bis sie aufgebraucht sind."
-      },
       "balanceEmptySentence": "Ihr Guthaben ist aufgebraucht.",
       "percentLeft": "Noch {percent} Ihres Gratiskontingents übrig",
       "autoTopUpFailed": {
@@ -46,8 +42,6 @@
       },
       "balanceLow": {
         "title": "Guthaben wird knapp",
-        "autoRefills": "Noch {usd} übrig. Die automatische Aufladung füllt auf {target} auf, sobald es unter {floor} fällt.",
-        "autoCovers": "Noch {usd} übrig. Die automatische Aufladung übernimmt das.",
         "autoPending": "Noch {usd} übrig. Die automatische Aufladung wartet auf Ihre Bank.",
         "autoCapReached": "Noch {usd} übrig. Die automatische Aufladung ist pausiert, um im monatlichen Limit zu bleiben. Laden Sie Guthaben auf, um weiterzumachen.",
         "body": "Noch {usd} übrig. Laden Sie Guthaben auf oder aktivieren Sie die automatische Aufladung.",
@@ -83,7 +77,8 @@
         "lowThenWalletWithTime": "Danach nutzen Aufgaben bis zum Zurücksetzen um {time} Ihr Guthaben zu API-Preisen.",
         "lowThenPause": "Danach pausieren Aufgaben bis zum Zurücksetzen.",
         "lowThenPauseWithTime": "Danach pausieren Aufgaben bis {time}."
-      }
+      },
+      "resetsAt": "Wird um {time} zurückgesetzt."
     },
     "scheduleWhen": {
       "timeZone": "Ortszeit {city}",

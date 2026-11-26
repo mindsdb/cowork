@@ -139569,40 +139569,6 @@
       "text": "fa8634b2ffa2"
     }
   },
-  "projects:messages.usage.balanceLow.autoCovers": {
-    "de": {
-      "from": "97a487897dd0",
-      "text": "4bb37dd0792e"
-    },
-    "es": {
-      "from": "97a487897dd0",
-      "text": "5ca75135045f"
-    },
-    "fr": {
-      "from": "97a487897dd0",
-      "text": "5ea2b3975660"
-    },
-    "it": {
-      "from": "97a487897dd0",
-      "text": "70af32d07fbc"
-    },
-    "ja": {
-      "from": "97a487897dd0",
-      "text": "e9e6dc3a75f6"
-    },
-    "ko": {
-      "from": "97a487897dd0",
-      "text": "4ffde4eac21f"
-    },
-    "pt-BR": {
-      "from": "97a487897dd0",
-      "text": "51476380c8e3"
-    },
-    "zh-CN": {
-      "from": "97a487897dd0",
-      "text": "c1dd5dc35784"
-    }
-  },
   "projects:messages.usage.balanceLow.autoPending": {
     "de": {
       "from": "fe8aaa97dc88",
@@ -139635,40 +139601,6 @@
     "zh-CN": {
       "from": "fe8aaa97dc88",
       "text": "c45e32fc6577"
-    }
-  },
-  "projects:messages.usage.balanceLow.autoRefills": {
-    "de": {
-      "from": "bc268ca6f6f9",
-      "text": "0504a6ef75f2"
-    },
-    "es": {
-      "from": "bc268ca6f6f9",
-      "text": "8f7444a23a25"
-    },
-    "fr": {
-      "from": "bc268ca6f6f9",
-      "text": "92c70cd7e7a3"
-    },
-    "it": {
-      "from": "bc268ca6f6f9",
-      "text": "905a653cc0d8"
-    },
-    "ja": {
-      "from": "bc268ca6f6f9",
-      "text": "9a6a0db8786e"
-    },
-    "ko": {
-      "from": "bc268ca6f6f9",
-      "text": "95a884527bc4"
-    },
-    "pt-BR": {
-      "from": "bc268ca6f6f9",
-      "text": "40a4dfadfb8e"
-    },
-    "zh-CN": {
-      "from": "bc268ca6f6f9",
-      "text": "4931c50cdd68"
     }
   },
   "projects:messages.usage.balanceLow.body": {
@@ -140317,41 +140249,7 @@
       "text": "815da679b99c"
     }
   },
-  "projects:messages.usage.resting.noReset": {
-    "de": {
-      "from": "a8602faed541",
-      "text": "668c9da8c4fb"
-    },
-    "es": {
-      "from": "a8602faed541",
-      "text": "596e98d4540e"
-    },
-    "fr": {
-      "from": "a8602faed541",
-      "text": "1b512587e0bf"
-    },
-    "it": {
-      "from": "a8602faed541",
-      "text": "d4298593f5d8"
-    },
-    "ja": {
-      "from": "a8602faed541",
-      "text": "c9a1ee300d89"
-    },
-    "ko": {
-      "from": "a8602faed541",
-      "text": "4bcd2901ea83"
-    },
-    "pt-BR": {
-      "from": "a8602faed541",
-      "text": "43bbd6b17d65"
-    },
-    "zh-CN": {
-      "from": "a8602faed541",
-      "text": "f6795e6a51be"
-    }
-  },
-  "projects:messages.usage.resting.resetsAt": {
+  "projects:messages.usage.resetsAt": {
     "de": {
       "from": "6c21e02ecfff",
       "text": "dce4a2043124"
@@ -193899,74 +193797,6 @@
     "zh-CN": {
       "from": "23e39291d613",
       "text": "6bdb4435095e"
-    }
-  },
-  "shell:usageBar.hide": {
-    "de": {
-      "from": "ac20a57bfde0",
-      "text": "042fae8a9e4a"
-    },
-    "es": {
-      "from": "ac20a57bfde0",
-      "text": "dd680772877e"
-    },
-    "fr": {
-      "from": "ac20a57bfde0",
-      "text": "04ae28b7f7cc"
-    },
-    "it": {
-      "from": "ac20a57bfde0",
-      "text": "12292af0c960"
-    },
-    "ja": {
-      "from": "ac20a57bfde0",
-      "text": "8389c10f44c0"
-    },
-    "ko": {
-      "from": "ac20a57bfde0",
-      "text": "d14351677e68"
-    },
-    "pt-BR": {
-      "from": "ac20a57bfde0",
-      "text": "dd680772877e"
-    },
-    "zh-CN": {
-      "from": "ac20a57bfde0",
-      "text": "145219e726b8"
-    }
-  },
-  "shell:usageBar.hideAllowance": {
-    "de": {
-      "from": "382c17d7769c",
-      "text": "569cbf812145"
-    },
-    "es": {
-      "from": "382c17d7769c",
-      "text": "5f464b38b231"
-    },
-    "fr": {
-      "from": "382c17d7769c",
-      "text": "b3365333a593"
-    },
-    "it": {
-      "from": "382c17d7769c",
-      "text": "c6ece4c17363"
-    },
-    "ja": {
-      "from": "382c17d7769c",
-      "text": "3c6d76cdc43d"
-    },
-    "ko": {
-      "from": "382c17d7769c",
-      "text": "0681ef1e45e1"
-    },
-    "pt-BR": {
-      "from": "382c17d7769c",
-      "text": "08ed4266ee25"
-    },
-    "zh-CN": {
-      "from": "382c17d7769c",
-      "text": "b3d5d5adce41"
     }
   },
   "shell:userMenu.account": {

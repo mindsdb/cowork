@@ -24,10 +24,6 @@
         "untilMobile": "Free MindsHub Air is paused for everyone until {until}. This doesn't use your allowance.",
         "dailyResetMobile": "Free MindsHub Air is paused for everyone until the daily budget resets. This doesn't use your allowance."
       },
-      "resting": {
-        "resetsAt": "Resets at {time}.",
-        "noReset": "Air runs on these until they are used up."
-      },
       "balanceEmptySentence": "Your balance is empty.",
       "percentLeft": "{percent} of your free allowance left",
       "autoTopUpFailed": {
@@ -46,8 +42,6 @@
       },
       "balanceLow": {
         "title": "Balance running low",
-        "autoRefills": "{usd} left. Auto top up refills it to {target} when it drops below {floor}.",
-        "autoCovers": "{usd} left. Auto top up will cover it.",
         "autoPending": "{usd} left. Auto top up is waiting on your bank.",
         "autoCapReached": "{usd} left and auto top up is paused to stay within its monthly cap. Add funds to keep going.",
         "body": "{usd} left. Add funds or turn on auto top up.",
@@ -83,7 +77,8 @@
         "lowThenWalletWithTime": "After that, tasks continue from your wallet at API rates until it resets at {time}.",
         "lowThenPause": "After that, tasks pause until it resets.",
         "lowThenPauseWithTime": "After that, tasks pause until {time}."
-      }
+      },
+      "resetsAt": "Resets at {time}."
     },
     "scheduleWhen": {
       "timeZone": "{city} time",
