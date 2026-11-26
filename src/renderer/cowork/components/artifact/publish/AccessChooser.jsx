@@ -1,16 +1,16 @@
 // AccessChooser — the "Who can access your app" picker.
 //
-// One controlled component shared by every publish surface (the viewer's
-// inline publish popover and the Artifacts grid dialog) so the access logic,
-// and its validation, lives in exactly one place. Built on Base UI's
-// RadioGroup/Radio for real radiogroup semantics + arrow-key navigation;
-// skinned with the app's `--accent` / `--surface` / `--line` tokens.
+// One controlled component for every publish surface (the viewer's Share
+// menu, which the Artifacts page and the chat card open too: ENG-4687), so
+// the access logic, and its validation, lives in exactly one place. The
+// chosen access is a card that opens the others in a dropdown; skinned with
+// the app's `--accent` / `--surface` / `--line` tokens.
 //
 // The choices, private → public (AUDIENCE_CHOICE, the same values a skill's
 // audience uses): Only me, Everyone at ‹org› (sharing in MindsHub mode
 // only), Specific teams and people (or, without it, Specific people by
-// email), Password protected, Public. "Specific …" unfolds its recipient field right
-// under its own card.
+// email), Password protected, Public. The chosen one's field (the password,
+// the recipients) unfolds under the card.
 //
 // Controlled via a single `value` draft + `onChange`:
 //   const [draft, setDraft] = useState(accessDraftFromArtifact(artifact));
@@ -329,13 +329,13 @@ const DEFAULT_MODES = SHARED_TOKEN_PUBLISH
 // no "Everyone", and "Specific people" takes emails only. Without
 // `canShareArtifactsOrg` "Everyone" is grayed with the role hint, or with
 // "Couldn't reach MindsHub" while MindsHub couldn't be asked.
-// `layout`: 'list' shows every option as a card at once (the first share);
-// 'dropdown' shows the chosen one as a card that opens the others in a
-// dropdown, which closes on a pick (changing a published artifact's access).
-// With 'dropdown', `showEditor` false leaves out the field the choice unfolds
-// (the password, the people), for a card that only shows and switches, and
-// `chosenDesc` replaces the chosen option's line on the card (who is on a
-// list, rather than what a list is).
+// The chosen access shows as a card that opens the others in a dropdown,
+// which closes on a pick: the same control for the first share and for a
+// change (ENG-4687; the first share's list of every option is gone).
+// `showEditor` false leaves out the field the choice unfolds (the password,
+// the people), for a card that only shows and switches, and `chosenDesc`
+// replaces the chosen option's line on the card (who is on a list, rather
+// than what a list is).
 export function AccessChooser({
   value,
   onChange,
@@ -344,7 +344,6 @@ export function AccessChooser({
   sharing = null,
   // The chooser's accessible name; "Who can access your app" by default.
   ariaLabel,
-  layout = 'list',
   showEditor = true,
   chosenDesc = '',
 }) {
@@ -411,35 +410,22 @@ export function AccessChooser({
       : { value: AUDIENCE_CHOICE.SPECIFIC, icon: specificPeople.icon(16), title: specificPeople.title, desc: specificPeople.desc }),
     modes.includes(AUDIENCE_CHOICE.PASSWORD) && {
       value: AUDIENCE_CHOICE.PASSWORD, icon: Ico.lock(16), title: ACCESS_LABELS.password.title, desc: ACCESS_LABELS.password.desc,
-      editor: draft.mode === AUDIENCE_CHOICE.PASSWORD ? passwordField : null, editorTestId: 'password-field',
+      editor: draft.mode === AUDIENCE_CHOICE.PASSWORD ? passwordField : null,
     },
     modes.includes(AUDIENCE_CHOICE.PUBLIC) && { value: AUDIENCE_CHOICE.PUBLIC, icon: Ico.globe(16), title: ACCESS_LABELS.public.title, desc: ACCESS_LABELS.public.desc },
   ].filter(Boolean);
 
-  if (layout === 'dropdown') {
-    return (
-      <AccessDropdown
-        options={options}
-        value={draft.mode}
-        onValueChange={(m) => set({ mode: m })}
-        chosenDesc={chosenDesc}
-        ariaLabel={ariaLabel}
-        editor={showEditor ? (
-          options.find((option) => option.value === draft.mode)?.editor
-          ?? (draft.mode === AUDIENCE_CHOICE.SPECIFIC ? <RecipientField {...recipients} /> : null)
-        ) : null}
-      />
-    );
-  }
-
   return (
-    <AudiencePanel
-      ariaLabel={ariaLabel ?? t('publish.whoCanAccess')}
+    <AccessDropdown
+      options={options}
       value={draft.mode}
       onValueChange={(m) => set({ mode: m })}
-      options={options}
-      specificValue={AUDIENCE_CHOICE.SPECIFIC}
-      recipients={recipients}
+      chosenDesc={chosenDesc}
+      ariaLabel={ariaLabel ?? t('publish.whoCanAccess')}
+      editor={showEditor ? (
+        options.find((option) => option.value === draft.mode)?.editor
+        ?? (draft.mode === AUDIENCE_CHOICE.SPECIFIC ? <RecipientField {...recipients} /> : null)
+      ) : null}
     />
   );
 }

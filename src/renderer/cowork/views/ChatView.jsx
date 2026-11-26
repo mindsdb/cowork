@@ -938,10 +938,6 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false, i
   // so the listed card for the same artifact says whether the person may edit it.
   const listedCard = useArtifactCardBySlug(artifact.capabilities ? '' : artifact.slug);
   const capabilities = artifact.capabilities || listedCard?.capabilities || null;
-  // What opens in the viewer carries them too, as an artifact from the list
-  // does: a preview that loads no workspace to say (a PDF, Word, Excel or
-  // PowerPoint file) shows Share and its chat bar by them (ENG-4687).
-  const forViewer = capabilities && !artifact.capabilities ? { ...artifact, capabilities } : artifact;
   const [status, setStatus] = useState(null);
   const statusTimerRef = useRef(null);
   useLayoutEffect(() => () => {
@@ -999,6 +995,8 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false, i
     published,
     canPreviewInline,
     canPreviewDraft,
+    // A full-stack app: the viewer frames it at its published address.
+    canPreviewPublished: BACKEND_ARTIFACT_TYPES.has(artifact.type),
     hasBridge,
     hasDraft: canDownloadOrgDraft(artifact),
     canDownload,
@@ -1062,8 +1060,8 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false, i
       // A live inline page hands over where the user is in it (its tab or
       // slide, scroll, hash), for the viewer to open on the same place.
       const view = liveInline ? liveInlineViewRef.current : null;
-      if (view) onOpen(forViewer, { view });
-      else onOpen(forViewer);
+      if (view) onOpen(artifact, { view });
+      else onOpen(artifact);
       return;
     }
     if (openTarget === 'published') {
@@ -1224,7 +1222,7 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false, i
     && !(liveApps && BACKEND_ARTIFACT_TYPES.has(artifact.type) && !published)
     && capabilities?.canEdit !== false
     && (orgMode || canAct)
-    ? { label: t('chatView.artifactCard.share'), onClick: () => onShare(forViewer), tooltip: t('chatView.artifactCard.shareTooltip') }
+    ? { label: t('chatView.artifactCard.share'), onClick: () => onShare(artifact), tooltip: t('chatView.artifactCard.shareTooltip') }
     : null;
   /*
    * An artifact the agent marked to show inline (ENG-4684) shows its live page

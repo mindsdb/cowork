@@ -12,6 +12,10 @@
 //     desktop loopback that injects the bearer itself): that URL.
 //   - Any other draft URL: fetched with the credential and inlined into a
 //     srcdoc document, because a frame navigation cannot carry it.
+//   - A fullstack app on an org deployment (`publishedApp`, ENG-4687): its
+//     published address, where it already runs, since the server can't start
+//     its backend there; a restricted one through the view host's session
+//     bootstrap, so it opens signed in.
 //   - Otherwise (desktop / local web): mounted by path, as a static bundle
 //     or, for a fullstack app, behind the loopback proxy.
 
@@ -27,7 +31,8 @@ import { draftLinksWithdrawal, draftLinkUrl } from '../../lib/draftLinkRules';
 import { setDraftLinks } from '../../../lib/draftLinks';
 import { inlineHtmlFromApi } from '../../lib/inlineHtmlAssets';
 import { BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
-import { host } from '../../../platform/host';
+import { getAccessToken, host } from '../../../platform/host';
+import { viewSessionFrameUrl } from '../../../lib/viewSession';
 import { diagnostic } from '../../../../shared/diagnostics';
 import i18n from '../../../lib/i18n';
 import {
@@ -44,6 +49,23 @@ import {
 } from './artifactPreviewUtils';
 
 const tr = (key) => i18n.t(key, { ns: 'artifacts' });
+
+// A published app's address, for the preview frame: an https page on
+// another origin than this page and its API, or ''. The frame keeps the app's
+// origin (allow-same-origin), which is safe only because that origin is not
+// Cowork's: a page on Cowork's own origin with scripts and same-origin could
+// reach the shell around it.
+export function publishedAppUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    if (url.protocol !== 'https:') return '';
+    const own = [window.location?.origin, host.getApiOrigin?.()].filter(Boolean)
+      .map((origin) => { try { return new URL(origin).origin; } catch { return ''; } });
+    return own.includes(url.origin) ? '' : url.href;
+  } catch {
+    return '';
+  }
+}
 
 /**
  * A failed load. `message` is the sentence to show; `cause` the original
@@ -98,8 +120,11 @@ function withFlags(url, cacheVersion, withCommentLayer) {
  * @param {boolean} [options.withCommentLayer]
  * @param {boolean} [options.draftLinkEnabled] see usesDraftLink
  * @param {AbortSignal} [options.signal] aborts the srcdoc inlining
+ * @param {{ url: string, accessMode?: string } | null} [options.publishedApp]
+ *   an org deployment's fullstack app: where it's published, and its access.
+ *   Only the viewer passes it; its frame keeps the app's own origin.
  * @returns {Promise<{
- *   kind: 'static' | 'proxy',
+ *   kind: 'static' | 'proxy' | 'published',
  *   url: string,
  *   doc: string,
  *   port: number | null,
@@ -114,10 +139,28 @@ export async function loadHtmlPreview({
   withCommentLayer = false,
   draftLinkEnabled = false,
   signal,
+  publishedApp = null,
 }) {
   const draftPreviewUrl = artifact?.draftUrl || '';
   const isBackend = BACKEND_ARTIFACT_TYPES.has(artifact?.type);
   const result = (fields) => ({ kind: 'static', url: '', doc: '', port: null, expiresAt: null, ...fields });
+
+  // An org deployment can't start a fullstack app's backend (preview-mount is
+  // desktop-only), but the app already runs at its published address: it's
+  // published for its owner alone when it's created. The frame shows that
+  // page, which lets this Cowork web app be its ancestor (mindshub_services'
+  // frame-ancestors). A restricted one (owner-only included) opens through the
+  // view host's session bootstrap, not its sign-in redirect, which can't be
+  // framed. An address that isn't an https page is no preview.
+  if (isBackend && publishedApp) {
+    const liveUrl = publishedAppUrl(publishedApp.url);
+    if (!liveUrl) throw new HtmlPreviewError(tr('viewer.appNotPublishedYet'), { stage: 'published' });
+    const framed = withArtifactVersion(liveUrl, cacheVersion);
+    const url = publishedApp.accessMode === 'restricted'
+      ? await viewSessionFrameUrl(framed, getAccessToken)
+      : framed;
+    return result({ kind: 'published', url });
+  }
 
   if (draftPreviewUrl && (!isBackend || !hasActionPath)) {
     const linkRef = draftLinkEnabled ? artifactWorkspaceRef(artifact) : null;

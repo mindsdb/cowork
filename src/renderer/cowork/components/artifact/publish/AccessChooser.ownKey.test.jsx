@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 // A web build without the platform UI whose server publishes with the person's
 // own key: the SPA wrapper's tag says no shared publish token is set.
@@ -27,8 +28,12 @@ describe('AccessChooser with the platform UI off and no shared publish token', (
     expect(ACCESS_LABELS.password.desc).toBe('Anyone on the internet with the password');
   });
 
-  it('renders Only me selected and offers it first', () => {
+  it('renders Only me selected and offers it first', async () => {
+    const user = userEvent.setup();
     render(<AccessChooser value={newAccessDraft()} onChange={() => {}} />);
+    // Closed, the dropdown names the chosen access; open, it lists them all.
+    expect(screen.getByTestId('access-dropdown')).toHaveAccessibleName('Who can access your app: Only me');
+    await user.click(screen.getByTestId('access-dropdown'));
     const radios = screen.getAllByRole('radio');
     expect(radios).toHaveLength(4);
     expect(radios[0]).toHaveAccessibleName(/Only me/);

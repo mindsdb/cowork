@@ -625,8 +625,9 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
       const pub = makeController({ publishedUrl: '', ownerOnly: false });
       render(<PublishMenu controller={pub} />);
       await user.click(screen.getByText('Share'));
+      await user.click(screen.getByTestId('access-dropdown'));
       await user.click(radio(/^Specific teams and people/));
-      await user.type(screen.getByRole('combobox'), 'ana');
+      await user.type(within(screen.getByTestId('access-editor')).getByRole('combobox'), 'ana');
       await user.click(await screen.findByRole('option', { name: /Ana Ruiz/ }));
       // The footer's Share, not the trigger.
       await user.click(screen.getAllByRole('button', { name: 'Share' }).at(-1));

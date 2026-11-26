@@ -239,13 +239,30 @@ describe.each([
   });
 
   it('opens the shared page instead for a draft the viewer cannot render', () => {
+    // A file with no preview, published: its shared page is the one destination.
+    render(<ArtifactsView artifacts={[{
+      ...cloudDraft,
+      id: '44444444444444448444444444444444',
+      title: 'Data bundle',
+      type: 'file',
+      ext: '.zip',
+      path: '/proj/.anton/artifacts/bundle/data.zip',
+      draftUrl: '/api/v1/artifacts/drafts/project/id/data.zip',
+      publishedUrl: 'https://view.mindshub.ai/r/abc',
+    }]} />);
+    fireEvent.click(screen.getByText('Data bundle'));
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+    expect(host.openExternal).toHaveBeenCalledWith('https://view.mindshub.ai/r/abc');
+  });
+
+  it('previews a published full-stack app, which the viewer frames at its address (ENG-4687)', () => {
     render(<ArtifactsView artifacts={[{
       ...fullstackDraft,
       publishedUrl: 'https://view.mindshub.ai/r/abc',
     }]} />);
     fireEvent.click(screen.getByText('Ops Console'));
-    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
-    expect(host.openExternal).toHaveBeenCalledWith('https://view.mindshub.ai/r/abc');
+    expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
+    expect(host.openExternal).not.toHaveBeenCalled();
   });
 
   it('does not offer delete to a reviewer', () => {
