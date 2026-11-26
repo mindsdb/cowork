@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { KEEP_PLACE_MS, PREVIEW_PARENT_SOURCE, normalizePreviewView, postPreviewState, postPreviewTheme, usePreviewView } from './usePreviewView';
+import { KEEP_PLACE_MS, PREVIEW_PARENT_SOURCE, normalizePreviewView, postPreviewSnapshot, postPreviewState, postPreviewTheme, usePreviewView } from './usePreviewView';
 
 let hook = null;
 
@@ -284,5 +284,20 @@ describe('postPreviewState', () => {
   it('skips a frame with no window yet', () => {
     expect(() => postPreviewState(null, {})).not.toThrow();
     expect(() => postPreviewState({}, {})).not.toThrow();
+  });
+});
+
+// ENG-4684: the controls an inline page last reported go back the same way.
+describe('postPreviewSnapshot', () => {
+  it('posts the snapshot with the parent tag', () => {
+    const win = { postMessage: vi.fn() };
+    const snapshot = { controls: [{ label: 'p', name: 'p', type: 'range', value: '0.5' }], text: 'p = 0.5' };
+    postPreviewSnapshot(win, snapshot);
+    expect(win.postMessage).toHaveBeenCalledWith({ source: PREVIEW_PARENT_SOURCE, type: 'snapshot', snapshot }, '*');
+  });
+
+  it('skips a frame with no window yet', () => {
+    expect(() => postPreviewSnapshot(null, {})).not.toThrow();
+    expect(() => postPreviewSnapshot({}, {})).not.toThrow();
   });
 });

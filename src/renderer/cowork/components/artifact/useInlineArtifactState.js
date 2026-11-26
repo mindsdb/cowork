@@ -13,6 +13,8 @@
 //   { type: 'view-restored' }           a kept place was replayed: hand it
 //                                       its state again, over any toggles
 //                                       the replayed clicks made
+//   { type: 'snapshot', snapshot }      the page's form controls and text,
+//                                       which the shim reports for every page
 //
 // Every frame of one artifact (the chat card's and the viewer's) shares the
 // latest state any of them saw, in memory (latestInlineState): a frame that
@@ -37,10 +39,20 @@
 // once, after a short quiet spell. A stale revision is taken from the 409 and
 // the save tried once more; anything else is dropped, since the page keeps
 // its state and the next change saves again.
+//
+// A page that never calls setState (a slider plot) still says what the user
+// picked: the shim reports its form controls, `{ controls: [{ label, name,
+// type, value }], text }`, after each change. That snapshot is saved as the
+// artifact's `snapshot.json` the same way, after its own quiet spell, and the
+// latest one is kept in memory for the other frames and the voice call
+// (latestInlineSnapshot). It is not handed between frames, since each frame
+// reports its own; a new document is handed it after its state, and the shim
+// sets the controls again when the page does not keep its own state. It never
+// touches the state above.
 
 import { useEffect, useRef } from 'react';
 import { previewReportFrom } from './usePreviewFit';
-import { postPreviewState } from './usePreviewView';
+import { postPreviewSnapshot, postPreviewState } from './usePreviewView';
 import {
   canUseArtifactWorkspace,
   loadArtifactSource,
@@ -51,7 +63,9 @@ import { diagnostic } from '../../../../shared/diagnostics';
 export const INLINE_STATE_PATH = 'state.json';
 export const INLINE_STATE_MAX_BYTES = 32 * 1024;
 export const INLINE_STATE_DEBOUNCE_MS = 600;
-const SAVE_SUMMARY = 'Inline state';
+export const INLINE_SNAPSHOT_PATH = 'snapshot.json';
+export const INLINE_SNAPSHOT_DEBOUNCE_MS = 1000;
+const SAVE_SUMMARIES = { [INLINE_STATE_PATH]: 'Inline state', [INLINE_SNAPSHOT_PATH]: 'Inline snapshot' };
 // Artifacts whose latest state is kept in memory; the oldest goes first.
 const CACHE_LIMIT = 50;
 
@@ -78,6 +92,9 @@ const listeners = new Map();
 // its state.json: a state set from outside the frames (the voice call's
 // operator, setInlineArtifactState) is saved through one of them.
 const savers = new Map();
+// key -> serialized snapshot: the latest one any frame of that artifact
+// reported, or read from its snapshot.json.
+const snapshots = new Map();
 let seq = 0;
 // The `from` of a state set from outside every frame: each frame shows it.
 const FROM_APP = () => {};
@@ -121,9 +138,31 @@ export function setInlineArtifactState(artifact, state) {
   return true;
 }
 
-/** Forgets every shared state (tests). */
+function rememberSnapshot(key, content) {
+  if (!key) return;
+  snapshots.delete(key);
+  snapshots.set(key, content);
+  while (snapshots.size > CACHE_LIMIT) snapshots.delete(snapshots.keys().next().value);
+}
+
+const isSnapshot = (value) => !!value && typeof value === 'object' && !Array.isArray(value)
+  && (Array.isArray(value.controls) || typeof value.text === 'string');
+
+/**
+ * The latest snapshot of the form controls any frame of `artifact` reported
+ * (or read from its snapshot.json), parsed: `{ controls, text }`, or
+ * undefined.
+ */
+export function latestInlineSnapshot(artifact) {
+  const content = snapshots.get(inlineStateKey(artifact));
+  if (content == null) return undefined;
+  try { return JSON.parse(content); } catch { return undefined; }
+}
+
+/** Forgets every shared state and snapshot (tests). */
 export function clearInlineStateCache() {
   latest.clear();
+  snapshots.clear();
 }
 
 /**
@@ -139,13 +178,14 @@ export function serializeInlineState(state) {
 }
 
 /**
- * Saves `content` as state.json at `revisionId`; on a stale revision, once
- * more at the current one. Resolves to the saved revision id; rejects on any
- * other failure.
+ * Saves `content` as `path` (state.json unless told otherwise, or
+ * snapshot.json) at `revisionId`; on a stale revision, once more at the
+ * current one. Resolves to the saved revision id; rejects on any other
+ * failure.
  */
-export async function saveInlineState(artifact, content, revisionId) {
+export async function saveInlineState(artifact, content, revisionId, path = INLINE_STATE_PATH) {
   const body = (expectedRevisionId) => ({
-    path: INLINE_STATE_PATH, content, expectedRevisionId, summary: SAVE_SUMMARY,
+    path, content, expectedRevisionId, summary: SAVE_SUMMARIES[path] || 'Inline file',
   });
   try {
     const saved = await saveArtifactSource(artifact, body(revisionId));
@@ -174,6 +214,8 @@ export function useInlineArtifactState(iframeRef, artifact, { enabled, onSubmit 
   const pendingRef = useRef(null);
   const timerRef = useRef(null);
   const savingRef = useRef(Promise.resolve());
+  // The same for snapshot.json, which has its own revisions and quiet spell.
+  const snapshotRef = useRef({ revision: null, pending: null, timer: null, saving: Promise.resolve() });
   // Asked only while enabled: a frame that is not an inline artifact's
   // (the viewer on any other page) never looks at the workspace.
   const persists = !!enabled && canUseArtifactWorkspace(artifact);
@@ -218,6 +260,64 @@ export function useInlineArtifactState(iframeRef, artifact, { enabled, onSubmit 
         }
       });
       return savingRef.current;
+    };
+
+    const flushSnapshot = () => {
+      const snap = snapshotRef.current;
+      if (snap.timer) { clearTimeout(snap.timer); snap.timer = null; }
+      const content = snap.pending;
+      if (content == null || !persists) return snap.saving;
+      snap.saving = snap.saving.then(async () => {
+        try {
+          snap.revision = await saveInlineState(artifactRef.current, content, snap.revision, INLINE_SNAPSHOT_PATH);
+          if (snap.pending === content) snap.pending = null;
+        } catch (error) {
+          diagnostic('renderer.cowork.components.artifact.useInlineArtifactState', 'WARNING',
+            'inline_snapshot_save_failed', '[inline-state] snapshot save failed', error);
+        }
+      });
+      return snap.saving;
+    };
+
+    // The page reported its controls: kept, and saved after their own quiet
+    // spell. Nothing of the state's bookkeeping moves.
+    const takeSnapshot = (content) => {
+      const snap = snapshotRef.current;
+      if (snapshots.get(key) === content && snap.pending == null) return;
+      rememberSnapshot(key, content);
+      if (!persists) return;
+      snap.pending = content;
+      if (snap.timer) clearTimeout(snap.timer);
+      snap.timer = setTimeout(() => { void flushSnapshot(); }, INLINE_SNAPSHOT_DEBOUNCE_MS);
+    };
+
+    // After its state, a new document is handed the controls last reported
+    // in any frame, else those its snapshot.json holds.
+    const handSnapshot = async (doc) => {
+      const postSnapshot = (content) => {
+        let snapshot;
+        try { snapshot = JSON.parse(content); } catch { return; }
+        if (isSnapshot(snapshot)) postPreviewSnapshot(iframeRef.current?.contentWindow, snapshot);
+      };
+      const cached = snapshots.get(key) ?? snapshotRef.current.pending;
+      if (cached != null) { postSnapshot(cached); return; }
+      if (!persists) return;
+      let loaded;
+      try {
+        loaded = await loadArtifactSource(artifactRef.current, INLINE_SNAPSHOT_PATH);
+      } catch {
+        return; // No snapshot.json yet.
+      }
+      if (!live) return;
+      if (loaded?.revision?.id) snapshotRef.current.revision = loaded.revision.id;
+      const content = typeof loaded?.content === 'string' ? loaded.content : '';
+      let snapshot;
+      try { snapshot = JSON.parse(content); } catch { return; }
+      // The page reported its own controls meanwhile, or a later document
+      // has its own handover.
+      if (!isSnapshot(snapshot) || snapshots.has(key) || snapshotRef.current.pending != null) return;
+      rememberSnapshot(key, content);
+      if (doc === documents) postSnapshot(content);
     };
 
     // `content` is saved after the quiet spell, unless a newer one comes.
@@ -269,19 +369,21 @@ export function useInlineArtifactState(iframeRef, artifact, { enabled, onSubmit 
       handed = false;
       held = null;
       post(current());
-      if (!persists) return;
-      reading = true;
-      try {
-        await read();
-      } finally {
-        if (doc === documents) reading = false;
+      if (persists) {
+        reading = true;
+        try {
+          await read();
+        } finally {
+          if (doc === documents) reading = false;
+        }
+        // A later document has its own read.
+        if (doc !== documents) return;
+        // Nothing to hand it: the default it set while the read was out stands.
+        const waiting = held;
+        held = null;
+        if (live && !handed && waiting != null) take(waiting);
       }
-      // A later document has its own read.
-      if (doc !== documents) return;
-      // Nothing to hand it: the default it set while the read was out stands.
-      const waiting = held;
-      held = null;
-      if (live && !handed && waiting != null) take(waiting);
+      if (live && doc === documents) await handSnapshot(doc);
     };
 
     const onMessage = (event) => {
@@ -309,6 +411,12 @@ export function useInlineArtifactState(iframeRef, artifact, { enabled, onSubmit 
           if (reading) { held = content; return; }
         }
         take(content);
+        return;
+      }
+      if (data.type === 'snapshot') {
+        if (!isSnapshot(data.snapshot)) return;
+        const content = serializeInlineState(data.snapshot);
+        if (content != null) takeSnapshot(content);
         return;
       }
       if (data.type === 'submit') {
@@ -349,6 +457,7 @@ export function useInlineArtifactState(iframeRef, artifact, { enabled, onSubmit 
       if (saving && !saving.size) savers.delete(key);
       // A change still waiting is saved rather than lost with the frame.
       if (timerRef.current) void flush();
+      if (snapshotRef.current.timer) void flushSnapshot();
     };
   }, [enabled, key, persists, iframeRef]);
 }
