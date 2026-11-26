@@ -105,12 +105,12 @@ const CASES = [
   },
   {
     id: 'allowance-exhausted-no-grant',
-    label: 'The same stop on an org with no free grant: the console\'s no-grant sentence, and no refill time even though the gate sent one.',
+    label: 'The same stop on an org with no free grant: the no-grant sentence, and no refill time even though the gate sent one.',
     render: () => <AllowanceExhaustedCard {...COMMON} resetAt={GATE_REFILL} usage={NO_GRANT} isBillingOwner />,
   },
   {
     id: 'free-paused-time',
-    label: 'Free MindsHub Air paused for everyone by the daily spend fuse, with the time it lifts.',
+    label: 'Free models paused for everyone by the daily spend fuse, with the time it lifts.',
     render: () => <FreeServingPausedCard {...COMMON} resetAt={FUSE_LIFTS} isBillingOwner />,
   },
   {

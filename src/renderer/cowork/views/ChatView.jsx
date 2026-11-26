@@ -1513,7 +1513,7 @@ function ProviderLimitCard({ time, agentLabel, deleting }) {
 //
 // One branch names no refill at all: an org with no free grant (the hub usage
 // read's limit is 0, from auth's `free_grant_eligible: false`) has nothing to
-// wait for, so the card says so in the console's words and asks for funds.
+// wait for, so the card says so and asks for funds.
 // `allowanceStopCopy` in lib/usageWarnings writes both branches, shared with
 // the Settings probe notice.
 //

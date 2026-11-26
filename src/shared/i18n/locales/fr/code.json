@@ -1445,8 +1445,8 @@
       "body": "Ajoutez des crédits pour continuer maintenant, ou attendez que le quota soit renouvelé, puis continuez dans cette tâche."
     },
     "freeAirPaused": {
-      "title": "MindsHub Air gratuit est en pause",
-      "body": "Il reprendra à la réinitialisation du budget quotidien. Ajoutez des crédits ou choisissez un autre modèle pour continuer maintenant."
+      "title": "Les modèles gratuits sont en pause",
+      "body": "Ils reprendront à la réinitialisation du budget quotidien. Ajoutez des crédits ou choisissez un autre modèle pour continuer maintenant."
     },
     "notStarted": {
       "title": "La tâche n’a pas démarré",

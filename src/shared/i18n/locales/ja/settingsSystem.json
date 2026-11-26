@@ -166,17 +166,17 @@
       "updatePaymentMethod": "支払い方法を更新"
     },
     "free": {
-      "title": "Airの無料枠",
-      "badge": "MindsHub Airのみ",
+      "title": "無料枠",
+      "badge": "無料モデルのみ",
       "resetsAt": "{time}にリセット",
       "unlimited": "このアカウントは無制限です。",
       "used": "無料枠の{percent}を使用済み",
       "left": "残り{percent}",
-      "meterLabel": "Airの無料枠の使用量",
-      "usedUpUntil": "使い切りました。{time}に補充されるまで、MindsHub Airの料金は残高から支払われます。",
-      "usedUp": "使い切りました。補充されるまで、MindsHub Airの料金は残高から支払われます。",
-      "afterUntil": "使い切った後は、{time}に補充されるまでMindsHub Airは残高を使用します。",
-      "after": "使い切った後は、MindsHub Airは残高を使用します。"
+      "meterLabel": "無料枠の使用量",
+      "usedUpUntil": "使い切りました。{time}に補充されるまで、無料モデルは残高を使用します。",
+      "usedUp": "使い切りました。補充されるまで、無料モデルは残高を使用します。",
+      "afterUntil": "使い切った後は、{time}に補充されるまで無料モデルは残高を使用します。",
+      "after": "使い切った後は、無料モデルは残高を使用します。"
     },
     "autoTopUp": {
       "off": "自動チャージはオフです。残高が少なくなってもタスクを継続できるよう、オンにしてください。",
@@ -202,7 +202,7 @@
     "balance": {
       "title": "残高",
       "empty": "残高がありません。残高を追加するまで、有料モデルは実行できません。",
-      "usedBy": "有料モデルと、無料トークンを使い切った後のMindsHub Airで使用されます。",
+      "usedBy": "有料モデルと、無料トークンを使い切った後の無料モデルで使用されます。",
       "spentRange": "のクレジットを使用（{start}〜{end}）",
       "spentDate": "のクレジットを使用（{date}）",
       "spentThisPeriod": "のクレジットを今期に使用",
@@ -211,7 +211,7 @@
     },
     "signIn": {
       "title": "使用量を表示するにはサインインしてください",
-      "body": "MindsHubにサインインすると、Airの無料枠と残高がここに表示されます。",
+      "body": "MindsHubにサインインすると、無料枠と残高がここに表示されます。",
       "goToAccount": "アカウントへ移動"
     },
     "loading": "使用量を読み込み中…",

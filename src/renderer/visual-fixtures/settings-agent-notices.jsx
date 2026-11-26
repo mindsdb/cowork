@@ -93,7 +93,7 @@ const PROBE_CASES = [
   },
   {
     id: 'probe-paused-time',
-    label: 'free_air_daily_spend_fuse_exceeded (429): free MindsHub Air is paused for everyone until the next UTC midnight.',
+    label: 'free_air_daily_spend_fuse_exceeded (429): free models are paused for everyone until the next UTC midnight.',
     detail: 'HTTP 429',
     reason: reason('free_air_daily_spend_fuse_exceeded', FUSE_LIFTS),
   },

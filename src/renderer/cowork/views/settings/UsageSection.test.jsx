@@ -64,7 +64,7 @@ describe('UsageSection', () => {
     expect(screen.getByText('$99.63')).toBeInTheDocument();
     expect(screen.getByText('$0.37')).toBeInTheDocument();
     expect(screen.getByText(/credit spent Aug 1 to Sep 1/)).toBeInTheDocument();
-    expect(screen.getByRole('progressbar', { name: 'Free Air allowance used' })).toHaveAttribute('aria-valuenow', '13');
+    expect(screen.getByRole('progressbar', { name: 'Free allowance used' })).toHaveAttribute('aria-valuenow', '13');
   });
 
   it('derives the meter from what is left, not from a used count the server may not send', () => {
@@ -76,7 +76,7 @@ describe('UsageSection', () => {
       freeTokens: { percentRemaining: 87.2, limit: 100, used: 4_380_000, remaining: 87.2, resetsAt: RESET },
     }));
 
-    expect(screen.getByRole('progressbar', { name: 'Free Air allowance used' })).toHaveAttribute('aria-valuenow', '13');
+    expect(screen.getByRole('progressbar', { name: 'Free allowance used' })).toHaveAttribute('aria-valuenow', '13');
     expect(screen.getByText('13%')).toBeInTheDocument();
     expect(screen.getByText(/87% left/)).toBeInTheDocument();
   });
@@ -119,7 +119,7 @@ describe('UsageSection', () => {
     expect(screen.getByText('Unlimited on this account.')).toBeInTheDocument();
     unmount();
     renderWith(usage({ freeTokens: { percentRemaining: 0, limit: 0, used: 0, remaining: 0 } }));
-    expect(screen.queryByText('Free Air allowance')).toBeNull();
+    expect(screen.queryByText('Free allowance')).toBeNull();
   });
 
   it('describes auto top up per status', () => {
@@ -210,7 +210,7 @@ describe('UsageSection plan card', () => {
   it('on Free, keeps the allowance as it was and adds Get Plus to it', async () => {
     personal();
     renderWith(usage({ plan: plan('free') }));
-    expect(screen.getByText('Free Air allowance')).toBeInTheDocument();
+    expect(screen.getByText('Free allowance')).toBeInTheDocument();
     expect(screen.queryByText('Plus plan')).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: /Get Plus/ }));
     const url = new URL(hostMock.host.openExternal.mock.calls.at(-1)[0]);
@@ -256,12 +256,12 @@ describe('UsageSection plan card', () => {
     expect(screen.queryByRole('button', { name: /Manage/ })).toBeNull();
   });
 
-  it.each(['plus', 'pro'])('on %s, drops the Free Air allowance card, since the plan pays for Air', (tier) => {
+  it.each(['plus', 'pro'])('on %s, drops the free allowance card, since the plan pays instead', (tier) => {
     personal();
     renderWith(usage({ plan: plan(tier), freeTokens: { limit: 100, used: 100, remaining: 0, resetsAt: RESET } }));
     expect(screen.getByText(tier === 'plus' ? 'Plus plan' : 'Pro plan')).toBeInTheDocument();
-    expect(screen.queryByText('Free Air allowance')).toBeNull();
-    expect(document.body.textContent).not.toMatch(/MindsHub Air is billing your balance/);
+    expect(screen.queryByText('Free allowance')).toBeNull();
+    expect(document.body.textContent).not.toMatch(/Free models now use your balance/);
   });
 
   it('on a paid plan with no allowance and no balance, says nothing about having no usage', () => {
@@ -278,7 +278,7 @@ describe('UsageSection plan card', () => {
       const { unmount } = renderWith(usage({ plan: plan('plus') }));
       expect(screen.getByText('Plus plan')).toBeInTheDocument();
       expect(screen.getByText('5-hour allowance')).toBeInTheDocument();
-      expect(screen.queryByText('Free Air allowance')).toBeNull();
+      expect(screen.queryByText('Free allowance')).toBeNull();
       for (const name of [/Upgrade/, /Manage/, /Get Plus/, /Add funds/]) {
         expect(screen.queryByRole('button', { name })).toBeNull();
       }
@@ -293,7 +293,7 @@ describe('UsageSection plan card', () => {
       pastDue.unmount();
 
       renderWith(usage({ plan: plan('free') }));
-      expect(screen.getByText('Free Air allowance')).toBeInTheDocument();
+      expect(screen.getByText('Free allowance')).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /Get Plus/ })).toBeNull();
     } finally {
       hostMock.host.isMobileShell = false;

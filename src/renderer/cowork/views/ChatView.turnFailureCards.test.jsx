@@ -155,7 +155,7 @@ describe('included_allowance_exhausted card (ENG-1537)', () => {
   it('says the task stopped and names both resources, never a bare "out of tokens"', () => {
     render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY))} />);
     expect(screen.getByText('Task stopped')).toBeInTheDocument();
-    expect(screen.getByText(/Your free MindsHub Air allowance is used up and your balance is empty\./)).toBeInTheDocument();
+    expect(screen.getByText(/Your free allowance is used up and your balance is empty\./)).toBeInTheDocument();
     expect(screen.queryByText(/out of tokens/i)).toBeNull();
     expect(screen.queryByText(/out of credits/i)).toBeNull();
   });
@@ -203,7 +203,7 @@ describe('included_allowance_exhausted card (ENG-1537)', () => {
        one the response never made, and with no time at all nothing says this
        org has a grant to refill. */
     render(<ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY, { resetAt }))} />);
-    expect(stopCard().getByText('Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working.')).toBeInTheDocument();
+    expect(stopCard().getByText('Your free allowance is used up and your balance is empty. Add funds to keep working.')).toBeInTheDocument();
     expect(stopCard().queryByText(/refill/)).toBeNull();
     expect(screen.queryByText(/next month/)).toBeNull();
     expect(screen.queryByText(/Invalid Date/)).toBeNull();
@@ -241,7 +241,7 @@ describe('included_allowance_exhausted refill time from hub usage', () => {
       { reachable: false },
       <ChatView task={taskWith(failedTurn('included_allowance_exhausted', BODY))} />,
     ));
-    expect(stopCard().getByText('Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working.')).toBeInTheDocument();
+    expect(stopCard().getByText('Your free allowance is used up and your balance is empty. Add funds to keep working.')).toBeInTheDocument();
     expect(stopCard().queryByText(/refill/)).toBeNull();
   });
 });
@@ -251,7 +251,7 @@ describe('included_allowance_exhausted card for an org with no free grant', () =
   // What cowork-server's /hub/usage/ sends when auth reports free_grant_eligible false.
   const NO_GRANT = { percentRemaining: 0, limit: 0, used: 0, remaining: 0, resetsAt: null };
 
-  it("says the account has no free tokens, in the console's words, and names no refill", () => {
+  it('says the account has no free tokens and names no refill', () => {
     /* The gate still sends a reset instant to an older auth's no-grant org.
        Nothing refills there, so the card must not repeat it. */
     const fromGate = inHours(2);
@@ -336,7 +336,7 @@ describe('token_limit card names the limit that fired', () => {
     const user = userEvent.setup();
     const onSwitchToAirAndResend = vi.fn();
     renderStop(hubUsage({ remaining: 80 }), { onSwitchToAirAndResend });
-    expect(stopCard().getByText("Your balance is empty, so this model can't run. MindsHub Air still has free allowance left.")).toBeInTheDocument();
+    expect(stopCard().getByText("Your balance is empty, so this model can't run. MindsHub Air can still run on your free allowance.")).toBeInTheDocument();
     expect(screen.queryByText(TODAYS_BALANCE_COPY)).toBeNull();
     expect(stopCard().getByRole('button', { name: 'Add funds' })).toBeEnabled();
     await user.click(stopCard().getByRole('button', { name: 'Switch to MindsHub Air' }));
@@ -385,7 +385,7 @@ describe('token_limit card names the limit that fired', () => {
     const resetsAt = inHours(4);
     renderStop(hubUsage({ remaining: 0, used: 100, resetsAt }));
     expect(stopCard().getByText(
-      `Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at ${formatResetTime(resetsAt)}.`,
+      `Your free allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at ${formatResetTime(resetsAt)}.`,
     )).toBeInTheDocument();
     // Air is spent too, so switching to it would be another dead end.
     expect(screen.queryByRole('button', { name: 'Switch to MindsHub Air' })).toBeNull();
@@ -426,7 +426,7 @@ describe('token_limit card names the limit that fired', () => {
      starter-tier org, the free users the switch is most for. */
   it('a read with no balance still offers the switch while Air has room', () => {
     renderStop(hubUsage({ remaining: 80 }, { balance: null }));
-    expect(stopCard().getByText("Your balance is empty, so this model can't run. MindsHub Air still has free allowance left.")).toBeInTheDocument();
+    expect(stopCard().getByText("Your balance is empty, so this model can't run. MindsHub Air can still run on your free allowance.")).toBeInTheDocument();
     expect(stopCard().getByRole('button', { name: 'Switch to MindsHub Air' })).toBeEnabled();
   });
 
@@ -434,7 +434,7 @@ describe('token_limit card names the limit that fired', () => {
     const resetsAt = inHours(4);
     renderStop(hubUsage({ remaining: 0, used: 100, resetsAt }, { balance: null }));
     expect(stopCard().getByText(
-      `Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at ${formatResetTime(resetsAt)}.`,
+      `Your free allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at ${formatResetTime(resetsAt)}.`,
     )).toBeInTheDocument();
   });
 
@@ -457,12 +457,12 @@ describe('token_limit card names the limit that fired', () => {
 describe('free_serving_paused card', () => {
   const BODY = 'Free MindsHub Air is paused.';
 
-  it('says free Air is paused for everyone until the time the gate sent', () => {
+  it('says free models are paused for everyone until the time the gate sent', () => {
     const resetAt = inHours(6);
     render(<ChatView task={taskWith(failedTurn('free_serving_paused', BODY, { resetAt }))} />);
-    expect(screen.getByText('Free MindsHub Air is paused')).toBeInTheDocument();
+    expect(screen.getByText('Free models are paused')).toBeInTheDocument();
     expect(screen.getByText(
-      `Free MindsHub Air is paused for everyone until ${formatResetTime(resetAt)}. This doesn't use your allowance. Add funds to keep working now.`,
+      `Free models are paused for everyone until ${formatResetTime(resetAt)}. This doesn't use your allowance. Add funds to keep working now.`,
     )).toBeInTheDocument();
     // "until", never refillClause's hard-coded "at".
     expect(screen.queryByText(/until at /)).toBeNull();
@@ -476,7 +476,7 @@ describe('free_serving_paused card', () => {
   ])('says it lifts when the daily budget resets when the time is %s', (_label, resetAt) => {
     render(<ChatView task={taskWith(failedTurn('free_serving_paused', BODY, { resetAt }))} />);
     expect(screen.getByText(
-      "Free MindsHub Air is paused for everyone until the daily budget resets. This doesn't use your allowance. Add funds to keep working now.",
+      "Free models are paused for everyone until the daily budget resets. This doesn't use your allowance. Add funds to keep working now.",
     )).toBeInTheDocument();
     expect(screen.queryByText(/Invalid Date/)).toBeNull();
   });
@@ -501,7 +501,7 @@ describe('free_serving_paused card', () => {
     ]);
     render(<ChatView task={taskWith(messages)} />);
     expect(screen.getByText(
-      `Free MindsHub Air is paused for everyone until ${formatResetTime(lifts)}. This doesn't use your allowance. Add funds to keep working now.`,
+      `Free models are paused for everyone until ${formatResetTime(lifts)}. This doesn't use your allowance. Add funds to keep working now.`,
     )).toBeInTheDocument();
     expect(screen.queryByText(/until the daily budget resets/)).toBeNull();
   });
@@ -581,11 +581,11 @@ describe('budget_exceeded card', () => {
     )).toBeInTheDocument();
   });
 
-  it('offers MindsHub Air while its free allowance has room, resending the failed message', async () => {
+  it('offers MindsHub Air while the free allowance has room, resending the failed message', async () => {
     const user = userEvent.setup();
     const onSwitchToAirAndResend = vi.fn();
     renderStop(hubUsage({ remaining: 80 }), { onSwitchToAirAndResend });
-    expect(stopCard(TITLE).getByText(`${RAISE} MindsHub Air still works while its free allowance lasts.`)).toBeInTheDocument();
+    expect(stopCard(TITLE).getByText(`${RAISE} MindsHub Air still works while your free allowance lasts.`)).toBeInTheDocument();
     await user.click(stopCard(TITLE).getByRole('button', { name: 'Switch to MindsHub Air' }));
     expect(onSwitchToAirAndResend).toHaveBeenCalledWith('draw me a chart', []);
   });
@@ -606,9 +606,9 @@ describe('budget_exceeded card', () => {
 });
 
 describe('provider_required card', () => {
-  it('pitches a free allowance on Air without calling it monthly', () => {
+  it('pitches a free allowance without naming a model or calling it monthly', () => {
     render(<ChatView task={taskWith([{ role: 'provider_required' }])} />);
-    expect(screen.getByText(/Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go\./)).toBeInTheDocument();
+    expect(screen.getByText(/Start with MindsHub and get a free allowance, then pay as you go\./)).toBeInTheDocument();
     expect(screen.queryByText(/monthly/i)).toBeNull();
   });
 });
@@ -1290,7 +1290,7 @@ const WIRE_CODES = [
   'model_timeout',
   // The UI's idle cut ended its own reader; an older client's tagged cancel saves it.
   'stalled',
-  // Free MindsHub Air paused for everyone by auth's daily spend fuse.
+  // Free models paused for everyone by auth's daily spend fuse.
   'free_serving_paused',
   // An org admin's model rule refused the model; credits do not unlock it.
   'model_restricted',

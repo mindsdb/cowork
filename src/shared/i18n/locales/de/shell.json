@@ -454,7 +454,7 @@
     "connectProvider": {
       "title": "Verbinden Sie einen Anbieter, um zu chatten",
       "operatorTitle": "Anbieter muss eingerichtet werden",
-      "body": "Starten Sie mit MindsHub und erhalten Sie ein Gratiskontingent für MindsHub Air, danach zahlen Sie nach Nutzung. Oder fügen Sie in den Einstellungen Ihren eigenen API-Schlüssel hinzu (Anthropic, OpenAI oder ein beliebiger OpenAI-kompatibler Endpunkt).",
+      "body": "Starten Sie mit MindsHub und erhalten Sie ein Gratiskontingent, danach zahlen Sie nach Nutzung. Oder fügen Sie in den Einstellungen Ihren eigenen API-Schlüssel hinzu (Anthropic, OpenAI oder ein beliebiger OpenAI-kompatibler Endpunkt).",
       "operatorBody": "Bitten Sie Ihren Betreiber, den Modellanbieter zu konfigurieren, bevor Sie eine Aufgabe starten.",
       "startFree": "Kostenlos starten",
       "bodyMobile": "Verbinden Sie Ihren eigenen Anbieter in den Einstellungen."

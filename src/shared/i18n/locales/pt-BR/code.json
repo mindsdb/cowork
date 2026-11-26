@@ -1445,8 +1445,8 @@
       "body": "Adicione créditos para continuar agora ou aguarde a renovação do saldo e continue nesta tarefa."
     },
     "freeAirPaused": {
-      "title": "O MindsHub Air gratuito está pausado",
-      "body": "Ele volta quando o orçamento diário for reiniciado. Adicione créditos ou escolha outro modelo para continuar agora."
+      "title": "Os modelos gratuitos estão pausados",
+      "body": "Eles voltam quando o orçamento diário for reiniciado. Adicione créditos ou escolha outro modelo para continuar agora."
     },
     "notStarted": {
       "title": "A tarefa não foi iniciada",

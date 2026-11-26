@@ -1445,8 +1445,8 @@
       "body": "Laden Sie Guthaben auf, um sofort weiterzumachen, oder warten Sie, bis das Kontingent wieder aufgefüllt ist, und fahren Sie dann in dieser Aufgabe fort."
     },
     "freeAirPaused": {
-      "title": "Kostenloses MindsHub Air ist pausiert",
-      "body": "Es wird fortgesetzt, sobald das Tagesbudget zurückgesetzt wird. Laden Sie Guthaben auf oder wählen Sie ein anderes Modell, um sofort weiterzumachen."
+      "title": "Kostenlose Modelle sind pausiert",
+      "body": "Kostenlose Modelle sind wieder verfügbar, sobald das Tagesbudget zurückgesetzt wird. Laden Sie Guthaben auf oder wählen Sie ein anderes Modell, um sofort weiterzumachen."
     },
     "notStarted": {
       "title": "Aufgabe wurde nicht gestartet",

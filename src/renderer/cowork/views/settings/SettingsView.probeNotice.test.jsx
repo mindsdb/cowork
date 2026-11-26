@@ -118,13 +118,13 @@ describe('SettingsView: probe notice follows the sidecar reason', () => {
     expect(screen.queryByText(/failed its last test/)).toBeNull();
   });
 
-  it('the daily fuse says free Air is paused until it lifts, and Add funds records its own trigger', async () => {
+  it('the daily fuse says free models are paused until it lifts, and Add funds records its own trigger', async () => {
     const user = userEvent.setup();
     const lifts = inHours(6);
     spies.testProviders.mockResolvedValue(probeFailure('HTTP 429', { code: 'free_air_daily_spend_fuse_exceeded', resetAt: lifts }));
     render(<Harness initialSettings={baseSettings()} />);
 
-    const copy = `Free MindsHub Air is paused for everyone until ${formatResetTime(lifts)}. This doesn't use your allowance. Add funds to keep working now.`;
+    const copy = `Free models are paused for everyone until ${formatResetTime(lifts)}. This doesn't use your allowance. Add funds to keep working now.`;
     await waitFor(() => expect(screen.getAllByText(copy).length).toBeGreaterThan(0));
     expect(screen.queryByText(/No credits available/i)).toBeNull();
     expect(analyticsMock.trackBillingOpened).not.toHaveBeenCalled(); // render is not a click
@@ -145,7 +145,7 @@ describe('SettingsView: probe notice follows the sidecar reason', () => {
       usage={hubUsage({ limit: 100, used: 100, remaining: 0, resetsAt: refill })}
     />);
 
-    const copy = `Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at ${formatResetTime(refill)}.`;
+    const copy = `Your free allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at ${formatResetTime(refill)}.`;
     await waitFor(() => expect(screen.getAllByText(copy).length).toBeGreaterThan(0));
 
     await user.click(screen.getAllByRole('button', { name: /Add funds/ })[0]);
@@ -174,7 +174,7 @@ describe('SettingsView: probe notice follows the sidecar reason', () => {
       usage={hubUsage({ limit: 100, used: 10, remaining: 90, resetsAt: inHours(2) })}
     />);
 
-    const copy = "A budget is used up. Paid models can't run until an administrator raises it in Budgets. MindsHub Air still works while its free allowance lasts.";
+    const copy = "A budget is used up. Paid models can't run until an administrator raises it in Budgets. MindsHub Air still works while your free allowance lasts.";
     await waitFor(() => expect(screen.getAllByText(copy).length).toBeGreaterThan(0));
     expect(screen.queryByRole('button', { name: /Add funds|Top up/ })).toBeNull();
     expect(screen.queryByText(/failed its last test/)).toBeNull();
@@ -222,14 +222,14 @@ describe('SettingsView: probe notice follows the sidecar reason', () => {
       .mockResolvedValue(probeFailure('HTTP 500: upstream error'));
     render(<Harness initialSettings={baseSettings()} />);
 
-    await waitFor(() => expect(screen.getAllByText(/Free MindsHub Air is paused for everyone/).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText(/Free models are paused for everyone/).length).toBeGreaterThan(0));
 
     // Save re-tests a failed provider.
     await user.click(screen.getByRole('button', { name: 'Save settings' }));
 
     await waitFor(() => expect(spies.testProviders).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getAllByText(/MindsHub failed its last test/).length).toBeGreaterThan(0));
-    expect(screen.queryByText(/Free MindsHub Air is paused/)).toBeNull();
+    expect(screen.queryByText(/Free models are paused/)).toBeNull();
   });
 
   it('a 429 the sidecar classified with no MindsHub reason gets the generic warning, never "No credits"', async () => {
@@ -261,13 +261,13 @@ describe('SettingsView: probe notice follows the sidecar reason', () => {
       });
     render(<Harness initialSettings={baseSettings()} />);
 
-    await waitFor(() => expect(screen.getAllByText(/Free MindsHub Air is paused for everyone/).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText(/Free models are paused for everyone/).length).toBeGreaterThan(0));
 
     await user.click(screen.getByRole('button', { name: 'Save settings' }));
 
     await waitFor(() => expect(spies.testProviders).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getAllByText(/MindsHub failed its last test/).length).toBeGreaterThan(0));
-    expect(screen.queryByText(/Free MindsHub Air is paused/)).toBeNull();
+    expect(screen.queryByText(/Free models are paused/)).toBeNull();
     expect(screen.queryByText(/No credits available/i)).toBeNull();
   });
 
@@ -275,7 +275,7 @@ describe('SettingsView: probe notice follows the sidecar reason', () => {
     spies.testProviders.mockResolvedValue(probeFailure('HTTP 429', { code: 'free_air_daily_spend_fuse_exceeded', resetAt: inHours(6) }));
     render(<Harness initialSettings={baseSettings()} />);
 
-    await waitFor(() => expect(screen.getByText('Free MindsHub Air is paused right now.')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Free models are paused right now.')).toBeInTheDocument());
     expect(screen.queryByText(/Rate limited/)).toBeNull();
   });
 

@@ -9,20 +9,20 @@
         "updatePaymentMethod": "支払い方法を更新",
         "upgrade": "{tier, select, plus {Plusにする} pro {Proにアップグレード} other {アップグレード}}"
       },
-      "noFreeGrant": "このアカウントにはMindsHub Airの無料トークンが含まれていません。MindsHub Airも他のモデルと同様に残高を使用します。",
+      "noFreeGrant": "このアカウントには無料トークンが含まれていません。すべてのモデルで残高を使用します。",
       "allowanceStop": {
         "noGrant": "{noGrant}残高がないため、続けるには残高を追加してください。",
-        "withTime": "MindsHub Airの無料枠を使い切り、残高もありません。作業を続けるには残高を追加するか、{time}の補充までお待ちください。",
-        "noTime": "MindsHub Airの無料枠を使い切り、残高もありません。作業を続けるには残高を追加してください。",
-        "noTimeMobile": "MindsHub Airの無料枠を使い切り、残高もありません。",
+        "withTime": "無料枠を使い切り、残高もありません。作業を続けるには残高を追加するか、{time}の補充までお待ちください。",
+        "noTime": "無料枠を使い切り、残高もありません。作業を続けるには残高を追加してください。",
+        "noTimeMobile": "無料枠を使い切り、残高もありません。",
         "noGrantMobile": "{noGrant} 残高がありません。",
-        "withTimeMobile": "MindsHub Airの無料枠を使い切り、残高もありません。 {time}にリセットされます。"
+        "withTimeMobile": "無料枠を使い切り、残高もありません。{time}にリセットされます。"
       },
       "freeServingPaused": {
-        "until": "無料のMindsHub Airは、{until}まで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。今すぐ作業を続けるには残高を追加してください。",
-        "dailyReset": "無料のMindsHub Airは、1日の予算がリセットされるまで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。今すぐ作業を続けるには残高を追加してください。",
-        "untilMobile": "無料のMindsHub Airは、{until}まで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。",
-        "dailyResetMobile": "無料のMindsHub Airは、1日の予算がリセットされるまで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。"
+        "until": "無料モデルは、{until}まで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。今すぐ作業を続けるには残高を追加してください。",
+        "dailyReset": "無料モデルは、1日の予算がリセットされるまで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。今すぐ作業を続けるには残高を追加してください。",
+        "untilMobile": "無料モデルは、{until}まで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。",
+        "dailyResetMobile": "無料モデルは、1日の予算がリセットされるまで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。"
       },
       "balanceEmptySentence": "残高がありません。",
       "percentLeft": "無料枠の残り：{percent}",
@@ -50,14 +50,14 @@
       },
       "freeUsed": {
         "title": "無料枠を使い切りました",
-        "body": "無料枠が補充されるまで、MindsHub Airは残高を使用します。",
-        "bodyWithTime": "{time}に無料枠が補充されるまで、MindsHub Airは残高を使用します。",
-        "bodyWithUsd": "無料枠が補充されるまで、MindsHub Airは残高（残り{usd}）を使用します。",
-        "bodyWithUsdWithTime": "{time}に無料枠が補充されるまで、MindsHub Airは残高（残り{usd}）を使用します。"
+        "body": "無料枠が補充されるまで、無料モデルは残高を使用します。",
+        "bodyWithTime": "{time}に無料枠が補充されるまで、無料モデルは残高を使用します。",
+        "bodyWithUsd": "無料枠が補充されるまで、無料モデルは残高（残り{usd}）を使用します。",
+        "bodyWithUsdWithTime": "{time}に無料枠が補充されるまで、無料モデルは残高（残り{usd}）を使用します。"
       },
       "freeLow": {
-        "body": "その後は、無料枠が補充されるまでMindsHub Airは残高を使用します。",
-        "bodyWithTime": "その後は、{time}に無料枠が補充されるまでMindsHub Airは残高を使用します。",
+        "body": "その後は、無料枠が補充されるまで無料モデルは残高を使用します。",
+        "bodyWithTime": "その後は、{time}に無料枠が補充されるまで無料モデルは残高を使用します。",
         "balanceLowToo": "残高も少なくなっています（{usd}）。"
       },
       "budgetExceeded": {
@@ -124,8 +124,8 @@
       },
       "row": {
         "walletEmpty": "利用できるクレジットがありません。MindsHubを使用するには残高を追加してください。",
-        "allowanceExhausted": "MindsHub Airの無料トークンがなく、残高もありません。",
-        "freeAirPaused": "無料のMindsHub Airは現在一時停止しています。",
+        "allowanceExhausted": "無料トークンがなく、残高もありません。",
+        "freeAirPaused": "無料モデルは現在一時停止しています。",
         "budgetExceeded": "予算を使い切りました。",
         "walletEmptyMobile": "利用できるクレジットがありません。"
       },

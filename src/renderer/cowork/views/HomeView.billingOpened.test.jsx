@@ -100,7 +100,7 @@ describe('HomeView: connect-a-provider copy', () => {
     const chat = screen.getByText(/^Start with MindsHub/).textContent;
 
     expect(firstSentence(home)).toBe(firstSentence(chat));
-    expect(firstSentence(home)).toBe('Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go.');
+    expect(firstSentence(home)).toBe('Start with MindsHub and get a free allowance, then pay as you go.');
     expect(home).not.toMatch(/monthly/i);
     expect(chat).not.toMatch(/monthly/i);
   });

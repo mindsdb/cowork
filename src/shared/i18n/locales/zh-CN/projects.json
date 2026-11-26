@@ -9,20 +9,20 @@
         "updatePaymentMethod": "更新付款方式",
         "upgrade": "{tier, select, plus {开通 Plus} pro {升级到 Pro} other {升级}}"
       },
-      "noFreeGrant": "此账户不含免费的 MindsHub Air 令牌。MindsHub Air 和其他模型一样，会使用你的余额。",
+      "noFreeGrant": "此账户不含免费令牌。所有模型都会使用你的余额。",
       "allowanceStop": {
         "noGrant": "{noGrant}你的余额已用完，请充值后继续。",
-        "withTime": "你的 MindsHub Air 免费额度已用完，余额也已用完。请充值以继续工作，或等待额度在 {time} 恢复。",
-        "noTime": "你的 MindsHub Air 免费额度已用完，余额也已用完。请充值以继续工作。",
-        "noTimeMobile": "你的 MindsHub Air 免费额度已用完，余额也已用完。",
+        "withTime": "你的免费额度已用完，余额也已用完。请充值以继续工作，或等待额度在 {time} 恢复。",
+        "noTime": "你的免费额度已用完，余额也已用完。请充值以继续工作。",
+        "noTimeMobile": "你的免费额度已用完，余额也已用完。",
         "noGrantMobile": "{noGrant} 你的余额已用完。",
-        "withTimeMobile": "你的 MindsHub Air 免费额度已用完，余额也已用完。 将于 {time} 重置。"
+        "withTimeMobile": "你的免费额度已用完，余额也已用完。将于 {time} 重置。"
       },
       "freeServingPaused": {
-        "until": "免费 MindsHub Air 已对所有用户暂停，直至 {until}。暂停期间不会消耗你的额度。如需立即继续工作，请充值。",
-        "dailyReset": "免费 MindsHub Air 已对所有用户暂停，直至每日预算重置。暂停期间不会消耗你的额度。如需立即继续工作，请充值。",
-        "untilMobile": "免费 MindsHub Air 已对所有用户暂停，直至 {until}。暂停期间不会消耗你的额度。",
-        "dailyResetMobile": "免费 MindsHub Air 已对所有用户暂停，直至每日预算重置。暂停期间不会消耗你的额度。"
+        "until": "免费模型已对所有用户暂停，直至 {until}。暂停期间不会消耗你的额度。如需立即继续工作，请充值。",
+        "dailyReset": "免费模型已对所有用户暂停，直至每日预算重置。暂停期间不会消耗你的额度。如需立即继续工作，请充值。",
+        "untilMobile": "免费模型已对所有用户暂停，直至 {until}。暂停期间不会消耗你的额度。",
+        "dailyResetMobile": "免费模型已对所有用户暂停，直至每日预算重置。暂停期间不会消耗你的额度。"
       },
       "balanceEmptySentence": "你的余额已用完。",
       "percentLeft": "免费额度剩余 {percent}",
@@ -50,14 +50,14 @@
       },
       "freeUsed": {
         "title": "免费额度已用完",
-        "body": "在额度恢复前，MindsHub Air 将使用你的余额。",
-        "bodyWithTime": "在额度于 {time} 恢复前，MindsHub Air 将使用你的余额。",
-        "bodyWithUsd": "在额度恢复前，MindsHub Air 将使用你的余额（剩余 {usd}）。",
-        "bodyWithUsdWithTime": "在额度于 {time} 恢复前，MindsHub Air 将使用你的余额（剩余 {usd}）。"
+        "body": "在额度恢复前，免费模型将使用你的余额。",
+        "bodyWithTime": "在额度于 {time} 恢复前，免费模型将使用你的余额。",
+        "bodyWithUsd": "在额度恢复前，免费模型将使用你的余额（剩余 {usd}）。",
+        "bodyWithUsdWithTime": "在额度于 {time} 恢复前，免费模型将使用你的余额（剩余 {usd}）。"
       },
       "freeLow": {
-        "body": "之后，在额度恢复前，MindsHub Air 将使用你的余额。",
-        "bodyWithTime": "之后，在额度于 {time} 恢复前，MindsHub Air 将使用你的余额。",
+        "body": "之后，在额度恢复前，免费模型将使用你的余额。",
+        "bodyWithTime": "之后，在额度于 {time} 恢复前，免费模型将使用你的余额。",
         "balanceLowToo": "你的余额也不多了（{usd}）。"
       },
       "budgetExceeded": {
@@ -124,8 +124,8 @@
       },
       "row": {
         "walletEmpty": "没有可用积分。请充值以使用 MindsHub。",
-        "allowanceExhausted": "没有可用的免费 MindsHub Air 令牌，余额也已用完。",
-        "freeAirPaused": "免费 MindsHub Air 目前已暂停。",
+        "allowanceExhausted": "没有可用的免费令牌，余额也已用完。",
+        "freeAirPaused": "免费模型目前已暂停。",
         "budgetExceeded": "预算已用完。",
         "walletEmptyMobile": "没有可用积分。"
       },

@@ -166,17 +166,17 @@
       "updatePaymentMethod": "Zahlungsmethode aktualisieren"
     },
     "free": {
-      "title": "Gratiskontingent für Air",
-      "badge": "Nur MindsHub Air",
+      "title": "Gratiskontingent",
+      "badge": "Nur kostenlose Modelle",
       "resetsAt": "Nächste Zurücksetzung: {time}",
       "unlimited": "Unbegrenzt für dieses Konto.",
       "used": "{percent} Ihres Kontingents verbraucht",
       "left": "{percent} übrig",
-      "meterLabel": "Verbrauchtes Gratiskontingent für Air",
-      "usedUpUntil": "Aufgebraucht. MindsHub Air wird von Ihrem Guthaben abgerechnet, bis das Kontingent wieder aufgefüllt wird ({time}).",
-      "usedUp": "Aufgebraucht. MindsHub Air wird von Ihrem Guthaben abgerechnet, bis das Kontingent wieder aufgefüllt wird.",
-      "afterUntil": "Danach nutzt MindsHub Air Ihr Guthaben, bis das Kontingent wieder aufgefüllt wird ({time}).",
-      "after": "Danach nutzt MindsHub Air Ihr Guthaben."
+      "meterLabel": "Verbrauchtes Gratiskontingent",
+      "usedUpUntil": "Aufgebraucht. Kostenlose Modelle werden jetzt von Ihrem Guthaben abgerechnet, bis das Kontingent wieder aufgefüllt wird ({time}).",
+      "usedUp": "Aufgebraucht. Kostenlose Modelle werden jetzt von Ihrem Guthaben abgerechnet, bis das Kontingent wieder aufgefüllt wird.",
+      "afterUntil": "Danach nutzen kostenlose Modelle Ihr Guthaben, bis das Kontingent wieder aufgefüllt wird ({time}).",
+      "after": "Danach nutzen kostenlose Modelle Ihr Guthaben."
     },
     "autoTopUp": {
       "off": "Automatisches Aufladen ist aus. Aktivieren Sie es, damit Aufgaben weiterlaufen, wenn Ihr Guthaben knapp wird.",
@@ -202,7 +202,7 @@
     "balance": {
       "title": "Guthaben",
       "empty": "Leer. Kostenpflichtige Modelle laufen erst wieder, wenn Sie Guthaben aufladen.",
-      "usedBy": "Wird von kostenpflichtigen Modellen genutzt und von MindsHub Air, sobald die Gratis-Tokens aufgebraucht sind.",
+      "usedBy": "Wird von kostenpflichtigen Modellen genutzt und von kostenlosen Modellen, sobald die Gratis-Tokens aufgebraucht sind.",
       "spentRange": "Guthaben verbraucht ({start} – {end})",
       "spentDate": "Guthaben verbraucht ({date})",
       "spentThisPeriod": "Guthaben in diesem Zeitraum verbraucht",
@@ -211,7 +211,7 @@
     },
     "signIn": {
       "title": "Melden Sie sich an, um Ihre Nutzung zu sehen",
-      "body": "Ihr Gratiskontingent für Air und Ihr Guthaben werden hier angezeigt, sobald Sie bei MindsHub angemeldet sind.",
+      "body": "Ihr Gratiskontingent und Ihr Guthaben werden hier angezeigt, sobald Sie bei MindsHub angemeldet sind.",
       "goToAccount": "Zum Konto"
     },
     "loading": "Nutzung wird geladen…",

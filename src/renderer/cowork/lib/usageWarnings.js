@@ -196,11 +196,10 @@ function freeState(free) {
   };
 }
 
-/* The console's no-grant sentence (mindshub_frontend grant-usage-card.jsx
-   NO_GRANT_SENTENCE), word for word, so both apps describe the same account
-   the same way. It names no cause and no size. */
+/* What an account with no free grant is told, in English. It names no cause,
+   no size, and no model, since the free allowance can cover more than one. */
 export const NO_FREE_GRANT_SENTENCE =
-  'This account does not include free MindsHub Air tokens. MindsHub Air uses your balance, like every other model.';
+  'This account does not include free tokens. Every model uses your balance.';
 
 /** NO_FREE_GRANT_SENTENCE in the viewer's language. */
 export function noFreeGrantSentence() {
@@ -301,11 +300,11 @@ export function modelAccessSignature(usage) {
  *  card and the Settings probe notice alike. The drained-wallet card's
  *  spent-allowance branch describes the same state, so it uses this too.
  *
- *  An org with no free grant is told that, in the console's words, and never a
- *  refill time. Otherwise the refill time is the gate's (`resetAt`), falling
- *  back to the hub usage read's. When neither is a usable future instant, the
- *  sentence offers funds alone: nothing then says the allowance refills at
- *  all, and the org may have no grant to refill. */
+ *  An org with no free grant is told that, and never a refill time. Otherwise
+ *  the refill time is the gate's (`resetAt`), falling back to the hub usage
+ *  read's. When neither is a usable future instant, the sentence offers funds
+ *  alone: nothing then says the allowance refills at all, and the org may have
+ *  no grant to refill. */
 export function allowanceStopCopy({ resetAt = null, usage = null } = {}) {
   const free = freeAllowanceState(usage);
   if (!offersBilling()) {

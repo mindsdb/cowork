@@ -121,7 +121,7 @@ describe('ComposerLip', () => {
 
   it.each([
     ['included_allowance_exhausted', 'Your included allowance is used up', 'included_allowance_exhausted'],
-    ['free_air_daily_spend_fuse_exceeded', 'Free MindsHub Air is paused', 'free_serving_paused'],
+    ['free_air_daily_spend_fuse_exceeded', 'Free models are paused', 'free_serving_paused'],
     ['window_allowance_exhausted', 'Your included allowance is used up', 'window_allowance_exhausted'],
   ])('offers credits when %s blocks the turn until a reset', (code, title, billingTrigger) => {
     const { onAddCredits } = renderFailure(code, 'upstream 429');
