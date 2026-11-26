@@ -180,6 +180,21 @@ describe('artifacts rail click in org mode', () => {
 
   it('falls back to the shared page for a draft it cannot render', async () => {
     const row = await renderRail(draft({
+      title: 'Weekly Report',
+      type: 'file',
+      path: '/proj/.anton/artifacts/bundle/data.zip',
+      ext: '.zip',
+      publishedUrl: SHARED_URL,
+    }));
+
+    fireEvent.click(row);
+
+    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+    expect(openExternal).toHaveBeenCalledWith(SHARED_URL);
+  });
+
+  it('previews a published full-stack app, which the viewer frames at its address (ENG-4687)', async () => {
+    const row = await renderRail(draft({
       title: 'Ops Console',
       type: 'fullstack-stateless-app',
       path: '/proj/.anton/artifacts/ops/static/index.html',
@@ -189,8 +204,8 @@ describe('artifacts rail click in org mode', () => {
 
     fireEvent.click(row);
 
-    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
-    expect(openExternal).toHaveBeenCalledWith(SHARED_URL);
+    expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
+    expect(openExternal).not.toHaveBeenCalled();
   });
 
   it('does not fall back to window.open when the bridge rejects', async () => {
@@ -203,10 +218,10 @@ describe('artifacts rail click in org mode', () => {
     const opened = vi.spyOn(window, 'open').mockImplementation(() => null);
     try {
       const row = await renderRail(draft({
-        title: 'Ops Console',
-        type: 'fullstack-stateless-app',
-        path: '/proj/.anton/artifacts/ops/static/index.html',
-        ext: '.html',
+        title: 'Weekly Report',
+        type: 'file',
+        path: '/proj/.anton/artifacts/bundle/data.zip',
+        ext: '.zip',
         publishedUrl: SHARED_URL,
       }));
 

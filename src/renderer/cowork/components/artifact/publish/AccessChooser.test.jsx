@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { describe, it, expect, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { AUDIENCE_CHOICE } from '../../../lib/orgSharing';
 import { setOrgMode } from '../../../../lib/orgMode';
 import {
@@ -184,15 +186,15 @@ describe('owner-only as its own selection', () => {
       .toBe('specific');
   });
 
-  it('offers Only me and Specific people as separate choices, private first', () => {
-    const { container } = render(
+  it('offers Only me and Specific people as separate choices, private first', async () => {
+    const user = userEvent.setup();
+    render(
       <AccessChooser value={{ mode: 'private', emailsText: '', orgAllowed: false }} onChange={() => {}} />,
     );
-    expect(screen.getByText('Only me')).toBeInTheDocument();
-    expect(screen.getByText('Specific people')).toBeInTheDocument();
-    const order = [...container.querySelectorAll('span')]
-      .map((n) => n.textContent)
-      .filter((t) => ['Only me', 'Specific people', 'Password protected', 'Public'].includes(t));
+    expect(screen.getByTestId('access-dropdown')).toHaveAccessibleName('Who can access your app: Only me');
+    await user.click(screen.getByTestId('access-dropdown'));
+    const order = screen.getAllByRole('radio').map((radio) => radio.textContent)
+      .map((text) => ['Only me', 'Specific people', 'Password protected', 'Public'].find((title) => text.startsWith(title)));
     expect(order).toEqual(['Only me', 'Specific people', 'Password protected', 'Public']);
   });
 
@@ -286,19 +288,29 @@ describe('notifying added people', () => {
   });
 });
 
-// The password unfolds under its own card, as the recipients do under
-// "Specific …", not after the last option (ENG-4455 follow-up).
+// The password unfolds under the access dropdown once "Password protected" is
+// picked, as the recipients do for "Specific …"; in the opened list,
+// "Password protected" comes before "Public".
 describe('AccessChooser password field', () => {
-  it('sits under "Password protected", before "Public"', () => {
-    const { container } = render(
-      <AccessChooser value={{ mode: 'password', password: '', emailsText: '', orgAllowed: false }} onChange={() => {}} />,
-    );
-    const field = screen.getByPlaceholderText('Add a password');
-    const editor = container.querySelector('[data-testid="password-field"]');
-    expect(editor).toContainElement(field);
-    const publicCard = screen.getByText('Public');
+  it('sits under "Password protected", before "Public"', async () => {
+    const user = userEvent.setup();
+    function Harness() {
+      const [draft, setDraft] = useState({ mode: 'public', password: '', emailsText: '', orgAllowed: false });
+      return <AccessChooser value={draft} onChange={setDraft} />;
+    }
+    render(<Harness />);
+    expect(screen.queryByPlaceholderText('Add a password')).toBeNull();
+
+    await user.click(screen.getByTestId('access-dropdown'));
+    const passwordOption = screen.getByRole('radio', { name: /^Password protected/ });
+    const publicOption = screen.getByRole('radio', { name: /^Public/ });
     // eslint-disable-next-line no-bitwise
-    expect(field.compareDocumentPosition(publicCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(passwordOption.compareDocumentPosition(publicOption) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await user.click(passwordOption);
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(screen.getByTestId('access-dropdown')).toHaveAccessibleName('Who can access your app: Password protected');
+    expect(within(screen.getByTestId('access-editor')).getByPlaceholderText('Add a password')).toBeInTheDocument();
   });
 
   it('shows no password field for other choices', () => {

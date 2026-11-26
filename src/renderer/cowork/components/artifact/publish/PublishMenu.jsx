@@ -4,7 +4,7 @@
 // A Base UI Popover anchored to the trigger, driving the full publish
 // state machine off `usePublish`:
 //
-//   not published → "Share to the Web" (access chooser + Share)
+//   not published → "Share" (the same access dropdown + Share)
 //   publishing    → button shows a spinner
 //   published     → URL + current access + Unpublish + Update button, or an
 //                    "Up to date" status when there is nothing to publish
@@ -494,9 +494,9 @@ export function PublishMenu({
     cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.55 : 1,
     fontFamily: FONT_BODY, fontWeight: 600, fontSize: 13, lineHeight: 1,
     display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8,
-    ...(isPublished
-      ? { background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--line)', padding: '7px 8px 7px 10px' }
-      : { background: 'var(--accent)', color: '#fff', border: '1px solid var(--accent)', padding: '7px 16px' }),
+    // One look whether or not it's published yet (ENG-4687).
+    background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--line)',
+    padding: '7px 8px 7px 10px',
   };
 
   const reportOpened = () => reportShareOpened(pub.artifact, {
@@ -588,10 +588,12 @@ export function PublishMenu({
               maxHeight: 'var(--available-height, 80vh)',
               display: 'flex', flexDirection: 'column',
             }}>
-              {/* NOT PUBLISHED — Share to the Web */}
+              {/* NOT PUBLISHED: the same panel as a published artifact's
+                  (ENG-4687), without the address it doesn't have yet, and
+                  the same access dropdown; the footer shares it. */}
               {!isPublished && (
                 <>
-                  <PanelHeader title={t('publish.shareToWeb')} />
+                  <PanelHeader title={t('publish.share')} />
                   <div className={`py-3 px-4 ${SCROLL_BODY}`} data-testid="publish-menu-body">
                     <SectionLabel>{whoCanAccess}</SectionLabel>
                     {sharingSettingsStatus || (
@@ -650,7 +652,6 @@ export function PublishMenu({
                               // over it, and would not be re-seeded (ENG-931).
                               picker={current.mode && pub.accessLoaded ? (desc) => (
                                 <AccessChooser
-                                  layout="dropdown"
                                   showEditor={false}
                                   chosenDesc={desc}
                                   ariaLabel={whoCanAccess}
@@ -687,7 +688,7 @@ export function PublishMenu({
                           {sharingSettingsStatus || accessLoadStatus || (
                             <>
                               {permissionsNotice}
-                              <AccessChooser layout="dropdown" value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} ariaLabel={whoCanAccess} />
+                              <AccessChooser value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} ariaLabel={whoCanAccess} />
                             </>
                           )}
                         </>

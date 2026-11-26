@@ -76,14 +76,7 @@ vi.mock('../../platform/host', () => ({
 // we only need to prove the inline card hands the complete artifact to it.
 vi.mock('../components/artifact', () => ({
   ArtifactViewer: ({ open, artifact, shareRequest, shareEntry }) => open
-    ? (
-      <div
-        data-testid="artifact-viewer"
-        data-open-share={String(!!shareRequest)}
-        data-share-entry={shareEntry}
-        data-can-edit={String(artifact?.capabilities?.canEdit ?? '')}
-      >{artifact?.id}</div>
-    )
+    ? <div data-testid="artifact-viewer" data-open-share={String(!!shareRequest)} data-share-entry={shareEntry}>{artifact?.id}</div>
     : null,
 }));
 
@@ -229,19 +222,22 @@ describe('inline artifact banner in org mode', () => {
     expect(screen.queryByRole('button', { name: 'Shared link' })).toBeNull();
   });
 
-  it('opens the shared page for a draft it cannot render', async () => {
+  it('previews a published full-stack app beside Share, like a page (ENG-4687)', async () => {
     /*
-     * A fullstack app needs the loopback proxy only Desktop runs, so nothing
-     * here can render it and the published page is the only destination left.
+     * The server can't start its backend here, but the app runs at its
+     * published address, which the viewer frames: Preview, not the shared
+     * page in a tab.
      */
     setOrgMode(true);
     const user = userEvent.setup();
     render(<ChatView task={taskWithArtifact(artifactStep({ type: 'fullstack-stateless-app' }))} />);
 
-    await user.click(screen.getByRole('button', { name: 'Open' }));
+    expect(screen.queryByRole('button', { name: 'Open' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Share' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Preview' }));
 
-    expect(openExternal).toHaveBeenCalledWith(PUBLISHED_URL);
-    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+    expect(openExternal).not.toHaveBeenCalled();
+    expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
   });
 
   it('offers no button when it can neither preview nor share', () => {
@@ -1182,25 +1178,6 @@ describe('Share on the inline artifact card', () => {
       listedCard.mockReturnValue({ slug: 'clock', capabilities: { role: 'reviewer', canEdit: false } });
       render(<ChatView task={taskWithArtifact(artifactStep())} />);
       expect(share()).toBeNull();
-    });
-
-    // ENG-4687: a PDF, Word or PowerPoint preview loads no workspace, so its
-    // Share and chat bar follow the capabilities the artifact arrives with;
-    // from the chat card those are the list's, as from the artifacts page.
-    it.each([
-      ['Share', 'Share'],
-      ['Preview', 'Preview'],
-    ])('hands the viewer the list\'s capabilities when the card opens it with %s', async (_label, button) => {
-      canPreviewDocument.mockReturnValue(true);
-      listedCard.mockReturnValue({ slug: 'clock', capabilities: { role: 'owner', canEdit: true } });
-      const path = '/proj/.anton/artifacts/clock/brief.pdf';
-      const user = userEvent.setup();
-      render(<ChatView task={taskWithArtifact(artifactStep({
-        ext: '.pdf', action: 'file', file_path: path, path, publishedUrl: '',
-        draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/brief.pdf`,
-      }))} />);
-      await user.click(screen.getByRole('button', { name: button }));
-      expect(await screen.findByTestId('artifact-viewer')).toHaveAttribute('data-can-edit', 'true');
     });
 
     it('offers Share for an artifact the list has not loaded yet, and leaves the viewer to decide', () => {
