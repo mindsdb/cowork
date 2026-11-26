@@ -365,13 +365,13 @@ export default function ScheduleTaskModal({
               <div className="flex flex-col gap-1.5">
                 {connectors.map((c) => {
                   const key = c.datasourceId != null ? `datasource:${c.datasourceId}` : connectionMuteKey(c.engine, c.name);
-                  const used = !form.disabledConnections.some((d) => matchesScheduleExclusion(d, c));
+                  const used = !form.disabledConnections.some((d) => matchesScheduleExclusion(d, c, connectors));
                   return (
                     <label key={key} className="flex items-center gap-2 text-[13px] cursor-pointer">
                       <Checkbox
                         size="sm"
                         checked={used}
-                        onCheckedChange={(on) => update('disabledConnections', toggleScheduleExclusion(form.disabledConnections, c, on))}
+                        onCheckedChange={(on) => update('disabledConnections', toggleScheduleExclusion(form.disabledConnections, c, on, connectors))}
                       />
                       <span className="text-ink">{c.name}</span>
                       <span className="text-ink-3">{c.display_name || c.engine}</span>
