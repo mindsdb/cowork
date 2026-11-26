@@ -5,17 +5,23 @@ import * as path from 'node:path';
 import { expect, it } from 'vitest';
 import { ensureTaskWorktree } from './coding-workspace';
 
-/* Query SIDs so localized group names on Windows do not affect the result. */
+/* Windows PowerShell ships with the OS. Let it initialize its own module
+ * paths when the test runner was started by PowerShell 7. */
 function grantsUsersRead(file: string): boolean {
   const command = [
+    "$ErrorActionPreference = 'Stop'",
     '$acl = Get-Acl -LiteralPath $env:COWORK_TEST_ACL_PATH',
     '$rules = $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])',
     '$broad = $rules | Where-Object { $_.IdentityReference.Value -eq "S-1-5-32-545" -and $_.AccessControlType -eq "Allow" -and ($_.FileSystemRights -band [System.Security.AccessControl.FileSystemRights]::ReadData) }',
     '[bool]$broad',
   ].join('; ');
-  return execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], {
-    env: { ...process.env, COWORK_TEST_ACL_PATH: file }, encoding: 'utf8',
-  }).trim() === 'True';
+  const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => key.toUpperCase() !== 'PSMODULEPATH'));
+  const encoded = Buffer.from(command, 'utf16le').toString('base64');
+  const result = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], {
+    env: { ...env, COWORK_TEST_ACL_PATH: file }, encoding: 'utf8',
+  }).trim();
+  if (result !== 'True' && result !== 'False') throw new Error(`Unexpected Windows ACL result: ${result}`);
+  return result === 'True';
 }
 
 it.skipIf(process.platform !== 'win32')('protects a new project checkout and repairs restored inheritance on reconnect', async () => {
