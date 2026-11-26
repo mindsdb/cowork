@@ -59,7 +59,11 @@ vi.mock('../../lib/artifactWorkspaceApi', async (importOriginal) => ({
   createDraftLink,
 }));
 const checkConfigured = vi.hoisted(() => vi.fn());
+const getAccessToken = vi.hoisted(() => vi.fn(async () => 'kc-token'));
+const viewSessionFrameUrl = vi.hoisted(() => vi.fn(async (url) => url));
+vi.mock('../../../lib/viewSession', () => ({ viewSessionFrameUrl }));
 vi.mock('../../../platform/host', async (importOriginal) => ({
+  getAccessToken,
   host: {
     isElectron: false,
     isWeb: true,
@@ -71,11 +75,11 @@ vi.mock('../../../platform/host', async (importOriginal) => ({
     checkConfigured,
   },
 }));
-const published = vi.hoisted(() => ({ url: '' }));
+const published = vi.hoisted(() => ({ url: '', accessMode: 'public' }));
 vi.mock('./publish/usePublish', () => ({
   usePublish: () => ({
     publishedUrl: published.url,
-    accessMode: 'restricted',
+    accessMode: published.accessMode,
     artifactKey: 'artifact/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     busy: false,
   }),
@@ -134,7 +138,9 @@ beforeEach(() => {
   previous = getOrgMode();
   setOrgMode(true);
   published.url = '';
+  published.accessMode = 'public';
   vi.mocked(mountArtifactPreview).mockReset();
+  viewSessionFrameUrl.mockClear();
 });
 afterEach(() => {
   setOrgMode(previous);
@@ -157,6 +163,25 @@ describe('ArtifactViewer: a full-stack app on an org deployment', () => {
 
     const sandbox = (await screen.findByTitle('Team Shared Todo')).getAttribute('sandbox');
     expect(sandbox.split(' ')).toEqual(expect.arrayContaining(['allow-scripts', 'allow-same-origin']));
+  });
+
+  it('opens a restricted app signed in, through the view host session bootstrap', async () => {
+    published.url = LIVE;
+    published.accessMode = 'restricted';
+    viewSessionFrameUrl.mockResolvedValue('https://view-pr-cowork-1.dev.mindshub.test/_session?ticket=t&return=%2Fview');
+    render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
+
+    const frame = await screen.findByTitle('Team Shared Todo');
+    await waitFor(() => expect(frame.getAttribute('src')).toContain('/_session?ticket=t'));
+    expect(viewSessionFrameUrl).toHaveBeenCalledWith(expect.stringContaining(LIVE), getAccessToken);
+  });
+
+  it('frames a public app as it is, without asking for a session', async () => {
+    published.url = LIVE;
+    render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
+
+    await screen.findByTitle('Team Shared Todo');
+    expect(viewSessionFrameUrl).not.toHaveBeenCalled();
   });
 
   it("uses the card's address before the publish state has loaded", async () => {

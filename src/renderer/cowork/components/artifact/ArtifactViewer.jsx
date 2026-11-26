@@ -60,7 +60,8 @@ import { isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES } from '
 import { useBlobImageSrc } from '../AttachmentThumbnail';
 import { Modal } from '../ui/Modal';
 import { ConfirmModal } from '../ConfirmModal';
-import { host } from '../../../platform/host';
+import { getAccessToken, host } from '../../../platform/host';
+import { viewSessionFrameUrl } from '../../../lib/viewSession';
 import { useOrgMode } from '../../../lib/orgMode';
 import { useLiveApps } from '../../../lib/liveApps';
 import { useLiveApp } from '../../hooks/useLiveApp';
@@ -915,8 +916,17 @@ export function ArtifactViewer({
         return () => { cancelled = true; };
       }
       setPreviewKind('published');
-      setPreviewUrl(withArtifactVersion(liveUrl, cacheVersion));
-      setLoading(false);
+      const framed = withArtifactVersion(liveUrl, cacheVersion);
+      if (pub.accessMode !== 'restricted') {
+        setPreviewUrl(framed);
+        setLoading(false);
+        return () => { cancelled = true; };
+      }
+      // Restricted (owner-only included): open it signed in, through the view
+      // host's session bootstrap, not its sign-in redirect, which can't be framed.
+      viewSessionFrameUrl(framed, getAccessToken)
+        .then((url) => { if (!cancelled) setPreviewUrl(url); })
+        .finally(() => { if (!cancelled) setLoading(false); });
       return () => { cancelled = true; };
     }
     if (draftPreviewUrl && !isText && (!isBackendArtifact || !hasActionPath)) {
@@ -1082,7 +1092,7 @@ export function ArtifactViewer({
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, textExt, isImage, liveAppView, showDocumentPreview, reloadNonce, draftLinkEnabled, orgMode, pub.publishedUrl, artifact?.publishedUrl]);
+  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, textExt, isImage, liveAppView, showDocumentPreview, reloadNonce, draftLinkEnabled, orgMode, pub.publishedUrl, pub.accessMode, artifact?.publishedUrl]);
 
   // Opening comments on a preview mounted before the key arrived is the one
   // time a reload is worth it: the user asked for the markers.
