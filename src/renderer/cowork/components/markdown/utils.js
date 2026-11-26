@@ -162,8 +162,10 @@ const MERMAID_KEYWORDS = new Set([
   'td', 'tb', 'bt', 'lr', 'rl',
 ]);
 
-// Arrows across flowchart, sequence, class and state diagrams.
-const MERMAID_ARROW_RE = /\s*(?:<?[-=.]{2,}[>xo)]*|<?-+>>?|-[x)])(?:\|[^|]*\|)?\s*/g;
+// Arrows across flowchart, sequence, class and state diagrams. Only counts
+// nodes for the size cap (never sanitizes): `!?` also takes `--!>`, which
+// keeps CodeQL's HTML-comment-filter check (js/bad-tag-filter) quiet.
+const MERMAID_ARROW_RE = /\s*(?:<?[-=.]{2,}!?[>xo)]*|<?-+!?>>?|-[x)])(?:\|[^|]*\|)?\s*/g;
 // Node shapes / labels: [..], (..), {..}, ".."; stripped before tokenizing.
 const MERMAID_LABEL_RE = /"[^"]*"|\[[^\]]*\]|\([^)]*\)|\{[^}]*\}/g;
 // A link's inline text: `A -- text --> B`, `A == text ==> B`.
