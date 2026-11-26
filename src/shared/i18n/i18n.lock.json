@@ -37399,38 +37399,38 @@
       "text": "3837154dd685"
     }
   },
-  "chat:chatView.artifactCard.hideThisVersion": {
+  "chat:chatView.artifactCard.hideVersionPreview": {
     "de": {
-      "from": "ac20a57bfde0",
-      "text": "042fae8a9e4a"
+      "from": "e062c1071277",
+      "text": "f163101dcd09"
     },
     "es": {
-      "from": "ac20a57bfde0",
-      "text": "dd680772877e"
+      "from": "e062c1071277",
+      "text": "82a043165df4"
     },
     "fr": {
-      "from": "ac20a57bfde0",
-      "text": "04ae28b7f7cc"
+      "from": "e062c1071277",
+      "text": "34a2e3dd7408"
     },
     "it": {
-      "from": "ac20a57bfde0",
-      "text": "12292af0c960"
+      "from": "e062c1071277",
+      "text": "12f8f0e88a2c"
     },
     "ja": {
-      "from": "ac20a57bfde0",
-      "text": "8389c10f44c0"
+      "from": "e062c1071277",
+      "text": "f6f8e70380b5"
     },
     "ko": {
-      "from": "ac20a57bfde0",
-      "text": "d14351677e68"
+      "from": "e062c1071277",
+      "text": "4d9b76fe928c"
     },
     "pt-BR": {
-      "from": "ac20a57bfde0",
-      "text": "dd680772877e"
+      "from": "e062c1071277",
+      "text": "38487907b594"
     },
     "zh-CN": {
-      "from": "ac20a57bfde0",
-      "text": "145219e726b8"
+      "from": "e062c1071277",
+      "text": "2bc2c7c1c251"
     }
   },
   "chat:chatView.artifactCard.liveArtifact": {
@@ -37977,6 +37977,40 @@
       "text": "f9332fabfed0"
     }
   },
+  "chat:chatView.artifactCard.previewThisVersion": {
+    "de": {
+      "from": "2a27c4c050a3",
+      "text": "057f9c99034e"
+    },
+    "es": {
+      "from": "2a27c4c050a3",
+      "text": "aedaa010f8dd"
+    },
+    "fr": {
+      "from": "2a27c4c050a3",
+      "text": "f7d138382d52"
+    },
+    "it": {
+      "from": "2a27c4c050a3",
+      "text": "c68225b70653"
+    },
+    "ja": {
+      "from": "2a27c4c050a3",
+      "text": "4427521ad040"
+    },
+    "ko": {
+      "from": "2a27c4c050a3",
+      "text": "49b8a4c2f506"
+    },
+    "pt-BR": {
+      "from": "2a27c4c050a3",
+      "text": "8931762821aa"
+    },
+    "zh-CN": {
+      "from": "2a27c4c050a3",
+      "text": "93ec255fe181"
+    }
+  },
   "chat:chatView.artifactCard.saveFileTooltip": {
     "de": {
       "from": "932188668898",
@@ -38215,40 +38249,6 @@
       "text": "037c31ec9ecf"
     }
   },
-  "chat:chatView.artifactCard.showThisVersion": {
-    "de": {
-      "from": "fa74a1d8edfc",
-      "text": "b533821fef40"
-    },
-    "es": {
-      "from": "fa74a1d8edfc",
-      "text": "ea8bd0eb5eaa"
-    },
-    "fr": {
-      "from": "fa74a1d8edfc",
-      "text": "6e751b1eb6e6"
-    },
-    "it": {
-      "from": "fa74a1d8edfc",
-      "text": "76df32e3123e"
-    },
-    "ja": {
-      "from": "fa74a1d8edfc",
-      "text": "efb455677dc8"
-    },
-    "ko": {
-      "from": "fa74a1d8edfc",
-      "text": "d627c1863d0b"
-    },
-    "pt-BR": {
-      "from": "fa74a1d8edfc",
-      "text": "9bc7e3b6a71d"
-    },
-    "zh-CN": {
-      "from": "fa74a1d8edfc",
-      "text": "38a625d9a60d"
-    }
-  },
   "chat:chatView.artifactCard.shownInFinder": {
     "de": {
       "from": "544c828cdf87",
@@ -38351,38 +38351,38 @@
       "text": "045411472845"
     }
   },
-  "chat:chatView.artifactCard.updatedBelow": {
+  "chat:chatView.artifactCard.updatedSeeBelow": {
     "de": {
-      "from": "e117f81a359f",
-      "text": "20362313be3f"
+      "from": "e1c32a32fe48",
+      "text": "068784118a65"
     },
     "es": {
-      "from": "e117f81a359f",
-      "text": "b6107a7646bf"
+      "from": "e1c32a32fe48",
+      "text": "a197c4ab9f49"
     },
     "fr": {
-      "from": "e117f81a359f",
-      "text": "e0a63abf2277"
+      "from": "e1c32a32fe48",
+      "text": "490faaf3692d"
     },
     "it": {
-      "from": "e117f81a359f",
-      "text": "b0ec6706c007"
+      "from": "e1c32a32fe48",
+      "text": "5d97b690f266"
     },
     "ja": {
-      "from": "e117f81a359f",
-      "text": "4e3557c6b7fe"
+      "from": "e1c32a32fe48",
+      "text": "308ba66de66c"
     },
     "ko": {
-      "from": "e117f81a359f",
-      "text": "8f0447c46a34"
+      "from": "e1c32a32fe48",
+      "text": "01a10e7ed3e6"
     },
     "pt-BR": {
-      "from": "e117f81a359f",
-      "text": "8e4f2d8bef04"
+      "from": "e1c32a32fe48",
+      "text": "b9d33bcf74e9"
     },
     "zh-CN": {
-      "from": "e117f81a359f",
-      "text": "b8039e4c8e61"
+      "from": "e1c32a32fe48",
+      "text": "12d4f1f2b9ae"
     }
   },
   "chat:chatView.attachment.connector": {

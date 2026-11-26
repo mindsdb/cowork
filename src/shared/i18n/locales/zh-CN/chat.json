@@ -76,12 +76,12 @@
       "deletedBadge": "已删除",
       "share": "分享",
       "shareTooltip": "选择谁可以打开",
-      "updatedBelow": "{title} · 已在下方更新",
       "goToLatestTooltip": "滚动到最新版本",
-      "showThisVersion": "此版本",
-      "hideThisVersion": "隐藏",
       "openLink": "打开链接",
-      "openLinkTooltip": "在新标签页中打开产物的链接"
+      "openLinkTooltip": "在新标签页中打开产物的链接",
+      "updatedSeeBelow": "已更新。最新版本见下方。",
+      "previewThisVersion": "预览此版本",
+      "hideVersionPreview": "隐藏此版本"
     },
     "kinds": {
       "provider": "提供商",

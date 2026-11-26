@@ -129,11 +129,11 @@ describe('ArtifactCard inline mode', () => {
 // ENG-4684: one live copy per artifact. An earlier card the agent updated
 // later folds to a line that opens to the page.
 describe('ArtifactCard superseded inline card', () => {
-  it('folds to "<title> · updated below" with no frame until "This version" opens it', async () => {
+  it('renders the plain card, with no frame until "Preview this version" opens it', async () => {
     const user = userEvent.setup();
     render(<ArtifactCard artifact={card({ display: 'inline' })} onOpen={vi.fn()} inlineSuperseded />);
-    expect(screen.getByRole('button', { name: /Revenue by month · updated below/ })).toBeInTheDocument();
-    const toggle = screen.getByRole('button', { name: 'This version' });
+    expect(screen.getByRole('button', { name: 'This was updated. See the latest version below.' })).toBeInTheDocument();
+    const toggle = screen.getByRole('button', { name: 'Preview this version' });
     expect(screen.queryByTestId('artifact-inline-preview')).toBeNull();
     expect(loadHtmlPreview).not.toHaveBeenCalled();
 
@@ -146,7 +146,7 @@ describe('ArtifactCard superseded inline card', () => {
   it('opens to the revision the card was made at, when it carries one', async () => {
     const user = userEvent.setup();
     render(<ArtifactCard artifact={card({ display: 'inline', revision_id: 'rev-3' })} onOpen={vi.fn()} inlineSuperseded />);
-    await user.click(screen.getByRole('button', { name: 'This version' }));
+    await user.click(screen.getByRole('button', { name: 'Preview this version' }));
     const frame = await screen.findByTitle('Revenue by month');
     expect(frame.getAttribute('srcdoc')).toBe('<p>chart then</p>');
     expect(loadHtmlRevision).toHaveBeenCalledWith(expect.objectContaining({ revisionId: 'rev-3' }));
@@ -155,7 +155,7 @@ describe('ArtifactCard superseded inline card', () => {
 
   it('keeps the row card for a superseded artifact that is not inline', () => {
     render(<ArtifactCard artifact={card()} onOpen={vi.fn()} inlineSuperseded />);
-    expect(screen.queryByTestId('artifact-inline-chip')).toBeNull();
+    expect(screen.queryByTestId('artifact-inline-superseded')).toBeNull();
     expect(screen.getByRole('button', { name: /Revenue by month/ })).toBeInTheDocument();
   });
 });
@@ -195,8 +195,8 @@ describe('ChatView inline artifacts across turns', () => {
     }} />);
     await waitFor(() => expect(liveFrames()).toHaveLength(1));
     expect(screen.getAllByTestId('artifact-inline-preview')).toHaveLength(1);
-    expect(screen.getAllByTestId('artifact-inline-chip')).toHaveLength(1);
-    expect(screen.getByRole('button', { name: /Revenue by month · updated below/ })).toBeInTheDocument();
+    expect(screen.getAllByTestId('artifact-inline-superseded')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'This was updated. See the latest version below.' })).toBeInTheDocument();
   });
 
   it('scrolls "updated below" to the live copy of the same artifact', async () => {
@@ -212,7 +212,7 @@ describe('ChatView inline artifacts across turns', () => {
       ],
     }} />);
     await waitFor(() => expect(liveFrames()).toHaveLength(1));
-    await user.click(screen.getByRole('button', { name: /updated below/ }));
+    await user.click(screen.getByRole('button', { name: /See the latest version below/ }));
     expect(scrolled).toHaveBeenCalledTimes(1);
     const target = scrolled.mock.contexts[0];
     expect(target.contains(liveFrames()[0])).toBe(true);
