@@ -20,7 +20,8 @@
       "deleting": "Eliminazione…",
       "copyMessage": "Copia messaggio",
       "copyResponse": "Copia risposta",
-      "agentFallback": "Agente"
+      "agentFallback": "Agente",
+      "submittedData": "Dati inviati"
     },
     "incomplete": {
       "spendCeiling": "Interrotta in anticipo: l’attività ha raggiunto il budget di token.",
@@ -74,7 +75,8 @@
       "liveArtifact": "artefatto live",
       "deletedBadge": "Eliminato",
       "share": "Condividi",
-      "shareTooltip": "Scegli chi può aprirlo"
+      "shareTooltip": "Scegli chi può aprirlo",
+      "updatedBelow": "{title} · aggiornato più in basso"
     },
     "kinds": {
       "provider": "Provider",

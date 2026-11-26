@@ -18,9 +18,16 @@
 //     floor and grows to what the page asks for.
 //   - Mounted only near the viewport, and unmounted again far from it,
 //     keeping its last height so the transcript does not jump.
+//   - The page's state (`window.anton.setState`) is the artifact's
+//     `state.json`, and its Submit a chat turn (useInlineArtifactState).
+//
+// With `revisionId` the frame shows that saved revision instead of the
+// draft: an earlier chat card opened to see the page as it was then. That is
+// a snapshot: no state of its own, and nothing it submits.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { loadHtmlPreview, usesDraftLink, withdrawDraftLinks } from './htmlPreviewSource';
+import { loadHtmlPreview, loadHtmlRevision, usesDraftLink, withdrawDraftLinks } from './htmlPreviewSource';
+import { useInlineArtifactState } from './useInlineArtifactState';
 import { previewReportFrom, previewSize } from './usePreviewFit';
 import { postPreviewTheme } from './usePreviewView';
 import { usePreviewDiagnostics } from './usePreviewDiagnostics';
@@ -45,7 +52,7 @@ export function clampInlineHeight(content) {
   return Math.min(INLINE_MAX_HEIGHT, Math.max(INLINE_MIN_HEIGHT, Math.ceil(value)));
 }
 
-export function ArtifactInlinePreview({ artifact, title = '' }) {
+export function ArtifactInlinePreview({ artifact, title = '', revisionId = '', onSubmit = null }) {
   const boxRef = useRef(null);
   const iframeRef = useRef(null);
   // Where IntersectionObserver is missing there is nothing to wait for.
@@ -59,7 +66,9 @@ export function ArtifactInlinePreview({ artifact, title = '' }) {
   const actionPath = artifact?.canonicalPath || artifact?.file_path || artifact?.path || '';
   const hasActionPath = !!actionPath && !artifact?.actionDisabledReason;
   // A changed file (mtime) or address is another page: load it again.
-  const sourceKey = [actionPath, artifact?.draftUrl || '', artifact?.mtime || '', draftLinkEnabled].join('|');
+  const sourceKey = revisionId
+    ? `revision|${revisionId}`
+    : [actionPath, artifact?.draftUrl || '', artifact?.mtime || '', draftLinkEnabled].join('|');
   const [loaded, setLoaded] = useState(null); // { key, url, doc, staleAt }
   const [error, setError] = useState('');
   const [height, setHeight] = useState(INLINE_MIN_HEIGHT);
@@ -73,14 +82,17 @@ export function ArtifactInlinePreview({ artifact, title = '' }) {
     let cancelled = false;
     const reading = new AbortController();
     setError('');
-    loadHtmlPreview({
-      artifact,
-      actionPath,
-      hasActionPath,
-      cacheVersion: String(artifact?.mtime || 0),
-      draftLinkEnabled,
-      signal: reading.signal,
-    })
+    const loading = revisionId
+      ? loadHtmlRevision({ artifact, revisionId, signal: reading.signal })
+      : loadHtmlPreview({
+        artifact,
+        actionPath,
+        hasActionPath,
+        cacheVersion: String(artifact?.mtime || 0),
+        draftLinkEnabled,
+        signal: reading.signal,
+      });
+    loading
       .then((next) => {
         if (cancelled) return;
         setLoaded({
@@ -107,6 +119,7 @@ export function ArtifactInlinePreview({ artifact, title = '' }) {
   // The viewer's diagnostics, so a broken chart says so here; opening it in
   // the viewer offers the repair.
   const diagnostics = usePreviewDiagnostics(iframeRef, { enabled: mounted, resetKey });
+  useInlineArtifactState(iframeRef, artifact, { enabled: mounted && !revisionId, onSubmit });
 
   useEffect(() => {
     if (!mounted) return undefined;

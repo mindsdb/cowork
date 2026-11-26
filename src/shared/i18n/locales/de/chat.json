@@ -20,7 +20,8 @@
       "deleting": "Wird gelöscht…",
       "copyMessage": "Nachricht kopieren",
       "copyResponse": "Antwort kopieren",
-      "agentFallback": "Agent"
+      "agentFallback": "Agent",
+      "submittedData": "Gesendete Daten"
     },
     "incomplete": {
       "spendCeiling": "Vorzeitig beendet: Diese Aufgabe hat ihr Token-Budget erreicht.",
@@ -74,7 +75,8 @@
       "liveArtifact": "Live-Artefakt",
       "deletedBadge": "Gelöscht",
       "share": "Teilen",
-      "shareTooltip": "Festlegen, wer es öffnen kann"
+      "shareTooltip": "Festlegen, wer es öffnen kann",
+      "updatedBelow": "{title} · unten aktualisiert"
     },
     "kinds": {
       "provider": "Anbieter",

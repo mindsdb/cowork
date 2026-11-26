@@ -4470,6 +4470,7 @@ button.artifact-ref-pill:focus-visible { outline: 2px solid color-mix(in srgb, v
    bubble's own fill. The bubble sizes to the wider of the text and the chip,
    so a short message widens to fit it rather than jumping. */
 .user-turn-artifact-ref { display: flex; justify-content: flex-start; margin-top: 8px; min-width: 0; }
+.user-turn-artifact-state { margin-top: 4px; min-width: 0; max-width: 100%; }
 .user-turn-bubble .artifact-ref-pill {
   height: 24px;
   padding: 0 9px 0 7px;

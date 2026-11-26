@@ -20,7 +20,8 @@
       "deleting": "Suppression…",
       "copyMessage": "Copier le message",
       "copyResponse": "Copier la réponse",
-      "agentFallback": "Agent"
+      "agentFallback": "Agent",
+      "submittedData": "Données envoyées"
     },
     "incomplete": {
       "spendCeiling": "Arrêt anticipé : cette tâche a atteint son budget de jetons.",
@@ -74,7 +75,8 @@
       "liveArtifact": "artefact en direct",
       "deletedBadge": "Supprimé",
       "share": "Partager",
-      "shareTooltip": "Choisir qui peut l'ouvrir"
+      "shareTooltip": "Choisir qui peut l'ouvrir",
+      "updatedBelow": "{title} · mis à jour plus bas"
     },
     "kinds": {
       "provider": "Fournisseur",
