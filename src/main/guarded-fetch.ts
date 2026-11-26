@@ -301,7 +301,15 @@ function send(
         else {
           if (!decoder && head.length > 0) start(head);
           if (decoder) decoder.end();
-          else complete();
+          else if (
+            [204, 205].includes(res.statusCode ?? 0) ||
+            (init.method ?? 'GET').toUpperCase() === 'HEAD'
+          ) {
+            complete();
+          } else {
+            // A declared compression always has framing, even for an empty payload.
+            fail('bad_response', 'the server declared a compressed body but sent nothing');
+          }
         }
       });
       res.on('error', () => finish(() => reject(new GuardedFetchError('network', 'the connection failed'))));

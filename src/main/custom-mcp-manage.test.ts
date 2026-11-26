@@ -252,6 +252,7 @@ describe('reconnect', () => {
     ['a web page', { status: 200, headers: { 'content-type': 'text/html' }, text: '<html></html>' }],
     ['plain JSON', { status: 200, json: { ok: true } }],
     ['an empty body', { status: 200 }],
+    ['a JSON-RPC error', { status: 200, json: { jsonrpc: '2.0', id: 1, error: { code: -32600, message: 'bad' } } }],
   ])('fails when the address now answers 200 with %s', async (_name, answer) => {
     await seed();
     const { deps } = loginServer({ [`POST ${SERVER_URL}`]: answer });

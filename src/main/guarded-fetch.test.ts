@@ -401,9 +401,19 @@ describe('decodeBody', () => {
     expect((await (await fetchFn('https://mcp.example.com/mcp', { decodeBody: true })).text()).length).toBe(5_000);
   });
 
-  it('answers an empty compressed body as empty', async () => {
-    const { fetchFn } = guarded(() => ({ status: 200, headers: { 'content-encoding': 'gzip' }, chunks: [] }));
+  it.each(['gzip', 'deflate', 'br'])('refuses a zero-byte body declared as %s', async (encoding) => {
+    const { fetchFn } = guarded(() => ({ status: 200, headers: { 'content-encoding': encoding }, chunks: [] }));
+    expect(await refusal(fetchFn('https://mcp.example.com/mcp', { decodeBody: true }))).toBe('bad_response');
+  });
+
+  it.each(encoders)('accepts a properly encoded empty %s payload as empty', async (encoding, encode) => {
+    const { fetchFn } = guarded(() => ({ status: 200, headers: { 'content-encoding': encoding }, chunks: [encode('')] }));
     expect(await (await fetchFn('https://mcp.example.com/mcp', { decodeBody: true })).text()).toBe('');
+  });
+
+  it('allows an empty 204 that carries a compression header', async () => {
+    const { fetchFn } = guarded(() => ({ status: 204, headers: { 'content-encoding': 'gzip' }, chunks: [] }));
+    expect((await fetchFn('https://mcp.example.com/mcp', { decodeBody: true })).status).toBe(204);
   });
 });
 
