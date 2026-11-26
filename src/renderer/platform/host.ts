@@ -34,6 +34,7 @@ import {
   beginCustomMcpSignIn,
   cancelCustomMcpSignIn,
   connectedFrom,
+  CUSTOM_MCP_CONNECTION_ID,
   CUSTOM_MCP_RELAY_TIMEOUT_MS,
   CUSTOM_MCP_LISTING_TIMEOUT_MS,
   CUSTOM_MCP_REQUEST_TIMEOUT_MS,
@@ -1296,9 +1297,15 @@ async function customMcpRequest(
   }
 }
 
-function connectionPath(id: string): string {
-  return `/connections/${encodeURIComponent(id)}`;
+// A name like `..` would leave the connection's path once fetch normalizes it.
+const NOT_A_CONNECTION = Object.freeze({ ok: false as const, code: 'not_found', reason: '' });
+
+function connectionPath(id: string): string | null {
+  return CUSTOM_MCP_CONNECTION_ID.test(id) ? `/connections/${id}` : null;
 }
+
+// A blocked pop-up is known at the click; refuse before auth stores a sign-in no page can finish.
+const POPUP_BLOCKED = Object.freeze({ ok: false as const, code: 'popup_blocked', reason: '' });
 
 /** The sign-in after a start or reconnect answered `pending`: the login page
  *  in the pop-up, then the status poll. Closes the pop-up whatever the end.
@@ -1343,6 +1350,10 @@ export async function customMcpConnect(opts: CustomMcpConnectOpts): Promise<Cust
   // Cancel is offered only once this sign-in exists and ends the wait at once. The request
   // runs on; a server it still adds is announced, so the connections list shows it.
   const signIn = opts.confirmedLoginHosts ? beginCustomMcpSignIn() : null;
+  if (signIn && !signIn.popup) {
+    endCustomMcpSignIn(signIn);
+    return POPUP_BLOCKED;
+  }
   const request = customMcpRequest('POST', '/connect', CUSTOM_MCP_LISTING_TIMEOUT_MS, {
     label: opts.label,
     server_url: opts.url,
@@ -1379,7 +1390,9 @@ export async function customMcpSummary(id: string): Promise<CustomMcpSummaryResu
 export async function customMcpTools(id: string): Promise<CustomMcpToolsResult> {
   if (isElectron && typeof bridge.customMcpTools === 'function') return bridge.customMcpTools({ id });
   if (isElectron) return CUSTOM_MCP_UNAVAILABLE;
-  const answer = await customMcpRequest('GET', `${connectionPath(id)}/tools`, CUSTOM_MCP_LISTING_TIMEOUT_MS);
+  const path = connectionPath(id);
+  if (!path) return NOT_A_CONNECTION;
+  const answer = await customMcpRequest('GET', `${path}/tools`, CUSTOM_MCP_LISTING_TIMEOUT_MS);
   if (!answer.ok) return answer;
   const { revision, ...result } = toolsFrom(answer.data);
   return revision === null ? result : { ...result, revision };
@@ -1391,7 +1404,9 @@ export async function customMcpSetTools(id: string, tools: string[], revision?: 
   if (isElectron && typeof bridge.customMcpSetTools === 'function') return bridge.customMcpSetTools({ id, tools });
   if (isElectron) return CUSTOM_MCP_UNAVAILABLE;
   if (revision === undefined) return { ok: false, code: 'stale_revision', reason: '' };
-  const answer = await customMcpRequest('PUT', `${connectionPath(id)}/tools`, CUSTOM_MCP_REQUEST_TIMEOUT_MS, { tools, tools_revision: revision });
+  const path = connectionPath(id);
+  if (!path) return NOT_A_CONNECTION;
+  const answer = await customMcpRequest('PUT', `${path}/tools`, CUSTOM_MCP_REQUEST_TIMEOUT_MS, { tools, tools_revision: revision });
   if (!answer.ok) return answer;
   const saved = toolsFrom(answer.data);
   const allowed = saved.tools.filter((tool) => tool.allowed).map((tool) => tool.name);
@@ -1406,8 +1421,14 @@ export async function customMcpReconnect(id: string, confirmedLoginHosts?: strin
   }
   if (isElectron) return CUSTOM_MCP_UNAVAILABLE;
   // No Cancel is offered during this request; one pressed elsewhere stops before the login page.
+  const path = connectionPath(id);
+  if (!path) return NOT_A_CONNECTION;
   const signIn = confirmedLoginHosts ? beginCustomMcpSignIn() : null;
-  const started = await customMcpRequest('POST', `${connectionPath(id)}/reconnect`, CUSTOM_MCP_RELAY_TIMEOUT_MS,
+  if (signIn && !signIn.popup) {
+    endCustomMcpSignIn(signIn);
+    return POPUP_BLOCKED;
+  }
+  const started = await customMcpRequest('POST', `${path}/reconnect`, CUSTOM_MCP_RELAY_TIMEOUT_MS,
     confirmedLoginHosts ? { confirmed_login_hosts: confirmedLoginHosts } : {});
   if (!started.ok || started.data?.status !== 'pending' || !signIn) endCustomMcpSignIn(signIn);
   if (!started.ok) return started;
@@ -1425,7 +1446,9 @@ export async function customMcpReconnect(id: string, confirmedLoginHosts?: strin
 export async function customMcpDisconnect(id: string): Promise<CustomMcpDisconnectResult> {
   if (isElectron && typeof bridge.customMcpDisconnect === 'function') return bridge.customMcpDisconnect({ id });
   if (isElectron) return CUSTOM_MCP_UNAVAILABLE;
-  const answer = await customMcpRequest('DELETE', connectionPath(id), CUSTOM_MCP_REQUEST_TIMEOUT_MS);
+  const path = connectionPath(id);
+  if (!path) return NOT_A_CONNECTION;
+  const answer = await customMcpRequest('DELETE', path, CUSTOM_MCP_REQUEST_TIMEOUT_MS);
   if (!answer.ok) return answer;
   // auth revokes at the server when it can and deletes the row either way; it does not say which.
   return { ok: true, revoked: false };

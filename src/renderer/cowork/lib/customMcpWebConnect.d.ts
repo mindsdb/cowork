@@ -4,18 +4,27 @@
 export type CustomMcpWebFailure = { ok: false; code: string; reason: string };
 export type CustomMcpWebAnswer = { ok: true; data: any } | CustomMcpWebFailure;
 
+export type CustomMcpFinishReport = { ok: true } | CustomMcpWebFailure;
+
 export interface CustomMcpSignIn {
   popup: Window | null;
   cancelled: boolean;
   whenCancelled: Promise<CustomMcpWebFailure>;
+  whenReported: Promise<CustomMcpFinishReport>;
+  keepPopup: boolean;
 }
 
 export const CUSTOM_MCP_LISTING_TIMEOUT_MS: number;
 export const CUSTOM_MCP_REQUEST_TIMEOUT_MS: number;
 export const CUSTOM_MCP_RELAY_TIMEOUT_MS: number;
+export const CUSTOM_MCP_CONNECTION_ID: RegExp;
 
-export function beginCustomMcpSignIn(win?: Window): CustomMcpSignIn;
+export function beginCustomMcpSignIn(win?: Window, Channel?: typeof BroadcastChannel): CustomMcpSignIn;
 export function cancelCustomMcpSignIn(): void;
+export function reportCustomMcpFinish(
+  result: { ok: boolean; code?: string; reason?: string },
+  Channel?: typeof BroadcastChannel,
+): void;
 export function endCustomMcpSignIn(signIn: CustomMcpSignIn | null): void;
 export function openLoginPage(signIn: CustomMcpSignIn, authUrl: unknown): { ok: true } | CustomMcpWebFailure;
 export function unlessCancelled<T>(signIn: CustomMcpSignIn, request: Promise<T>): Promise<T | CustomMcpWebFailure>;

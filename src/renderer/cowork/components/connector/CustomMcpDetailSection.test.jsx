@@ -407,4 +407,13 @@ describe('CustomMcpDetailSection', () => {
       message: 'Anton stops using this server, its login is revoked where the server allows it, and its settings are deleted.',
     }));
   });
+
+  it("names the server by its list label on the web, where there is no summary", async () => {
+    shell.isWeb = true;
+    bridge.customMcpSummary.mockResolvedValue({ ok: false, code: 'unavailable' });
+    const { confirm } = renderSection({ connection: { ...CONNECTION, user_label: 'Issues' } });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Disconnect' }));
+    expect(confirm).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Disconnect Issues?' }));
+  });
 });

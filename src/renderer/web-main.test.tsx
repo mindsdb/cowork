@@ -24,7 +24,9 @@ const rendered = {
   shellRoot: null as null | { shell: unknown; initOptions: unknown; session: unknown },
   handoffAtProvider: null as string | null,
   settingsAtAuth: null as string | null,
+  completionAtProvider: null as string | null,
   app: false,
+  finishPage: false,
   identityRequired: false,
   identityToken: null as string | null,
   identityReadyAtApp: false,
@@ -56,6 +58,7 @@ vi.mock('@react-keycloak/web', () => ({
     rendered.providerInitOptions = initOptions;
     rendered.handoffAtProvider = window.sessionStorage.getItem('anton.consoleHandoff');
     rendered.settingsAtAuth = window.sessionStorage.getItem('anton.settingsDeepLink');
+    rendered.completionAtProvider = window.sessionStorage.getItem('anton.customMcpCompletion');
     if (!keycloakState.initialized && LoadingComponent) return LoadingComponent;
     onTokens?.({ token: 'initial-token' });
     return children ?? null;
@@ -68,6 +71,13 @@ vi.mock('./App', () => ({
     rendered.identityReadyAtApp = rendered.identityToken === 'initial-token';
     rendered.visitNotedAtApp = rendered.visitToken === 'initial-token';
     rendered.iconAtApp = document.querySelector('link[rel="icon"]')?.getAttribute('href') ?? null;
+    return null;
+  },
+}));
+
+vi.mock('./cowork/components/connector/CustomMcpFinishPage', () => ({
+  default: () => {
+    rendered.finishPage = true;
     return null;
   },
 }));
@@ -131,13 +141,15 @@ vi.mock('./cowork/styles/globals.css', () => ({}));
 vi.mock('./cowork/styles/skin-8bit.css', () => ({}));
 vi.mock('./styles.css', () => ({}));
 
-async function renderOnHost(hostname: string, search = '') {
+async function renderOnHost(hostname: string, search = '', pathname = '/', hash = '') {
   rendered.provider = false;
   rendered.providerInitOptions = null;
   rendered.shellRoot = null;
   rendered.handoffAtProvider = null;
   rendered.settingsAtAuth = null;
+  rendered.completionAtProvider = null;
   rendered.app = false;
+  rendered.finishPage = false;
   rendered.identityRequired = false;
   rendered.identityToken = null;
   rendered.identityReadyAtApp = false;
@@ -150,7 +162,7 @@ async function renderOnHost(hostname: string, search = '') {
   Object.defineProperty(window, 'location', {
     configurable: true,
     writable: true,
-    value: { protocol: 'https:', host: hostname, hostname, pathname: '/', search },
+    value: { protocol: 'https:', host: hostname, hostname, pathname, search, hash },
   });
 
   const root = document.createElement('div');
@@ -341,6 +353,16 @@ describe('web-main console handoff', () => {
     const r = await renderOnHost('cowork.mindshub.ai', '?settings=appearance&section=branding');
     expect(r.provider).toBe(true);
     expect(JSON.parse(r.settingsAtAuth ?? 'null')).toMatchObject({ page: 'branding', section: null });
+  });
+
+  it("keeps a custom MCP sign-in's completion id past Keycloak and shows the finish page, not the app", async () => {
+    const id = 'A'.repeat(43);
+    const r = await renderOnHost('cowork.mindshub.ai', '', '/custom-mcp/finish', `#${id}`);
+
+    expect(r.provider).toBe(true);
+    expect(JSON.parse(r.completionAtProvider ?? 'null')).toMatchObject({ id });
+    expect(r.finishPage).toBe(true);
+    expect(r.app).toBe(false);
   });
 
   it('saves nothing for an ordinary visit', async () => {

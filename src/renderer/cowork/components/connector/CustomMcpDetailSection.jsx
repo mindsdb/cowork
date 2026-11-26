@@ -157,7 +157,7 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
 
   async function disconnect() {
     if (!(await confirm({
-      title: t('customMcp.detail.disconnectTitle', { name: summary?.label || connection.name }),
+      title: t('customMcp.detail.disconnectTitle', { name: summary?.label || connection.user_label || connection.name }),
       message: t(host.isWeb ? 'customMcp.detail.disconnectMessageWeb' : 'customMcp.detail.disconnectMessage'),
       confirmLabel: t('customMcp.detail.disconnect'),
       destructive: true,

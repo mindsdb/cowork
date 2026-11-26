@@ -2,9 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   beginCustomMcpSignIn,
   cancelCustomMcpSignIn,
+  CUSTOM_MCP_SIGN_IN_CHANNEL,
   customMcpFailure,
+  endCustomMcpSignIn,
   openLoginPage,
   pollCustomMcpSignIn,
+  readFinishReport,
+  reportCustomMcpFinish,
   toolsFrom,
 } from './customMcpWebConnect';
 
@@ -148,6 +152,80 @@ describe('the status poll', () => {
     expect(popup.close).toHaveBeenCalled();
     answer({ ok: true, data: { status: 'success' } });
     expect(readStatus).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the finish page's report", () => {
+  it('reads only a success or a failure with a plain code', () => {
+    expect(readFinishReport({ ok: true, name: 'ignored' })).toEqual({ ok: true });
+    expect(readFinishReport({ ok: false, code: 'wrong_organization', reason: 'Signed in elsewhere.' }))
+      .toEqual({ ok: false, code: 'wrong_organization', reason: 'Signed in elsewhere.' });
+    expect(readFinishReport({ ok: false, code: 'no_refresh_token' })).toEqual({ ok: false, code: 'no_refresh_token', reason: '' });
+    expect(readFinishReport({ ok: false, code: 'x', reason: 'r'.repeat(900) }).reason).toHaveLength(500);
+    for (const other of [null, 'ok', { ok: 'true' }, { ok: false }, { ok: false, code: '<b>' }, { ok: false, code: 'a'.repeat(65) }]) {
+      expect(readFinishReport(other)).toBeNull();
+    }
+  });
+
+  it('reaches the waiting sign-in through the channel, and nothing once it ended', async () => {
+    const { win } = fakeWindow();
+    const signIn = beginCustomMcpSignIn(win);
+
+    reportCustomMcpFinish({ ok: false, code: 'expired', reason: 'Took too long.' });
+
+    expect(await signIn.whenReported).toEqual({ ok: false, code: 'expired', reason: 'Took too long.' });
+    endCustomMcpSignIn(signIn);
+    expect(signIn.channel).toBeNull();
+  });
+
+  it('posts once and closes its channel, and does nothing without one', () => {
+    const posted = [];
+    const closed = vi.fn();
+    class Channel {
+      constructor(name) { this.name = name; }
+      postMessage(message) { posted.push([this.name, message]); }
+      close() { closed(); }
+    }
+
+    reportCustomMcpFinish({ ok: true, id: 'cm-1' }, Channel);
+    reportCustomMcpFinish({ ok: false, code: 'expired' }, Channel);
+    reportCustomMcpFinish({ ok: true }, undefined);
+
+    expect(posted).toEqual([
+      [CUSTOM_MCP_SIGN_IN_CHANNEL, { ok: true }],
+      [CUSTOM_MCP_SIGN_IN_CHANNEL, { ok: false, code: 'expired', reason: '' }],
+    ]);
+    expect(closed).toHaveBeenCalledTimes(2);
+  });
+
+  it('ends the wait with a reported failure at once and keeps the pop-up open', async () => {
+    const { win, popup } = fakeWindow();
+    const signIn = beginCustomMcpSignIn(win, undefined);
+    const readStatus = vi.fn(async () => ({ ok: true, data: { status: 'pending' } }));
+    signIn.whenReported = Promise.resolve({ ok: false, code: 'token_failed', reason: 'The server refused the code.' });
+
+    const ended = await pollCustomMcpSignIn(signIn, readStatus, { sleep: () => new Promise(() => {}) });
+    endCustomMcpSignIn(signIn);
+
+    expect(ended).toEqual({ ok: false, code: 'token_failed', reason: 'The server refused the code.' });
+    expect(readStatus).not.toHaveBeenCalled();
+    expect(popup.close).not.toHaveBeenCalled();
+  });
+
+  it('reads the status at once after a reported success, then keeps the poll pace', async () => {
+    const { win } = fakeWindow();
+    const signIn = beginCustomMcpSignIn(win, undefined);
+    const readStatus = vi.fn(async () => ({ ok: true, data: { status: 'pending' } }));
+    signIn.whenReported = Promise.resolve({ ok: true });
+
+    const waiting = pollCustomMcpSignIn(signIn, readStatus, { sleep: () => new Promise(() => {}) });
+    await vi.waitFor(() => expect(readStatus).toHaveBeenCalledTimes(1));
+    for (let tick = 0; tick < 50; tick += 1) await Promise.resolve();
+
+    // The poll's own sleep never ends here: a second read would mean the report kept waking it.
+    expect(readStatus).toHaveBeenCalledTimes(1);
+    cancelCustomMcpSignIn();
+    expect(await waiting).toMatchObject({ ok: false, code: 'stopped_waiting' });
   });
 });
 

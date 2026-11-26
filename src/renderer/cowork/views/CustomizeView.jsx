@@ -442,8 +442,8 @@ function ConnectionDetailPanel({ connection, onClose, onReconnect, onEditSharePo
                   same field `handleDelete` above already reads it from. A
                   test double that leaves `_method` nested under `fields`
                   instead would pass without ever exercising the real shape. */}
-              {/* A custom MCP server keeps its tools and login in main;
-                  its own section replaces the access mode. */}
+              {/* A custom MCP server keeps its tools and login behind the host
+                  (main on desktop, auth on the web); its own section replaces the access mode. */}
               {isCustomMcp(connection.engine) && !managed && (
                 <CustomMcpDetailSection
                   // A new panel per connection: answers meant for the last one land nowhere.

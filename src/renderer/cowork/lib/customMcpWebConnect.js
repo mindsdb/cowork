@@ -1,7 +1,8 @@
 // The web half of adding a custom MCP server by URL: the sign-in pop-up, the
-// status poll, and reading cowork-server's answers into the shapes the
-// desktop screens already use. No imports, so platform/host.ts can load it
-// statically and open the pop-up inside the click, before its first await.
+// finish page's report, the status poll, and reading cowork-server's answers
+// into the shapes the desktop screens already use. No imports, so
+// platform/host.ts can load it statically and open the pop-up inside the
+// click, before its first await.
 
 // Requests that can run a listing: cowork-server's worst case is 52 seconds.
 export const CUSTOM_MCP_LISTING_TIMEOUT_MS = 60_000;
@@ -18,6 +19,13 @@ export const CUSTOM_MCP_SIGN_IN_MS = 10 * 60 * 1000;
 const CANCELLED = Object.freeze({ ok: false, code: 'stopped_waiting', reason: '' });
 // Reading the status does not consume it, so a gateway or throttling answer is retried too.
 const TRANSIENT = new Set(['timeout', 'unreachable', 'http_429', 'http_502', 'http_503', 'http_504']);
+// The finish page tells the waiting tab how the sign-in ended: only that page holds auth's code
+// and message, and the pop-up's opener is cut. Same origin only. The message names no sign-in,
+// so with two tabs each mid sign-in, a tab can take the other's result.
+export const CUSTOM_MCP_SIGN_IN_CHANNEL = 'cowork:custom-mcp-sign-in';
+// The only names a custom MCP connection is given; nothing else goes into a request path.
+export const CUSTOM_MCP_CONNECTION_ID = /^cm-[0-9a-f]{32}$/;
+const NEVER = new Promise(() => {});
 
 /** @type {object | null} */
 let active = null;
@@ -27,15 +35,54 @@ function closePopup(popup) {
   try { popup.close(); } catch { /* already closed */ }
 }
 
+function openChannel(Channel) {
+  if (typeof Channel !== 'function') return null;
+  try { return new Channel(CUSTOM_MCP_SIGN_IN_CHANNEL); } catch { return null; }
+}
+
+/**
+ * The finish page's report as the wait reads it, or null for anything else on the channel.
+ *
+ * @param {unknown} data
+ * @returns {{ok: true} | {ok: false, code: string, reason: string} | null}
+ */
+export function readFinishReport(data) {
+  if (!data || typeof data !== 'object') return null;
+  if (data.ok === true) return { ok: true };
+  if (data.ok !== false || typeof data.code !== 'string' || !/^[a-z0-9_]{1,64}$/.test(data.code)) return null;
+  return { ok: false, code: data.code, reason: typeof data.reason === 'string' ? data.reason.slice(0, 500) : '' };
+}
+
+/**
+ * Tells the tab waiting on this sign-in how it ended. Without the channel the
+ * tab still learns it from the status poll, so a failed post is left to that.
+ *
+ * @param {{ok: boolean, code?: string, reason?: string}} result
+ * @param {typeof BroadcastChannel | undefined} [Channel]
+ */
+export function reportCustomMcpFinish(result, Channel = globalThis.BroadcastChannel) {
+  const channel = openChannel(Channel);
+  if (!channel) return;
+  try {
+    channel.postMessage(result.ok ? { ok: true } : { ok: false, code: result.code, reason: result.reason || '' });
+  } catch { /* the status poll still ends the wait */ } finally {
+    channel.close();
+  }
+}
+
 /**
  * Opens an empty pop-up for the sign-in. Call it inside the click, before any
  * await, or the browser blocks it. Its opener is cut at once, so the login
  * page gets no handle on this tab.
  *
+ * Listens for the finish page's report from now on.
+ *
  * @param {Window} [win]
- * @returns {{popup: Window | null, cancelled: boolean, whenCancelled: Promise<typeof CANCELLED>}}
+ * @param {typeof BroadcastChannel | undefined} [Channel]
+ * @returns {{popup: Window | null, cancelled: boolean, whenCancelled: Promise<typeof CANCELLED>,
+ *   whenReported: Promise<{ok: true} | {ok: false, code: string, reason: string}>, keepPopup: boolean}}
  */
-export function beginCustomMcpSignIn(win = window) {
+export function beginCustomMcpSignIn(win = window, Channel = globalThis.BroadcastChannel) {
   let popup = null;
   try { popup = win.open('', '_blank'); } catch { popup = null; }
   if (popup) {
@@ -43,10 +90,25 @@ export function beginCustomMcpSignIn(win = window) {
   }
   let cancel = () => {};
   const whenCancelled = new Promise((resolve) => { cancel = () => resolve(CANCELLED); });
-  const signIn = { popup, cancelled: false, whenCancelled, cancel };
+  let report = () => {};
+  const whenReported = new Promise((resolve) => { report = resolve; });
+  const channel = openChannel(Channel);
+  if (channel) {
+    channel.onmessage = (event) => {
+      const reported = readFinishReport(event.data);
+      if (reported) report(reported);
+    };
+  }
+  const signIn = { popup, cancelled: false, whenCancelled, cancel, whenReported, channel, keepPopup: false };
   if (active) cancelCustomMcpSignIn();
   active = signIn;
   return signIn;
+}
+
+function stopListening(signIn) {
+  if (!signIn.channel) return;
+  try { signIn.channel.close(); } catch { /* already closed */ }
+  signIn.channel = null;
 }
 
 /** Cancels the sign-in running now: closes its pop-up and ends its wait. The
@@ -56,14 +118,17 @@ export function cancelCustomMcpSignIn() {
   if (!signIn) return;
   active = null;
   signIn.cancelled = true;
+  stopListening(signIn);
   closePopup(signIn.popup);
   signIn.cancel();
 }
 
-/** Closes the sign-in's pop-up once it is no longer needed. */
+/** Ends the sign-in: stops listening and closes its pop-up, unless the pop-up
+ *  shows the finish page's failure, which the member closes. */
 export function endCustomMcpSignIn(signIn) {
   if (!signIn) return;
-  closePopup(signIn.popup);
+  stopListening(signIn);
+  if (!signIn.keepPopup) closePopup(signIn.popup);
   if (active === signIn) active = null;
 }
 
@@ -126,20 +191,33 @@ export function unlessCancelled(signIn, request) {
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Polls the sign-in's status until it ends. Each request is sent only after
- * the previous one answered. A timed-out, unanswered or transiently refused
- * poll is retried until the overall deadline.
+ * Waits for the sign-in to end: the finish page's report, or else the status
+ * poll, for a sign-in that never reaches that page. A reported failure ends
+ * the wait with the page's own code and message and keeps the pop-up open; a
+ * reported success reads the status at once, for the details a success shows.
+ * Each status request is sent only after the previous one answered. A
+ * timed-out, unanswered or transiently refused poll is retried until the
+ * overall deadline.
  *
- * @param {{cancelled: boolean, whenCancelled: Promise<typeof CANCELLED>}} signIn
+ * @param {{cancelled: boolean, whenCancelled: Promise<typeof CANCELLED>,
+ *   whenReported?: Promise<{ok: boolean, code?: string, reason?: string}>, keepPopup?: boolean}} signIn
  * @param {() => Promise<{ok: true, data: any} | {ok: false, code: string, reason: string}>} readStatus never rejects
  * @param {{sleep?: (ms: number) => Promise<void>, now?: () => number}} [options]
  * @returns {Promise<{ok: true, data: any} | {ok: false, code: string, reason: string}>}
  */
 export async function pollCustomMcpSignIn(signIn, readStatus, { sleep = wait, now = Date.now } = {}) {
   const deadline = now() + CUSTOM_MCP_SIGN_IN_MS;
+  let reported = null;
+  let wake = Promise.race([signIn.whenCancelled, (signIn.whenReported ?? NEVER).then((report) => { reported = report; })]);
   while (now() < deadline) {
-    await unlessCancelled(signIn, sleep(CUSTOM_MCP_POLL_MS));
+    await Promise.race([sleep(CUSTOM_MCP_POLL_MS), wake]);
     if (signIn.cancelled) return CANCELLED;
+    if (reported && !reported.ok) {
+      signIn.keepPopup = true;
+      return reported;
+    }
+    // A reported success wakes the wait once; later reads keep the poll's pace.
+    if (reported) wake = signIn.whenCancelled;
     const answer = await unlessCancelled(signIn, readStatus());
     if (signIn.cancelled) return CANCELLED;
     if (!answer.ok) {

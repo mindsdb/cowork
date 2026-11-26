@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../lib/keycloak', () => ({ getAccessToken: vi.fn(async () => 'member-token') }));
 
 import { getAccessToken } from '../lib/keycloak';
+import { __resetOrganizationRequestBoundaryForTests } from '../cowork/lib/organizationRequestBoundary';
+import { reportCustomMcpFinish } from '../cowork/lib/customMcpWebConnect';
 import { host, isWeb } from './host';
 
 type Call = { method: string; path: string; body: unknown; signal: AbortSignal; headers: Record<string, string> };
@@ -14,6 +16,7 @@ type Answer = { status: number; body?: unknown } | 'hang';
 
 const ROUTES = '/api/v1/connectors/custom-mcp';
 const NAME = `cm-${'a'.repeat(32)}`;
+const ORG = '11111111-2222-4333-8444-555555555555';
 const URL_ = 'https://mcp.example.com/mcp';
 let calls: Call[] = [];
 let answer: (call: Call) => Answer = () => ({ status: 500 });
@@ -50,6 +53,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.mocked(getAccessToken).mockResolvedValue('member-token');
+  __resetOrganizationRequestBoundaryForTests();
 });
 
 // The wrappers load the token and the organization check with import(); let
@@ -119,16 +124,19 @@ describe('custom MCP on web', () => {
     expect(popup.close).toHaveBeenCalled();
   });
 
-  it('answers popup_blocked at once and never polls when the browser blocked the pop-up', async () => {
+  it('answers popup_blocked at once and sends nothing when the browser blocked the pop-up', async () => {
     vi.spyOn(window, 'open').mockImplementation(() => null);
     answer = (call) => (call.path === '/connect'
       ? { status: 200, body: { status: 'pending', auth_url: 'https://auth.example.com/authorize?x=1', state: 'st', name: NAME } }
       : { status: 200, body: { status: 'pending' } });
 
-    const result = await host.customMcpConnect({ label: 'Tracker', url: URL_, confirmedLoginHosts: ['auth.example.com'] });
+    const connect = await host.customMcpConnect({ label: 'Tracker', url: URL_, confirmedLoginHosts: ['auth.example.com'] });
+    const reconnect = await host.customMcpReconnect(NAME, ['auth.example.com']);
 
-    expect(result).toEqual({ ok: false, code: 'popup_blocked', reason: '' });
-    expect(calls.map((call) => call.path)).toEqual(['/connect']);
+    expect(connect).toEqual({ ok: false, code: 'popup_blocked', reason: '' });
+    expect(reconnect).toEqual({ ok: false, code: 'popup_blocked', reason: '' });
+    // auth would keep a pending row for a sign-in no page can finish, counted toward the member's cap.
+    expect(calls).toEqual([]);
   });
 
   it('gives requests that can list 60 seconds and the others 10', async () => {
@@ -275,7 +283,10 @@ describe('custom MCP on web', () => {
     }
   });
 
-  it('opens no login page when Cancel was pressed during the first request', async () => {
+  it.each([
+    ['connect', '/connect', () => host.customMcpConnect({ label: 'Tracker', url: URL_, confirmedLoginHosts: ['auth.example.com'] })],
+    ['reconnect', `/connections/${NAME}/reconnect`, () => host.customMcpReconnect(NAME, ['auth.example.com'])],
+  ])('opens no login page when Cancel was pressed during the first request (%s)', async (_kind, path, start) => {
     const popup = fakePopup();
     vi.spyOn(window, 'open').mockImplementation(() => popup as unknown as Window);
     let finishConnect: () => void = () => {};
@@ -286,14 +297,14 @@ describe('custom MCP on web', () => {
       });
     }) as typeof fetch;
 
-    const connecting = host.customMcpConnect({ label: 'Tracker', url: URL_, confirmedLoginHosts: ['auth.example.com'] });
+    const connecting = start();
     await untilSent(1);
     await host.oauthCancel();
     finishConnect();
 
     expect(await connecting).toMatchObject({ ok: false, code: 'stopped_waiting' });
     expect(popup.location.href).toBe('');
-    expect(calls.map((call) => call.path)).toEqual(['/connect']);
+    expect(calls.map((call) => call.path)).toEqual([path]);
   });
 
   it('ends at the deadline when the token refresh never settles', async () => {
@@ -362,5 +373,68 @@ describe('custom MCP on web', () => {
     expect(await host.customMcpDisconnect(NAME)).toEqual({ ok: true, revoked: false });
     expect(calls[0]).toMatchObject({ method: 'DELETE', path: `/connections/${NAME}` });
     expect(await host.customMcpSummary(NAME)).toMatchObject({ ok: false, code: 'unavailable' });
+  });
+
+  it("shows the finish page's refusal at once and leaves its pop-up open with the reason", async () => {
+    const popup = fakePopup();
+    vi.spyOn(window, 'open').mockImplementation(() => popup as unknown as Window);
+    answer = (call) => (call.path === '/connect'
+      ? { status: 200, body: { status: 'pending', auth_url: 'https://auth.example.com/authorize', state: 'st', name: NAME } }
+      : { status: 200, body: { status: 'error', name: NAME } });
+    const reason = "This server's tokens expire and it gives no refresh token, so it cannot be used on cloud.";
+
+    const connecting = host.customMcpConnect({ label: 'Tracker', url: URL_, confirmedLoginHosts: ['auth.example.com'] });
+    await untilSent(1);
+    await vi.waitFor(() => expect(popup.location.href).not.toBe(''));
+    reportCustomMcpFinish({ ok: false, code: 'no_refresh_token', reason });
+
+    expect(await connecting).toEqual({ ok: false, code: 'no_refresh_token', reason });
+    expect(popup.close).not.toHaveBeenCalled();
+    expect(calls.map((call) => call.path)).toEqual(['/connect']);
+  });
+
+  it("reads the status as soon as the finish page reports a success, without the poll's wait", async () => {
+    const popup = fakePopup();
+    vi.spyOn(window, 'open').mockImplementation(() => popup as unknown as Window);
+    answer = (call) => (call.path === '/connect'
+      ? { status: 200, body: { status: 'pending', auth_url: 'https://auth.example.com/authorize', state: 'st', name: NAME } }
+      : { status: 200, body: { status: 'success', label: 'Tracker', server_url: URL_, tools_on: 1, tools_unavailable: false } });
+
+    const started = Date.now();
+    const connecting = host.customMcpConnect({ label: 'Tracker', url: URL_, confirmedLoginHosts: ['auth.example.com'] });
+    await untilSent(1);
+    await vi.waitFor(() => expect(popup.location.href).not.toBe(''));
+    reportCustomMcpFinish({ ok: true });
+
+    expect(await connecting).toMatchObject({ ok: true, id: NAME, toolsOn: 1 });
+    expect(Date.now() - started).toBeLessThan(2500);
+    expect(calls.map((call) => call.path)).toEqual(['/connect', '/status?state=st']);
+    expect(popup.close).toHaveBeenCalled();
+  });
+
+  it("sends the tab's organization and stops at the server's organization-changed answer", async () => {
+    const claims = btoa(JSON.stringify({ activate_organization: { id: ORG } })).replace(/=+$/, '');
+    vi.mocked(getAccessToken).mockResolvedValue(`h.${claims}.s`);
+    globalThis.fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ method: init?.method || 'GET', path: new URL(String(input)).pathname.replace(ROUTES, ''), body: undefined, signal: init?.signal as AbortSignal, headers: init?.headers as Record<string, string> });
+      return Promise.resolve(new Response(JSON.stringify({ tools_revision: 1, tools: [] }), {
+        status: 409, headers: { 'Content-Type': 'application/json', 'X-Cowork-Organization-Reload': 'required' },
+      }));
+    }) as typeof fetch;
+
+    const answered = await host.customMcpTools(NAME);
+
+    expect(calls[0].headers['X-Cowork-Expected-Organization-Id']).toBe(ORG);
+    expect(answered).toEqual({ ok: false, code: 'organization_changed', reason: '' });
+  });
+
+  it('sends nothing for a name that is not a connection id', async () => {
+    for (const name of ['..', '.', 'cm-x/../config']) {
+      expect(await host.customMcpTools(name)).toEqual({ ok: false, code: 'not_found', reason: '' });
+      expect(await host.customMcpSetTools(name, [], 1)).toEqual({ ok: false, code: 'not_found', reason: '' });
+      expect(await host.customMcpReconnect(name)).toEqual({ ok: false, code: 'not_found', reason: '' });
+      expect(await host.customMcpDisconnect(name)).toEqual({ ok: false, code: 'not_found', reason: '' });
+    }
+    expect(calls).toEqual([]);
   });
 });
