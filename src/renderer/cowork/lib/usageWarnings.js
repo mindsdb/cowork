@@ -322,9 +322,14 @@ function pickedModelId(modelIn) {
   return typeof modelIn === 'string' ? modelIn : modelIn?.id ?? null;
 }
 
-/** An explicit pick that only ever bills the balance (not Air, not the router). */
-function isExplicitPaidModel(model) {
-  return !!model && model !== MINDSHUB_AIR_MODEL_ID && model !== MODEL_ROUTER_ID;
+/** An explicit pick that only ever bills the balance. Air and the router never
+ *  are. Without a paid plan, a model whose cheapest covering tier is Free is
+ *  not one either: it runs on the free allowance while that has room, as Air
+ *  does. On Plus or Pro such a pick counts as paid, since the plan's windows,
+ *  not the free allowance, carry it. Unknown coverage counts as paid. */
+function isExplicitPaidModel(model, coveredByTier, plan) {
+  if (!model || model === MINDSHUB_AIR_MODEL_ID || model === MODEL_ROUTER_ID) return false;
+  return isPaidPlan(plan) || coveredByTier !== 'free';
 }
 
 /* `${key}WithTime` with the refill time, or `${key}` when none is quotable. */
@@ -355,7 +360,7 @@ export function deriveComposerWarning(usage, options = {}) {
       balanceCarries: balanceCarriesNextTask(usage.balance, usage.autoTopUp),
     });
   }
-  if (isExplicitPaidModel(pickedModelId(model))) return null;
+  if (isExplicitPaidModel(pickedModelId(model), coveredByTier, plan)) return null;
   const free = usage.freeTokens;
   const f = freeState(free);
   // Nothing at rest (ENG-4719): an allowance with room says nothing.
@@ -378,6 +383,8 @@ export function deriveComposerWarning(usage, options = {}) {
  * @param opts.providerType  the planning provider ('minds-cloud' | BYOK types)
  * @param opts.model         the model the composer will send with: an id, or
  *                           a catalog option ({ id }) as HomeView/ChatView pass it
+ * @param opts.coveredByTier the cheapest plan covering that model, or null
+ *                           when unknown
  */
 export function deriveUsageWarning(usage, {
   providerType = 'minds-cloud', model: modelIn = null, coveredByTier = null,
@@ -389,12 +396,14 @@ export function deriveUsageWarning(usage, {
   const free = usage.freeTokens || null;
   const balance = usage.balance || null;
   const auto = usage.autoTopUp || null;
+  const plan = planOf(usage);
 
-  // Which resource the next turn spends. An explicit Air pick runs on the free
-  // tokens until they are gone; an explicit paid model only ever bills the
-  // balance; the router (and no pick, which resolves to the router on
-  // MindsHub) can land on either, so both resources matter for it.
-  const isPaidModel = isExplicitPaidModel(model);
+  /* Which resource the next turn spends. An explicit Air pick, or without a
+     paid plan a pick the Free tier covers, runs on the free tokens until they
+     are gone; an explicit paid model only ever bills the balance; the router
+     (and no pick, which resolves to the router on MindsHub) can land on
+     either, so both resources matter for it. */
+  const isPaidModel = isExplicitPaidModel(model, coveredByTier, plan);
   const f = freeState(free);
   const balanceEmpty = isBalanceEmpty(balance);
   // A wallet the next task falls through to once the allowance is gone.
@@ -427,7 +436,6 @@ export function deriveUsageWarning(usage, {
   // wallet like any paid model, and the wallet branches below say what there
   // is to say about it. A null or Free plan never enters here, so every
   // surface reads exactly as before plans existed.
-  const plan = planOf(usage);
   if (isPaidPlan(plan) && tierCovers(plan.tier, coveredByTier)) {
     return planWindowWarning(plan, { balanceUsable, balanceCarries });
   }
@@ -611,7 +619,9 @@ function planWindowWarning(plan, { balanceUsable, balanceCarries = false }) {
  * @param opts.coveredByTier  the cheapest plan covering the task's model, or
  *                    null when unknown. A task on a model its Plus or Pro plan
  *                    does not cover bills the wallet from the start, so the
- *                    plan's windows are not its news. Same gate the bar uses.
+ *                    plan's windows are not its news. Without a paid plan, a
+ *                    task on a model the Free tier covers spends the free
+ *                    tokens as an Air task does. Same gates the bar uses.
  */
 export function usageTransitions(prev, next, {
   model: modelIn = null, providerType = 'minds-cloud', coveredByTier = null,
@@ -621,7 +631,9 @@ export function usageTransitions(prev, next, {
   const out = [];
   const before = freeState(prev.freeTokens);
   const after = freeState(next.freeTokens);
-  const spendsFree = !isExplicitPaidModel(pickedModelId(modelIn));
+  const planBefore = planOf(prev);
+  const planAfter = planOf(next);
+  const spendsFree = !isExplicitPaidModel(pickedModelId(modelIn), coveredByTier, planAfter);
   // A task on a healthy wallet keeps going on it; that is not news (ENG-4188).
   if (!before.out && after.out && spendsFree && !balanceCarriesNextTask(next.balance, next.autoTopUp)) {
     out.push({ kind: 'free_used', resetsAt: next.freeTokens?.resetsAt || null });
@@ -650,8 +662,6 @@ export function usageTransitions(prev, next, {
   // would read as a window filling. The plan must cover the task's model, or
   // the task was on the wallet all along. Like the bar, silent while the wallet
   // carries the next task (ENG-4719).
-  const planBefore = planOf(prev);
-  const planAfter = planOf(next);
   if (isPaidPlan(planBefore) && isPaidPlan(planAfter) && tierCovers(planAfter.tier, coveredByTier)
       && !balanceCarriesNextTask(next.balance, next.autoTopUp)) {
     const prior = new Map(planBefore.windows.map((w) => [w.window, w]));

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   deriveComposerWarning,
+  deriveUsageWarning,
   usageTransitions,
   usageActionUrl,
   balanceDismissStep,
@@ -23,6 +24,7 @@ import {
   upgradeAction,
 } from './usageWarnings';
 import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL } from '../../lib/mindsUrls';
+import { compareCreditNotice } from './compareSides';
 
 const RESET = '2099-09-11T12:00:00Z';
 
@@ -1023,6 +1025,80 @@ describe('usageTransitions on a plan', () => {
     // A model the plan covers still hears about it.
     expect(usageTransitions(plus(82, EMPTY_WALLET), plus(91, EMPTY_WALLET), { coveredByTier: 'plus' }).map((t) => t.kind)).toEqual(['window_low']);
     expect(usageTransitions(plus(95, EMPTY_WALLET), plus(100, EMPTY_WALLET), { coveredByTier: 'free' }).map((t) => t.kind)).toEqual(['window_exhausted']);
+  });
+});
+
+describe('a pick the Free tier covers', () => {
+  const FREE_PICK = { model: 'glm-5-3-flash', coveredByTier: 'free' };
+  const PLUS_PICK = { model: 'glm-5-3-flash', coveredByTier: 'plus' };
+  const AIR = { model: 'mindshub_air' };
+  /* An org with no paid plan and an empty wallet: no plan block at all, and a
+     Free plan, which read the same. */
+  const unfunded = (freeTokens) => [
+    usage({ ...EMPTY_WALLET, freeTokens }),
+    planRead('free', [], { ...EMPTY_WALLET, freeTokens }),
+  ];
+  // Compare's Start is disabled exactly when the combined notice blocks.
+  const compareBlocks = (read, a, b) => !!compareCreditNotice([deriveUsageWarning(read, a), deriveUsageWarning(read, b)])?.blocks;
+
+  it('runs on the free allowance like Air: no balance_empty stop while it has room, and Compare starts', () => {
+    for (const read of unfunded(at(28))) {
+      expect(deriveUsageWarning(read, FREE_PICK)).toBeNull();
+      expect(deriveComposerWarning(read, FREE_PICK)).toBeNull();
+      expect(compareBlocks(read, FREE_PICK, AIR)).toBe(false);
+      expect(compareBlocks(read, FREE_PICK, FREE_PICK)).toBe(false);
+    }
+  });
+
+  it('gets the allowance warnings as it runs low, and the stop once it is spent', () => {
+    for (const read of unfunded(at(8))) {
+      expect(deriveComposerWarning(read, FREE_PICK)).toEqual(deriveComposerWarning(read, AIR));
+      expect(deriveComposerWarning(read, FREE_PICK).kind).toBe('free_low');
+    }
+    for (const read of unfunded(at(0))) {
+      expect(deriveComposerWarning(read, FREE_PICK)).toEqual(deriveComposerWarning(read, AIR));
+      expect(deriveComposerWarning(read, FREE_PICK).kind).toBe('balance_empty');
+      expect(compareBlocks(read, FREE_PICK, AIR)).toBe(true);
+    }
+  });
+
+  it('tells a running task on it when the allowance runs low or out', () => {
+    expect(usageTransitions(unpaid({ freeTokens: at(18) }), unpaid({ freeTokens: at(8) }), FREE_PICK)
+      .map((t) => t.kind)).toEqual(['free_low']);
+    expect(usageTransitions(unpaid({ freeTokens: at(8) }), unpaid({ freeTokens: at(0) }), FREE_PICK)
+      .map((t) => t.kind)).toEqual(['free_used']);
+    expect(usageTransitions(unpaid({ freeTokens: at(18) }), unpaid({ freeTokens: at(8) }), PLUS_PICK)).toEqual([]);
+  });
+
+  it('a model only Plus covers still bills the wallet, so an empty one stops it', () => {
+    for (const read of unfunded(at(28))) {
+      expect(deriveComposerWarning(read, PLUS_PICK)).toMatchObject({ kind: 'balance_empty', tone: 'danger' });
+      expect(compareBlocks(read, PLUS_PICK, AIR)).toBe(true);
+      // A model other than Air or the router with unknown coverage too.
+      expect(deriveComposerWarning(read, { model: 'glm-5-3-flash' }).kind).toBe('balance_empty');
+    }
+  });
+
+  it('leaves Air and the router free whatever the coverage, including none', () => {
+    for (const read of unfunded(at(28))) {
+      for (const model of ['mindshub_air', 'model-router', null]) {
+        for (const coveredByTier of [null, 'free']) {
+          expect(deriveComposerWarning(read, { model, coveredByTier })).toBeNull();
+        }
+      }
+      expect(compareBlocks(read, AIR, { model: 'model-router' })).toBe(false);
+    }
+  });
+
+  it('reads the same on Plus, where the plan windows carry it', () => {
+    const plus = (percentUsed, over) => planRead('plus', [{ window: '5h', percentUsed, resetsAt: IN_2H }], over);
+    expect(deriveComposerWarning(plus(30, EMPTY_WALLET), FREE_PICK)).toBeNull();
+    expect(deriveComposerWarning(plus(100, EMPTY_WALLET), FREE_PICK).kind).toBe('window_exhausted');
+    expect(deriveComposerWarning(plus(30, EMPTY_WALLET), { model: 'claude-opus-5-5', coveredByTier: 'pro' }).kind)
+      .toBe('balance_empty');
+    // The free allowance draining is not news to a task the plan carries.
+    const draining = (percent) => plus(30, { balance: SHORT, freeTokens: at(percent) });
+    expect(usageTransitions(draining(18), draining(8), FREE_PICK)).toEqual([]);
   });
 });
 

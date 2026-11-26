@@ -324,6 +324,30 @@ describe('CompareView', () => {
     expect(new URL(hostMock.openExternal.mock.calls[0][0]).searchParams.get('organization')).toBe('org-1');
   });
 
+  it('starts two picks the Free tier covers on an empty wallet while the allowance has room', async () => {
+    mockHistory([]);
+    const freeCoversBoth = { modelEnabled: {}, modelCoveredByTier: { kimi: 'free', qwen: 'free' } };
+    render(withUsage(usage(EMPTY), <CompareView models={models} modelMeta={freeCoversBoth} projects={projects} />));
+    fireEvent.change(await screen.findByLabelText('Task for both models'), { target: { value: 'go' } });
+    const [modelA, modelB] = screen.getAllByLabelText('model');
+    fireEvent.change(modelA, { target: { value: 'kimi' } });
+    fireEvent.change(modelB, { target: { value: 'qwen' } });
+    expect(screen.queryByText('Balance empty')).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Start comparison' }).map((b) => b.disabled)).toEqual([false, false]);
+  });
+
+  it('will not start a side only Plus covers on an empty wallet without a paid plan', async () => {
+    mockHistory([]);
+    const freeCoversOne = { modelEnabled: {}, modelCoveredByTier: { kimi: 'free', qwen: 'plus' } };
+    render(withUsage(usage(EMPTY), <CompareView models={models} modelMeta={freeCoversOne} projects={projects} />));
+    fireEvent.change(await screen.findByLabelText('Task for both models'), { target: { value: 'go' } });
+    const [modelA, modelB] = screen.getAllByLabelText('model');
+    fireEvent.change(modelA, { target: { value: 'kimi' } });
+    fireEvent.change(modelB, { target: { value: 'qwen' } });
+    expect(screen.getByText('Balance empty')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Start comparison' }).map((b) => b.disabled)).toEqual([true, true]);
+  });
+
   it('on a plan, will not start a side the plan does not cover and the wallet cannot pay for', async () => {
     mockHistory([]);
     render(withUsage(onPlus(EMPTY), <CompareView models={models} modelMeta={PLUS_COVERAGE} projects={projects} />));
