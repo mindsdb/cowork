@@ -53,11 +53,23 @@ function openNoFollowFlags(extra: number): number {
 
 const stripGroupAndOther = (mode: number) => mode & MODE_BITS & ~GROUP_AND_OTHER;
 
+const warnedModesNotKept = new Set<string>();
+
+/* A filesystem that keeps no modes, such as WSL's /mnt/c, exFAT or an SMB
+ * share, or a volume with no access lists on Windows, leaves the folder as it
+ * is. No mode protects a folder there, and refusing it would stop the user
+ * without stopping any reader. Warned once per folder. */
+function warnModesNotKept(entry: string, reason: string): void {
+  if (warnedModesNotKept.has(entry)) return;
+  warnedModesNotKept.add(entry);
+  diagnostic(LOGGER, 'WARNING', 'private_files_the_filesystem_keeps_no_private_permissions', `[private-files] the filesystem keeps no private permissions (${reason}); the folder is used as it is`);
+}
+
 /* Open `entry` without following a link, and set its mode from what the
  * descriptor shows, when this user owns it. Working on the descriptor means a
  * name swapped for a link is refused (ELOOP) rather than followed. `wanted`
  * returns null to leave an entry as it is. Returns false for an entry another
- * account owns. */
+ * account owns. A mode the filesystem refuses or doesn't keep is a warning. */
 function chmodOwnEntry(entry: string, flags: number, wanted: (seen: fs.Stats) => number | null): boolean {
   const fd = fs.openSync(entry, openNoFollowFlags(flags));
   try {
@@ -65,8 +77,13 @@ function chmodOwnEntry(entry: string, flags: number, wanted: (seen: fs.Stats) =>
     if (seen.uid !== currentUid()) return false;
     const mode = wanted(seen);
     if (mode !== null && mode !== (seen.mode & MODE_BITS)) {
-      fs.fchmodSync(fd, mode);
-      if ((fs.fstatSync(fd).mode & MODE_BITS) !== mode) throw new Error('The filesystem did not apply the private permissions');
+      try {
+        fs.fchmodSync(fd, mode);
+      } catch (err) {
+        warnModesNotKept(entry, errorCode(err) ?? 'unknown');
+        return true;
+      }
+      if ((fs.fstatSync(fd).mode & MODE_BITS) !== mode) warnModesNotKept(entry, 'mode_not_kept');
     }
     return true;
   } finally {
@@ -430,14 +447,41 @@ const OWNER_ONLY_ICACLS_ARGS = [
   '*S-1-3-4:(OI)(CI)F',
 ];
 
+/* FAT, FAT32 and exFAT store no access list, so icacls fails on them for
+ * every folder. */
+const FORMATS_WITHOUT_ACCESS_LISTS = new Set(['FAT', 'FAT32', 'EXFAT']);
+
+/* The file system of the drive that holds `dir`, as Windows names it, or null
+ * when it can't say. The folder travels in the environment, not the command. */
+function driveFormat(dir: string): Promise<string | null> {
+  const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
+  const powershell = path.win32.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const command = '[IO.DriveInfo]::new([IO.Path]::GetPathRoot($env:COWORK_PRIVATE_DIR)).DriveFormat';
+  return new Promise((resolve) => {
+    execFile(
+      powershell,
+      ['-NoProfile', '-NonInteractive', '-Command', command],
+      { windowsHide: true, timeout: 15_000, env: { ...process.env, COWORK_PRIVATE_DIR: dir } },
+      (err, stdout) => resolve(err ? null : String(stdout ?? '').trim() || null),
+    );
+  });
+}
+
 /** Apply the repository directory's policy on every use. Inheritance can be
  * restored on the same directory between tasks. icacls preserves unrelated
- * explicit administrator grants. Its asynchronous completion gates checkout. */
+ * explicit administrator grants. Its asynchronous completion gates checkout.
+ * A drive with no access lists is used as it is, with a warning. */
 export async function restrictToOwnerOnWindows(dir: string, { platform = process.platform }: PlatformOption = {}): Promise<void> {
   if (platform !== 'win32') return;
-  await new Promise<void>((resolve, reject) => {
-    execFile('icacls', [dir, ...OWNER_ONLY_ICACLS_ARGS, '/L'], { windowsHide: true }, (err) => (err ? reject(err) : resolve()));
-  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      execFile('icacls', [dir, ...OWNER_ONLY_ICACLS_ARGS, '/L'], { windowsHide: true }, (err) => (err ? reject(err) : resolve()));
+    });
+  } catch (err) {
+    const format = await driveFormat(dir);
+    if (format === null || !FORMATS_WITHOUT_ACCESS_LISTS.has(format.toUpperCase())) throw err;
+    warnModesNotKept(dir, `volume_keeps_no_acls_${format}`);
+  }
 }
 
 /* Durable `.env` write for Windows: at sign-in finalize this runs while the old

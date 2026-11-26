@@ -36,6 +36,7 @@ const control = vi.hoisted(() => ({
   renameFailCode: null as string | null,
   renameFailTimes: 0,
   lastWriteOpts: undefined as unknown,
+  folderChmod: null as 'refuse' | 'ignore' | null,
 }));
 vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs')>();
@@ -109,7 +110,14 @@ vi.mock('fs', async (importOriginal) => {
     }
     return actual.openSync(...args);
   };
-  const mocked = { ...actual, promises, openSync, writeFileSync, renameSync };
+  /* WSL's /mnt/c, exFAT and SMB keep no modes: some refuse a chmod, others
+   * report success and keep the old mode. */
+  const fchmodSync = (...args: Parameters<typeof actual.fchmodSync>) => {
+    if (control.folderChmod === 'refuse') throw Object.assign(new Error('EPERM: operation not permitted, fchmod'), { code: 'EPERM' });
+    if (control.folderChmod === 'ignore') return;
+    return actual.fchmodSync(...args);
+  };
+  const mocked = { ...actual, promises, openSync, writeFileSync, renameSync, fchmodSync };
   return { ...mocked, default: mocked };
 });
 
@@ -202,6 +210,20 @@ describe('pinPrivateDir', () => {
 
     expect(modeOf(real)).toBe(0o700);
     expect(fs.lstatSync(home).isSymbolicLink()).toBe(true);
+  });
+
+  it.each(['refuse', 'ignore'] as const)('uses a folder whose filesystem keeps no modes, with one warning (%s)', (behavior) => {
+    folder(home, 0o755);
+    control.folderChmod = behavior;
+    try {
+      expect(() => pinPrivateDir(home, LINUX)).not.toThrow();
+      expect(() => pinPrivateDir(home, LINUX)).not.toThrow();
+    } finally {
+      control.folderChmod = null;
+    }
+    expect(modeOf(home)).toBe(0o755);
+    const warnings = diagnostics.diagnostic.mock.calls.filter((call) => call[2] === 'private_files_the_filesystem_keeps_no_private_permissions');
+    expect(warnings).toHaveLength(1);
   });
 
   it('rejects a folder another account owns and leaves it unchanged', () => {
@@ -548,6 +570,24 @@ describe('restrictToOwnerOnWindows', () => {
     );
     await expect(restrictToOwnerOnWindows(dir, WINDOWS)).rejects.toThrow('icacls failed');
     expect(fs.readdirSync(dir)).toEqual([]);
+  });
+
+  it.each([
+    ['exFAT\r\n', 'resolves'],
+    ['FAT32\r\n', 'resolves'],
+    ['NTFS\r\n', 'rejects'],
+    [null, 'rejects'],
+  ] as const)('on an icacls failure, a drive reporting %j %s', async (format, outcome) => {
+    const dir = folder(path.join(root, 'repo', '.claude-mindshub'), 0o755);
+    execFile.mockImplementation((cmd: string, _args: string[], opts: { env?: Record<string, string> }, cb: (err: Error | null, stdout?: string) => void) => {
+      if (cmd === 'icacls') return cb(new Error('icacls failed'));
+      expect(cmd.toLowerCase().endsWith('powershell.exe')).toBe(true);
+      expect(opts.env?.COWORK_PRIVATE_DIR).toBe(dir);
+      return format === null ? cb(new Error('powershell failed')) : cb(null, format);
+    });
+    const result = restrictToOwnerOnWindows(dir, WINDOWS);
+    if (outcome === 'resolves') await expect(result).resolves.toBeUndefined();
+    else await expect(result).rejects.toThrow('icacls failed');
   });
 
   it('never runs on linux', async () => {

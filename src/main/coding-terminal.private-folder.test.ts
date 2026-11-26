@@ -32,6 +32,7 @@ const fake = vi.hoisted(() => ({
   steps: [] as Step[],
   gitMissing: false,
   icaclsFails: false,
+  driveFormat: 'NTFS',
 }));
 const execFile = vi.hoisted(() => vi.fn());
 vi.mock('child_process', async (importOriginal) => ({
@@ -57,6 +58,10 @@ function fakeExecFile(cmd: string, args: string[], _opts: unknown, cb: Callback)
     cb(fake.icaclsFails ? new Error('icacls failed') : null, '', '');
     return;
   }
+  if (cmd.toLowerCase().endsWith('powershell.exe')) {
+    cb(null, `${fake.driveFormat}\r\n`, '');
+    return;
+  }
   if (fake.gitMissing) {
     cb(Object.assign(new Error('spawn git ENOENT'), { code: 'ENOENT' }));
     return;
@@ -78,6 +83,7 @@ beforeEach(() => {
   fake.steps = [];
   fake.gitMissing = false;
   fake.icaclsFails = false;
+  fake.driveFormat = 'NTFS';
   repo = fs.mkdtempSync(path.join(os.tmpdir(), 'cowork-repo-'));
   mindshub = path.join(repo, '.claude-mindshub');
 });
@@ -194,6 +200,13 @@ describe('the .claude-mindshub folder a coding terminal uses', () => {
 
       expect(icaclsCalls()).toEqual([]);
     });
+  });
+
+  it('checks out on a FAT drive, which keeps no access list', async () => {
+    fake.icaclsFails = true;
+    fake.driveFormat = 'FAT32';
+    await ensureTaskWorktree(repo, 'task-fat-drive', { platform: 'win32' });
+    expect(checkouts()).toHaveLength(1);
   });
 
   it('stops before checkout when the access list fails and retries on the next task', async () => {
