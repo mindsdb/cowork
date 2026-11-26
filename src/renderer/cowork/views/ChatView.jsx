@@ -905,6 +905,10 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
   // so the listed card for the same artifact says whether the person may edit it.
   const listedCard = useArtifactCardBySlug(artifact.capabilities ? '' : artifact.slug);
   const capabilities = artifact.capabilities || listedCard?.capabilities || null;
+  // What opens in the viewer carries them too, as an artifact from the list
+  // does: a preview that loads no workspace to say (a PDF, Word, Excel or
+  // PowerPoint file) shows Share and its chat bar by them (ENG-4687).
+  const forViewer = capabilities && !artifact.capabilities ? { ...artifact, capabilities } : artifact;
   const [status, setStatus] = useState(null);
   const statusTimerRef = useRef(null);
   useLayoutEffect(() => () => {
@@ -1019,7 +1023,7 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
        * The viewer reads the draft URL in org mode and the local bytes on
        * desktop, so it opens on either without a canonical path of its own.
        */
-      onOpen(artifact);
+      onOpen(forViewer);
       return;
     }
     if (openTarget === 'published') {
@@ -1173,7 +1177,7 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
     && !(liveApps && BACKEND_ARTIFACT_TYPES.has(artifact.type) && !published)
     && capabilities?.canEdit !== false
     && (orgMode || canAct)
-    ? { label: t('chatView.artifactCard.share'), onClick: () => onShare(artifact), tooltip: t('chatView.artifactCard.shareTooltip') }
+    ? { label: t('chatView.artifactCard.share'), onClick: () => onShare(forViewer), tooltip: t('chatView.artifactCard.shareTooltip') }
     : null;
   const primaryDisabled = needsLocalPath && !canAct;
   const primaryReason = primaryDisabled ? (disabledReason || t('chatView.artifactCard.noFilePath')) : '';
