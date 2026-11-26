@@ -121,6 +121,12 @@ contextBridge.exposeInMainWorld('antontron', {
     ipcRenderer.invoke(IPC.NOTION_SEARCH_PAGES, opts),
   notionFetchPage: (opts: { name: string; page: string }) =>
     ipcRenderer.invoke(IPC.NOTION_FETCH_PAGE, opts),
+  publishWithApproval: (opts: {
+    kind: 'publish' | 'update';
+    path: string;
+    access?: Record<string, unknown>;
+    approvedDatasources: { engine: string; name: string }[];
+  }) => ipcRenderer.invoke(IPC.PUBLISH_WITH_APPROVAL, opts),
   // Fires when the background token-refresh loop encounters a failure.
   // Returns an unsubscribe function.
   onOAuthRefreshError: (cb: (payload: { engine: string; name: string; accountEmail: string; permanent: boolean }) => void) => {

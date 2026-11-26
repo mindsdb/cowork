@@ -94,6 +94,45 @@ describe('ConnectionCard', () => {
     expect(onModify).toHaveBeenCalledExactlyOnceWith(connection);
   });
 
+  it.each([
+    ['card', ConnectionCard],
+    ['row', ConnectionRow],
+  ])('opens details once from the %s settings button', async (_, Item) => {
+    const onModify = vi.fn();
+    render(<Item connection={connection} onModify={onModify} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Settings for GitHub: ianu82' }));
+    expect(onModify).toHaveBeenCalledExactlyOnceWith(connection);
+  });
+
+  it('has no settings button when the connection has no details to open', () => {
+    render(<ConnectionCard connection={connection} />);
+    expect(screen.queryByRole('button', { name: /^Settings for/ })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['read', 'Read only'],
+    ['write', 'Read and write'],
+    ['none', 'No tool access'],
+    [undefined, 'Read only'],
+  ])('labels an MCP connection with access mode %s as %s', (accessMode, label) => {
+    const mcp = { engine: 'hubspot', label: 'HubSpot', name: 'acme', display_name: 'acme', method: 'mcp', access_mode: accessMode };
+    render(<ConnectionCard connection={mcp} />);
+    expect(screen.getByText(label)).toBeInTheDocument();
+  });
+
+  it('shows no access label for a connection that is not MCP', () => {
+    const { container } = render(<ConnectionCard connection={{ ...connection, method: 'browser_oauth_builtin', access_mode: 'write' }} />);
+    expect(container.querySelector('[title^="Tool access"]')).toBeNull();
+    expect(screen.queryByText(/Read only|Read and write|^Off$/)).not.toBeInTheDocument();
+  });
+
+  it('shows no access label for a custom MCP connection, whose picked tools decide what runs', () => {
+    const custom = { engine: 'custom_mcp', label: 'Acme Tracker', name: 'cm-1', display_name: 'Acme Tracker', method: 'mcp' };
+    const { container } = render(<ConnectionCard connection={custom} />);
+    expect(container.querySelector('[title^="Tool access"]')).toBeNull();
+    expect(screen.queryByText(/Read only|Read and write|No tool access/)).not.toBeInTheDocument();
+  });
+
   it('disconnects only the selected connection, without opening its details', async () => {
     let resolve;
     const onDelete = vi.fn(() => new Promise(r => { resolve = r; }));

@@ -64,6 +64,54 @@ describe('CustomizeView — HubSpot "edit access" affordance', () => {
     await waitFor(() => expect(patchConnectionAccessModeMock).toHaveBeenCalledWith('hubspot', 'acme-hubspot', 'write'));
   });
 
+  it('opens the same details panel from the tile\'s settings button', async () => {
+    render(<CustomizeView connectors={CONNECTIONS} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Settings for HubSpot: acme.hubspot' }));
+
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() => expect(within(dialog).getByText('Tool access')).toBeInTheDocument());
+    expect(within(dialog).getByText('acme-hubspot')).toBeInTheDocument();
+  });
+
+  it('updates the tile\'s access label when the mode changes in the panel', async () => {
+    const listed = [{ ...CONNECTIONS[0], method: 'mcp', access_mode: 'read' }];
+    const { fetchDatasources } = await import('../api');
+    vi.mocked(fetchDatasources).mockResolvedValueOnce({ connections: listed });
+    patchConnectionAccessModeMock.mockResolvedValueOnce({ ok: true, access_mode: 'none' });
+    const onConnectionsSynced = vi.fn();
+    render(<CustomizeView connectors={listed} onConnectionsSynced={onConnectionsSynced} />);
+    const tile = screen.getByRole('article');
+    expect(within(tile).getByText('Read only')).toBeInTheDocument();
+
+    await userEvent.click(within(tile).getByRole('button', { name: 'Settings for HubSpot: acme.hubspot' }));
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() => expect(within(dialog).getByText('Tool access')).toBeInTheDocument());
+    await userEvent.click(within(dialog).getByRole('combobox'));
+    await userEvent.click(await screen.findByRole('option', { name: 'No tool access' }));
+
+    await waitFor(() => expect(within(tile).getByText('No tool access')).toBeInTheDocument());
+    expect(within(tile).queryByText('Read only')).not.toBeInTheDocument();
+    expect(onConnectionsSynced).toHaveBeenLastCalledWith([{ ...listed[0], access_mode: 'none' }]);
+  });
+
+  it('leaves the tile\'s access label alone when the change fails', async () => {
+    const listed = [{ ...CONNECTIONS[0], method: 'mcp', access_mode: 'read' }];
+    const { fetchDatasources } = await import('../api');
+    vi.mocked(fetchDatasources).mockResolvedValueOnce({ connections: listed });
+    patchConnectionAccessModeMock.mockRejectedValueOnce(new Error('Could not change tool access.'));
+    render(<CustomizeView connectors={listed} />);
+    const tile = screen.getByRole('article');
+
+    await userEvent.click(within(tile).getByRole('button', { name: 'Settings for HubSpot: acme.hubspot' }));
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() => expect(within(dialog).getByText('Tool access')).toBeInTheDocument());
+    await userEvent.click(within(dialog).getByRole('combobox'));
+    await userEvent.click(await screen.findByRole('option', { name: 'Read and write' }));
+
+    await waitFor(() => expect(within(dialog).getByText('Could not change tool access.')).toBeInTheDocument());
+    expect(within(tile).getByText('Read only')).toBeInTheDocument();
+  });
+
   it('does not render a tool-access control for a non-MCP connection', async () => {
     const { fetchSavedConnection } = await import('../api');
     vi.mocked(fetchSavedConnection).mockResolvedValueOnce({

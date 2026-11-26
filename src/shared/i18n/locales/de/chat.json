@@ -20,7 +20,8 @@
       "deleting": "Wird gelöscht…",
       "copyMessage": "Nachricht kopieren",
       "copyResponse": "Antwort kopieren",
-      "agentFallback": "Agent"
+      "agentFallback": "Agent",
+      "submittedData": "Gesendete Daten"
     },
     "incomplete": {
       "spendCeiling": "Vorzeitig beendet: Diese Aufgabe hat ihr Token-Budget erreicht.",
@@ -74,7 +75,13 @@
       "liveArtifact": "Live-Artefakt",
       "deletedBadge": "Gelöscht",
       "share": "Teilen",
-      "shareTooltip": "Festlegen, wer es öffnen kann"
+      "shareTooltip": "Festlegen, wer es öffnen kann",
+      "goToLatestTooltip": "Zur neuesten Version scrollen",
+      "openLink": "Link öffnen",
+      "openLinkTooltip": "Den Link des Artefakts in einem neuen Tab öffnen",
+      "updatedSeeBelow": "Das wurde aktualisiert. Die neueste Version finden Sie unten.",
+      "previewThisVersion": "Diese Version anzeigen",
+      "hideVersionPreview": "Diese Version ausblenden"
     },
     "kinds": {
       "provider": "Anbieter",
@@ -286,11 +293,17 @@
     },
     "dropFiles": "Dateien zum Anhängen hier ablegen",
     "addContext": "Kontext hinzufügen",
+    "docOutput": {
+      "chip": "Dokument",
+      "remove": "Ausgabe: Dokument. Entfernen",
+      "title": "Die Antwort wird als Dokument geschrieben. Zum Entfernen klicken."
+    },
     "menu": {
       "attachFiles": "Dateien oder Fotos anhängen",
       "openingGoogleDrive": "Google Drive wird geöffnet…",
       "addFromGoogleDrive": "Dateien aus Google Drive hinzufügen",
       "addFromSharePoint": "Dateien aus SharePoint hinzufügen",
+      "writeAsDoc": "Als Dokument schreiben",
       "browserTitle": "{agent} kann in dieser Aufgabe den Browsermodus verwenden. Das Ausschalten gilt ab Ihrer nächsten Nachricht.",
       "browser": "Browser",
       "browserOff": "Browser für diese Aufgabe ausschalten",
@@ -309,7 +322,11 @@
       "none": "Kein Projekt"
     },
     "chooseHarness": "Harness wählen",
-    "voiceCall": "Sprachanruf"
+    "voiceCall": "Sprachmodus",
+    "dictation": {
+      "start": "Diktieren",
+      "stop": "Diktieren beenden"
+    }
   },
   "attachmentThumbnail": {
     "open": "Bild öffnen",
@@ -496,7 +513,19 @@
       "missingType": "Diagrammtyp fehlt",
       "unsupportedType": "Nicht unterstützter Diagrammtyp: „{type}“. Unterstützt: {supported}.",
       "invalidJson": "Ungültiges JSON in der Diagrammspezifikation",
-      "error": "FEHLER: {error}"
+      "error": "FEHLER: {error}",
+      "loading": "Diagramm wird gezeichnet…",
+      "chartLabel": "Diagramm",
+      "diagramLabel": "Schaubild",
+      "copyImage": "Als Bild kopieren",
+      "downloadPng": "PNG herunterladen",
+      "showSource": "Quelltext anzeigen",
+      "hideSource": "Quelltext ausblenden",
+      "tooLarge": "Die Spezifikation ist größer als {limit} KB",
+      "tooManyDatasets": "Zu viele Datenreihen ({count}); das Limit ist {limit}",
+      "tooManyPoints": "Zu viele Datenpunkte ({count}); das Limit ist {limit}",
+      "tooManyNodes": "Zu viele Knoten ({count}); das Limit ist {limit}",
+      "emptyDiagram": "Das Schaubild ist leer"
     }
   },
   "taskModes": {
@@ -753,7 +782,7 @@
     "talkTo": "Mit {agent} sprechen"
   },
   "voiceCall": {
-    "dialogLabel": "Sprachanruf mit {agent}",
+    "dialogLabel": "Sprachmodus",
     "connecting": "Verbindung wird hergestellt…",
     "ending": "Wird beendet…",
     "working": "In Arbeit…",

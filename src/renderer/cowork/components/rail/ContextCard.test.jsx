@@ -36,7 +36,7 @@ const apiMock = vi.hoisted(() => ({
   listConversationFolderFiles: vi.fn(),
   ANTON_PROJECT_INSTRUCTIONS_PATH: '.anton/anton.md',
 }));
-const hostState = vi.hoisted(() => ({ isWeb: true, isElectron: false }));
+const hostState = vi.hoisted(() => ({ isWeb: true, isElectron: false, isMobileShell: false }));
 vi.mock('../../api', () => apiMock);
 vi.mock('../../lib/authenticatedResource', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -53,6 +53,7 @@ vi.mock('../../../platform/host', async (importOriginal) => {
       ...actual.host,
       get isWeb() { return hostState.isWeb; },
       get isElectron() { return hostState.isElectron; },
+      get isMobileShell() { return hostState.isMobileShell; },
     },
   };
 });
@@ -61,6 +62,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   hostState.isWeb = true;
   hostState.isElectron = false;
+  hostState.isMobileShell = false;
   setOrgMode(false);
   apiMock.fetchAttachments.mockResolvedValue({ attachments: [] });
   apiMock.listConversationFolders.mockResolvedValue({ folders: [] });
@@ -781,9 +783,33 @@ describe('ContextCard — working folders section', () => {
     expect(apiMock.listConversationFolders).toHaveBeenCalledWith('chat-1');
   });
 
-  it('is hidden on web', async () => {
+  it('shows the same section on web, where adding a folder offers the desktop app', async () => {
+    setOrgMode(true);
     await renderCard();
 
+    expect(screen.getByText('Working folders')).toBeInTheDocument();
+    expect(apiMock.listConversationFolders).not.toHaveBeenCalled();
+    const row = screen.getByRole('button', { name: /Add a folder for the agent to work in\./ });
+    expect(row).toHaveTextContent('Desktop');
+
+    fireEvent.click(row);
+    expect(await screen.findByRole('dialog', { name: 'Working folders are in the Desktop app' })).toBeInTheDocument();
+  });
+
+  it('opens the same offer from the section\'s add button on web', async () => {
+    await renderCard();
+    fireEvent.click(screen.getByRole('button', { name: 'Add a folder to this chat' }));
+    expect(await screen.findByRole('dialog', { name: 'Working folders are in the Desktop app' })).toBeInTheDocument();
+  });
+
+  it('shows nothing on web before the chat is saved', async () => {
+    await renderCard('tmp-123');
+    expect(screen.queryByText(/Working folders/)).toBeNull();
+  });
+
+  it('shows nothing inside the mobile app', async () => {
+    hostState.isMobileShell = true;
+    await renderCard();
     expect(screen.queryByText(/Working folders/)).toBeNull();
     expect(apiMock.listConversationFolders).not.toHaveBeenCalled();
   });

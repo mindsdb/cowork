@@ -1,6 +1,4 @@
-import { getServerPort } from './server-process';
-import { authHeader } from './server-auth';
-import { appSecretHeader, serverMayReceiveTokens, serverTrust } from './app-secret';
+import { postWithAppSecret, type AppSecretPostResult } from './app-secret-post';
 
 /*
  * The chat's Notion page search and fetch read pages with the connection's
@@ -8,12 +6,7 @@ import { appSecretHeader, serverMayReceiveTokens, serverTrust } from './app-secr
  * them and the renderer goes through here.
  */
 
-export type NotionPagesResult =
-  | { ok: true; data: unknown }
-  // The server's own refusal, passed through so the renderer shows the same
-  // message it shows for a direct request.
-  | { ok: false; status: number; text: string; retryAfter: string | null }
-  | { ok: false; reason: string };
+export type NotionPagesResult = AppSecretPostResult;
 
 // The server's own limits, so a bad request never leaves this process.
 const MAX_QUERY_LENGTH = 200;
@@ -23,30 +16,8 @@ function isText(value: unknown, max: number): value is string {
   return typeof value === 'string' && value.length >= 1 && value.length <= max;
 }
 
-async function post(path: 'search' | 'fetch', body: Record<string, string>): Promise<NotionPagesResult> {
-  if (!serverMayReceiveTokens()) {
-    return {
-      ok: false,
-      reason: serverTrust() === 'untrusted'
-        ? 'The backend could not be verified. Restart Cowork and try again.'
-        : 'The backend is not running.',
-    };
-  }
-  let res: Response;
-  try {
-    res = await fetch(`http://127.0.0.1:${getServerPort()}/api/v1/connectors/notion/${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeader(), ...appSecretHeader() },
-      body: JSON.stringify(body),
-    });
-  } catch {
-    return { ok: false, reason: 'The backend is not running.' };
-  }
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    return { ok: false, status: res.status, text, retryAfter: res.headers.get('Retry-After') };
-  }
-  return { ok: true, data: await res.json().catch(() => null) };
+function post(path: 'search' | 'fetch', body: Record<string, string>): Promise<NotionPagesResult> {
+  return postWithAppSecret(`/api/v1/connectors/notion/${path}`, body);
 }
 
 export async function searchNotionPages(name: unknown, query: unknown): Promise<NotionPagesResult> {

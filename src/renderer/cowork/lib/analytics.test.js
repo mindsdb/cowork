@@ -1203,6 +1203,20 @@ describe('billing + provisioning events (ENG-1533)', () => {
     expect(event.properties.outcome).toBe('unknown');
   });
 
+  it('organization_changed carries both kinds and the cause', async () => {
+    const fetchMock = mockFetch();
+    const { trackOrganizationChanged } = await importAnalytics();
+
+    trackOrganizationChanged({ fromKind: 'company', toKind: 'personal', cause: 'outside_app' });
+
+    const event = await sentEvent(fetchMock, 'organization_changed');
+    expect(event.properties).toMatchObject({
+      from_kind: 'company',
+      to_kind: 'personal',
+      cause: 'outside_app',
+    });
+  });
+
   it('token_cap_hit carries the reason so the three credit blocks are distinguishable', async () => {
     const fetchMock = mockFetch();
     const { trackTokenCapHit } = await importAnalytics();
@@ -2603,5 +2617,26 @@ describe('next steps under an answer', () => {
     analytics.trackNextStepClicked({ step: 'schedule', resultKind: 'research', position: 1 });
     const event = await sentEvent(fetchMock, 'next_step_clicked');
     expect(event.properties).toMatchObject({ step: 'schedule', result_kind: 'research', position: 1 });
+  });
+});
+
+describe('offers of the desktop app on the web', () => {
+  it('desktop_offer_shown names the feature, the entry and what the main button does', async () => {
+    const fetchMock = mockFetch();
+    const analytics = await importAnalytics();
+    analytics.trackDesktopOfferShown({ feature: 'local_folder', entry: 'chat_context' });
+    const event = await sentEvent(fetchMock, 'desktop_offer_shown');
+    expect(event.properties).toMatchObject({ feature: 'local_folder', entry: 'chat_context', offer: 'download' });
+    expect(event.properties).not.toHaveProperty('connector_id');
+  });
+
+  it('desktop_offer_download_clicked carries the connector and the download link tag', async () => {
+    const fetchMock = mockFetch();
+    const analytics = await importAnalytics();
+    analytics.trackDesktopOfferDownloadClicked({ feature: 'connector', entry: 'connector_directory', connectorId: 'jira' });
+    const event = await sentEvent(fetchMock, 'desktop_offer_download_clicked');
+    expect(event.properties).toMatchObject({
+      feature: 'connector', entry: 'connector_directory', connector_id: 'jira', from: 'cowork-web-connector',
+    });
   });
 });

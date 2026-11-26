@@ -28,6 +28,7 @@ import { hasRequiredTokens } from './oauth-connect-result';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
 import { serverMayReceiveTokens, serverTrust } from './app-secret';
 import { fetchNotionPage as fetchNotionPageInMain, searchNotionPages as searchNotionPagesInMain } from './notion-pages';
+import { publishWithApproval as publishWithApprovalInMain } from './publish-approval';
 import { forgetAccessMode, handOverAfterConnect, isAccessMode, setConnectionAccessMode, syncAppHeldMcpConnections } from './mcp-app-held';
 import { cancelCustomMcpConnects, connectCustomMcp } from './custom-mcp-connect';
 import { customMcpAvailable, customSummary, disconnectCustom, listCustomTools, reconnectCustom, setCustomTools } from './custom-mcp-manage';
@@ -1159,6 +1160,8 @@ function setupIPC() {
   // Desktop only, for the same reason: these read pages with the app-held token.
   ipcMain.handle(IPC.NOTION_SEARCH_PAGES, (_event, opts) => searchNotionPagesInMain(opts?.name, opts?.query));
   ipcMain.handle(IPC.NOTION_FETCH_PAGE, (_event, opts) => fetchNotionPageInMain(opts?.name, opts?.page));
+  // Desktop only: an approval to send connections' credentials needs the app secret.
+  ipcMain.handle(IPC.PUBLISH_WITH_APPROVAL, (_event, opts) => publishWithApprovalInMain(opts));
 
   // ── MindsHub onboarding ──────────────────────────────────────
   // Logging in via Keycloak doesn't yet decide the user's LLM —

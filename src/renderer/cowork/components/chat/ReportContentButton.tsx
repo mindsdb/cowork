@@ -1,12 +1,21 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ComponentType, type ReactNode } from 'react';
 import { useTranslation } from '../../../lib/i18n';
+import { isMobileShell } from '../../../lib/mobileShell';
 import { useOrgMode } from '../../../lib/orgMode';
 import { reportContent, reportArtifactContent } from '../../api';
 import { ConfirmModal } from '../ConfirmModal';
 import Ico from '../Icons';
 import Tooltip from '../ui/Tooltip';
 
-export function ReportContentButton({ conversationId, messageId, artifactTarget }: { conversationId?: string; messageId?: string; artifactTarget?: { projectId: string; artifactId: string } }) {
+type TriggerProps = { 'aria-label': string; disabled?: boolean; onClick: () => void; children: ReactNode };
+
+function TurnActionTrigger({ children, ...props }: TriggerProps) {
+  return <button type="button" className="turn-action-btn" {...props}>{children}</button>;
+}
+
+// `trigger` lets a surface draw the button as its own controls are drawn;
+// the default matches the action row under a chat turn.
+export function ReportContentButton({ conversationId, messageId, artifactTarget, trigger: Trigger = TurnActionTrigger }: { conversationId?: string; messageId?: string; artifactTarget?: { projectId: string; artifactId: string }; trigger?: ComponentType<TriggerProps> }) {
   const { t } = useTranslation('chat');
   const hosted = useOrgMode();
   const [open, setOpen] = useState(false);
@@ -22,7 +31,8 @@ export function ReportContentButton({ conversationId, messageId, artifactTarget 
     }, Math.max(0, retryAt - Date.now()));
     return () => window.clearTimeout(timer);
   }, [retryAt]);
-  if (!hosted || (!artifactTarget && (!conversationId || !messageId))) return null;
+  // The app stores require a way to report content; web and desktop do not offer one.
+  if (!hosted || !isMobileShell || (!artifactTarget && (!conversationId || !messageId))) return null;
   const submit = async () => {
     if (busy || retryAt !== null) return;
     setBusy(true);
@@ -47,8 +57,7 @@ export function ReportContentButton({ conversationId, messageId, artifactTarget 
   };
   return <>
     <Tooltip content={t('reportContent.title')}>
-      <button type="button" className="turn-action-btn" aria-label={t('reportContent.title')}
-        disabled={sent} onClick={() => setOpen(true)}>{Ico.warning(16)}</button>
+      <Trigger aria-label={t('reportContent.title')} disabled={sent} onClick={() => setOpen(true)}>{Ico.warning(16)}</Trigger>
     </Tooltip>
     {sent && <span role="status" className="s-caption">{t('reportContent.sent')}</span>}
     <ConfirmModal open={open} title={t('reportContent.title')} message={t('reportContent.message')}

@@ -8,6 +8,8 @@ vi.mock('../../../../lib/deployment', () => ({ PLATFORM_UI: false }));
 vi.mock('../../../lib/artifactShareAnalytics', () => ({ reportShareOpened: vi.fn(), reportLinkCopied: vi.fn() }));
 const host = vi.hoisted(() => ({ openExternal: vi.fn() }));
 vi.mock('../../../../platform/host', () => ({
+  // Console links read the signed-in account (useConsoleLink).
+  getAccessToken: () => Promise.resolve(null),
   host: { ...host, isWeb: true, isElectron: false, getApiOrigin: () => 'http://localhost' },
 }));
 const stats = vi.hoisted(() => ({ value: null, calls: [] }));

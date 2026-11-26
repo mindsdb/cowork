@@ -378,7 +378,8 @@
     "custom": "Personnalisé",
     "legacy": "Enregistrée par une ancienne version. Déconnectez-la, puis reconnectez-la.",
     "activateLabel": "{action, select, view {Afficher} reconnect {Reconnecter} other {Gérer}} {title} : {subtitle}{hint}",
-    "removing": "Suppression…"
+    "removing": "Suppression…",
+    "settingsLabel": "Paramètres de {title} : {subtitle}"
   },
   "datasource": {
     "failed": "Cela n’a pas fonctionné.",

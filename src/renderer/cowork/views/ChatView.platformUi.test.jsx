@@ -90,7 +90,7 @@ describe('ChatView with platform UI disabled', () => {
     expect(container).not.toHaveTextContent(/pick another model in Settings/i);
     if (canRetry) {
       fireEvent.click(card.getByRole('button', { name: 'Try again' }));
-      expect(onSend).toHaveBeenCalledWith('Summarize sales', attachments);
+      expect(onSend).toHaveBeenCalledWith('Summarize sales', attachments, { docContext: null });
     } else {
       expect(onSend).not.toHaveBeenCalled();
     }
@@ -109,7 +109,7 @@ describe('ChatView with platform UI disabled', () => {
     const card = within(title.parentElement);
     expect(card.getAllByRole('button').map((button) => button.textContent)).toEqual(['Try again']);
     fireEvent.click(card.getByRole('button', { name: 'Try again' }));
-    expect(onSend).toHaveBeenCalledWith('Summarize sales', attachments);
+    expect(onSend).toHaveBeenCalledWith('Summarize sales', attachments, { docContext: null });
     expect(container).not.toHaveTextContent(/MindsHub|billing|set up MindsHub/i);
   });
 

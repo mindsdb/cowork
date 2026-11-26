@@ -24,10 +24,6 @@
         "untilMobile": "Free MindsHub Air is paused for everyone until {until}. This doesn't use your allowance.",
         "dailyResetMobile": "Free MindsHub Air is paused for everyone until the daily budget resets. This doesn't use your allowance."
       },
-      "resting": {
-        "resetsAt": "Resets at {time}.",
-        "noReset": "Air runs on these until they are used up."
-      },
       "balanceEmptySentence": "Your balance is empty.",
       "percentLeft": "{percent} of your free allowance left",
       "autoTopUpFailed": {
@@ -46,8 +42,6 @@
       },
       "balanceLow": {
         "title": "Balance running low",
-        "autoRefills": "{usd} left. Auto top up refills it to {target} when it drops below {floor}.",
-        "autoCovers": "{usd} left. Auto top up will cover it.",
         "autoPending": "{usd} left. Auto top up is waiting on your bank.",
         "autoCapReached": "{usd} left and auto top up is paused to stay within its monthly cap. Add funds to keep going.",
         "body": "{usd} left. Add funds or turn on auto top up.",
@@ -83,7 +77,8 @@
         "lowThenWalletWithTime": "After that, tasks continue from your wallet at API rates until it resets at {time}.",
         "lowThenPause": "After that, tasks pause until it resets.",
         "lowThenPauseWithTime": "After that, tasks pause until {time}."
-      }
+      },
+      "resetsAt": "Resets at {time}."
     },
     "scheduleWhen": {
       "timeZone": "{city} time",
@@ -105,7 +100,9 @@
       "missedLabelServer": "If the server is down at this time",
       "missedLabelApp": "If MindsHub is closed at this time",
       "missedOnceTitleServer": "This one-time task’s time passed while the server was down",
-      "missedOnceTitleApp": "This one-time task’s time passed while MindsHub was closed"
+      "missedOnceTitleApp": "This one-time task’s time passed while MindsHub was closed",
+      "lateRunApp": "Due {when}. MindsHub was closed or your computer was asleep.",
+      "lateRunServer": "Due {when}. The server was down or busy."
     },
     "stopScheduleRun": {
       "unreachable": "Couldn’t reach the server to stop the run. Try again.",
@@ -319,6 +316,7 @@
       "sections": {
         "mine": "Yours",
         "sharedWithMe": "Shared with me",
+        "sharedByOthers": "Shared by others",
         "team": "My teams",
         "builtin": "Built-in"
       },
@@ -588,6 +586,7 @@
     "lastFailed": "Last failed",
     "lastRunFailed": "Last run failed",
     "stoppedAtLimit": "Stopped at a limit",
+    "writesRefused": "Needs approval",
     "done": "Done",
     "active": "Active"
   },
@@ -619,6 +618,7 @@
     "partialNote": "Some of its actions may have completed. Review the run before running it again.",
     "limitTitle": "The last run stopped at a limit",
     "limitNote": "Some of its work may be done. Review the run before running it again.",
+    "approvalTitle": "The last run’s changes weren’t approved",
     "failedTitle": "The last run failed",
     "resume": "Resume",
     "runNow": "Run now",
@@ -718,7 +718,8 @@
       "success": "Succeeded",
       "failed": "Failed",
       "cancelled": "Stopped",
-      "stoppedAtLimit": "Stopped at a limit"
+      "stoppedAtLimit": "Stopped at a limit",
+      "writesRefused": "Not approved"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "Running now",
@@ -735,6 +736,7 @@
     "scheduleAriaLabel": "Schedule",
     "accountDefaultModel": "Account default model",
     "ranOnDefaultModel": "Default model",
+    "ranLate": "Late",
     "modelUnavailable": "{model} isn't available, so this run used your default model.",
     "succeededCount": "{total, plural, one {{succeeded} of # run succeeded} other {{succeeded} of # runs succeeded}}",
     "promptAriaLabel": "Prompt",

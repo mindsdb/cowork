@@ -70,8 +70,9 @@ const SIZES = {
 //
 //   60   sidepanels, inline overlays inside main UI
 //   80   default content modals (picker, schedule, artifact viewer)
-//   500  palette — Cmd+K search; above the sidebar drawer (101) and chat
-//        overlays (200) it can be opened over, below the title bar
+//   500  palette — Cmd+K search and the desktop-app offer; above the
+//        sidebar drawer (101) and chat overlays (200) they can be opened
+//        over, below the title bar
 //   1000 title bar
 //   1100 legal / onboarding overlays
 //   1200 system modals — How-to, anything that must sit on top
@@ -121,6 +122,9 @@ export function Modal({
   // | 'top' (command palette).
   placement = 'center',
   leftOffset = 0,
+  // A dialog opened over another dialog gets no backdrop of its own (Base
+  // UI's default), so the one under it stays as bright. This dims it too.
+  backdropWhenNested = false,
   children,
 }) {
   const sz = SIZES[size] || SIZES.md;
@@ -167,6 +171,7 @@ export function Modal({
     >
       <Dialog.Portal>
         <Dialog.Backdrop
+          forceRender={backdropWhenNested}
           className={FADE_BACKDROP}
           style={{
             position: 'fixed', inset: 0, zIndex: z,

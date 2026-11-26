@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import Ico from '../Icons';
 import Tooltip from '../ui/Tooltip';
@@ -10,7 +10,8 @@ const ICON_SZ = 16;
 /**
  * The action row under a chat turn, shared by Cowork chat and Code Mode:
  * Edit (user turns), Copy, and Delete. Edit and Delete appear only when their
- * handler is given; Copy only when there is text to copy.
+ * handler is given; Copy only when there is text to copy. `children` are extra
+ * actions for the same row, so they hide and reveal with the rest.
  *
  * Hidden at rest and revealed on hover of the parent `.user-turn` /
  * `.answer-turn`; `isLast` keeps the most recent exchange's row visible.
@@ -23,6 +24,7 @@ export function TurnActions({
   onDelete,
   isLast = false,
   align = 'left',
+  children,
 }: {
   text?: string;
   copyLabel?: string;
@@ -30,6 +32,7 @@ export function TurnActions({
   onDelete?: (() => void) | null;
   isLast?: boolean;
   align?: 'left' | 'right';
+  children?: ReactNode;
 }) {
   const { t } = useTranslation('chat');
   const copyLabel = copyLabelProp ?? t('turnActions.copy');
@@ -89,6 +92,7 @@ export function TurnActions({
           </button>
         </Tooltip>
       )}
+      {children}
       {canCopy && announced && (
         <span role="status" className={status === 'failed' ? 'turn-actions__error' : 'sr-only'}>
           {copied ? t('turnActions.copied') : status === 'failed' ? t('turnActions.copyFailed') : ''}

@@ -11,6 +11,7 @@ import { OrbitMorph, Button } from '../components/ui';
 import { host } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { useConsoleLink } from '../hooks/useConsoleLink';
 import { billingCopyKey, offersBilling } from '../lib/billingLinks';
 import { trackBillingOpened, setEntryAttribution, trackComposerReady, trackExamplePicked, trackSignupLanded } from '../lib/analytics';
 import {
@@ -251,7 +252,7 @@ function ActiveList({ tasks, onSelect, onClear }) {
 
 
 export default function HomeView({
-  greeting, showDots,
+  greeting, showDots, onComposeTask,
   activeTasks, onSelectTask, onClearActive,
   onSend, project, onProjectChange, model, onModelChange, effort, onEffortChange, projects, models, modelMeta,
   attachments, connectors, onAttachFiles, onRemoveAttachment,
@@ -260,6 +261,7 @@ export default function HomeView({
   disabledConnections = [],
   onUpdateConnectorMute,
   onStartVoiceCall = null,
+  dictationAvailable = false,
   // The browser and call icons, at the top right (TopShortcuts).
   topShortcuts = null,
   browserSwitch = null,
@@ -285,11 +287,22 @@ export default function HomeView({
   // own-work mode, the same way the examples request works.
   ownWorkRequest = 0,
   onOwnWorkRequestConsumed,
+  // An example started from the Use Case Gallery column ({ entry, bump }):
+  // placed like a picked example, then reported consumed.
+  galleryPick = null,
+  onGalleryPickConsumed,
+  // Turns a waiting one-click pick into a plain prefill.
+  onGalleryPickHeld,
+  // False while Home stays mounted but hidden behind another workspace.
+  active = true,
+  // Opens the Use Case Gallery column; null while it is open or not offered.
+  onOpenGallery = null,
   codingModeEnabled = false,
   codingModelDefault,
   harnessClaudeCodeEnabled,
 }) {
   const { t } = useTranslation('shell');
+  const consoleLink = useConsoleLink();
   const greetingText = greeting || t('home.greetingFallback');
   const blocked = configReady === false;
 
@@ -321,8 +334,16 @@ export default function HomeView({
     trackSignupLanded(welcome.from);
     if (welcome.from === SIGNUP_FROM_DESKTOP) setDesktopWelcome(true);
   }, []);
+  // The gallery example in the composer, named under it while it is there.
+  const galleryStartRef = useRef(null);
+  // The prompt of a gallery example being sent at once, until that send goes.
+  const autoSendRef = useRef(null);
+  const [galleryHint, setGalleryHint] = useState(null);
   useEffect(() => {
-    if (!taskMode) setHandoffHint(false);
+    if (!taskMode) {
+      setHandoffHint(false);
+      setGalleryHint(null);
+    }
   }, [taskMode]);
 
   // Task modes (slides/website/app-style prompt scaffolding) don't apply to
@@ -409,6 +430,8 @@ export default function HomeView({
     onPrefill?.(next);
   };
   const sendTracked = async (text, meta) => {
+    const automatic = autoSendRef.current !== null && text === autoSendRef.current;
+    autoSendRef.current = null;
     const { text: message, modeLine } = ownWork
       ? { text: composeOwnWorkMessage(text), modeLine: null }
       : modeMessage(taskMode, text, pickedSample);
@@ -418,7 +441,9 @@ export default function HomeView({
       ...meta,
       ...(modeLine ? { taskMode: { task_mode: taskMode.id, mode_line: modeLine, example_placed: Boolean(pickedSample) } } : {}),
       ...(ownWork && ownWorkVia ? { startVia: ownWorkVia } : {}),
+      ...(!ownWork && pickedSample && pickedSample === galleryStartRef.current ? { startVia: 'gallery' } : {}),
       ...(ownWork && ownWorkFromConsoleRef.current ? { entryExampleId: OWN_WORK_START } : {}),
+      ...(automatic ? { leaveBrowserPage: true } : {}),
     };
     const result = await onSend(message, sendMeta);
     if (result) {
@@ -650,6 +675,45 @@ export default function HomeView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownWorkRequest, composerUsable, codingModeEnabled]);
 
+  // A one-click send belongs to the visit it was clicked in. A pick still
+  // waiting when setup blocks Home, or when the person leaves it (or hides it
+  // behind Code Mode), only fills the box once Home can take it: the send
+  // needs a fresh click.
+  const waitingPickRef = useRef(null);
+  waitingPickRef.current = galleryPick;
+  const holdPickRef = useRef(onGalleryPickHeld);
+  holdPickRef.current = onGalleryPickHeld;
+  useEffect(() => {
+    if (galleryPick?.send && (blocked || !active)) onGalleryPickHeld?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [galleryPick, blocked, active]);
+  useEffect(() => () => {
+    if (waitingPickRef.current?.send) holdPickRef.current?.();
+  }, []);
+
+  // An example started from the gallery is placed once the composer is usable,
+  // exactly as one picked under the composer: its mode selected, its prompt in
+  // the box. One the click said to send (galleryRules.startsNow) is then sent
+  // as if Send were pressed, on its own: without the page open in the browser
+  // beside Home. The person chose it, so it replaces what is there.
+  useEffect(() => {
+    if (!galleryPick || !composerUsable || !active || codingModeEnabled || !onPrefill) return;
+    const { entry } = galleryPick;
+    galleryStartRef.current = entry.sample;
+    setTaskMode(entry.mode);
+    setPickedSample(entry.sample);
+    setHandoffHint(false);
+    // Files attached since the click would ride along, and a provider not yet
+    // known to be set up may not be; the example then waits for Send.
+    const send = Boolean(galleryPick.send) && configReady === true && !(attachments?.length);
+    autoSendRef.current = send ? entry.sample.prompt : null;
+    setGalleryHint(send ? null : entry.title);
+    trackExamplePicked(entry.id, 'gallery');
+    onPrefill(entry.sample.prompt, undefined, send);
+    onGalleryPickConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [galleryPick, composerUsable, active, codingModeEnabled]);
+
   // Shows the examples once the composer is usable, like the console handoff.
   useEffect(() => {
     if (!examplesRequest || !composerUsable || codingModeEnabled) return;
@@ -681,7 +745,16 @@ export default function HomeView({
           </button>
         </div>
       )}
-      {topShortcuts && <div className="absolute top-3.5 right-3.5 z-10">{topShortcuts}</div>}
+      {(topShortcuts || onOpenGallery) && (
+        <div className="absolute top-3.5 right-3.5 z-10 flex items-center gap-2">
+          {onOpenGallery && (
+            <Button variant="default" size="sm" onClick={onOpenGallery}>
+              {Ico.grid(14)} {t('gallery.open')}
+            </Button>
+          )}
+          {topShortcuts}
+        </div>
+      )}
       {/* Deliberate exception to the .s-* ladder. This is the home hero, and
           the ladder has no rung between s-h1 (28px) and s-display (44px): 28px
           is dwarfed by the 42px orb, 44px wraps to two lines in the 640px
@@ -807,7 +880,7 @@ export default function HomeView({
                     // (ENG-1533) — one surface reached two ways, so the two must
                     // not read as different causes in the funnel.
                     trackBillingOpened('connect_provider');
-                    host.openExternal(MINDS_BILLING_URL);
+                    host.openExternal(consoleLink(MINDS_BILLING_URL));
                   }}
                 >{t('home.connectProvider.startFree')}</Button>}
                 <Button
@@ -843,9 +916,13 @@ export default function HomeView({
               disabledConnections={disabledConnections}
               onUpdateConnectorMute={onUpdateConnectorMute}
               onStartVoiceCall={onStartVoiceCall}
+              dictationAvailable={dictationAvailable}
               browserSwitch={browserSwitch}
               onCreateProject={onCreateProject}
-              onTypingChange={setIsTyping}
+              onTypingChange={(typing) => {
+                setIsTyping(typing);
+                if (typing) onComposeTask?.();
+              }}
               codingModeEnabled={codingModeEnabled}
               onOpenSettings={onOpenSettings}
               codingModelDefault={codingModelDefault}
@@ -862,6 +939,11 @@ export default function HomeView({
               overflows downward; the scroll container still reaches it
               because descendant overflow extends the scrollable area. */}
           <div className="w-full h-0 overflow-visible flex flex-col items-center">
+            {galleryHint && taskMode && (
+              <p role="status" className="text-sm text-[var(--frost-700)] mt-2 mb-0 w-full max-w-[var(--composer-max-width,640px)]">
+                {t('home.galleryHint', { title: galleryHint })}
+              </p>
+            )}
             {handoffHint && taskMode && (
               <p role="status" className="text-sm text-[var(--frost-700)] mt-2 mb-0 w-full max-w-[var(--composer-max-width,640px)]">
                 {t('home.handoffHint')}

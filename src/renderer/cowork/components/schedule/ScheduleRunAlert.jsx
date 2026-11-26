@@ -11,7 +11,7 @@
 import { Alert, Button } from '../ui';
 import i18n, { useTranslation } from '../../../lib/i18n';
 import { missedOnceTitle } from '../../lib/scheduleCopy';
-import { lastRunFailed, lastRunStoppedAtLimit, scheduleState } from './ScheduleStatusBadge';
+import { lastRunFailed, lastRunStoppedAtLimit, lastRunWritesRefused, scheduleState } from './ScheduleStatusBadge';
 
 // Outcomes after which some of the run's actions may have happened.
 const MAY_HAVE_ACTED = new Set(['failed_during_execution', 'interrupted', 'uncertain']);
@@ -62,6 +62,15 @@ export function runAlert(task) {
       note: msg('limitNote'),
     };
   }
+  if (lastRunWritesRefused(task)) {
+    // The reason says to open the run and run it again to approve there.
+    return {
+      kind: 'approval',
+      variant: 'warning',
+      title: msg('approvalTitle'),
+      reason,
+    };
+  }
   if (MAY_HAVE_ACTED.has(run?.outcome)) {
     return {
       kind: 'partial',
@@ -96,12 +105,12 @@ export default function ScheduleRunAlert({ task, busy, onResume, onRunNow, onRev
       <Button key="run" size="sm" onClick={() => onRunNow?.(task.id)} disabled={busy}>{t('scheduleRunAlert.runNow')}</Button>
     ),
     conversationId && (
-      <Button key="review" size="sm" variant={alert.kind === 'partial' || alert.kind === 'limit' || alert.kind === 'failed' ? 'default' : 'subtle'} onClick={() => onReviewRun?.(conversationId)}>{t('scheduleRunAlert.reviewRun')}</Button>
+      <Button key="review" size="sm" variant={['partial', 'limit', 'failed', 'approval'].includes(alert.kind) ? 'default' : 'subtle'} onClick={() => onReviewRun?.(conversationId)}>{t('scheduleRunAlert.reviewRun')}</Button>
     ),
     (alert.kind === 'limit' || (alert.kind === 'auto_paused' && lastRunStoppedAtLimit(task))) && onOpenSettings && (
       <Button key="settings" size="sm" variant="subtle" onClick={() => onOpenSettings('agent')}>{t('scheduleRunAlert.openSettings')}</Button>
     ),
-    (alert.kind === 'partial' || alert.kind === 'limit') && (
+    ['partial', 'limit', 'approval'].includes(alert.kind) && (
       <Button key="again" size="sm" variant="subtle" onClick={() => onRunNow?.(task.id)} disabled={busy || task.running}>{t('scheduleRunAlert.runAgain')}</Button>
     ),
   ].filter(Boolean);

@@ -103,7 +103,7 @@ describe('Picking SharePoint', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Pick SharePoint' }));
 
-    expect(await screen.findByText(/SharePoint isn.t available on Cloud/)).toBeInTheDocument();
+    expect(await screen.findByText('SharePoint runs in the Desktop app today. Download it to connect SharePoint there.')).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Connect SharePoint' })).toBeNull();
     expect(screen.queryByLabelText(/client secret/i)).toBeNull();
   });
