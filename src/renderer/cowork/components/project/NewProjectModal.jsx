@@ -27,6 +27,8 @@ import {
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { useTranslation } from '../../../lib/i18n';
+import DesktopOfferModal, { DesktopTag } from '../DesktopOfferModal';
+import { desktopOfferAvailable } from '../../lib/desktopOffer';
 
 // Kept for the Input/Textarea `style` props below: those carry the
 // `.field-input` globals class (which itself declares padding/border/bg), so
@@ -79,6 +81,9 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
   // rather than offered and refused.
   const orgMode = useOrgMode();
   const canChooseFolder = host.isElectron && !orgMode;
+  // The web build keeps the field, and its button offers the desktop app.
+  const offersFolder = !canChooseFolder && desktopOfferAvailable();
+  const [folderOfferOpen, setFolderOfferOpen] = useState(false);
 
   // Reset everything when the modal opens — `open` flipping false→true
   // should always present a clean form.
@@ -91,6 +96,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
     setError('');
     setDragActive(false);
     setFolderPath('');
+    setFolderOfferOpen(false);
     const id = requestAnimationFrame(() => nameRef.current?.focus());
     return () => cancelAnimationFrame(id);
   }, [open]);
@@ -310,6 +316,28 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
                 )}
               </div>
             </Field>
+          )}
+
+          {offersFolder && (
+            <Field
+              label={t('newProjectModal.locationLabel')}
+              optional
+              help={t('newProjectModal.locationHelpDefault')}
+            >
+              <div className="flex items-center gap-2">
+                <Button variant="tinted" disabled={busy} onClick={() => setFolderOfferOpen(true)}>
+                  {t('newProjectModal.useExistingFolder')}
+                  <DesktopTag />
+                </Button>
+              </div>
+            </Field>
+          )}
+          {offersFolder && (
+            <DesktopOfferModal
+              feature={folderOfferOpen ? 'local_folder' : null}
+              entry="new_project"
+              onClose={() => setFolderOfferOpen(false)}
+            />
           )}
 
           <div className="flex flex-col gap-[6px]">

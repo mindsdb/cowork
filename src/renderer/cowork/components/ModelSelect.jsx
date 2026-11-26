@@ -104,6 +104,7 @@ import { Icon } from './ui/Icon';
 import { cn } from '../lib/cn';
 import { groupModelOptions, modelMaker } from '../lib/modelCatalog';
 import { USAGE_ACTIONS, usageActionUrl } from '../lib/usageWarnings';
+import { useConsoleLink } from '../hooks/useConsoleLink';
 import { offersBilling } from '../lib/billingLinks';
 import { useHubUsageContext } from '../lib/hubUsageContext';
 import { host } from '../../platform/host';
@@ -177,7 +178,7 @@ const PIN_BOTTOM = '__pinned-bottom__';
  * the stopPropagation, and none can without a `locked` row that is not also
  * disabled, which the builders never produce.
  */
-function creditsAction(t, isBillingOwner) {
+function creditsAction(t, isBillingOwner, consoleLink) {
   if (!offersBilling()) return null;
   return (
     <Tooltip content={t('picker.addCreditsTooltip')}>
@@ -196,7 +197,7 @@ function creditsAction(t, isBillingOwner) {
         onClick={(e) => {
           e.stopPropagation();
           trackBillingOpened('locked_model_row');
-          return host.openExternal(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner }));
+          return host.openExternal(consoleLink(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner })));
         }}
         onMouseDown={(e) => e.stopPropagation()}
       >
@@ -452,6 +453,7 @@ export function ModelSelect({
   const placeholder = placeholderProp ?? t('picker.placeholder');
   const emptyText = emptyTextProp ?? t('picker.empty');
   const isBillingOwner = !!useHubUsageContext()?.usage?.isBillingOwner;
+  const consoleLink = useConsoleLink();
   const upgrade = useUpgradeOffer();
   const paidTier = isPaidPlan(upgrade.plan) ? upgrade.plan.tier : null;
   const { canOffer, open: openUpgrade } = upgrade;
@@ -470,7 +472,7 @@ export function ModelSelect({
           // "Add credits" (ENG-4186). Falls back to the next tier up when the
           // catalog does not say which.
           const tier = o.tierLocked ? (o.requiredTier || upgrade.tier) : null;
-          const credits = creditsAction(t, isBillingOwner);
+          const credits = creditsAction(t, isBillingOwner, consoleLink);
           if (tier && canOffer(tier)) {
             return {
               ...o,
@@ -499,7 +501,7 @@ export function ModelSelect({
       ...grouped,
       ...(bottom.length ? [{ key: PIN_BOTTOM, name: null, items: bottom }] : []),
     ];
-  }, [options, t, isBillingOwner, paidTier, canOffer, openUpgrade, upgrade.tier]);
+  }, [options, t, isBillingOwner, paidTier, canOffer, openUpgrade, upgrade.tier, consoleLink]);
 
   // This component takes over the Combobox's open state ONLY when the effort
   // feature is opted into (`modelEfforts` passed at all) — a footer pick

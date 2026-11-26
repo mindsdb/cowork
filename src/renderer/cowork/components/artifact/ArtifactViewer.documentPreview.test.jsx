@@ -231,6 +231,29 @@ describe.each(data.documentArtifacts)('a $type artifact', (artifactData) => {
     expect(calls.body.at(-1).review.onAddressWithAgent).toBeUndefined();
     expect(screen.queryByText('Address with agent')).toBeNull();
   });
+
+  // ENG-4687: a document that shares as a page of its own gets the chat bar,
+  // and its messages go to the artifact's chat: the agent changes the file.
+  it('offers the chat bar, which sends a change to the artifact\'s chat', async () => {
+    const onAddressWithAgent = vi.fn(async () => true);
+    renderViewer(artifact, { onAddressWithAgent, conversationId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' });
+    await waitFor(() => expect(previewFrames()).toHaveLength(1));
+
+    const input = screen.getByLabelText('Ask for a change');
+    fireEvent.change(input, { target: { value: 'Add a summary slide' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(onAddressWithAgent).toHaveBeenCalled());
+    expect(JSON.stringify(onAddressWithAgent.mock.calls[0])).toContain('Add a summary slide');
+    // Nothing here edits the file itself: no editable source was ever asked for.
+    expect(workspaceApi.loadArtifactSource).not.toHaveBeenCalled();
+  });
+
+  it('offers no chat bar to someone who can\'t change it', async () => {
+    renderViewer({ ...artifact, capabilities: { role: 'reviewer', canEdit: false } });
+    await waitFor(() => expect(previewFrames()).toHaveLength(1));
+    expect(screen.queryByLabelText('Ask for a change')).toBeNull();
+  });
 });
 
 describe('the document branch', () => {

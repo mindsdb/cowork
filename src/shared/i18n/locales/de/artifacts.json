@@ -48,15 +48,17 @@
   },
   "status": {
     "badge": {
+      "onlyYou": "Nur du",
       "public": "Öffentlich",
-      "password": "Passwort",
+      "publicPassword": "Öffentlich · Passwort",
       "restricted": "Eingeschränkt"
     },
     "hint": {
       "notSharedYet": "Noch nicht geteilt. Öffnen Sie es und wählen Sie „Teilen“, um einen Weblink zu erhalten.",
-      "notShareable": "Nicht geteilt. Nur Webseiten und Markdown-Dokumente können als Link geteilt werden.",
+      "notShareable": "Nicht geteilt. Webseiten, Dokumente, Tabellen, Präsentationen, PDFs, CSV- und Textdateien können als Link geteilt werden, diese Art von Datei nicht.",
       "orgRestricted": "Eingeschränkt. Öffnen Sie „Teilen“, um zu sehen, wer den Link öffnen kann.",
       "ownerOnly": "Geteilt, aber nur Sie können den Link öffnen.",
+      "password": "Alle mit dem Link und dem Passwort können es öffnen.",
       "chosenPeople": "Geteilt. Nur die von Ihnen ausgewählten Personen können den Link öffnen.",
       "unknown": "Geteilt. Wer den Link öffnen kann, ließ sich nicht bestätigen, daher gilt er als eingeschränkt.",
       "sharedWith": "Geteilt mit {names}",
@@ -70,7 +72,6 @@
     "stoppingSharing": "Teilen wird beendet…",
     "deleting": "Wird gelöscht…",
     "notShared": "Nicht geteilt",
-    "draft": "Entwurf",
     "unsharedChanges": "Nicht geteilte Änderungen"
   },
   "liveAppShare": {
@@ -133,6 +134,8 @@
       "hoursAgo": "{count, plural, one {vor # Stunde} other {vor # Stunden}}",
       "daysAgo": "{count, plural, one {vor # Tag} other {vor # Tagen}}",
       "replies": "{count, plural, one {# Antwort} other {# Antworten}}",
+      "replyPlaceholder": "Antworten…",
+      "replyAriaLabel": "Auf diesen Kommentar antworten",
       "edited": "(bearbeitet)",
       "unattachedTip": "Der Teil des Artefakts, auf den sich dieser Kommentar bezog, ist nicht mehr verfügbar.",
       "generalTip": "Allgemeines Feedback zum gesamten Artefakt.",
@@ -306,6 +309,12 @@
   },
   "publish": {
     "ownedByOther": "Dieses Artefakt wurde von einem anderen Inhaber veröffentlicht.",
+    "datasources": {
+      "notice": "Beim Veröffentlichen werden die Zugangsdaten dieser Verbindungen hochgeladen: {list}",
+      "review": "Diese App sendet Zugangsdaten von Verbindungen, die Sie nicht freigegeben haben. Prüfen Sie sie unter „Teilen“ und veröffentlichen Sie erneut.",
+      "updateApp": "Aktualisieren Sie die App, um diese App mit ihren Verbindungen zu veröffentlichen. Sie können den Agenten auch bitten, sie im Chat zu veröffentlichen.",
+      "unapproved": "Ohne die Zugangsdaten folgender Verbindungen veröffentlicht: {list}"
+    },
     "linkLeftLive": {
       "unrecorded": "Dieser Link wurde geteilt, bevor {product} erfasst hat, wer welche Seite teilt. Daher kann {product} ihn weder aktualisieren noch entfernen. „Aktualisieren“ teilt einen neuen Link, und „Teilen beenden“ oder das Löschen des Artefakts lässt diesen Link für alle offen, die ihn haben. Bitten Sie Ihren Administrator, ihn zu entfernen.",
       "otherArtifact": "Nichts wurde entfernt: Der Eintrag dieses Artefakts verwies auf die Seite eines anderen Artefakts, {link}.",
@@ -333,6 +342,8 @@
       "specificDesc": "Nur die von Ihnen angegebenen Personen"
     },
     "whoCanAccess": "Wer auf Ihre App zugreifen kann",
+    "whoCanAccessDoc": "Wer auf Ihr Dokument zugreifen kann",
+    "updatesAsYouEdit": "Wird beim Bearbeiten aktualisiert",
     "addPassword": "Passwort hinzufügen",
     "hide": "Ausblenden",
     "show": "Anzeigen",
@@ -519,7 +530,7 @@
     "openViewer": "Viewer öffnen",
     "showInExplorer": "Im Explorer anzeigen",
     "deleteItem": "Artefakt löschen",
-    "onlyHtmlMd": "Nur HTML- und Markdown-Artefakte können geteilt werden.",
+    "onlyHtmlMd": "Nur Webseiten, Dokumente, Tabellen, Präsentationen, PDFs, CSV- und Textdateien können geteilt werden.",
     "sharedToast": "{mode, select, password {Geteilt (passwortgeschützt) – {url}} restricted {Geteilt (eingeschränkt) – {url}} other {Geteilt – {url}}}",
     "mindsApiKey": "Legen Sie in den Einstellungen Ihren Minds-API-Schlüssel fest, um Artefakte zu teilen.",
     "stoppedOnMindsHub": "Teilen auf MindsHub beendet.",
@@ -546,11 +557,9 @@
       "noMatch": "Keine Artefakte entsprechen diesen Filtern.",
       "clear": "Filter zurücksetzen",
       "status": "Status",
-      "allStatuses": "Alle Status"
-    },
-    "owner": {
-      "you": "Du",
-      "youHint": "Deins, mit anderen geteilt."
+      "allStatuses": "Alle Status",
+      "access": "Zugriff",
+      "allAccess": "Alle Zugriffsstufen"
     },
     "openComments": "{count, plural, one {# offener Kommentar} other {# offene Kommentare}}",
     "openCommentsHint": "Vorschau mit den Kommentaren öffnen"
@@ -923,7 +932,15 @@
     "sourceHint": "Text und Layout auf der Seite ändern",
     "commentsHint": "Feedback geben und prüfen",
     "statsHint": "Wer es angesehen hat und wie lange",
-    "commentsOpen": "Kommentare, {count} offen"
+    "commentsOpen": "Kommentare, {count} offen",
+    "openChat": "Chat öffnen",
+    "openChatHint": "Vorschau schließen und zum Chat wechseln, in dem dies erstellt wurde",
+    "openChatUnavailable": {
+      "noOrigin": "Nicht in einem Chat erstellt oder erstellt, bevor Chats erfasst wurden",
+      "deleted": "Der Chat, in dem dies erstellt wurde, wurde gelöscht",
+      "colleague": "In einem Chat einer Kollegin oder eines Kollegen erstellt, den nur diese Person öffnen kann",
+      "unreachable": "Der Chat, in dem dies erstellt wurde, ist gerade nicht erreichbar"
+    }
   },
   "liveEditPanel": {
     "close": "Live-Bearbeitungsbereich schließen",

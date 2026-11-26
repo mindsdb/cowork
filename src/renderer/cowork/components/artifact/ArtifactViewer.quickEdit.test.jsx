@@ -73,6 +73,8 @@ vi.mock('../../lib/artifactsStore', () => ({ deleteArtifactAndSync: vi.fn() }));
 vi.mock('../../lib/artifactDownload', () => ({ downloadArtifactFile: vi.fn(async () => true) }));
 vi.mock('../../lib/artifactWorkspaceApi', () => workspaceApi);
 vi.mock('../../../platform/host', () => ({
+  // Console links read the signed-in account (useConsoleLink).
+  getAccessToken: () => Promise.resolve(null),
   host: {
     isElectron: false,
     isWeb: true,

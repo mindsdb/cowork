@@ -155,3 +155,16 @@ html[data-shell] .arc-root {
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
 }
+
+/* The webview does not shrink the page for the keyboard; it pans it. Pin the
+   phone layout to the visible box (lib/mobileShell.ts sets the variables) so
+   the composer's controls sit above the keyboard and the title stays below
+   the status bar. */
+html[data-shell] .mshell {
+  top: var(--shell-viewport-top, 0px);
+  bottom: auto;
+  height: var(--shell-viewport-height, 100%);
+}
+html[data-shell][data-keyboard] .mshell {
+  padding-bottom: 0;
+}

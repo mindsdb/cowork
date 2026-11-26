@@ -293,11 +293,17 @@
     },
     "dropFiles": "拖放文件以添加附件",
     "addContext": "添加上下文",
+    "docOutput": {
+      "chip": "文档",
+      "remove": "输出：文档。移除",
+      "title": "回答将写成文档。点击可移除。"
+    },
     "menu": {
       "attachFiles": "添加文件或照片",
       "openingGoogleDrive": "正在打开 Google Drive…",
       "addFromGoogleDrive": "从 Google Drive 添加文件",
       "addFromSharePoint": "从 SharePoint 添加文件",
+      "writeAsDoc": "写成文档",
       "browserTitle": "{agent} 可以在此任务中使用浏览器模式。关闭后从你的下一条消息起生效。",
       "browser": "浏览器",
       "browserOff": "为此任务关闭浏览器",
@@ -316,7 +322,11 @@
       "none": "无项目"
     },
     "chooseHarness": "选择运行环境",
-    "voiceCall": "语音通话"
+    "voiceCall": "语音模式",
+    "dictation": {
+      "start": "听写",
+      "stop": "停止听写"
+    }
   },
   "attachmentThumbnail": {
     "open": "打开图片",
@@ -760,7 +770,7 @@
     "talkTo": "与 {agent} 通话"
   },
   "voiceCall": {
-    "dialogLabel": "与 {agent} 语音通话",
+    "dialogLabel": "语音模式",
     "connecting": "正在连接…",
     "ending": "正在结束…",
     "working": "正在处理…",

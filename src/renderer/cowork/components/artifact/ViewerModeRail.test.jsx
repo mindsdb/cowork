@@ -96,4 +96,70 @@ describe('ViewerModeRail', () => {
     const comments = screen.getByRole('button', { name: 'Comments, 3 unread' });
     expect(comments.parentElement.querySelector('.artifact-feedback-badge')).toHaveTextContent('3');
   });
+
+  describe('actions', () => {
+    const openChat = (over = {}) => ({
+      id: 'open-chat',
+      icon: <svg />,
+      label: 'Open chat',
+      description: 'Close the preview and go to the chat this was made in',
+      onSelect: vi.fn(),
+      ...over,
+    });
+
+    it('renders an action after the tabs, as a plain button with no pressed state', () => {
+      render(<ViewerModeRail label="Viewer panels" tabs={tabs()} actions={[openChat()]} />);
+
+      const buttons = within(screen.getByRole('toolbar')).getAllByRole('button');
+      expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual(['Live edit', 'Comments', 'Stats', 'Open chat']);
+      const action = buttons[3];
+      expect(action).not.toHaveAttribute('aria-pressed');
+      expect(action).not.toHaveAttribute('aria-controls');
+      expect(action).not.toHaveAttribute('aria-disabled');
+      expect(action.closest('.artifact-mode-rail-actions')).not.toBeNull();
+    });
+
+    it('renders an action alone, with no tab', () => {
+      render(<ViewerModeRail label="Viewer panels" tabs={[]} actions={[openChat()]} />);
+      expect(screen.getByRole('button', { name: 'Open chat' })).toBeInTheDocument();
+    });
+
+    it('runs an enabled action on click', () => {
+      const action = openChat();
+      render(<ViewerModeRail label="Viewer panels" tabs={tabs()} actions={[action]} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Open chat' }));
+      expect(action.onSelect).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps a disabled action focusable, never runs it, and says why on hover', async () => {
+      const user = userEvent.setup();
+      const action = openChat({ disabled: true, description: 'The chat this was made in has been deleted' });
+      render(<ViewerModeRail label="Viewer panels" tabs={tabs()} actions={[action]} />);
+
+      const button = screen.getByRole('button', { name: 'Open chat' });
+      expect(button).toHaveAttribute('aria-disabled', 'true');
+      expect(button).not.toBeDisabled();
+      expect(button).toHaveAccessibleDescription('The chat this was made in has been deleted');
+      await user.hover(button);
+      const tip = await screen.findByText('The chat this was made in has been deleted', { selector: '.artifact-mode-rail-tip span' });
+      expect(tip.closest('.artifact-mode-rail-tip')).toHaveTextContent('Open chat');
+      await user.click(button);
+      expect(action.onSelect).not.toHaveBeenCalled();
+    });
+
+    it('names a disabled action with no reason yet, and describes nothing', () => {
+      render(<ViewerModeRail label="Viewer panels" tabs={tabs()} actions={[openChat({ disabled: true, description: '' })]} />);
+      const button = screen.getByRole('button', { name: 'Open chat' });
+      expect(button).toHaveAttribute('aria-disabled', 'true');
+      expect(button).not.toHaveAttribute('aria-describedby');
+    });
+
+    it('reaches the action with the arrow keys', () => {
+      render(<ViewerModeRail label="Viewer panels" tabs={tabs()} actions={[openChat()]} />);
+      const buttons = screen.getAllByRole('button');
+      buttons[2].focus();
+      fireEvent.keyDown(buttons[2], { key: 'ArrowDown' });
+      expect(buttons[3]).toHaveFocus();
+    });
+  });
 });

@@ -69,7 +69,8 @@ export const isRunning = (task) => (task.messages || []).some((m) => m.role === 
 /**
  * What the operator is told about the screen: where the person is, an open
  * artifact (`artifacts`, from screenArtifacts.js: its title, type and the
- * start of its text), projects and recent tasks.
+ * start of its text), the call's work still running (`working`, a list),
+ * projects, recent tasks and any older task still running.
  */
 export function describeScreen({
   route, currentTask, selectedProject, projects, tasks, callTaskId = null, working = null, browserPage = '', artifacts = [], waiting = [], maxTasks = 30,
@@ -93,9 +94,17 @@ export function describeScreen({
   lines.push(...describeWaiting(waiting));
   const callTask = callTaskId && (tasks || []).find((t) => t.id === callTaskId);
   if (callTask) lines.push(`The task this call last gave Anton work in (id ${callTask.id})${isRunning(callTask) ? ', running now' : ''}: "${callTask.title || 'Untitled'}".`);
-  if (working) {
-    const where = (tasks || []).find((t) => t.id === working.taskId);
-    lines.push(`Anton is busy right now${where ? ` in task ${where.id} ("${where.title || 'Untitled'}")` : ''} on the call's request "${working.request}". New work waits for it.`);
+  // The call's own work still running, each in its task (ENG-4631): more work
+  // in one of those tasks queues behind it; work for a new task or another
+  // task starts beside it.
+  const works = (Array.isArray(working) ? working : [working]).filter(Boolean);
+  if (works.length) {
+    lines.push("Anton is working on the call's requests:");
+    works.forEach((work) => {
+      const where = (tasks || []).find((t) => t.id === work.taskId);
+      lines.push(where ? `- in task ${where.id} ("${where.title || 'Untitled'}"): "${work.request}"` : `- "${work.request}" (starting)`);
+    });
+    lines.push('More work in one of those tasks queues behind it there. Work for a new task or another task starts at once, beside it.');
   }
   lines.push(`Projects: ${(projects || []).map((p) => `"${p.name}"`).join(', ') || 'none'}.`);
   const recent = (tasks || []).slice(0, maxTasks);
@@ -104,6 +113,12 @@ export function describeScreen({
     recent.forEach((t) => {
       lines.push(`- id ${t.id}: "${t.title || 'Untitled'}" in "${t.projectName || 'general'}"${isRunning(t) ? ', running now' : ''}`);
     });
+  }
+  // A running task past that list still counts: the person can ask for it.
+  const older = (tasks || []).slice(maxTasks).filter(isRunning);
+  if (older.length) {
+    lines.push('Also running, older:');
+    older.forEach((t) => lines.push(`- id ${t.id}: "${t.title || 'Untitled'}" in "${t.projectName || 'general'}", running now`));
   }
   return lines.join('\n');
 }
@@ -129,4 +144,62 @@ export function describeSteps(task, { maxSteps = 25 } = {}) {
   const answer = String(turn.content || '').trim();
   if (answer) lines.push(`${live ? 'Its answer so far' : 'Its answer'}: ${answer.slice(0, 1200)}`);
   return lines.join('\n');
+}
+
+// Words in how people name a task ("the one where we talked about pricing")
+// that say nothing about which.
+const NOT_A_NAME = new Set([
+  'the', 'one', 'ones', 'an', 'task', 'tasks', 'chat', 'my', 'our', 'that', 'this', 'about', 'with', 'on', 'of',
+  'for', 'in', 'where', 'we', 'talked', 'discussed', 'was', 'were', 'is', 'and', 'it', 'from', 'to', 'you',
+]);
+const searchTerms = (text) => String(text ?? '').toLowerCase().split(/[^\p{L}\p{N}]+/u)
+  .filter((w) => w.length > 1 && !NOT_A_NAME.has(w));
+
+/**
+ * search_tasks (ENG-4631): the tasks that match `query`, best first, from the
+ * app's search (`hits`, `/search` results: every task's title, beyond the
+ * recent ones the snapshot lists) and the tasks loaded here (`tasks`), which
+ * also know which are running. At most `max`, as `{id, title, project, running}`.
+ */
+export function findTasks({ query, tasks = [], hits = [], max = 8 }) {
+  const terms = searchTerms(query);
+  if (!terms.length) return [];
+  const loaded = new Map((tasks || []).map((t) => [String(t.id), t]));
+  const found = new Map();
+  const add = (id, title, project, score) => {
+    const key = String(id);
+    const task = loaded.get(key);
+    const prior = found.get(key);
+    if (prior && prior.score >= score) return;
+    found.set(key, {
+      id: key,
+      title: task?.title || title || 'Untitled',
+      project: task?.projectName || project || 'general',
+      running: task ? isRunning(task) : false,
+      score,
+    });
+  };
+  (hits || []).forEach((hit, i) => {
+    if (hit?.type !== 'task' || !hit.id) return;
+    // The server's order first: it scored every task's title. Loaded tasks it
+    // didn't return come after.
+    add(hit.id, hit.title, hit.subtitle && hit.subtitle !== 'Task' ? hit.subtitle : '', 10_000 - i);
+  });
+  (tasks || []).forEach((t, i) => {
+    const words = new Set(searchTerms(`${t.title || ''} ${t.projectName || ''}`));
+    const matched = terms.filter((term) => [...words].some((w) => w.startsWith(term))).length;
+    // Every word, or most of a longer query; newest first among equals.
+    if (!matched || matched < Math.ceil(terms.length / 2)) return;
+    add(t.id, t.title, t.projectName, matched * 100 - i / 1000 + (matched === terms.length ? 2000 : 0));
+  });
+  return [...found.values()].sort((a, b) => b.score - a.score).slice(0, max).map(({ score, ...task }) => task);
+}
+
+/** What search_tasks tells the operator about what it found. */
+export function describeFound(query, found) {
+  if (!found.length) return `No task matches "${query}". Ask the user to say it another way, or which project it is in.`;
+  return [
+    `Tasks matching "${query}", best first:`,
+    ...found.map((t) => `- id ${t.id}: "${t.title}" in "${t.project}"${t.running ? ', running now' : ''}`),
+  ].join('\n');
 }

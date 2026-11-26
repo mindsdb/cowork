@@ -293,11 +293,17 @@
     },
     "dropFiles": "Drop files to attach",
     "addContext": "Add context",
+    "docOutput": {
+      "chip": "Doc",
+      "remove": "Output: Doc. Remove",
+      "title": "The answer will be written as a doc. Click to remove."
+    },
     "menu": {
       "attachFiles": "Attach files or photos",
       "openingGoogleDrive": "Opening Google Drive…",
       "addFromGoogleDrive": "Add files from Google Drive",
       "addFromSharePoint": "Add files from SharePoint",
+      "writeAsDoc": "Write it as a doc",
       "browserTitle": "{agent} can use browser mode in this task. Off applies from your next message.",
       "browser": "Browser",
       "browserOff": "Turn the browser off for this task",
@@ -316,7 +322,11 @@
       "none": "No project"
     },
     "chooseHarness": "Choose harness",
-    "voiceCall": "Voice call"
+    "voiceCall": "Voice mode",
+    "dictation": {
+      "start": "Dictate",
+      "stop": "Stop dictating"
+    }
   },
   "attachmentThumbnail": {
     "open": "Open image",
@@ -760,7 +770,7 @@
     "talkTo": "Talk to {agent}"
   },
   "voiceCall": {
-    "dialogLabel": "Voice call with {agent}",
+    "dialogLabel": "Voice mode",
     "connecting": "Connecting…",
     "ending": "Ending…",
     "working": "Working on it…",

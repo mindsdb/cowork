@@ -96,6 +96,9 @@
 .artifact-mode-rail-tab[aria-pressed="true"] { background: color-mix(in srgb, var(--accent) 13%, var(--surface)); color: var(--accent); }
 .artifact-mode-rail-tab[aria-pressed="true"]:hover { background: color-mix(in srgb, var(--accent) 19%, var(--surface)); }
 .artifact-mode-rail-tab:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 1px; }
+.artifact-mode-rail-actions { margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.artifact-mode-rail-action[aria-disabled="true"] { opacity: .45; cursor: default; }
+.artifact-mode-rail-action[aria-disabled="true"]:hover { background: transparent; color: var(--ink-3); }
 /* An inbox's counter: comments still to review, on the icon's corner. */
 .artifact-mode-rail .artifact-feedback-badge { top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 4px; font: 700 10px/1 var(--font-body); font-variant-numeric: tabular-nums; animation: artifact-badge-in var(--dur-layout, 220ms) var(--ease-out, ease-out); }
 @keyframes artifact-badge-in { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }

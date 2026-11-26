@@ -31,18 +31,18 @@ describe('ArtifactStatus access labelling (ENG-1212)', () => {
     expect(hasIcon('Restricted')).toBe(true);
   });
 
-  it('shows a neutral "Password" badge for a password-protected artifact', () => {
+  it('shows a neutral "Public · password" badge, with a lock, for a password-protected artifact (ENG-4647)', () => {
     render(<ArtifactStatus artifact={{ ...published, accessMode: 'password' }} />);
-    expect(screen.getByText('Password')).toBeInTheDocument();
+    expect(screen.getByText('Public · password')).toBeInTheDocument();
     expect(screen.queryByText('Shared')).toBeNull();
-    expect(isNeutral('Password')).toBe(true);
-    expect(hasIcon('Password')).toBe(true);
+    expect(isNeutral('Public · password')).toBe(true);
+    expect(hasIcon('Public · password')).toBe(true);
   });
 
-  it('falls back to "Password" (neutral) when only the legacy accessProtected flag is set', () => {
+  it('falls back to "Public · password" (neutral) when only the legacy accessProtected flag is set', () => {
     render(<ArtifactStatus artifact={{ ...published, accessProtected: true }} />);
-    expect(screen.getByText('Password')).toBeInTheDocument();
-    expect(isNeutral('Password')).toBe(true);
+    expect(screen.getByText('Public · password')).toBeInTheDocument();
+    expect(isNeutral('Public · password')).toBe(true);
   });
 
   it('shows the green "Public" badge only for a genuinely public artifact', () => {
@@ -76,14 +76,35 @@ describe('ArtifactStatus access labelling (ENG-1212)', () => {
     expect(hasIcon('Restricted')).toBe(true);
   });
 
-  it('shows "Not shared" for an unpublished, publishable artifact', () => {
-    render(<ArtifactStatus artifact={{ accessMode: 'restricted' }} publishable />);
-    expect(screen.getByText('Not shared')).toBeInTheDocument();
+  // ENG-4647: one rule for every kind of file. Not shared yet means only its
+  // owner can open it, whether it can become a link or not.
+  it('shows "Only you" for an unpublished artifact, shareable or not, with no live dot', () => {
+    const { unmount } = render(<ArtifactStatus artifact={{ accessMode: 'restricted' }} publishable />);
+    expect(screen.getByText('Only you')).toBeInTheDocument();
     expect(screen.queryByText('Restricted')).toBeNull();
+    expect(screen.queryByText('Not shared')).toBeNull();
+    unmount();
+    render(<ArtifactStatus artifact={{ kind: 'xlsx' }} publishable={false} />);
+    expect(screen.getByText('Only you')).toBeInTheDocument();
+    expect(screen.queryByText('Draft')).toBeNull();
+  });
+
+  it('shows "Only you" for a shared link nobody else can open, instead of "Restricted" (ENG-4647)', () => {
+    render(<ArtifactStatus artifact={{ ...published, accessMode: 'restricted', ownerOnly: true }} />);
+    expect(screen.getByText('Only you')).toBeInTheDocument();
+    expect(screen.queryByText('Restricted')).toBeNull();
+    expect(isNeutral('Only you')).toBe(true);
+  });
+
+  it('shows "Everyone at ‹org›" for an artifact shared with the whole org, and says so on hover', async () => {
+    render(<ArtifactStatus artifact={{ ...published, accessMode: 'restricted', orgAllowed: true, ownerOnly: false }} />);
+    await userEvent.hover(screen.getByText('Everyone in the organization'));
+    expect(await screen.findByText('Anyone in your organization')).toBeInTheDocument();
+    expect(screen.queryByText(/the people you chose/)).toBeNull();
   });
 
   it('still surfaces "Unshared changes" alongside a protected badge when modified', () => {
-    render(<ArtifactStatus artifact={{ ...published, accessMode: 'restricted', modified: true }} />);
+    render(<ArtifactStatus artifact={{ ...published, accessMode: 'restricted', accessEmails: ['a@b.com'], modified: true }} />);
     expect(screen.getByText('Restricted')).toBeInTheDocument();
     expect(screen.getByText('Unshared changes')).toBeInTheDocument();
   });
@@ -114,7 +135,7 @@ describe('ArtifactStatus hints (ENG-2177)', () => {
 
   it('explains Draft as a file type that cannot become a web link', () => {
     expect(artifactStatusHint({}, false))
-      .toBe('Not shared. Only web pages and Markdown documents can be shared as a link.');
+      .toBe("Not shared. Web pages, documents, spreadsheets, decks, PDFs, CSV and text files can be shared as a link; this kind of file can't.");
   });
 
   it('tells the user how to share a Not shared artifact', () => {
@@ -139,10 +160,10 @@ describe('ArtifactStatus hints (ENG-2177)', () => {
       .toBe('Shared. Who can open the link could not be confirmed, so it is treated as restricted.');
   });
 
-  it('shows the Draft hint on hover', async () => {
+  it('says on hover that a kind which can\'t be a link isn\'t shared', async () => {
     render(<ArtifactStatus artifact={{}} publishable={false} />);
-    await userEvent.hover(screen.getByText('Draft'));
-    expect(await screen.findByText(/Only web pages and Markdown documents/)).toBeInTheDocument();
+    await userEvent.hover(screen.getByText('Only you'));
+    expect(await screen.findByText(/this kind of file can't/)).toBeInTheDocument();
   });
 
   it('shows the Restricted hint on hover', async () => {
@@ -220,11 +241,11 @@ describe('ArtifactStatus authorship tag (ENG-2979)', () => {
     expect(follows(tag, screen.getByText('Unshared changes'))).toBe(true);
   });
 
-  it('puts the tag right after the Not shared badge', () => {
+  it('puts the tag right after the badge of an artifact not shared yet', () => {
     render(<ArtifactStatus artifact={{}} publishable authorship={authorship} />);
     const tag = screen.getByText('Another member');
-    expect(tag.parentElement).toContainElement(screen.getByText('Not shared'));
-    expect(follows(screen.getByText('Not shared'), tag)).toBe(true);
+    expect(tag.parentElement).toContainElement(screen.getByText('Only you'));
+    expect(follows(screen.getByText('Only you'), tag)).toBe(true);
   });
 
   it('puts the tag right after a transient phase badge', () => {
@@ -280,7 +301,7 @@ describe('ArtifactStatus authorship tag (ENG-2979)', () => {
 describe('ArtifactStatus without a page badge (a live app shares through "Share with…")', () => {
   const app = { publishedUrl: '', type: 'fullstack-stateless-app' };
 
-  it('drops the idle "Not shared" badge', () => {
+  it('drops the idle badge of an artifact not shared yet', () => {
     const { container } = render(<ArtifactStatus artifact={app} pageBadge={false} />);
     expect(screen.queryByText('Not shared')).toBeNull();
     expect(container).toBeEmptyDOMElement();

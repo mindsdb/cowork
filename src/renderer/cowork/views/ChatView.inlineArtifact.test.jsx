@@ -21,6 +21,7 @@ vi.mock('../lib/artifactsStore', () => ({
   useArtifactCardBySlug: () => null,
   setArtifactsScope: vi.fn(),
   revalidate: vi.fn(() => Promise.resolve()),
+  onArtifactRenamed: () => () => {},
 }));
 
 vi.mock('../../platform/host', () => ({
