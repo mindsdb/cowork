@@ -11,6 +11,7 @@ import { SharedWithMenu } from './publish/SharedWithMenu';
 import { ArtifactAddressPill } from './ArtifactAddressPill';
 import { ArtifactAuthorshipBadge } from '../artifacts/ArtifactAuthorshipBadge';
 import { IconButton } from './ArtifactViewerIconButton';
+import { maximizeKeyShortcuts } from './useViewerLayout';
 import { PreviewErrorsButton } from './PreviewErrorsButton';
 import { ArtifactExportMenu } from './export/ArtifactExportMenu';
 import { reportDownloaded } from '../../lib/artifactShareAnalytics';
@@ -46,6 +47,7 @@ export function ArtifactViewerHeader({
     disabledReason,
     shareRequest = null,
     onShareRequestClosed,
+    onReviewUnshared = null,
   } = publication;
   // A caller with no address to give still gets the pill, named by the
   // title, so ↗ keeps its place.
@@ -144,7 +146,7 @@ export function ArtifactViewerHeader({
       <div className="artifact-viewer-action-zone" style={{ display: 'flex', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
         {artifact?.projectId && artifactIdentity(artifact) && (
           <ReportContentButton key={`${artifact.projectId}:${artifactIdentity(artifact)}:${workspace?.currentRevision?.id ?? ''}:${artifact.mtime ?? ''}`}
-            artifactTarget={{ projectId: String(artifact.projectId), artifactId: artifactIdentity(artifact) }} />
+            trigger={IconButton} artifactTarget={{ projectId: String(artifact.projectId), artifactId: artifactIdentity(artifact) }} />
         )}
         {diagnostics && <PreviewErrorsButton diagnostics={diagnostics} />}
         {/* Sharing is owner-side chrome on BOTH deployments now. It used to be
@@ -156,11 +158,20 @@ export function ArtifactViewerHeader({
             transport difference. */}
         {/* The draft is ahead of the published page (a change kept as a
             draft, ENG-4409): the same warning the artifact card shows, until
-            Update in the Share panel publishes it. Desktop only, as Update is. */}
-        {canManage && publishable && isPublished && !orgMode && pub?.modified && (
-          <Tooltip content={t('header.unsharedChangesHint')}>
-            <Badge variant="warning" size="sm" dot>{t('status.unsharedChanges')}</Badge>
-          </Tooltip>
+            it is published. A button opening the review of those changes when
+            the shared version is known (ENG-4595), on every deployment. */}
+        {canManage && publishable && isPublished && pub?.modified && (
+          onReviewUnshared ? (
+            <Tooltip content={t('header.reviewUnsharedHint')}>
+              <button type="button" className="artifact-unshared-button" onClick={onReviewUnshared}>
+                <Badge variant="warning" size="sm" dot>{t('status.unsharedChanges')}</Badge>
+              </button>
+            </Tooltip>
+          ) : (
+            <Tooltip content={t('header.unsharedChangesHint')}>
+              <Badge variant="warning" size="sm" dot>{t('status.unsharedChanges')}</Badge>
+            </Tooltip>
+          )
         )}
         {canManage && publishable && (
           <PublishMenu
@@ -273,7 +284,7 @@ export function ArtifactViewerHeader({
             <Tooltip content={layout.maximized ? t('layout.restore') : t('layout.maximize')}>
               <IconButton
                 aria-label={layout.maximized ? t('layout.restore') : t('layout.maximize')}
-                aria-keyshortcuts={host.isMac() ? 'Meta+Shift+Enter' : 'Control+Shift+Enter'}
+                aria-keyshortcuts={maximizeKeyShortcuts()}
                 onClick={() => layout.onToggle('maximized')}
               >
                 {layout.maximized ? Ico.minimize(16) : Ico.maximize(16)}

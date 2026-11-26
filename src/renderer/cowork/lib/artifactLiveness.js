@@ -28,6 +28,8 @@
 // widening kept the short id as the full id's first eight characters, so both
 // spellings are indexed and both are looked up.
 
+import { isWidgetArtifact } from './artifactKinds';
+
 function textValue(value) {
   return value == null ? '' : String(value).trim();
 }
@@ -165,6 +167,9 @@ export function isArtifactDeleted(card, { index, tombstones, born, scope, live }
   if (!card) return false;
   if (matchesIndex(card, tombstones)) return true;
   if (live) return false;
+  // A widget (ENG-4684) is left out of the artifact list on purpose, so its
+  // absence there says nothing about it.
+  if (isWidgetArtifact(card)) return false;
   if (matchesIndex(card, born)) return false;
   if (!index) return false;
   if (!isInScope(card, scope)) return false;

@@ -7,6 +7,8 @@ import { STOCK_PRODUCT_NAME } from '../../../shared/product-name';
 import { ConfirmModal } from './ConfirmModal';
 import { useLogout, LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
 import { useTranslation } from '../../lib/i18n';
+import DesktopOfferModal, { DesktopTag } from './DesktopOfferModal';
+import { desktopOfferAvailable } from '../lib/desktopOffer';
 
 // Mobile chrome for the cowork SPA. Active at viewport widths < 640px
 // (see useBreakpoint.isMobile). Replaces the desktop sidebar + main
@@ -128,6 +130,7 @@ export default function MobileShell({
   // The drawer's Chat row lists the newest chats; See all opens the rest in place.
   const [allChats, setAllChats] = useState(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
+  const [codeOfferOpen, setCodeOfferOpen] = useState(false);
   const { loggingOut, waitNote, logout } = useLogout();
   const [openSection, setOpenSection] = useState(null);
   const [fabMenuOpen, setFabMenuOpen] = useState(false);
@@ -405,6 +408,23 @@ export default function MobileShell({
             )}
           </div>
 
+          {/* A phone's browser has no sidebar, so Code mode gets its row
+              here. It opens the offer of the desktop app over the drawer;
+              closing the offer leaves the drawer as it was. */}
+          {desktopOfferAvailable() && (
+            <div className="mshell-accordion">
+              <button
+                type="button"
+                className="mshell-accordion__head"
+                aria-haspopup="dialog"
+                onClick={() => setCodeOfferOpen(true)}
+              >
+                <span className="mshell-accordion__label">{t('workspaceMode.code')}</span>
+                <DesktopTag />
+              </button>
+            </div>
+          )}
+
           {SECTIONS.map((section) => {
             const isOpen = openSection === section.key;
             let count = 0;
@@ -428,16 +448,24 @@ export default function MobileShell({
               });
             } else if (section.key === 'scheduled') {
               count = schedulesList.length;
-              content = schedulesList.length === 0 ? (
-                <div className="mshell-empty">{t('mobile.noScheduled')}</div>
-              ) : schedulesList.map((s) => (
-                <ListRow
-                  key={s.id}
-                  primary={s.title || s.name || t('mobile.schedule')}
-                  secondary={s.cron || s.schedule || ''}
-                  onClick={() => handleScheduleTap(s.id)}
-                />
-              ));
+              content = (
+                <>
+                  <ListRow
+                    primary={t('projects:scheduleDetail.allScheduledTasks')}
+                    onClick={() => handleNavigate('scheduled')}
+                  />
+                  {schedulesList.length === 0 ? (
+                    <div className="mshell-empty">{t('mobile.noScheduled')}</div>
+                  ) : schedulesList.map((s) => (
+                    <ListRow
+                      key={s.id}
+                      primary={s.title || s.name || t('mobile.schedule')}
+                      secondary={s.cron || s.schedule || ''}
+                      onClick={() => handleScheduleTap(s.id)}
+                    />
+                  ))}
+                </>
+              );
             } else if (section.key === 'artifacts') {
               count = artifactsList.length;
               content = artifactsList.length === 0 ? (
@@ -533,6 +561,11 @@ export default function MobileShell({
           </div>
         )}
       </aside>
+      <DesktopOfferModal
+        feature={codeOfferOpen ? 'code_mode' : null}
+        entry="mobile_drawer"
+        onClose={() => setCodeOfferOpen(false)}
+      />
       <ConfirmModal
         open={logoutOpen}
         title={LOGOUT_CONFIRM_COPY.title}

@@ -8,9 +8,12 @@ import {
   OWNED_BY_OTHER_USER_MESSAGE,
   isOwnedByOtherUserError,
   isShareOrgRequiredError,
+  isDatasourceApprovalError,
+  pendingDatasourcesFromError,
   publishRefusalMessage,
+  unapprovedDatasourcesNotice,
 } from './publishErrors';
-import { SHARE_ORG_REQUIRED_CODE } from '../../../lib/sharingContract';
+import { PUBLISH_SHELL_TOO_OLD_CODE, SHARE_ORG_REQUIRED_CODE } from '../../../lib/sharingContract';
 
 function httpError(status, code, message = 'x') {
   return Object.assign(new Error(message), { status, code });
@@ -55,5 +58,28 @@ describe('a refused share with everyone', () => {
     expect(publishRefusalMessage(httpError(403, SHARE_ORG_REQUIRED_CODE, REASON))).toBe(REASON);
     expect(publishRefusalMessage(httpError(409, OWNED_BY_OTHER_USER_CODE))).toBe(OWNED_BY_OTHER_USER_MESSAGE);
     expect(publishRefusalMessage(httpError(502, null, 'Publishing failed: upload timed out'))).toBeNull();
+  });
+});
+
+describe('connection approval refusals', () => {
+  const approval = Object.assign(new Error('m'), {
+    code: 'datasource_approval_required',
+    body: { detail: { pending: [{ engine: 'pg', name: 'a', label: 'pg/a' }] } },
+  });
+
+  it('reads the pending list from a 409', () => {
+    expect(isDatasourceApprovalError(approval)).toBe(true);
+    expect(pendingDatasourcesFromError(approval)).toEqual([{ engine: 'pg', name: 'a', label: 'pg/a' }]);
+    expect(pendingDatasourcesFromError(new Error('x'))).toEqual([]);
+  });
+
+  it('words both refusals', () => {
+    expect(publishRefusalMessage(approval)).toMatch(/haven't approved/);
+    expect(publishRefusalMessage(Object.assign(new Error('x'), { code: PUBLISH_SHELL_TOO_OLD_CODE }))).toMatch(/Update the app/);
+  });
+
+  it('names connections published without credentials', () => {
+    expect(unapprovedDatasourcesNotice({ unapprovedDatasources: [{ label: 'mysql/late' }] })).toMatch(/mysql\/late/);
+    expect(unapprovedDatasourcesNotice({})).toBe('');
   });
 });

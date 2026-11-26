@@ -19,8 +19,6 @@ import {
   useCollectionShortcut,
   CollectionState,
   ListGroup,
-  ListSortHeader,
-  LIST_SORT_HEADER_MIN,
 } from '../components/collection';
 import { useTranslation } from '../../lib/i18n';
 
@@ -210,18 +208,6 @@ export default function TasksView({
         }}
       >
         <ListGroup className="mx-8 mb-8">
-          {/* A long list sorts from its header too, in step with the pill. */}
-          {visible.length > LIST_SORT_HEADER_MIN && (
-            <ListSortHeader
-              value={sort}
-              onChange={setSort}
-              columns={[
-                { id: 'name', label: t('ui.sortHeader.columns.name'), sorts: ['name'] },
-                { id: 'project', label: t('ui.sortHeader.columns.project'), sorts: ['project'] },
-                { id: 'updated', label: t('ui.sortHeader.columns.updated'), sorts: ['recent'] },
-              ]}
-            />
-          )}
           {visible.map((row) => {
             if (row.kind === 'task') {
               return (

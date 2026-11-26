@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { orgBrandImageOrigins, withOrgBrandImageSources } from './org-brand-image-origins';
+import { galleryImageOrigins, withGalleryImageSources } from './gallery-image-origins';
 
 const ORG_BRAND_IMAGE_ORIGINS = orgBrandImageOrigins(undefined);
 
@@ -31,8 +32,20 @@ describe('withOrgBrandImageSources', () => {
     ['two meta tags', page("img-src 'self'") + page("img-src 'self'")],
     ['no img-src', page("default-src 'self'")],
     ['two img-src', page("img-src 'self'; img-src data:")],
-    ['a host already listed', page(`img-src 'self' ${ORG_BRAND_IMAGE_ORIGINS[0]}`)],
   ])('refuses %s', (_name, html) => {
     expect(() => withOrgBrandImageSources(html)).toThrow();
+  });
+
+  it('leaves a host the page already lists', () => {
+    const html = page("img-src 'self' https://*.dev.mindshub.ai");
+    expect(withOrgBrandImageSources(html, orgBrandImageOrigins('development'))).toBe(html);
+  });
+
+  it('gives the same development page whichever of the brand and gallery hosts goes in first', () => {
+    const start = page("default-src 'self'; img-src 'self' data:");
+    const brandFirst = withGalleryImageSources(withOrgBrandImageSources(start, orgBrandImageOrigins('development')), galleryImageOrigins('development'));
+    const galleryFirst = withOrgBrandImageSources(withGalleryImageSources(start, galleryImageOrigins('development')), orgBrandImageOrigins('development'));
+    expect(galleryFirst).toBe(brandFirst);
+    expect(policyOf(brandFirst)).toBe("default-src 'self'; img-src 'self' data: https://*.dev.mindshub.ai");
   });
 });

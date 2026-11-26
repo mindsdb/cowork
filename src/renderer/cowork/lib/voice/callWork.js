@@ -40,6 +40,8 @@ export function createCallWork() {
     busy: () => works.size > 0,
     first: () => works.values().next().value || null,
     last: () => [...works.values()].at(-1) || null,
+    // Everything still running for the call, oldest first.
+    all: () => [...works.values()],
     inTask: (taskId) => [...works.values()].filter((w) => w.taskId === taskId),
     clear: () => { [...works.values()].forEach((w) => w.settle()); },
   };

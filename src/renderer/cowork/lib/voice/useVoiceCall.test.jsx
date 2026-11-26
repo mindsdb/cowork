@@ -237,7 +237,8 @@ describe('a voice call', () => {
     hook = await started({ onAsk, context: () => '' });
     act(() => {
       peer.channel.emit({ type: 'session.started' });
-      peer.channel.emit({ type: 'session.input_transcript.delta', delta: 'Hang up, thanks.' });
+      // Not a plain goodbye (goodbye.js): the operator decides, and calls hang_up.
+      peer.channel.emit({ type: 'session.input_transcript.delta', delta: "Let's wrap this call up for today." });
       peer.channel.emit({ type: 'session.delegation.created', delegation: { id: 'item_bye', target: 'client' } });
     });
     await act(async () => { await vi.advanceTimersByTimeAsync(800); });
@@ -245,6 +246,51 @@ describe('a voice call', () => {
     expect(hook.result.current.micOn).toBe(false);
     expect(peer.channel.sent.at(-1)).toMatchObject({ type: 'session.commentary.append', content: 'Bye for now.' });
     act(() => peer.channel.emit({ type: 'session.output_transcript.delta', delta: 'Bye for now.' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_500); });
+    expect(peer.channel.sent.at(-1)).toEqual({ type: 'session.close' });
+  });
+
+  // ENG-4631: GPT-Live answers "you're dismissed" itself, as small talk, and
+  // never hands it back, so the call kept listening.
+  it('hangs up after Anton answers a goodbye himself, and only the goodbye', async () => {
+    track.stop.mockClear();
+    const onAsk = vi.fn();
+    const hook = await started({ onAsk, context: () => '' });
+    act(() => {
+      peer.channel.emit({ type: 'session.started' });
+      peer.channel.emit({ type: 'session.input_transcript.delta', delta: 'How are you?' });
+      peer.channel.emit({ type: 'session.output_transcript.delta', delta: 'Great, thanks!' });
+    });
+    // Small talk keeps the call.
+    expect(track.stop).not.toHaveBeenCalled();
+    act(() => {
+      peer.channel.emit({ type: 'session.input_transcript.delta', delta: "Okay, you're " });
+      peer.channel.emit({ type: 'session.input_transcript.delta', delta: 'dismissed.' });
+      peer.channel.emit({ type: 'session.output_transcript.delta', delta: 'Bye!' });
+    });
+    expect(track.stop).toHaveBeenCalled();
+    expect(hook.result.current.micOn).toBe(false);
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_500); });
+    expect(peer.channel.sent.at(-1)).toEqual({ type: 'session.close' });
+    expect(onAsk).not.toHaveBeenCalled();
+  });
+
+  it('a goodbye handed back ends the call without asking the operator', async () => {
+    track.stop.mockClear();
+    const onAsk = vi.fn();
+    const hook = await started({ onAsk, context: () => '' });
+    act(() => {
+      peer.channel.emit({ type: 'session.started' });
+      peer.channel.emit({ type: 'session.input_transcript.delta', delta: 'You can hang up now.' });
+      peer.channel.emit({ type: 'session.delegation.created', delegation: { id: 'item_bye', target: 'client' } });
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(800); });
+    expect(onAsk).not.toHaveBeenCalled();
+    expect(hook.result.current.micOn).toBe(false);
+    expect(peer.channel.sent.at(-1)).toMatchObject({
+      type: 'session.commentary.append', delegation_id: 'item_bye', content: expect.stringContaining('goodbye'),
+    });
+    act(() => peer.channel.emit({ type: 'session.output_transcript.delta', delta: 'Talk soon!' }));
     await act(async () => { await vi.advanceTimersByTimeAsync(2_500); });
     expect(peer.channel.sent.at(-1)).toEqual({ type: 'session.close' });
   });

@@ -48,15 +48,17 @@
   },
   "status": {
     "badge": {
+      "onlyYou": "Solo tu",
       "public": "Pubblico",
-      "password": "Password",
+      "publicPassword": "Pubblico · password",
       "restricted": "Limitato"
     },
     "hint": {
       "notSharedYet": "Non ancora condiviso. Aprilo e scegli Condividi per ottenere un link web.",
-      "notShareable": "Non condiviso. Solo le pagine web e i documenti Markdown possono essere condivisi tramite link.",
+      "notShareable": "Non condiviso. Pagine web, documenti, fogli di calcolo, presentazioni, PDF, CSV e file di testo possono essere condivisi tramite link; questo tipo di file no.",
       "orgRestricted": "Limitato. Apri Condividi per vedere chi può aprire il link.",
       "ownerOnly": "Condiviso, ma solo tu puoi aprire il link.",
+      "password": "Chiunque abbia il link e la password può aprirlo.",
       "chosenPeople": "Condiviso. Solo le persone che hai scelto possono aprire il link.",
       "unknown": "Condiviso. Non è stato possibile verificare chi può aprire il link, quindi viene trattato come limitato.",
       "sharedWith": "Condiviso con {names}",
@@ -70,7 +72,6 @@
     "stoppingSharing": "Interruzione della condivisione…",
     "deleting": "Eliminazione…",
     "notShared": "Non condiviso",
-    "draft": "Bozza",
     "unsharedChanges": "Modifiche non condivise"
   },
   "liveAppShare": {
@@ -133,6 +134,8 @@
       "hoursAgo": "{count, plural, one {# ora fa} other {# ore fa}}",
       "daysAgo": "{count, plural, one {# giorno fa} other {# giorni fa}}",
       "replies": "{count, plural, one {# risposta} other {# risposte}}",
+      "replyPlaceholder": "Rispondi…",
+      "replyAriaLabel": "Rispondi a questo commento",
       "edited": "(modificato)",
       "unattachedTip": "La parte dell’artefatto a cui si riferiva questo commento non è più disponibile.",
       "generalTip": "Feedback generale sull’intero artefatto.",
@@ -246,8 +249,12 @@
     "changeNavigation": "Scorri le modifiche",
     "publishedArtifact": "Artefatto pubblicato",
     "reviewBeforePublishing": "Controlla la modifica prima di pubblicarla",
+    "reviewUnshared": "Modifiche non ancora condivise",
     "keepDraft": "Mantieni come bozza",
     "publishChange": "Pubblica questa modifica",
+    "publishChanges": "Pubblica modifiche",
+    "sharedVersion": "Versione condivisa",
+    "draftVersion": "Bozza",
     "publishing": "Pubblicazione…"
   },
   "htmlEditor": {
@@ -302,6 +309,12 @@
   },
   "publish": {
     "ownedByOther": "Questo artefatto è stato pubblicato da un altro proprietario.",
+    "datasources": {
+      "notice": "La pubblicazione carica le credenziali di queste connessioni: {list}",
+      "review": "Questa app invia le credenziali di connessioni che non hai approvato. Controllale in Condividi e pubblica di nuovo.",
+      "updateApp": "Aggiorna l'applicazione per pubblicare questa app con le sue connessioni. Puoi anche chiedere all'agente di pubblicarla dalla chat.",
+      "unapproved": "Pubblicata senza le credenziali di: {list}"
+    },
     "linkLeftLive": {
       "unrecorded": "Questo link è stato condiviso prima che {product} registrasse chi condivide ogni pagina, quindi {product} non può aggiornarlo né rimuoverlo. Aggiorna condivide un nuovo link, mentre Interrompi condivisione o l’eliminazione dell’artefatto lasciano questo link aperto a chiunque lo abbia. Chiedi all’amministratore di rimuoverlo.",
       "otherArtifact": "Non è stato rimosso nulla: il record di questo artefatto puntava alla pagina di un altro artefatto, {link}.",
@@ -329,6 +342,8 @@
       "specificDesc": "Solo le persone che indichi"
     },
     "whoCanAccess": "Chi può accedere alla tua app",
+    "whoCanAccessDoc": "Chi può accedere al tuo documento",
+    "updatesAsYouEdit": "Si aggiorna mentre modifichi",
     "addPassword": "Aggiungi una password",
     "hide": "Nascondi",
     "show": "Mostra",
@@ -426,7 +441,8 @@
     "moreActions": "Altre azioni",
     "reloadPreview": "Ricarica anteprima",
     "close": "Chiudi",
-    "unsharedChangesHint": "Il link condiviso mostra una versione precedente. Usa Aggiorna in Condividi per pubblicare le modifiche."
+    "unsharedChangesHint": "Il link condiviso mostra una versione precedente. Usa Aggiorna in Condividi per pubblicare le modifiche.",
+    "reviewUnsharedHint": "Rivedi e pubblica le modifiche che il link condiviso non mostra ancora"
   },
   "body": {
     "previewWatermark": "Anteprima",
@@ -514,7 +530,7 @@
     "openViewer": "Apri visualizzatore",
     "showInExplorer": "Mostra in Esplora file",
     "deleteItem": "Elimina artefatto",
-    "onlyHtmlMd": "Solo gli artefatti HTML e Markdown possono essere condivisi.",
+    "onlyHtmlMd": "Solo pagine web, documenti, fogli di calcolo, presentazioni, PDF, CSV e file di testo possono essere condivisi.",
     "sharedToast": "{mode, select, password {Condiviso (protetto da password): {url}} restricted {Condiviso (limitato): {url}} other {Condiviso: {url}}}",
     "mindsApiKey": "Imposta la tua chiave API Minds in Impostazioni per condividere gli artefatti.",
     "stoppedOnMindsHub": "Condivisione su MindsHub interrotta.",
@@ -541,11 +557,9 @@
       "noMatch": "Nessun artefatto corrisponde a questi filtri.",
       "clear": "Cancella filtri",
       "status": "Stato",
-      "allStatuses": "Tutti gli stati"
-    },
-    "owner": {
-      "you": "Tu",
-      "youHint": "Tuo, condiviso con altre persone."
+      "allStatuses": "Tutti gli stati",
+      "access": "Accesso",
+      "allAccess": "Tutti i livelli di accesso"
     },
     "openComments": "{count, plural, one {# commento aperto} other {# commenti aperti}}",
     "openCommentsHint": "Apri l’anteprima sui commenti"
@@ -764,6 +778,7 @@
     "queued": "In coda",
     "queueLabel": "In attesa",
     "removeQueued": "Rimuovi dalla coda",
+    "hide": "Nascondi messaggi",
     "comment": {
       "onArtifact": "Gestisci questo commento sull'artefatto:",
       "onText": "Gestisci questo commento sul testo «{quote}»:",
@@ -917,7 +932,15 @@
     "sourceHint": "Cambia testo e layout della pagina",
     "commentsHint": "Lascia e rivedi i feedback",
     "statsHint": "Chi l’ha visto e per quanto tempo",
-    "commentsOpen": "Commenti, {count} aperti"
+    "commentsOpen": "Commenti, {count} aperti",
+    "openChat": "Apri chat",
+    "openChatHint": "Chiudi l’anteprima e vai alla chat in cui è stato creato",
+    "openChatUnavailable": {
+      "noOrigin": "Non creato in una chat, o creato prima che le chat venissero registrate",
+      "deleted": "La chat in cui è stato creato è stata eliminata",
+      "colleague": "Creato nella chat di un collega, che solo quella persona può aprire",
+      "unreachable": "Al momento non è possibile raggiungere la chat in cui è stato creato"
+    }
   },
   "liveEditPanel": {
     "close": "Chiudi il pannello di modifica dal vivo",

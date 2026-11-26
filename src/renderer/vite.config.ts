@@ -10,6 +10,7 @@ import { platformUiEnabled } from '../shared/ui-capabilities';
 import { withDeploymentBrand } from '../shared/deployment-brand';
 import { withDraftLinkFrameSources } from '../shared/draft-link-origins';
 import { orgBrandImageOrigins, withOrgBrandImageSources } from '../shared/org-brand-image-origins';
+import { galleryImageOrigins, withGalleryImageSources } from '../shared/gallery-image-origins';
 
 const pkg = JSON.parse(readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'));
 
@@ -126,11 +127,22 @@ const draftLinkFrameSources = webEntryTransform('cowork-draft-link-frame-sources
 // build time, hosted only. It rewrites only img-src, which neither transform
 // above touches.
 // Per environment: VITE_BRAND_ENV is the image's build-environment.
-function orgBrandImageSourcesFor(mode: string) {
-  const env = process.env.VITE_BRAND_ENV
+function brandEnvFor(mode: string) {
+  return process.env.VITE_BRAND_ENV
     || loadEnv(mode, path.resolve(__dirname, '../..'), 'VITE_').VITE_BRAND_ENV;
-  const origins = orgBrandImageOrigins(env);
+}
+
+function orgBrandImageSourcesFor(mode: string) {
+  const origins = orgBrandImageOrigins(brandEnvFor(mode));
   return webEntryTransform('cowork-org-brand-image-sources', (html) => withOrgBrandImageSources(html, origins));
+}
+
+// The Use Case Gallery shows the console's example pictures, so the hosted
+// page's img-src also names this environment's console (images only; the
+// gallery frames none of its pages). Same build-time, hosted-only reasoning.
+function galleryImageSourcesFor(mode: string) {
+  const origins = galleryImageOrigins(brandEnvFor(mode));
+  return webEntryTransform('cowork-gallery-image-sources', (html) => withGalleryImageSources(html, origins));
 }
 
 // The build's platform switch: on for desktop, and for web only when
@@ -153,7 +165,7 @@ export default defineConfig(({ mode }) => ({
     react(),
     babel({ presets: [reactCompilerPreset()] }),
     ...(IS_WEB ? [webSpaFallback, deploymentBrand] : []),
-    ...(IS_WEB && platformUiFor(mode) ? [draftLinkFrameSources, orgBrandImageSourcesFor(mode)] : []),
+    ...(IS_WEB && platformUiFor(mode) ? [draftLinkFrameSources, orgBrandImageSourcesFor(mode), galleryImageSourcesFor(mode)] : []),
     devApiProxy.plugin,
   ],
   customLogger: logger,

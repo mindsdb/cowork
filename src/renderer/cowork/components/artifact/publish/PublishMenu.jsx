@@ -43,6 +43,7 @@ import { shareStateIcon } from '../../ShareStateLabel';
 import { UpToDateTag, useSaveStatus } from '../../UpToDateTag';
 import { useArtifactStats } from '../stats/useArtifactStats';
 import { ViewerAnalyticsSettings } from './ViewerAnalyticsSettings';
+import { DatasourceApprovalNotice } from './DatasourceApprovalNotice';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
@@ -329,8 +330,14 @@ const openedRequests = new WeakSet();
 // `onRequestClosed` when that panel closes. That panel picks no audience for a
 // first share: the person chose to share and has not yet said with whom. Any
 // later open is the header's own.
-export function PublishMenu({ controller, disabled = false, disabledReason = '', openRequest = null, onRequestClosed }) {
+// `followsEdits`: the server republishes the shared copy after every save (a
+// doc), so there is nothing to update by hand and no versions to pick from.
+export function PublishMenu({
+  controller, disabled = false, disabledReason = '', noun = 'app', followsEdits = false,
+  openRequest = null, onRequestClosed,
+}) {
   const { t } = useTranslation('artifacts');
+  const whoCanAccess = t(noun === 'doc' ? 'publish.whoCanAccessDoc' : 'publish.whoCanAccess');
   const pub = controller;
   const isPublished = !!pub.publishedUrl;
   const entry = pub.entry || 'viewer';
@@ -391,7 +398,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
     if (isPublished) {
       setView('summary');
       setDraft(seedDraft());
-      pub.loadVersions();  // lazy-load history for the rollback section
+      if (!followsEdits) pub.loadVersions();  // lazy-load history for the rollback section
     } else {
       setView('publish');
       setDraft(firstShareDraft());
@@ -427,7 +434,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
     return commitAccess(d, null);
   };
   const commitAccess = async (d, notify) => {
-    const ok = await pub.publish(accessPayload(d, notify));
+    const ok = await pub.publish(accessPayload(d, notify), { approvedDatasources: pub.pendingDatasources });
     if (ok) setView('summary');
     return ok;
   };
@@ -469,7 +476,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
   const doSavePassword = async () => {
     const value = pwd.value.trim();
     if (!value || value === (pub.accessPassword || '')) return;
-    const ok = await pub.publish({ mode: 'password', password: value });
+    const ok = await pub.publish({ mode: 'password', password: value }, { approvedDatasources: pub.pendingDatasources });
     if (ok) { setView('summary'); setPwd({ value: '', reveal: false }); }
   };
   const doUnpublish = async () => {
@@ -586,14 +593,15 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
                 <>
                   <PanelHeader title={t('publish.shareToWeb')} />
                   <div className={`py-3 px-4 ${SCROLL_BODY}`} data-testid="publish-menu-body">
-                    <SectionLabel>{t('publish.whoCanAccess')}</SectionLabel>
+                    <SectionLabel>{whoCanAccess}</SectionLabel>
                     {sharingSettingsStatus || (
                       <>
                         {permissionsNotice}
-                        <AccessChooser value={draft} onChange={editDraft} onSubmit={doPublish} sharing={sharing} />
+                        <AccessChooser value={draft} onChange={editDraft} onSubmit={doPublish} sharing={sharing} ariaLabel={whoCanAccess} />
                       </>
                     )}
                   </div>
+                  <DatasourceApprovalNotice pending={pub.pendingDatasources} className={ALERT_ROW} />
                   <NoticeRow message={pub.notice} />
                   <ErrorRow message={pub.error} />
                   <div className="flex justify-end py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line">
@@ -630,7 +638,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
                           <SectionLabel action={current.mode === AUDIENCE_CHOICE.SPECIFIC && sharingReady && pub.accessLoaded && (
                             <LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setView('access'); }}>{t('publish.editList')}</LinkButton>
                           )}>
-                            {t('publish.whoCanAccess')}
+                            {whoCanAccess}
                           </SectionLabel>
                           {accessLoadStatus || sharingSettingsStatus || (<>
                             {permissionsNotice}
@@ -645,6 +653,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
                                   layout="dropdown"
                                   showEditor={false}
                                   chosenDesc={desc}
+                                  ariaLabel={whoCanAccess}
                                   value={current}
                                   sharing={sharing}
                                   onChange={(d) => {
@@ -662,7 +671,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
                               <LinkButton onClick={() => { setPwd({ value: '', reveal: false }); setView('password'); }}>{t('publish.changePassword')}</LinkButton>
                             </div>
                           )}
-                          {!orgMode && pub.versions.length > 1 && (
+                          {!followsEdits && !orgMode && pub.versions.length > 1 && (
                             <div className="mt-3">
                               <LinkButton onClick={() => setView('versions')}>{t('publish.versionHistoryCount', { count: pub.versions.length })}</LinkButton>
                             </div>
@@ -673,12 +682,12 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
                       {view === 'access' && (
                         <>
                           <SectionLabel action={<LinkButton onClick={() => { setDraft(seedDraft()); setDraftDirty(false); setNotifyPrompt(null); setView('summary'); }}>{t('publish.dismiss')}</LinkButton>}>
-                            {t('publish.whoCanAccess')}
+                            {whoCanAccess}
                           </SectionLabel>
                           {sharingSettingsStatus || accessLoadStatus || (
                             <>
                               {permissionsNotice}
-                              <AccessChooser layout="dropdown" value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} />
+                              <AccessChooser layout="dropdown" value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} ariaLabel={whoCanAccess} />
                             </>
                           )}
                         </>
@@ -738,6 +747,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
                     )}
                   </div>
   
+                  <DatasourceApprovalNotice pending={pub.pendingDatasources} className={ALERT_ROW} />
                   <NoticeRow message={pub.notice || (pub.linkOwnerRecorded === false ? unrecordedLinkWarning() : '')} />
                   <ErrorRow message={pub.error} />
   
@@ -771,7 +781,7 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
                         <FooterButton primary disabled title={pub.accessLoaded || accessStatus === LOAD_STATUS.ERROR ? undefined : t('publish.loadingAccess')}>
                           {t('publish.update')}
                         </FooterButton>
-                      ) : (draftDiffers(draft, current) || pub.modified) ? (
+                      ) : (draftDiffers(draft, current) || (pub.modified && !followsEdits)) ? (
                         <FooterButton primary onClick={doApplyAccess}
                           disabled={pub.busy || !draftValid(draft)}
                           busy={pub.phase === 'publishing'} busyLabel={t('status.updating')}>
@@ -780,8 +790,10 @@ export function PublishMenu({ controller, disabled = false, disabledReason = '',
                       ) : (
                         <UpToDateTag />
                       )
-                    ) : (pub.modified && !orgMode) ? (
-                      <FooterButton primary onClick={pub.update} disabled={pub.busy}
+                    ) : followsEdits ? (
+                      <UpToDateTag label={t('publish.updatesAsYouEdit')} />
+                    ) : pub.modified ? (
+                      <FooterButton primary onClick={() => pub.update({ approvedDatasources: pub.pendingDatasources })} disabled={pub.busy}
                         busy={pub.phase === 'updating'} busyLabel={t('status.updating')}>
                         {t('publish.update')}
                       </FooterButton>

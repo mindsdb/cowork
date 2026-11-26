@@ -114,7 +114,8 @@ describe('organizationTransition', () => {
     }
     expect(reloadSpy).toHaveBeenCalledTimes(3);
 
-    prepareForOrganizationReload({ clearTenantState: false });
+    expect(prepareForOrganizationReload({ clearTenantState: false })).toBe(false);
+    expect(prepareForOrganizationReload({ clearTenantState: false })).toBe(false);
 
     expect(reloadSpy).toHaveBeenCalledTimes(3);
     expect(() => assertOrganizationTransitionClear())

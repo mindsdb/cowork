@@ -33,18 +33,6 @@
     },
     "field": {
       "optional": "(opcional)"
-    },
-    "sortHeader": {
-      "label": "Ordenar la lista",
-      "sortBy": "Ordenar por {column}",
-      "columns": {
-        "name": "Nombre",
-        "project": "Proyecto",
-        "updated": "Actualizado",
-        "activity": "Actividad",
-        "type": "Tipo",
-        "status": "Estado"
-      }
     }
   },
   "rail": {
@@ -202,17 +190,47 @@
     }
   },
   "comingSoon": {
-    "cloudTitle": "Próximamente en Cloud",
+    "cloudTitle": "Esto funciona en la app de escritorio",
+    "cloudTitleNamed": "{feature} funciona en la app de escritorio",
     "unavailableTitle": "Función no disponible",
-    "cloudBodyNamed": "{feature} aún no está disponible en Cloud. Mientras tanto, puedes usarlo en la app de escritorio.",
-    "cloudBody": "Esta función aún no está disponible en Cloud. Mientras tanto, puedes usarla en la app de escritorio.",
-    "cloudBodyCustom": "{feature} aún no está disponible en Cloud. Ya puedes conectarlo como un conector personalizado.",
+    "cloudBodyNamed": "Hoy {feature} funciona en la app de escritorio. Descárgala para conectar {feature} allí.",
+    "cloudBody": "Hoy esto funciona en la app de escritorio. Descárgala para usarlo allí.",
+    "mobileBodyNamed": "{feature} funciona en la app de escritorio, en un ordenador.",
+    "mobileBody": "Esto funciona en la app de escritorio, en un ordenador.",
+    "cloudBodyCustom": "Hoy {feature} funciona en la app de escritorio. Aquí puedes conectarlo ya como un conector personalizado.",
     "unavailableBodyNamed": "{feature} no está disponible en esta implementación.",
     "unavailableBody": "Esta función no está disponible en esta implementación.",
     "notNow": "Ahora no",
-    "download": "Descargar la app",
+    "download": "Descargar la app de escritorio",
     "connectCustom": "Conectar tu conector personalizado de {feature}",
     "buildCustom": "Crear un conector personalizado"
+  },
+  "desktopOffer": {
+    "tag": "Escritorio",
+    "notNow": "Ahora no",
+    "download": "Descargar la app de escritorio",
+    "platforms": "Para Mac, Windows y Linux.",
+    "code": {
+      "title": "El modo código funciona en la app de escritorio",
+      "body": "El modo código trabaja con el código de tu computadora, así que necesita la app de escritorio. Allí, Cowork puede:",
+      "points": {
+        "files": "Leer y cambiar código en tus propias carpetas y repositorios",
+        "commands": "Ejecutar comandos y pruebas en tu equipo",
+        "agents": "Pasar una tarea a Claude Code o Codex"
+      }
+    },
+    "folder": {
+      "projectTitle": "Usa una carpeta de tu computadora en la app de escritorio",
+      "chatTitle": "Las carpetas de trabajo están en la app de escritorio",
+      "projectBody": "El navegador no puede acceder a los archivos de tu computadora. La app de escritorio puede iniciar un proyecto en una carpeta que ya tienes, y Cowork trabaja con sus archivos.",
+      "chatBody": "El navegador no puede acceder a los archivos de tu computadora. En la app de escritorio puedes agregar carpetas de tu computadora a un chat, y Cowork trabaja en ellas.",
+      "points": {
+        "inPlace": "Sin subir nada: usa los archivos donde están",
+        "saved": "Lo que crea se guarda en tu computadora",
+        "kept": "Quitar la carpeta de Cowork deja tus archivos donde están"
+      },
+      "note": "Para Mac, Windows y Linux. Aquí en el navegador aún puedes subir archivos."
+    }
   },
   "loadStatus": {
     "retry": "Reintentar",
@@ -222,10 +240,6 @@
   "upToDate": "Actualizado",
   "upToDateSaving": "Guardando…",
   "upToDateSaved": "Guardado",
-  "usageBar": {
-    "hideAllowance": "Ocultar asignación",
-    "hide": "Ocultar"
-  },
   "diagnostics": {
     "copy": "Copiar diagnóstico",
     "copied": "Copiado",
@@ -450,7 +464,8 @@
       "fromDesktop": "Tu cuenta está lista. Puedes empezar aquí mismo o volver a la app de {product} e iniciar sesión.",
       "dismiss": "Descartar"
     },
-    "ownWorkHeading": "¿En qué debería trabajar {product}?"
+    "ownWorkHeading": "¿En qué debería trabajar {product}?",
+    "galleryHint": "Del ejemplo {title}. Cambia lo que quieras y luego presiona Enviar."
   },
   "logout": {
     "title": "¿Cerrar sesión en {product}?",
@@ -465,5 +480,42 @@
   },
   "shortcuts": {
     "showBrowser": "Mostrar navegador"
+  },
+  "gallery": {
+    "open": "Galería de casos de uso",
+    "title": "Galería de casos de uso",
+    "welcomeTitle": "Te damos la bienvenida a {product}",
+    "welcomeIntro": "¿No sabes por dónde empezar? Estas son cosas que {product} hizo a partir de un solo mensaje. Abre una para ver el resultado y empieza desde ahí.",
+    "intro": "¿Te faltan ideas? Estas son cosas que {product} hizo a partir de un solo mensaje. Abre una para ver el resultado y empieza desde ahí.",
+    "hide": "Ocultar la galería",
+    "searchLabel": "Buscar ejemplos",
+    "searchPlaceholder": "Buscar: diapositivas, hoja de cálculo, estudio…",
+    "tabsLabel": "Categorías",
+    "all": "Todos",
+    "startHere": "Empieza aquí",
+    "allExamples": "Todos los ejemplos",
+    "results": "{count, plural, one {# ejemplo coincide} other {# ejemplos coinciden}}",
+    "noResults": "Nada coincide. Describe lo que necesitas en el cuadro y {product} empezará desde ahí.",
+    "loading": "Cargando ejemplos…",
+    "unavailable": "Los ejemplos no se pueden cargar ahora.",
+    "retry": "Reintentar",
+    "minutes": "{count, plural, one {Cerca de # minuto} other {Cerca de # minutos}}",
+    "builtWith": "Hecho con {model}",
+    "needs": "Necesita: {needs}",
+    "backToAll": "Todos los ejemplos",
+    "backToResults": "Resultados para “{query}”",
+    "position": "{current} de {total}",
+    "previous": "Ejemplo anterior",
+    "next": "Ejemplo siguiente",
+    "breadcrumb": "Ruta de navegación",
+    "whatItMade": "Lo que hizo {product}",
+    "download": "Descargar",
+    "sampleInput": "La muestra que le dimos",
+    "playInBrowser": "Abrir en tu navegador",
+    "start": "Empezar con este ejemplo",
+    "tryIt": "Probar este ejemplo",
+    "startNote": "Pone el mensaje en el cuadro. Nada se ejecuta hasta que presionas Enviar.",
+    "tryItNote": "Lo ejecuta ahora con datos de muestra, como una tarea nueva.",
+    "ownFile": "Usar mi propio archivo"
   }
 }

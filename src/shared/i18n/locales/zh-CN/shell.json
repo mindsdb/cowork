@@ -33,18 +33,6 @@
     },
     "field": {
       "optional": "（可选）"
-    },
-    "sortHeader": {
-      "label": "排序列表",
-      "sortBy": "按{column}排序",
-      "columns": {
-        "name": "名称",
-        "project": "项目",
-        "updated": "更新时间",
-        "activity": "活跃度",
-        "type": "类型",
-        "status": "状态"
-      }
     }
   },
   "rail": {
@@ -202,17 +190,47 @@
     }
   },
   "comingSoon": {
-    "cloudTitle": "即将登陆 Cloud",
+    "cloudTitle": "此功能在桌面应用中可用",
+    "cloudTitleNamed": "{feature} 在桌面应用中可用",
     "unavailableTitle": "功能不可用",
-    "cloudBodyNamed": "{feature} 暂未在 Cloud 上提供。在此之前，你可以在桌面应用中使用。",
-    "cloudBody": "此功能暂未在 Cloud 上提供。在此之前，你可以在桌面应用中使用。",
-    "cloudBodyCustom": "{feature} 暂未在 Cloud 上提供。你现在可以将它作为自定义连接器接入。",
+    "cloudBodyNamed": "目前 {feature} 可在桌面应用中使用。下载桌面应用，即可在其中连接 {feature}。",
+    "cloudBody": "目前此功能可在桌面应用中使用。下载桌面应用，即可在其中使用。",
+    "mobileBodyNamed": "{feature} 可在电脑上的桌面应用中使用。",
+    "mobileBody": "此功能可在电脑上的桌面应用中使用。",
+    "cloudBodyCustom": "目前 {feature} 可在桌面应用中使用。在这里，你现在就可以将它作为自定义连接器接入。",
     "unavailableBodyNamed": "{feature} 在此部署中不可用。",
     "unavailableBody": "此功能在此部署中不可用。",
     "notNow": "以后再说",
-    "download": "下载应用",
+    "download": "下载桌面应用",
     "connectCustom": "连接你的自定义 {feature} 连接器",
     "buildCustom": "构建自定义连接器"
+  },
+  "desktopOffer": {
+    "tag": "桌面版",
+    "notNow": "以后再说",
+    "download": "下载桌面应用",
+    "platforms": "适用于 Mac、Windows 和 Linux。",
+    "code": {
+      "title": "代码模式在桌面应用中可用",
+      "body": "代码模式处理的是你电脑上的代码，因此需要桌面应用。在桌面应用中，Cowork 可以：",
+      "points": {
+        "files": "读取和修改你自己文件夹和仓库中的代码",
+        "commands": "在你的电脑上运行命令和测试",
+        "agents": "把任务交给 Claude Code 或 Codex"
+      }
+    },
+    "folder": {
+      "projectTitle": "在桌面应用中使用你电脑上的文件夹",
+      "chatTitle": "工作文件夹在桌面应用中可用",
+      "projectBody": "浏览器无法访问你电脑上的文件。桌面应用可以在你已有的文件夹中创建项目，Cowork 会处理其中的文件。",
+      "chatBody": "浏览器无法访问你电脑上的文件。在桌面应用中，你可以把电脑上的文件夹添加到对话中，Cowork 会在其中工作。",
+      "points": {
+        "inPlace": "无需上传：直接使用原位置的文件",
+        "saved": "它生成的内容会保存在你的电脑上",
+        "kept": "从 Cowork 中移除文件夹后，你的文件仍保留在原处"
+      },
+      "note": "适用于 Mac、Windows 和 Linux。在浏览器中，你仍然可以上传文件。"
+    }
   },
   "loadStatus": {
     "retry": "重试",
@@ -222,10 +240,6 @@
   "upToDate": "已是最新版本",
   "upToDateSaving": "正在保存…",
   "upToDateSaved": "已保存",
-  "usageBar": {
-    "hideAllowance": "隐藏额度",
-    "hide": "隐藏"
-  },
   "diagnostics": {
     "copy": "复制诊断信息",
     "copied": "已复制",
@@ -450,7 +464,8 @@
       "fromDesktop": "你的账户已准备就绪。你可以直接在这里开始，或返回 {product} 应用并登录。",
       "dismiss": "关闭"
     },
-    "ownWorkHeading": "{product} 应该处理什么？"
+    "ownWorkHeading": "{product} 应该处理什么？",
+    "galleryHint": "来自示例“{title}”。按需修改，然后点击发送。"
   },
   "logout": {
     "title": "退出 {product} 登录？",
@@ -465,5 +480,42 @@
   },
   "shortcuts": {
     "showBrowser": "显示浏览器"
+  },
+  "gallery": {
+    "open": "用例库",
+    "title": "用例库",
+    "welcomeTitle": "欢迎使用 {product}",
+    "welcomeIntro": "不知道从哪里开始？这些都是 {product} 根据一条消息完成的。打开一个查看结果，再从它开始。",
+    "intro": "没有灵感了？这些都是 {product} 根据一条消息完成的。打开一个查看结果，再从它开始。",
+    "hide": "隐藏用例库",
+    "searchLabel": "搜索示例",
+    "searchPlaceholder": "搜索：幻灯片、电子表格、学习…",
+    "tabsLabel": "类别",
+    "all": "全部",
+    "startHere": "从这里开始",
+    "allExamples": "所有示例",
+    "results": "{count, plural, other {# 个示例匹配}}",
+    "noResults": "没有匹配项。在输入框中描述你的需求，{product} 会从那里开始。",
+    "loading": "正在加载示例…",
+    "unavailable": "示例暂时无法加载。",
+    "retry": "重试",
+    "minutes": "{count, plural, other {约 # 分钟}}",
+    "builtWith": "使用 {model} 完成",
+    "needs": "需要：{needs}",
+    "backToAll": "所有示例",
+    "backToResults": "“{query}”的结果",
+    "position": "{current} / {total}",
+    "previous": "上一个示例",
+    "next": "下一个示例",
+    "breadcrumb": "导航路径",
+    "whatItMade": "{product} 完成的内容",
+    "download": "下载",
+    "sampleInput": "我们提供的样本",
+    "playInBrowser": "在浏览器中打开",
+    "start": "从这个示例开始",
+    "tryIt": "试试这个示例",
+    "startNote": "会把消息放进输入框。在你点击发送之前不会运行任何内容。",
+    "tryItNote": "立即用示例数据作为新任务运行。",
+    "ownFile": "使用我自己的文件"
   }
 }

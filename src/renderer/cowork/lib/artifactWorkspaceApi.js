@@ -387,6 +387,14 @@ export function setArtifactAccess(artifact, access) {
   });
 }
 
+// Publish changes (ENG-4595): the draft goes live at the same link with the
+// access it already has. Owner-only; 404 when nothing is published.
+export function republishArtifact(artifact) {
+  const ref = artifactRef(artifact);
+  if (!ref) return Promise.reject(new Error('Artifact has no full identity'));
+  return request(`${ref.base}/republish`, { method: 'POST' });
+}
+
 // Owner-only, like loadArtifactAccess above: view counts of the published
 // artifact and, on a restricted link, who opened it.
 export function loadArtifactStats(artifact) {

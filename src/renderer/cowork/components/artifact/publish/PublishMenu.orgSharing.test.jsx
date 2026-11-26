@@ -168,7 +168,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
       allowed_user_ids: [],
       allowed_emails: [],
       owner_only: false,
-    });
+    }, expect.anything());
   });
 
   describe('who may share with everyone at the org', () => {
@@ -195,7 +195,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
 
       expect(screen.queryByTestId('org-option-locked')).toBeNull();
       await user.click(screen.getByRole('button', { name: 'Update' }));
-      expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({ org_allowed: true, owner_only: false }));
+      expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({ org_allowed: true, owner_only: false }), expect.anything());
     });
 
     // artifacts.share_org decides it, not skills.share_org.
@@ -294,7 +294,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
       owner_only: false,
       // Exactly the people this save adds.
       notify: { user_ids: ['u-ana'], emails: ['zed@partner.io'] },
-    });
+    }, expect.anything());
   });
 
   it('keeps Update disabled until Specific names someone', async () => {
@@ -311,7 +311,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
 
     expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({
       allowed_team_ids: ['t-platform'], org_allowed: false, owner_only: false,
-    }));
+    }), expect.anything());
   });
 
   it('reads org_allowed with no lists as Everyone at the org', async () => {
@@ -368,7 +368,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
     await user.click(screen.getByRole('button', { name: 'Update' }));
     expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({
       org_allowed: false, allowed_team_ids: ['t-platform'],
-    }));
+    }), expect.anything());
   });
 
   it('summarizes Everyone at the org on the summary card', () => {
@@ -402,7 +402,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
 
     expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({
       allowed_user_ids: ['u-bo'], allowed_emails: [], owner_only: false,
-    }));
+    }), expect.anything());
   });
 
   it('offers Specific people by email only without sharing in MindsHub mode', async () => {
@@ -428,7 +428,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
     expect(pub.publish).toHaveBeenCalledWith({
       mode: 'restricted', org_allowed: false, owner_only: false,
       allowed_emails: ['zed@partner.io'], allowed_team_ids: [], allowed_user_ids: [],
-    });
+    }, expect.anything());
     expect(within(document.body).queryByText(/Acme/)).toBeNull();
   });
 
@@ -446,7 +446,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
     await user.type(screen.getByRole('combobox', { name: 'Add people by email' }), 'zed@partner.io{Enter}');
     await user.click(screen.getByRole('button', { name: 'Update' }));
     await user.click(screen.getByRole('button', { name: "Don't notify" }));
-    expect(pub.publish).toHaveBeenCalledWith({ mode: 'restricted', emails: ['zed@partner.io'], org_allowed: false, owner_only: false });
+    expect(pub.publish).toHaveBeenCalledWith({ mode: 'restricted', emails: ['zed@partner.io'], org_allowed: false, owner_only: false }, expect.anything());
   });
 
   describe('before the sharing capabilities are known', () => {
@@ -523,7 +523,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
       expect(pub.publish).toHaveBeenCalledWith({
         mode: 'restricted', org_allowed: false, owner_only: true,
         allowed_emails: [], allowed_team_ids: [], allowed_user_ids: [],
-      });
+      }, expect.anything());
       expect(pub.publish.mock.calls[0][0]).not.toHaveProperty('emails');
     });
   });
@@ -615,7 +615,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
       expect(pub.publish).toHaveBeenCalledTimes(1);
       expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({
         allowed_user_ids: ['u-bo', 'u-ana'], allowed_emails: ['a@x.io', 'b@x.io', 'c@x.io'],
-      }));
+      }), expect.anything());
       // Don't notify sends no notify at all.
       expect(pub.publish.mock.calls[0][0]).not.toHaveProperty('notify');
     });
@@ -633,7 +633,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
 
       expect(screen.getByTestId('notify-confirm')).toHaveTextContent('Let 1 new person know by email?');
       await user.click(screen.getByRole('button', { name: 'Notify' }));
-      expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({ allowed_user_ids: ['u-ana'], notify: { user_ids: ['u-ana'], emails: [] } }));
+      expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({ allowed_user_ids: ['u-ana'], notify: { user_ids: ['u-ana'], emails: [] } }), expect.anything());
     });
 
     it('does not ask when only teams are added', async () => {
@@ -648,7 +648,7 @@ describe('PublishMenu with sharing in MindsHub mode', () => {
       expect(screen.queryByTestId('notify-confirm')).toBeNull();
       expect(pub.publish).toHaveBeenCalledWith(expect.objectContaining({
         allowed_team_ids: ['t-platform'], allowed_user_ids: ['u-bo'],
-      }));
+      }), expect.anything());
       expect(pub.publish.mock.calls[0][0]).not.toHaveProperty('notify');
     });
 
