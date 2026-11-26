@@ -1283,8 +1283,10 @@ describe('ArtifactViewer quick edit bar', () => {
       }));
       renderViewer({ artifact: inline, viewRequest: { view: PLACE } });
       await previewShown();
+      // The state can follow the restore once state.json's read settles
+      // (useInlineArtifactState), so wait for both rather than read once.
+      await waitFor(() => expect(restoresAfterReload()).toHaveLength(2));
       const sent = restoresAfterReload();
-      expect(sent).toHaveLength(2);
       expect(sent).toEqual(expect.arrayContaining([
         { source: 'anton-preview-parent', type: 'state', state: { picked: ['b'] } },
         { source: 'anton-preview-parent', type: 'restore', view: PLACE },
