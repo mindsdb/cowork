@@ -21,7 +21,7 @@
     "prebuild:renderer": "node scripts/preview-bundles.mjs",
     "postbuild:renderer": "node scripts/verify-preview-build.mjs dist/renderer",
     "prebuild:web": "node scripts/preview-bundles.mjs",
-    "postbuild:web": "node scripts/verify-preview-build.mjs dist/renderer-web",
+    "postbuild:web": "node scripts/verify-preview-build.mjs dist/renderer-web && node scripts/document-viewer.mjs",
     "predev:renderer": "node scripts/preview-bundles.mjs",
     "predev:web": "node scripts/preview-bundles.mjs",
     "pretypecheck": "node scripts/preview-bundles.mjs",
