@@ -94,6 +94,31 @@ describe('ArtifactCard inline mode', () => {
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ title: 'Revenue by month', display: 'inline' }));
   });
 
+  it('opens the viewer on the place the live page is at', async () => {
+    const onOpen = vi.fn();
+    render(<ArtifactCard artifact={card({ display: 'inline' })} onOpen={onOpen} />);
+    const frame = await screen.findByTitle('Revenue by month');
+    // The preview shim's view report, from the card's own frame.
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', {
+        source: frame.contentWindow,
+        data: {
+          source: 'anton-preview', type: 'view', hash: '#q3', scrollX: 0, scrollY: 120,
+          inputs: [{ type: 'click', path: 'button:2', label: 'Q3' }], heading: 'Q3',
+        },
+      }));
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Preview' }));
+    expect(onOpen).toHaveBeenLastCalledWith(
+      expect.objectContaining({ title: 'Revenue by month' }),
+      { view: expect.objectContaining({ hash: '#q3', scrollY: 120, inputs: [{ type: 'click', path: 'button:2', label: 'Q3' }] }) },
+    );
+    // The title opens it the same way.
+    await userEvent.click(screen.getByRole('button', { name: /Revenue by month/ }));
+    expect(onOpen).toHaveBeenLastCalledWith(expect.anything(), { view: expect.objectContaining({ hash: '#q3' }) });
+  });
+
   it('reads the flag nested under metadata too', async () => {
     render(<ArtifactCard artifact={card({ metadata: { display: 'inline' } })} onOpen={vi.fn()} />);
     expect(await screen.findByTitle('Revenue by month')).toBeInTheDocument();

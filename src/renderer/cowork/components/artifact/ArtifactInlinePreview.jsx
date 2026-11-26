@@ -20,6 +20,9 @@
 //     keeping its last height so the transcript does not jump.
 //   - The page's state (`window.anton.setState`) is the artifact's
 //     `state.json`, and its Submit a chat turn (useInlineArtifactState).
+//   - Where the user is in the page (its tab or slide, scroll, hash) is the
+//     viewer's own view report (usePreviewView), handed up through `onView`
+//     so Preview opens the viewer on the same place.
 //
 // With `revisionId` the frame shows that saved revision instead of the
 // draft: an earlier chat card opened to see the page as it was then. That is
@@ -29,7 +32,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { loadHtmlPreview, loadHtmlRevision, usesDraftLink, withdrawDraftLinks } from './htmlPreviewSource';
 import { useInlineArtifactState } from './useInlineArtifactState';
 import { previewReportFrom, previewSize } from './usePreviewFit';
-import { postPreviewTheme } from './usePreviewView';
+import { postPreviewTheme, usePreviewView } from './usePreviewView';
 import { usePreviewDiagnostics } from './usePreviewDiagnostics';
 import { PreviewErrorsButton } from './PreviewErrorsButton';
 import { PreviewPlaceholder } from './ArtifactViewerBody';
@@ -52,7 +55,7 @@ export function clampInlineHeight(content) {
   return Math.min(INLINE_MAX_HEIGHT, Math.max(INLINE_MIN_HEIGHT, Math.ceil(value)));
 }
 
-export function ArtifactInlinePreview({ artifact, title = '', revisionId = '', onSubmit = null }) {
+export function ArtifactInlinePreview({ artifact, title = '', revisionId = '', onSubmit = null, onView = null }) {
   const boxRef = useRef(null);
   const iframeRef = useRef(null);
   // Where IntersectionObserver is missing there is nothing to wait for.
@@ -120,6 +123,11 @@ export function ArtifactInlinePreview({ artifact, title = '', revisionId = '', o
   // the viewer offers the repair.
   const diagnostics = usePreviewDiagnostics(iframeRef, { enabled: mounted, resetKey });
   useInlineArtifactState(iframeRef, artifact, { enabled: mounted && !revisionId, onSubmit });
+  // The live page's place, for the viewer to open on. A snapshot has none.
+  const { view } = usePreviewView(iframeRef, { enabled: mounted && !revisionId, resetKey });
+  const onViewRef = useRef(onView);
+  onViewRef.current = onView;
+  useEffect(() => { onViewRef.current?.(revisionId ? null : view); }, [view, revisionId]);
 
   useEffect(() => {
     if (!mounted) return undefined;

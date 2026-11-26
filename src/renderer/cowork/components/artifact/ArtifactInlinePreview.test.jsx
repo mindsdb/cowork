@@ -166,6 +166,20 @@ describe('ArtifactInlinePreview', () => {
     expect(loadHtmlPreview).toHaveBeenCalledTimes(1);
   });
 
+  it('hands up where the user is in its own page, for Preview to open on', async () => {
+    const onView = vi.fn();
+    render(<ArtifactInlinePreview artifact={artifact} title={artifact.title} onView={onView} />);
+    setInView(true);
+    await waitFor(() => expect(frame()).toBeInTheDocument());
+    const view = { source: 'anton-preview', type: 'view', hash: '#slide-3', scrollX: 0, scrollY: 40, inputs: [{ type: 'key', key: 'ArrowRight' }] };
+    fromWindow(window, view);
+    expect(onView).not.toHaveBeenCalledWith(expect.objectContaining({ hash: '#slide-3' }));
+    fromWindow(frame().contentWindow, view);
+    expect(onView).toHaveBeenLastCalledWith(expect.objectContaining({
+      hash: '#slide-3', scrollY: 40, inputs: [{ type: 'key', key: 'ArrowRight', shiftKey: false }],
+    }));
+  });
+
   it('says why when the page cannot be loaded', async () => {
     loadHtmlPreview.mockRejectedValue(Object.assign(new Error('Could not load the draft.'), { stage: 'draft' }));
     render(<ArtifactInlinePreview artifact={artifact} title={artifact.title} />);

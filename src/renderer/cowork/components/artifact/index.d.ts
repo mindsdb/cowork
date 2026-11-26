@@ -151,6 +151,11 @@ export interface ArtifactViewerProps {
    * click: the viewer opens on its Comments panel, for that open only.
    */
   commentsRequest?: object | null;
+  /**
+   * Where a live inline copy of the artifact was when its Preview was
+   * clicked, a new object per click: the preview opens on the same place.
+   */
+  viewRequest?: { view: object } | null;
 }
 
 export const ArtifactViewer: ComponentType<ArtifactViewerProps>;
