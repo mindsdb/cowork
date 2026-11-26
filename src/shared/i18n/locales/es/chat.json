@@ -20,7 +20,8 @@
       "deleting": "Eliminando…",
       "copyMessage": "Copiar mensaje",
       "copyResponse": "Copiar respuesta",
-      "agentFallback": "Agente"
+      "agentFallback": "Agente",
+      "submittedData": "Datos enviados"
     },
     "incomplete": {
       "spendCeiling": "Se detuvo antes: esta tarea alcanzó su presupuesto de tokens.",
@@ -74,7 +75,13 @@
       "liveArtifact": "artefacto en vivo",
       "deletedBadge": "Eliminado",
       "share": "Compartir",
-      "shareTooltip": "Elige quién puede abrirlo"
+      "shareTooltip": "Elige quién puede abrirlo",
+      "goToLatestTooltip": "Ir a la versión más reciente",
+      "openLink": "Abrir enlace",
+      "openLinkTooltip": "Abrir el enlace del artefacto en una pestaña nueva",
+      "updatedSeeBelow": "Se actualizó. Consulta la versión más reciente abajo.",
+      "previewThisVersion": "Previsualizar esta versión",
+      "hideVersionPreview": "Ocultar esta versión"
     },
     "kinds": {
       "provider": "Proveedor",

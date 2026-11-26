@@ -20,7 +20,8 @@
       "deleting": "Wird gelöscht…",
       "copyMessage": "Nachricht kopieren",
       "copyResponse": "Antwort kopieren",
-      "agentFallback": "Agent"
+      "agentFallback": "Agent",
+      "submittedData": "Gesendete Daten"
     },
     "incomplete": {
       "spendCeiling": "Vorzeitig beendet: Diese Aufgabe hat ihr Token-Budget erreicht.",
@@ -74,7 +75,13 @@
       "liveArtifact": "Live-Artefakt",
       "deletedBadge": "Gelöscht",
       "share": "Teilen",
-      "shareTooltip": "Festlegen, wer es öffnen kann"
+      "shareTooltip": "Festlegen, wer es öffnen kann",
+      "goToLatestTooltip": "Zur neuesten Version scrollen",
+      "openLink": "Link öffnen",
+      "openLinkTooltip": "Den Link des Artefakts in einem neuen Tab öffnen",
+      "updatedSeeBelow": "Das wurde aktualisiert. Die neueste Version finden Sie unten.",
+      "previewThisVersion": "Diese Version anzeigen",
+      "hideVersionPreview": "Diese Version ausblenden"
     },
     "kinds": {
       "provider": "Anbieter",

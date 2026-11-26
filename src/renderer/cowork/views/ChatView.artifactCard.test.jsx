@@ -500,6 +500,22 @@ describe('inline artifact banner in org mode', () => {
     expect(screen.getByRole('button', { name: 'Shared link' })).toBeInTheDocument();
   });
 
+  it('reads "Open link", not "Shared link", while the link reaches only its owner', async () => {
+    setOrgMode(true);
+    render(<ChatView task={taskWithArtifact(artifactStep({
+      ext: '',
+      action: 'report',
+      file_path: '/proj/.anton/artifacts/weekly/report.md',
+      path: '/proj/.anton/artifacts/weekly/report.md',
+      draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/report.md`,
+      accessMode: 'restricted',
+      ownerOnly: true,
+    }))} />);
+
+    expect(screen.getByRole('button', { name: 'Open link' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Shared link' })).toBeNull();
+  });
+
   it('stays clickable when the client could not canonicalize the path', async () => {
     /*
      * Org-mode destinations are addressed by the server card, so a relative

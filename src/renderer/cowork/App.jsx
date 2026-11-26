@@ -194,6 +194,7 @@ import { useVoiceCall, voiceCallRunning } from './lib/voice/useVoiceCall';
 import { askInTask, createCallWork, createQueueWatch, sendForOwnTurn } from './lib/voice/callWork';
 import { describeFound, describeScreen, describeSteps, findTasks, isRunning, runOperator } from './lib/voice/operator';
 import { artifactsOnScreen } from './lib/voice/screenArtifacts';
+import { widgetActions, widgetsOnScreen } from './lib/voice/screenWidgets';
 import { createSeenCallBack } from './lib/voice/seenCallBack';
 import {
   callNeedActions, createCallNeeds, openNeeds,
@@ -5561,6 +5562,10 @@ function AppCore() {
       submit: submitAnswer,
       agentLabel,
     }),
+    // An inline artifact or widget live on screen (ENG-4684): its state set,
+    // or its Submit sent, as the person's own change in its frame would
+    // (lib/voice/screenWidgets.js).
+    ...widgetActions(),
     // Saved like a pick in Settings; the prefs listener above moves the call
     // to it, a moment later so this answer gets back first.
     change_voice: ({ voice }) => {
@@ -5586,6 +5591,7 @@ function AppCore() {
         .map((t) => ({ id: t.id, title: t.title, needs: openNeeds(liveStepsRef.current[t.id]) }))
         .filter((w) => w.needs.length),
     }),
+    widgets: widgetsOnScreen,
     actions: callActions,
   });
   // The current task's project's tasks, for the browser pane's list of the

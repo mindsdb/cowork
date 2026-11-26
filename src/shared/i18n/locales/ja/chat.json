@@ -20,7 +20,8 @@
       "deleting": "削除中…",
       "copyMessage": "メッセージをコピー",
       "copyResponse": "回答をコピー",
-      "agentFallback": "エージェント"
+      "agentFallback": "エージェント",
+      "submittedData": "送信したデータ"
     },
     "incomplete": {
       "spendCeiling": "途中で停止しました：このタスクはトークン予算の上限に達しました。",
@@ -74,7 +75,13 @@
       "liveArtifact": "ライブアーティファクト",
       "deletedBadge": "削除済み",
       "share": "共有",
-      "shareTooltip": "開けるユーザーを選択"
+      "shareTooltip": "開けるユーザーを選択",
+      "goToLatestTooltip": "最新バージョンへスクロール",
+      "openLink": "リンクを開く",
+      "openLinkTooltip": "アーティファクトのリンクを新しいタブで開きます",
+      "updatedSeeBelow": "更新されました。最新バージョンは下にあります。",
+      "previewThisVersion": "このバージョンをプレビュー",
+      "hideVersionPreview": "このバージョンを隠す"
     },
     "kinds": {
       "provider": "プロバイダー",

@@ -20,7 +20,8 @@
       "deleting": "正在删除…",
       "copyMessage": "复制消息",
       "copyResponse": "复制回复",
-      "agentFallback": "智能体"
+      "agentFallback": "智能体",
+      "submittedData": "已提交的数据"
     },
     "incomplete": {
       "spendCeiling": "已提前停止：此任务已达到 token 预算上限。",
@@ -74,7 +75,13 @@
       "liveArtifact": "实时产物",
       "deletedBadge": "已删除",
       "share": "分享",
-      "shareTooltip": "选择谁可以打开"
+      "shareTooltip": "选择谁可以打开",
+      "goToLatestTooltip": "滚动到最新版本",
+      "openLink": "打开链接",
+      "openLinkTooltip": "在新标签页中打开产物的链接",
+      "updatedSeeBelow": "已更新。最新版本见下方。",
+      "previewThisVersion": "预览此版本",
+      "hideVersionPreview": "隐藏此版本"
     },
     "kinds": {
       "provider": "提供商",

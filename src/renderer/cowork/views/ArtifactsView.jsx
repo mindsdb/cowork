@@ -41,7 +41,7 @@ import { SharedLiveAppsSection } from '../components/artifacts/SharedLiveAppsSec
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import {
   canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, canShowInBrowserTab,
-  isHtmlArtifact, isPublishableArtifact, isBackendArtifact, isInlinePreviewable,
+  isHtmlArtifact, isPublishableArtifact, isBackendArtifact, isInlinePreviewable, isWidgetArtifact,
 } from '../lib/artifactKinds';
 import { canPreviewDocument } from '../preview/kinds';
 import { trackArtifactPublished } from '../lib/analytics';
@@ -875,7 +875,10 @@ export default function ArtifactsView({
   const orgMode = useOrgMode();
   // In MindsHub mode a restricted card doesn't say who it reaches; read it,
   // so its badge, hover and Access filter say (useArtifactAudiences).
-  const { list } = useArtifactAudiencesState(cards, { enabled: orgMode });
+  // A widget (ENG-4684) is input collected in the chat, not a deliverable:
+  // cowork-server leaves it out of the list, and so does the page.
+  const deliverables = useMemo(() => cards.filter((a) => !isWidgetArtifact(a)), [cards]);
+  const { list } = useArtifactAudiencesState(deliverables, { enabled: orgMode });
   // Sections, where the org shares (as on the Skills page); one list elsewhere.
   // The teams tell an artifact shared with the org's default team, which
   // reaches everyone there.

@@ -20,7 +20,8 @@
       "deleting": "삭제하는 중…",
       "copyMessage": "메시지 복사",
       "copyResponse": "응답 복사",
-      "agentFallback": "에이전트"
+      "agentFallback": "에이전트",
+      "submittedData": "보낸 데이터"
     },
     "incomplete": {
       "spendCeiling": "조기 중단됨: 이 작업이 토큰 예산에 도달했습니다.",
@@ -74,7 +75,13 @@
       "liveArtifact": "라이브 아티팩트",
       "deletedBadge": "삭제됨",
       "share": "공유",
-      "shareTooltip": "열 수 있는 사람 선택"
+      "shareTooltip": "열 수 있는 사람 선택",
+      "goToLatestTooltip": "최신 버전으로 스크롤",
+      "openLink": "링크 열기",
+      "openLinkTooltip": "아티팩트 링크를 새 탭에서 엽니다",
+      "updatedSeeBelow": "업데이트되었습니다. 최신 버전은 아래에 있습니다.",
+      "previewThisVersion": "이 버전 미리 보기",
+      "hideVersionPreview": "이 버전 숨기기"
     },
     "kinds": {
       "provider": "공급자",

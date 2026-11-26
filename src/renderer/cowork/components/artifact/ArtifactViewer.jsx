@@ -18,7 +18,6 @@ import { downloadUnavailableMessage } from '../../lib/browserDownload';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   allocateConversationId,
-  mountArtifactPreview,
   sendablePicks,
   previewArtifact,
   unpublishArtifact,
@@ -38,7 +37,6 @@ import {
   artifactRef as artifactWorkspaceRef,
   createDraftLink,
   loadArtifactDraftText,
-  loadArtifactDraftDocument,
   loadArtifactRevisions,
 } from '../../lib/artifactWorkspaceApi';
 import { threadImageFiles } from '../../lib/commentImages';
@@ -49,14 +47,13 @@ import {
   RefusedDraftLink,
   draftLinkLifetimeMs,
   draftLinkUrl,
-  draftLinksWithdrawal,
 } from '../../lib/draftLinkRules';
-import { setDraftLinks, useDraftLinks } from '../../../lib/draftLinks';
+import { useDraftLinks } from '../../../lib/draftLinks';
 import { trackArtifactStatsOpened } from '../../lib/analytics';
 import { UNKNOWN_SHARE_SNAPSHOT, reportWithdrawal, shareSnapshot } from '../../lib/artifactShareAnalytics';
 import { diagnostic } from '../../../../shared/diagnostics';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
-import { isFilePageArtifact, isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
+import { isFilePageArtifact, isPublishableArtifact, isImageArtifact, isInlineArtifact, isWidgetArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
 import { useBlobImageSrc } from '../AttachmentThumbnail';
 import { Modal } from '../ui/Modal';
 import { ConfirmModal } from '../ConfirmModal';
@@ -77,7 +74,9 @@ import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 import { ArtifactViewerBody } from './ArtifactViewerBody';
 import { usePreviewDiagnostics } from './usePreviewDiagnostics';
 import { normalizePreviewView, usePreviewView } from './usePreviewView';
+import { useInlineArtifactState } from './useInlineArtifactState';
 import { usePreviewFit } from './usePreviewFit';
+import { loadHtmlPreview, usesDraftLink, withdrawDraftLinks } from './htmlPreviewSource';
 import { usePreviewCheckTarget } from './usePreviewCheckTarget';
 import { usePreviewReloadTransition } from './usePreviewReloadTransition';
 import { useViewerLayers } from './useViewerLayers';
@@ -93,10 +92,10 @@ import { useModelPickerContext } from '../../lib/modelPickerContext';
 import { ModelEffortPicker, pickedEffort } from '../ModelEffortPicker';
 import { MODEL_ROUTER } from '../../lib/modelCatalog';
 import { useArtifactStats } from './stats/useArtifactStats';
-import { inlineHtmlFromApi } from '../../lib/inlineHtmlAssets';
 import { canPreviewDocument, documentPreviewType } from '../../preview/kinds';
 import { useTranslation } from '../../../lib/i18n';
 import { htmlText, showArtifactOnScreen } from '../../lib/voice/screenArtifacts';
+import { showWidgetOnScreen } from '../../lib/voice/screenWidgets';
 import './artifactWorkspace.css';
 import {
   artifactExtension,
@@ -106,12 +105,7 @@ import {
   isTextArtifact,
   isAbsoluteArtifactPreviewUrl,
   canFetchDraftWithCredentials,
-  injectDraftBaseHref,
-  draftDirectoryUrl,
-  draftFileName,
-  limitArtifactFrames,
   summarizeCsvPreview,
-  withArtifactCommentFlag,
   withArtifactVersion,
 } from './artifactPreviewUtils';
 
@@ -120,18 +114,6 @@ import {
 // markdown renderer; `.csv` gets a parsed table; `.txt` and friends
 // fall back to a monospace block.
 
-
-// Turns draft links off for this page when a failed request says so
-// (draftLinksWithdrawal), and logs why: a page that silently stops using
-// links would hide a misconfigured draft host. Every preview then reruns
-// through srcdoc. True when links went off.
-async function withdrawDraftLinks(error) {
-  const event = await draftLinksWithdrawal(error, host.checkConfigured);
-  if (!event) return false;
-  diagnostic('renderer.cowork.components.artifact.ArtifactViewer', 'WARNING', event, error);
-  setDraftLinks(false);
-  return true;
-}
 
 // Every onChange payload is `{ ...artifact, ...fields }`, so identity fields
 // carry over from the artifact the report started from.
@@ -174,6 +156,14 @@ export function ArtifactViewer({
   // click, ENG-4560): the viewer opens on its Comments panel this time, and
   // later opens keep the layers this device remembers.
   commentsRequest = null,
+  // Where a live inline copy of the artifact was when its Preview was clicked
+  // (`{ view }`, a new object per click, ENG-4684): the preview opens on the
+  // same place, through the restore a reload keeps its place with.
+  viewRequest = null,
+  // An inline artifact's Submit (window.anton.submit) sent from the full
+  // view: the same chat turn the chat card's frame sends (ENG-4684). The
+  // viewer closes after it, so the reply is in sight.
+  onInlineSubmit = null,
 }) {
   const { t } = useTranslation('artifacts');
   const orgMode = useOrgMode();
@@ -189,8 +179,7 @@ export function ArtifactViewer({
   const draftLinks = useDraftLinks();
   // Only a draft on this server's drafts route has a link to ask for: an
   // embedded (data:/blob:) or another origin's draft URL keeps its own route.
-  const draftLinkEnabled = host.isWeb && draftLinks
-    && !!draftPreviewUrl && canFetchDraftWithCredentials(draftPreviewUrl, host.getApiOrigin());
+  const draftLinkEnabled = usesDraftLink(artifact, draftLinks);
   const hasPreviewSource = hasActionPath || !!draftPreviewUrl;
   const isBackendArtifact = BACKEND_ARTIFACT_TYPES.has(artifact?.type);
   /* An .xlsx, .docx, .pptx or .pdf file with a renderer is read-only here:
@@ -421,6 +410,24 @@ export function ArtifactViewer({
     enabled: open && !!(previewUrl || previewDoc),
     resetKey: previewUrl || previewDoc,
     scopeKey: open ? `${artifact?.id || ''}:${artifact?.path || ''}` : '',
+  });
+  // An inline artifact's state (`window.anton.setState`) is shared with its
+  // chat card's frame: the viewer opens on the picks made there, and what is
+  // picked here is saved and shown back in the card. Same gate as the
+  // diagnostics above. Its Submit goes to the chat (onInlineSubmit), and
+  // the viewer closes so the reply is in sight.
+  const onInlineSubmitRef = useRef(onInlineSubmit);
+  onInlineSubmitRef.current = onInlineSubmit;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const submitFromViewer = useCallback((submission) => {
+    if (!onInlineSubmitRef.current) return;
+    onInlineSubmitRef.current(artifactRef.current, submission);
+    onCloseRef.current?.();
+  }, []);
+  useInlineArtifactState(iframeRef, artifact, {
+    enabled: open && !!(previewUrl || previewDoc) && isInlineArtifact(artifact),
+    onSubmit: onInlineSubmit ? submitFromViewer : undefined,
   });
   // A page cut off in the frame with nothing to scroll is fitted to it.
   const previewFit = usePreviewFit(iframeRef, {
@@ -722,13 +729,35 @@ export function ArtifactViewer({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, artifact?.path]);
+  /* An inline artifact or widget shown here is live for the operator too
+     (lib/voice/screenWidgets.js): its state, the page's text as read above,
+     and its Submit, which goes the way the page's own does. */
+  const inlineLive = open && !!(previewUrl || previewDoc) && isInlineArtifact(artifact);
+  useEffect(() => {
+    if (!inlineLive) return undefined;
+    return showWidgetOnScreen(() => {
+      const { artifact: shown, previewDoc: doc } = onScreenRef.current;
+      if (!shown) return null;
+      const html = doc || previewSourceRef.current?.()?.html || '';
+      return { artifact: shown, html, onSubmit: onInlineSubmitRef.current ? submitFromViewer : null };
+    });
+  }, [inlineLive, submitFromViewer]);
   /*
    * With live apps on, a full-stack app shares through "Share with…" on its
    * card, and cowork-server refuses to publish one as a page, so the header
    * offers no page Share until it is published (it never is, unless that
    * happened before live apps were turned on).
+   *
+   * Nor where the server says it can't be published (`canPublish` false in
+   * the workspace's or the card's capabilities), as it does for a widget
+   * (ENG-4684): input collected in the chat, not a deliverable. A widget is
+   * left out here too, for a server that does not send the capability yet.
    */
-  const publishable = isPublishableArtifact(artifact) && !(liveApps && isBackendArtifact && !pub.publishedUrl);
+  const publishCapabilities = workspace.capabilities || artifact?.capabilities;
+  const publishable = isPublishableArtifact(artifact)
+    && !isWidgetArtifact(artifact)
+    && publishCapabilities?.canPublish !== false
+    && !(liveApps && isBackendArtifact && !pub.publishedUrl);
   const canManage = workspace.capabilities
     ? workspace.capabilities.canEdit !== false
     : artifact?.capabilities
@@ -891,168 +920,52 @@ export function ArtifactViewer({
     // being thrown away merely because editing metadata finished loading.
     const baseVersion = artifact?.mtime || (openNonceRef.current += 1);
     const cacheVersion = `${baseVersion}.${reloadNonce}`;
-    if (draftPreviewUrl && !isText && (!isBackendArtifact || !hasActionPath)) {
-      const linkRef = draftLinkEnabled ? artifactWorkspaceRef(artifact) : null;
-      if (linkRef) {
-        // Navigate the frame to a fresh signed link on the draft host. The
-        // document then carries that host's own CSP, so CDN scripts, web fonts
-        // and remote images load as in a browser tab, and the sandbox below
-        // still has no allow-same-origin. A new link on every open and reload:
-        // each expires in 30 minutes, and then the viewer offers a reload.
-        setPreviewKind('static');
-        let expiry = null;
-        createDraftLink(linkRef.projectRef, linkRef.artifactId)
-          .then((link) => {
-            if (cancelled) return;
-            const linked = draftLinkUrl(link);
-            setPreviewUrl(withCommentLayer
-              ? withArtifactCommentFlag(withArtifactVersion(linked, cacheVersion))
-              : withArtifactVersion(linked, cacheVersion));
-            expiry = setTimeout(() => setDraftLinkExpired(true), draftLinkLifetimeMs(link.expiresAt));
-          })
-          .catch(async (e) => {
-            if (cancelled) return;
-            // Links off reruns this effect, which then takes the srcdoc path.
-            if (await withdrawDraftLinks(e)) return;
-            if (cancelled) return;
-            setErr(draftPreviewErrorMessage(e, t('viewer.loadDraftFailed')));
-          })
-          .finally(() => { if (!cancelled) setLoading(false); });
-        return () => {
-          cancelled = true;
-          clearTimeout(expiry);
-        };
-      }
-      const rawUrl = isAbsoluteArtifactPreviewUrl(draftPreviewUrl)
-        ? draftPreviewUrl
-        : `${host.getApiOrigin()}${draftPreviewUrl}`;
-      const fetchUrl = withCommentLayer
-        ? withArtifactCommentFlag(withArtifactVersion(rawUrl, cacheVersion))
-        : withArtifactVersion(rawUrl, cacheVersion);
-      setPreviewKind('static');
-      // Navigate the iframe unless fetch+srcdoc is the only way to carry a
-      // credential. Navigation is the preferred path, not merely an
-      // equivalent one: a `srcdoc` document inherits the shell's CSP, which
-      // blocks the artifact's CDN scripts, web fonts and remote images — the
-      // same file renders completely in a browser (ENG-2818).
-      //
-      // Three cases navigate, and only the third is about authorization —
-      // hence `shouldNavigate` rather than a name claiming all three are
-      // authorized, which the first two are not:
-      //
-      //  - Embedded (data:/blob:) content makes no network request at all, so
-      //    there is nothing for a credential to protect.
-      //  - A genuinely cross-origin absolute URL must never receive the web
-      //    Keycloak bearer `authFetch` would attach (the old `src=`
-      //    navigation never sent it either), so navigating is the only safe
-      //    option rather than an authorized one.
-      //  - Desktop against the local loopback, where the main process already
-      //    injects the bearer into iframe navigations at the network layer,
-      //    so the 401 below cannot occur. See draftNavigationIsAuthorized.
-      const shouldNavigate =
-        !canFetchDraftWithCredentials(rawUrl, host.getApiOrigin())
-        || draftNavigationIsAuthorized(host.isElectron, host.isLocalApiOrigin());
-      if (shouldNavigate) {
-        setPreviewUrl(fetchUrl);
-        setLoading(false);
-        return () => { cancelled = true; };
-      }
-      // Org deployment: a plain iframe `src=` navigation cannot carry the
-      // Authorization header the forward-auth ingress in front of the drafts
-      // endpoint requires (the ingress `auth-url` reads only
-      // `Authorization: Bearer`), so fetch through authFetch (like Edit's
-      // source load) and hand the result to the iframe via srcdoc instead of
-      // navigating it directly. This path pays the inherited-CSP cost above;
-      // lifting it for Cloud needs an ingress change (ENG-2818).
-      // previewUrl/previewDoc were both already reset to '' at the top of
-      // this effect, so setting only one of them here is enough to keep them
-      // mutually exclusive.
-      const reading = new AbortController();
-      loadArtifactDraftDocument(fetchUrl)
-        .then(async (doc) => {
-          if (cancelled) return;
-          if (doc.isHtml) {
-            // The files the draft loads from its folder can't carry the token
-            // either, so inline them with it. The inliner never reads above the
-            // draft's own folder, so that folder is its root. If inlining fails,
-            // the draft still shows as it loaded. This branch is removed once
-            // drafts are served by signed link; the inliner stays, because the
-            // HTML editor and the revision comparison use it too.
-            const html = await inlineHtmlFromApi(doc.content, {
-              rootUrl: draftDirectoryUrl(fetchUrl),
-              filePath: draftFileName(fetchUrl),
-              signal: reading.signal,
-              chatWorkspaces: false,
-            }).catch(() => injectDraftBaseHref(doc.content, fetchUrl));
-            if (cancelled) return;
-            setPreviewDoc(limitArtifactFrames(html));
-          } else {
-            // Non-HTML draft content type: org mode's draft preview only ever
-            // offers .html here (md/txt/csv already took the isText branch
-            // above), so this is expected only on Desktop. The fetch above
-            // already ran, so the iframe fetching fetchUrl again is a second
-            // round-trip — acceptable on Desktop's local loopback server; on
-            // web it degrades to the pre-fix behavior (the iframe navigation
-            // may hit the same 401 this task fixes for HTML), which is no
-            // worse than before this change.
-            setPreviewUrl(fetchUrl);
-          }
-        })
-        .catch((e) => {
-          if (cancelled) return;
-          setErr(draftPreviewErrorMessage(e, t('viewer.loadDraftFailed')));
-        })
-        .finally(() => { if (!cancelled) setLoading(false); });
-      return () => { cancelled = true; reading.abort(); };
-    }
-    mountArtifactPreview(actionPath)
-      .then(async ({ kind, url, artifactDir, port, proxyUrl, backendRunning, launchError }) => {
-        if (kind === 'proxy') {
-          if (!artifactDir) throw new Error(t('viewer.noArtifactDir'));
-          if (backendRunning === false) {
-            throw new Error(launchError || t('viewer.backendFailed'));
-          }
-          if (!proxyUrl) throw new Error(t('viewer.proxyUnavailable'));
-          let iframeUrl = proxyUrl;
-          try {
-            const u = new URL(proxyUrl);
-            if (window.location?.protocol) u.protocol = window.location.protocol;
-            if (window.location?.hostname) u.hostname = window.location.hostname;
-            iframeUrl = u.toString();
-          } catch { /* fall through with the raw URL */ }
-          if (cancelled) return;
-          setPreviewKind('proxy');
-          // Fullstack previews flow through the proxy, which injects the marker
-          // layer into the root HTML on the same activation flag (see
-          // preview_proxy.py). Bake it in at mount time — same rationale as the
-          // static branch below (stable src, no reactive reload).
-          setPreviewUrl(withCommentLayer
-            ? withArtifactCommentFlag(withArtifactVersion(iframeUrl, cacheVersion))
-            : withArtifactVersion(iframeUrl, cacheVersion));
-          if (typeof port === 'number') setBackendPort(port);
-          return;
-        }
-        if (!url) throw new Error(t('viewer.noMountUrl'));
+    // The page itself comes from the loader the inline chat card shares
+    // (htmlPreviewSource.js): a signed draft link, a navigable draft URL, a
+    // fetched srcdoc document, or the desktop mount by path. Text and images
+    // took their own branches above, so only framed HTML reaches it.
+    //
+    // NOTE (ENG-931): the static mount deliberately does NOT adopt the
+    // server's published URL. usePublish's open refresh() pulls the
+    // authoritative published/access state from /artifacts/status, and an
+    // adoption from this async callback's stale closure raced with it.
+    const reading = new AbortController();
+    let expiry = null;
+    loadHtmlPreview({
+      artifact,
+      actionPath,
+      hasActionPath,
+      cacheVersion,
+      withCommentLayer,
+      draftLinkEnabled,
+      signal: reading.signal,
+    })
+      .then((source) => {
         if (cancelled) return;
-        setPreviewKind('static');
-        // Bake the inert comment bridge into the first URL whenever the card
-        // has a stable identity. Transport readiness can then change without
-        // swapping this cross-origin iframe's `src` or flashing the preview.
-        setPreviewUrl(withCommentLayer
-          ? withArtifactCommentFlag(withArtifactVersion(url, cacheVersion))
-          : withArtifactVersion(url, cacheVersion));
-        // NOTE (ENG-931): we deliberately do NOT adopt the server's published
-        // URL here anymore. usePublish's open refresh() already pulls the
-        // authoritative published/access state from /artifacts/status for every
-        // artifact type (including chat-bubble stubs). The old adoption fired
-        // onChange({ ...artifact, publishedUrl }) from this async callback's
-        // STALE closure (stale `artifact` lacking accessMode/accessEmails, and a
-        // stale `!pub.publishedUrl` guard), which raced with refresh() and
-        // clobbered the just-loaded restricted access list back to "public".
+        setPreviewKind(source.kind);
+        // previewUrl/previewDoc were both reset to '' at the top of this
+        // effect, so setting one keeps them mutually exclusive.
+        if (source.doc) setPreviewDoc(source.doc);
+        else setPreviewUrl(source.url);
+        if (source.port != null) setBackendPort(source.port);
+        // Each signed draft link expires; then the viewer offers a reload.
+        if (source.expiresAt != null) {
+          expiry = setTimeout(() => setDraftLinkExpired(true), draftLinkLifetimeMs(source.expiresAt));
+        }
       })
-      .catch((e) => { if (!cancelled) setErr(e?.message || t('viewer.loadFailed')); })
+      .catch(async (e) => {
+        if (cancelled) return;
+        // Links off reruns this effect, which then takes the srcdoc path.
+        if (e?.stage === 'draft-link' && await withdrawDraftLinks(e.cause)) return;
+        if (cancelled) return;
+        setErr(e?.message || t('viewer.loadFailed'));
+      })
       .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      reading.abort();
+      clearTimeout(expiry);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, textExt, isImage, liveAppView, showDocumentPreview, reloadNonce, draftLinkEnabled]);
 
@@ -1109,6 +1022,15 @@ export function ArtifactViewer({
     forgetPlace();
     reloadPreview();
   }, [forgetPlace, reloadPreview]);
+  // Opened from a live inline card: its first document restores the place
+  // the card was at. Once per request; another artifact forgets it (the
+  // view's scopeKey).
+  const appliedViewRequestRef = useRef(null);
+  useEffect(() => {
+    if (!open || !viewRequest?.view || appliedViewRequestRef.current === viewRequest) return;
+    appliedViewRequestRef.current = viewRequest;
+    keepPlace(viewRequest.view);
+  }, [open, viewRequest, keepPlace]);
   // Content that changed elsewhere (the host reports a new mtime) reloads
   // the preview through its new version: that keeps the place too.
   const mtimeRef = useRef({ key: '', mtime: null });
