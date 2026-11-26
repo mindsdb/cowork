@@ -19,6 +19,7 @@ import { diagnostic } from '../shared/diagnostics';
 import { execFile } from 'child_process';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { ACCOUNTS_DIR, ORGS_DIR } from './account-data';
 import { retryOnTransientLock } from './fs-retry';
@@ -467,15 +468,78 @@ function driveFormat(dir: string): Promise<string | null> {
   });
 }
 
+/* The SID of the account Cowork runs as, or null when Windows can't say. The
+ * owner-only list names it beside OWNER RIGHTS: a folder made from an elevated
+ * Cowork is owned by Administrators, so OWNER RIGHTS alone would shut the same
+ * user out of it from a normal one. */
+function currentUserSid(): Promise<string | null> {
+  return new Promise((resolve) => {
+    execFile('whoami', ['/user', '/fo', 'csv', '/nh'], { windowsHide: true }, (err, stdout) => {
+      const match = err ? null : /"(S-1-[0-9-]+)"/.exec(String(stdout ?? ''));
+      resolve(match ? match[1] : null);
+    });
+  });
+}
+
+/* One ACE in SDDL: type, flags, rights, object, inherited object, SID. */
+const SDDL_ACE = /^\(([A-Z]+);([A-Z]*);([A-Za-z0-9]+);[^;)]*;[^;)]*;([A-Za-z0-9-]+)\)$/;
+
+/** Whether a folder's DACL, as SDDL, already is the owner-only list:
+ *  inheritance off (`D:P`), no inherited entry (`ID`), and SYSTEM,
+ *  Administrators, OWNER RIGHTS and the user each with full control that
+ *  every entry below inherits. An administrator's other explicit grant may
+ *  stay, as icacls keeps it too. */
+export function sddlIsOwnerOnly(sddl: string, userSid: string | null): boolean {
+  const dacl = /D:([A-Z]*)((?:\([^)]*\))*)/.exec(sddl);
+  if (!dacl || !dacl[1].includes('P')) return false;
+  const granted = new Set<string>();
+  for (const ace of dacl[2].match(/\([^)]*\)/g) ?? []) {
+    const parts = SDDL_ACE.exec(ace);
+    if (!parts) return false;
+    const [, kind, flags, rights, sid] = parts;
+    if (flags.includes('ID')) return false;
+    if (kind === 'A' && rights === 'FA' && flags.includes('OI') && flags.includes('CI') && !flags.includes('IO')) granted.add(sid);
+  }
+  return ['SY', 'BA', 'OW', ...(userSid ? [userSid] : [])].every((sid) => granted.has(sid));
+}
+
+/* `icacls /save` reads the folder's own list and walks nothing below it.
+ * False whenever the list can't be read or parsed, so the caller applies it. */
+function aclIsOwnerOnly(dir: string, userSid: string | null): Promise<boolean> {
+  let folder: string;
+  try {
+    folder = fs.mkdtempSync(path.join(os.tmpdir(), 'cowork-acl-'));
+  } catch {
+    return Promise.resolve(false);
+  }
+  const saved = path.join(folder, 'acl');
+  return new Promise((resolve) => {
+    execFile('icacls', [dir, '/save', saved, '/L', '/Q'], { windowsHide: true }, (err) => {
+      try {
+        resolve(!err && sddlIsOwnerOnly(fs.readFileSync(saved).toString('utf16le'), userSid));
+      } catch {
+        resolve(false);
+      } finally {
+        fs.rmSync(folder, { recursive: true, force: true });
+      }
+    });
+  });
+}
+
 /** Apply the repository directory's policy on every use. Inheritance can be
  * restored on the same directory between tasks. icacls preserves unrelated
  * explicit administrator grants. Its asynchronous completion gates checkout.
- * A drive with no access lists is used as it is, with a warning. */
+ * A list that already is owner-only is left alone: applying it again makes
+ * Windows rewrite every entry below, every task checkout included. A drive
+ * with no access lists is used as it is, with a warning. */
 export async function restrictToOwnerOnWindows(dir: string, { platform = process.platform }: PlatformOption = {}): Promise<void> {
   if (platform !== 'win32') return;
+  const userSid = await currentUserSid();
+  if (await aclIsOwnerOnly(dir, userSid)) return;
+  const grants = userSid ? [`*${userSid}:(OI)(CI)F`] : [];
   try {
     await new Promise<void>((resolve, reject) => {
-      execFile('icacls', [dir, ...OWNER_ONLY_ICACLS_ARGS, '/L'], { windowsHide: true }, (err) => (err ? reject(err) : resolve()));
+      execFile('icacls', [dir, ...OWNER_ONLY_ICACLS_ARGS, ...grants, '/L'], { windowsHide: true }, (err) => (err ? reject(err) : resolve()));
     });
   } catch (err) {
     const format = await driveFormat(dir);

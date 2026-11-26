@@ -127,6 +127,7 @@ import {
   pinAccountRoots,
   createPrivateAccountRoot,
   restrictToOwnerOnWindows,
+  sddlIsOwnerOnly,
   tightenHomeOnce,
   tightenLegacyHome,
   writeEnvFileAtomic,
@@ -552,22 +553,84 @@ describe('tightenLegacyHome', () => {
 });
 
 describe('restrictToOwnerOnWindows', () => {
-  it('reapplies the policy on every visit without reading or writing a marker', async () => {
+  const USER = 'S-1-5-21-1-2-3-1001';
+  const OWNER_ONLY = `D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;OW)(A;OICI;FA;;;${USER})`;
+  type Tools = { sid?: string | null; saved?: string | null; applyFails?: boolean; format?: string | null };
+
+  /* whoami answers with the user's SID; `icacls /save` writes the folder's list
+   * as UTF-16 SDDL, or fails; the icacls apply and PowerShell answer as told. */
+  function windowsTools({ sid = USER, saved = null, applyFails = false, format = null }: Tools = {}): void {
+    execFile.mockImplementation((cmd: string, args: string[], _opts: unknown, cb: (err: Error | null, stdout?: string) => void) => {
+      if (cmd === 'whoami') return sid ? cb(null, `"host\\user","${sid}"\r\n`) : cb(new Error('whoami failed'));
+      if (cmd === 'icacls' && args.includes('/save')) {
+        if (saved === null) return cb(new Error('no list'));
+        fs.writeFileSync(args[2], Buffer.from(`﻿${path.basename(args[0])}\r\n${saved}\r\n`, 'utf16le'));
+        return cb(null);
+      }
+      if (cmd === 'icacls') return cb(applyFails ? new Error('icacls failed') : null);
+      expect(cmd.toLowerCase().endsWith('powershell.exe')).toBe(true);
+      return format === null ? cb(new Error('powershell failed')) : cb(null, format);
+    });
+  }
+
+  const applies = () => execFile.mock.calls.filter(([cmd, args]) => cmd === 'icacls' && (args as string[]).includes('/inheritance:r'));
+
+  it('reapplies the policy on every visit whose list is not owner-only, without reading or writing a marker', async () => {
     const dir = folder(path.join(root, 'repo', '.claude-mindshub'), 0o755);
     const marker = write(path.join(dir, '.owner-only-access'), 0o600, 'previous version');
+    windowsTools();
 
     await restrictToOwnerOnWindows(dir, WINDOWS);
     await restrictToOwnerOnWindows(dir, WINDOWS);
 
-    expect(execFile).toHaveBeenCalledTimes(2);
+    expect(applies()).toHaveLength(2);
     expect(fs.readFileSync(marker, 'utf8')).toBe('previous version');
+  });
+
+  it('names the user beside OWNER RIGHTS, for a folder an elevated Cowork made', async () => {
+    const dir = folder(path.join(root, 'repo', '.claude-mindshub'), 0o755);
+    windowsTools();
+
+    await restrictToOwnerOnWindows(dir, WINDOWS);
+
+    const [, args] = applies()[0];
+    expect((args as string[]).slice(-2)).toEqual([`*${USER}:(OI)(CI)F`, '/L']);
+  });
+
+  it('leaves an owner-only list alone, since applying it rewrites every checkout below', async () => {
+    const dir = folder(path.join(root, 'repo', '.claude-mindshub'), 0o755);
+    windowsTools({ saved: OWNER_ONLY });
+
+    await restrictToOwnerOnWindows(dir, WINDOWS);
+
+    expect(applies()).toEqual([]);
+    expect(fs.readdirSync(os.tmpdir()).filter((name) => name.startsWith('cowork-acl-'))).toEqual([]);
+  });
+
+  it('applies the list again once inheritance came back', async () => {
+    const dir = folder(path.join(root, 'repo', '.claude-mindshub'), 0o755);
+    windowsTools({ saved: `${OWNER_ONLY.replace('D:PAI', 'D:AI')}(A;OICIID;0x1200a9;;;BU)` });
+
+    await restrictToOwnerOnWindows(dir, WINDOWS);
+
+    expect(applies()).toHaveLength(1);
+  });
+
+  it.each([
+    [OWNER_ONLY, true],
+    [`${OWNER_ONLY}(A;;0x1200a9;;;LS)`, true],
+    [OWNER_ONLY.replace('D:PAI', 'D:AI'), false],
+    [`${OWNER_ONLY}(A;OICIID;0x1200a9;;;BU)`, false],
+    [OWNER_ONLY.replace('(A;OICI;FA;;;OW)', ''), false],
+    [OWNER_ONLY.replace(USER, 'S-1-5-21-9-9-9-1002'), false],
+    ['not an access list', false],
+  ])('reads %s as owner-only: %s', (sddl, expected) => {
+    expect(sddlIsOwnerOnly(sddl, USER)).toBe(expected);
   });
 
   it('rejects an ACL failure so the caller can stop private writes', async () => {
     const dir = folder(path.join(root, 'repo', '.claude-mindshub'), 0o755);
-    execFile.mockImplementationOnce((_cmd: string, _args: string[], _opts: unknown, cb: (err: Error | null) => void) =>
-      cb(new Error('icacls failed')),
-    );
+    windowsTools({ applyFails: true });
     await expect(restrictToOwnerOnWindows(dir, WINDOWS)).rejects.toThrow('icacls failed');
     expect(fs.readdirSync(dir)).toEqual([]);
   });
@@ -579,15 +642,12 @@ describe('restrictToOwnerOnWindows', () => {
     [null, 'rejects'],
   ] as const)('on an icacls failure, a drive reporting %j %s', async (format, outcome) => {
     const dir = folder(path.join(root, 'repo', '.claude-mindshub'), 0o755);
-    execFile.mockImplementation((cmd: string, _args: string[], opts: { env?: Record<string, string> }, cb: (err: Error | null, stdout?: string) => void) => {
-      if (cmd === 'icacls') return cb(new Error('icacls failed'));
-      expect(cmd.toLowerCase().endsWith('powershell.exe')).toBe(true);
-      expect(opts.env?.COWORK_PRIVATE_DIR).toBe(dir);
-      return format === null ? cb(new Error('powershell failed')) : cb(null, format);
-    });
+    windowsTools({ applyFails: true, format });
     const result = restrictToOwnerOnWindows(dir, WINDOWS);
     if (outcome === 'resolves') await expect(result).resolves.toBeUndefined();
     else await expect(result).rejects.toThrow('icacls failed');
+    const powershell = execFile.mock.calls.find(([cmd]) => String(cmd).toLowerCase().endsWith('powershell.exe'));
+    expect((powershell?.[2] as { env?: Record<string, string> }).env?.COWORK_PRIVATE_DIR).toBe(dir);
   });
 
   it('never runs on linux', async () => {

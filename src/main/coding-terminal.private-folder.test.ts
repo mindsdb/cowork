@@ -43,7 +43,7 @@ vi.mock('child_process', async (importOriginal) => ({
 import { killAllCodingTerminals, startCodingTerminal } from './coding-terminal';
 import { ensureTaskWorktree } from './coding-workspace';
 
-const ICACLS_ARGS = ['/inheritance:r', '/grant:r', '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', '*S-1-3-4:(OI)(CI)F', '/L'];
+const ICACLS_ARGS = ['/inheritance:r', '/grant:r', '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', '*S-1-3-4:(OI)(CI)F', '*S-1-5-21-1-2-3-1001:(OI)(CI)F', '/L'];
 
 let repo: string;
 let mindshub: string;
@@ -53,6 +53,15 @@ const modeOf = (dir: string) => fs.statSync(dir).mode & 0o777;
 type Callback = (err: Error | null, stdout?: string, stderr?: string) => void;
 
 function fakeExecFile(cmd: string, args: string[], _opts: unknown, cb: Callback): void {
+  if (cmd === 'whoami') {
+    cb(null, '"host\\user","S-1-5-21-1-2-3-1001"\r\n', '');
+    return;
+  }
+  if (cmd === 'icacls' && args.includes('/save')) {
+    // No saved list, so every visit applies it, as on a folder that isn't owner-only yet.
+    cb(new Error('no saved list'), '', '');
+    return;
+  }
   if (cmd === 'icacls') {
     fake.steps.push({ kind: 'icacls', args });
     cb(fake.icaclsFails ? new Error('icacls failed') : null, '', '');
