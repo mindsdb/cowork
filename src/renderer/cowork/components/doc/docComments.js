@@ -13,9 +13,10 @@ const SELECTOR_MAX = 2000;
 const MAX_BLOCKS = 20;
 // The shared page gives a block `id="blk-<id>"` only for ids like these, so
 // neither side has to escape them.
-const PAGE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const ID = '[A-Za-z0-9_-]{1,64}';
+const PAGE_ID = new RegExp(`^${ID}$`);
 // The layer's CSS path starts at the closest element with an id: the block.
-const PAGE_BLOCK = /^#blk-([A-Za-z0-9_-]{1,64})(?=$|[\s>])/;
+const PAGE_BLOCK = new RegExp(`^#blk-(${ID})(?=$|[\\s>])`);
 
 const fits = (value) => JSON.stringify(value).length <= SELECTOR_MAX;
 
@@ -71,13 +72,10 @@ export function pageBlockId(selector) {
  * and those of its blocks still in that tab; null once they are all gone.
  */
 export function locateComment(doc, selector) {
-  if (!doc?.tabs) return null;
-  const anchor = parseDocAnchor(selector);
-  if (!anchor) {
-    const id = pageBlockId(selector);
-    const tab = id && doc.tabs.find((t) => t.blocks.some((b) => b.id === id));
-    return tab ? { tabId: tab.id, blockIds: [id], quote: '' } : null;
-  }
+  // A comment made on the shared page is on the one block its path starts at.
+  const pageId = pageBlockId(selector);
+  const anchor = parseDocAnchor(selector) || (pageId && { tab: null, blocks: [pageId], quote: '' });
+  if (!anchor || !doc?.tabs) return null;
   const wanted = new Set(anchor.blocks);
   // The tab it was made in first: a block id is unique, but look there first anyway.
   const tabs = [...doc.tabs].sort((a, b) => (b.id === anchor.tab) - (a.id === anchor.tab));
