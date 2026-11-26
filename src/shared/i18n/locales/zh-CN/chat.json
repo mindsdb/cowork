@@ -779,6 +779,10 @@
     "phoneWorking": "正在处理…",
     "phoneDone": "已完成。最小化即可查看回答。",
     "phoneMinimize": "最小化",
+    "overlayQuestion": "{agent} 有个问题正在聊天中等待。",
+    "overlayHandOver": "轮到你操作 {site} 了：{reason}。",
+    "overlayHandOverWatching": "轮到你操作 {site} 了：{reason}。完成后 {agent} 会自动继续。",
+    "overlayGoToQuestion": "前往问题",
     "talkTo": "与 {agent} 通话"
   },
   "voiceCall": {

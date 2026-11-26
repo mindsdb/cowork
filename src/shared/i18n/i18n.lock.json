@@ -35155,6 +35155,142 @@
       "text": "26b0dc30dc4b"
     }
   },
+  "chat:browser.overlayGoToQuestion": {
+    "de": {
+      "from": "0ca8b44c9d1b",
+      "text": "728325af1bf0"
+    },
+    "es": {
+      "from": "0ca8b44c9d1b",
+      "text": "aa1493e68506"
+    },
+    "fr": {
+      "from": "0ca8b44c9d1b",
+      "text": "7e65b1beb8ba"
+    },
+    "it": {
+      "from": "0ca8b44c9d1b",
+      "text": "dcccccd4b003"
+    },
+    "ja": {
+      "from": "0ca8b44c9d1b",
+      "text": "9bad2d6fbadc"
+    },
+    "ko": {
+      "from": "0ca8b44c9d1b",
+      "text": "9015c87d3894"
+    },
+    "pt-BR": {
+      "from": "0ca8b44c9d1b",
+      "text": "0af978d7f1b5"
+    },
+    "zh-CN": {
+      "from": "0ca8b44c9d1b",
+      "text": "82d2ff639ca0"
+    }
+  },
+  "chat:browser.overlayHandOver": {
+    "de": {
+      "from": "8ab50908f381",
+      "text": "a955e9fb0c06"
+    },
+    "es": {
+      "from": "8ab50908f381",
+      "text": "d757f1570a35"
+    },
+    "fr": {
+      "from": "8ab50908f381",
+      "text": "d36d99bbc24d"
+    },
+    "it": {
+      "from": "8ab50908f381",
+      "text": "e94969e57a1e"
+    },
+    "ja": {
+      "from": "8ab50908f381",
+      "text": "877aaf6287f8"
+    },
+    "ko": {
+      "from": "8ab50908f381",
+      "text": "a01d9d49a0ed"
+    },
+    "pt-BR": {
+      "from": "8ab50908f381",
+      "text": "d96fd52f61db"
+    },
+    "zh-CN": {
+      "from": "8ab50908f381",
+      "text": "c504600dad63"
+    }
+  },
+  "chat:browser.overlayHandOverWatching": {
+    "de": {
+      "from": "c3cbfa9df48a",
+      "text": "4539afbd0748"
+    },
+    "es": {
+      "from": "c3cbfa9df48a",
+      "text": "ea4b01be91e8"
+    },
+    "fr": {
+      "from": "c3cbfa9df48a",
+      "text": "1af6e072d830"
+    },
+    "it": {
+      "from": "c3cbfa9df48a",
+      "text": "db86cafdcbce"
+    },
+    "ja": {
+      "from": "c3cbfa9df48a",
+      "text": "f1db976f7934"
+    },
+    "ko": {
+      "from": "c3cbfa9df48a",
+      "text": "bec755b74fcc"
+    },
+    "pt-BR": {
+      "from": "c3cbfa9df48a",
+      "text": "44e80ca309ca"
+    },
+    "zh-CN": {
+      "from": "c3cbfa9df48a",
+      "text": "a88e63f6264b"
+    }
+  },
+  "chat:browser.overlayQuestion": {
+    "de": {
+      "from": "2d244a630dce",
+      "text": "f844ca80a864"
+    },
+    "es": {
+      "from": "2d244a630dce",
+      "text": "6c2ce87e5365"
+    },
+    "fr": {
+      "from": "2d244a630dce",
+      "text": "308b66bb176e"
+    },
+    "it": {
+      "from": "2d244a630dce",
+      "text": "af78d84b7a9a"
+    },
+    "ja": {
+      "from": "2d244a630dce",
+      "text": "87ff5201414f"
+    },
+    "ko": {
+      "from": "2d244a630dce",
+      "text": "9a1a92133da7"
+    },
+    "pt-BR": {
+      "from": "2d244a630dce",
+      "text": "ea9f232b84ea"
+    },
+    "zh-CN": {
+      "from": "2d244a630dce",
+      "text": "991165769ca5"
+    }
+  },
   "chat:browser.pageReadsNote": {
     "de": {
       "from": "b7f546052735",

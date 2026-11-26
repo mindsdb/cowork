@@ -779,7 +779,11 @@
     "phoneWorking": "Working on it…",
     "phoneDone": "Done. Minimize to see the answer.",
     "phoneMinimize": "Minimize",
-    "talkTo": "Talk to {agent}"
+    "talkTo": "Talk to {agent}",
+    "overlayQuestion": "{agent} has a question waiting in the chat.",
+    "overlayHandOver": "Your turn on {site}: {reason}.",
+    "overlayHandOverWatching": "Your turn on {site}: {reason}. {agent} carries on by itself once it's done.",
+    "overlayGoToQuestion": "Go to the question"
   },
   "voiceCall": {
     "dialogLabel": "Voice mode",

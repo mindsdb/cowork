@@ -128,7 +128,8 @@ function SignInForm({ site, onAnswer }) {
 }
 
 /**
- * @param {{ sessionId: string, agentLabel?: string, onClose: () => void }} props
+ * @param {{ sessionId: string, agentLabel?: string, onClose: () => void,
+ *   footer?: import('react').ReactNode }} props
  */
 /* How long Save waits after a download starts waiting before it takes a click. */
 export const DOWNLOAD_ARM_MS = 700;
@@ -149,7 +150,7 @@ export function downloadLine(download) {
 
 export function LocalBrowserStage({
   sessionId, agentLabel = 'Anton', onClose, floating = false, extraActions = null, dock = null,
-  taskKey = '', onSend, onOpenUrl, onPageUrl = null, onControl = null,
+  taskKey = '', onSend, onOpenUrl, onPageUrl = null, onControl = null, footer = null,
 }) {
   const { t } = useTranslation('chat');
   const browser = host.inAppBrowser;
@@ -355,7 +356,7 @@ export function LocalBrowserStage({
   );
 
   return (
-    <BrowserFrame hint={hint} actions={actions} below={below} stageRef={stageRef} onClose={onClose} floating={floating} extraActions={extraActions} dock={dock}>
+    <BrowserFrame hint={hint} actions={actions} below={below} stageRef={stageRef} onClose={onClose} floating={floating} extraActions={extraActions} dock={dock} footer={footer}>
       {closed ? (
         <EmptyState
           size="sm"

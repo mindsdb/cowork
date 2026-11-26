@@ -779,6 +779,10 @@
     "phoneWorking": "Ci sto lavorando…",
     "phoneDone": "Fatto. Riduci per vedere la risposta.",
     "phoneMinimize": "Riduci",
+    "overlayQuestion": "{agent} ha una domanda in attesa nella chat.",
+    "overlayHandOver": "Tocca a te su {site}: {reason}.",
+    "overlayHandOverWatching": "Tocca a te su {site}: {reason}. {agent} riprende da solo quando è fatto.",
+    "overlayGoToQuestion": "Vai alla domanda",
     "talkTo": "Parla con {agent}"
   },
   "voiceCall": {
