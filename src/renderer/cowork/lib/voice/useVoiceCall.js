@@ -58,7 +58,7 @@ const ABANDONED_CLOSE_MS = 3000;
    channel, and the server has no route that closes a session. Until it closes
    it holds one of the person's open calls at inference, so connect just long
    enough to send session.close, then drop the connection. */
-async function closeAbandoned({ peer, channel }, answerSdp) {
+export async function closeAbandoned({ peer, channel }, answerSdp) {
   try {
     if (!answerSdp) return;
     await new Promise((resolve) => {

@@ -359,13 +359,12 @@ export function noticeStopsSide(notice) {
 /**
  * One credits notice for a comparison, from the notice each side's model would
  * get on its own (lib/usageWarnings' deriveComposerWarning). The more severe
- * wins; resting figures are left out, since they are not warnings. `blocks` is
+ * wins; a notice whose tone has no rank is left out. `blocks` is
  * true when either side could not run at all. A low balance carries the reason
  * a comparison feels it first: it runs two models.
  */
 export function compareCreditNotice(notices = []) {
   const ranked = notices
-    // A resting figure's tone has no rank, so it drops out here.
     .filter((n) => n && NOTICE_RANK[n.tone])
     .sort((x, y) => NOTICE_RANK[y.tone] - NOTICE_RANK[x.tone]);
   const notice = ranked[0];

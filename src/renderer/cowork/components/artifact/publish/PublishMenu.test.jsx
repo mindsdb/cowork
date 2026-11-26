@@ -208,13 +208,13 @@ describe('PublishMenu — owner-only summary (ENG-1769)', () => {
 });
 
 describe('PublishMenu — a first share with the platform UI on', () => {
-  it('starts on Public, described as reaching the internet', () => {
+  it('starts on Only me, with Public described as reaching the internet', () => {
     render(<PublishMenu controller={makeController()} />);
     fireEvent.click(screen.getByText('Share'));
 
-    expect(screen.getByRole('radio', { name: /Public/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: /Only me/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('radio', { name: /Public/ })).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByText('Anyone on the internet with the URL')).toBeInTheDocument();
-    expect(screen.getByText('Only me')).toBeInTheDocument();
   });
 });
 
@@ -277,6 +277,34 @@ describe('PublishMenu — fits a short window', () => {
   });
 });
 
+describe('PublishMenu — a doc that follows its edits', () => {
+  const SHARED_AND_CHANGED = {
+    publishedUrl: 'https://share/doc',
+    modified: true,
+    versions: [{ md5: 'a' }, { md5: 'b' }],
+  };
+
+  it('has nothing to update by hand and no versions to pick', () => {
+    const controller = makeController(SHARED_AND_CHANGED);
+    render(<PublishMenu controller={controller} noun="doc" followsEdits />);
+    fireEvent.click(screen.getByText('Shared'));
+
+    expect(screen.getByText('Updates as you edit')).toBeInTheDocument();
+    expect(screen.getByText('Who can access your doc')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Update' })).toBeNull();
+    expect(screen.queryByText(/Version history/)).toBeNull();
+    expect(controller.loadVersions).not.toHaveBeenCalled();
+  });
+
+  it('still offers Update for an app whose shared copy is behind', () => {
+    render(<PublishMenu controller={makeController(SHARED_AND_CHANGED)} />);
+    fireEvent.click(screen.getByText('Shared'));
+
+    expect(screen.getByRole('button', { name: 'Update' })).toBeInTheDocument();
+    expect(screen.getByText('Version history (2)')).toBeInTheDocument();
+  });
+});
+
 // The password field unfolds under its own option on a first share, and under
 // the access dropdown on a change; it must still be the one the share is saved
 // with.
@@ -289,7 +317,7 @@ describe('PublishMenu — password share', () => {
     await userEvent.type(screen.getByPlaceholderText('Add a password'), 'hunter2');
     const buttons = screen.getAllByRole('button').filter((b) => /publish|share|save/i.test(b.textContent) && !b.disabled);
     fireEvent.click(buttons.at(-1));
-    expect(ctrl.publish).toHaveBeenCalledWith(expect.objectContaining({ mode: 'password', password: 'hunter2' }));
+    expect(ctrl.publish).toHaveBeenCalledWith(expect.objectContaining({ mode: 'password', password: 'hunter2' }), expect.anything());
   });
 
   it('changes a public share to a password one', async () => {
@@ -303,6 +331,6 @@ describe('PublishMenu — password share', () => {
     const editor = screen.getByTestId('access-editor');
     await user.type(within(editor).getByPlaceholderText('Add a password'), 'hunter2');
     await user.click(screen.getByRole('button', { name: 'Update' }));
-    expect(ctrl.publish).toHaveBeenCalledWith(expect.objectContaining({ mode: 'password', password: 'hunter2' }));
+    expect(ctrl.publish).toHaveBeenCalledWith(expect.objectContaining({ mode: 'password', password: 'hunter2' }), expect.anything());
   });
 });

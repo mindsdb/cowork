@@ -348,7 +348,7 @@ describe('silentFor', () => {
 describe('compareCreditNotice', () => {
   const low = { kind: 'balance_low', tone: 'warning', title: 'Balance low', body: '$4.20 left.' };
   const empty = { kind: 'balance_empty', tone: 'danger', title: 'Balance empty', body: 'Add funds.' };
-  const resting = { kind: 'free_at_rest', tone: 'resting', resting: true, title: '80% left', body: '' };
+  const unranked = { kind: 'other', tone: 'neutral', title: '80% left', body: '' };
 
   it('takes the more severe side and blocks when either could not run', () => {
     expect(compareCreditNotice([low, empty])).toMatchObject({ kind: 'balance_empty', blocks: true });
@@ -368,7 +368,7 @@ describe('compareCreditNotice', () => {
   });
 
   it('leaves the standing allowance figure out', () => {
-    expect(compareCreditNotice([resting, null])).toBeNull();
+    expect(compareCreditNotice([unranked, null])).toBeNull();
   });
 });
 

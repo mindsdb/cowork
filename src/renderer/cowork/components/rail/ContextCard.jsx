@@ -36,6 +36,8 @@ import { openAuthenticatedResource } from '../../lib/authenticatedResource';
 import { canUseSharedResource } from '../../lib/sharedResourceAccess';
 import { useOrgMode } from '../../../lib/orgMode';
 import { ChatFoldersSection } from './ChatFoldersSection';
+import { ChatFoldersOffer } from './ChatFoldersOffer';
+import { desktopOfferAvailable } from '../../lib/desktopOffer';
 import { PROJECT_FILES_CHANGED } from '../sharepoint/SharePointImportModal';
 import i18n, { useTranslation } from '../../../lib/i18n';
 
@@ -1045,6 +1047,7 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
       {canUseWorkingFolders && (
         <ChatFoldersSection key={conversationId} conversationId={conversationId} refreshKey={refreshKey} />
       )}
+      {sessionRelevant && !canUseWorkingFolders && desktopOfferAvailable() && <ChatFoldersOffer />}
 
       {ordered.map((section) => {
         const max = showAll ? section.files.length : 4;

@@ -28,6 +28,8 @@ import * as path from 'path';
 import { diagnostic } from '../shared/diagnostics';
 import { pinPrivateDir, restrictToOwnerOnWindows, type PlatformOption } from './private-files';
 
+import { sanitizedParentEnv } from './agent-env';
+
 export const MINDSHUB_DIRNAME = '.claude-mindshub';
 const TASKS_SUBDIR = 'tasks';
 
@@ -45,9 +47,12 @@ function platformConfigArgs(): string[] {
   return process.platform === 'win32' ? ['-c', 'core.longpaths=true'] : [];
 }
 
+/* The repository's hooks run with this environment, and the agent can write
+   them, so it leaves out this app's and its server's COWORK_* and MINDSHUB_*
+   variables (sanitizedParentEnv in agent-env.ts). */
 function git(args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    execFile('git', [...platformConfigArgs(), ...args], { cwd }, (err, stdout, stderr) => {
+    execFile('git', [...platformConfigArgs(), ...args], { cwd, env: sanitizedParentEnv() }, (err, stdout, stderr) => {
       if (err) reject(Object.assign(err, { stdout, stderr }));
       else resolve({ stdout, stderr });
     });

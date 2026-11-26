@@ -99,17 +99,28 @@ beforeEach(() => {
 afterEach(() => { localStorage.clear(); setOrgMode(false); vi.useRealTimers(); });
 
 describe('ArtifactsView with audiences read', () => {
-  it('puts your artifact shared with everyone under Everyone at the org, says so, and tags it as yours', async () => {
+  it('keeps your artifact under Yours whoever it reaches, and its badge says who (ENG-4647)', async () => {
     render(<ArtifactsView artifacts={[art('everyone', 'Get Started'), art('people', 'Storefront')]} />);
 
-    const everyone = await screen.findByRole('region', { name: 'Everyone at Acme' });
-    expect(everyone).toHaveTextContent('Get Started');
-    expect(within(everyone).getByText('You', { exact: true })).toBeInTheDocument();
     const yours = screen.getByRole('region', { name: 'Yours' });
+    expect(yours).toHaveTextContent('Get Started');
     expect(yours).toHaveTextContent('Storefront');
-    // Not where every artifact is yours anyway.
+    expect(screen.queryByRole('region', { name: 'Everyone at Acme' })).toBeNull();
+    // Read, the badges say how each is shared.
+    expect(await within(yours).findByText('Everyone at Acme')).toBeInTheDocument();
+    expect(within(yours).getByText('Restricted')).toBeInTheDocument();
+    // No "You" tag: every artifact under Yours is yours.
     expect(within(yours).queryByText('You', { exact: true })).toBeNull();
     expect(audienceApi.loadArtifactAudience).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows "Only you" for a shared link only its owner can open, once its audience is read', async () => {
+    audienceApi.loadArtifactAudience.mockImplementation(async () => (
+      { accessMode: 'restricted', orgAllowed: false, ownerOnly: true, allowedTeamIds: [], allowedUserIds: [], accessEmails: [], names: true }
+    ));
+    render(<ArtifactsView artifacts={[art('solo', 'Scratch')]} />);
+    expect(await screen.findByText('Only you')).toBeInTheDocument();
+    expect(screen.queryByText('Restricted')).toBeNull();
   });
 
   it('names who a restricted artifact is shared with on hover', async () => {
@@ -122,27 +133,29 @@ describe('ArtifactsView with audiences read', () => {
   });
 });
 
-// The page shows once, already in its final sections: no artifact sits under
-// Yours and then moves, and no flat list turns into sections (ENG-4585).
+// The page shows once, already in its final sections: no artifact moves
+// between groups and no flat list turns into sections (ENG-4585). Groups
+// follow whose an artifact is (ENG-4647), which every card says, so only
+// sharing being known is waited on; an audience only fills in a badge.
 const busy = () => document.querySelector('[aria-busy="true"]');
 
 describe('ArtifactsView loads once, in its final sections', () => {
-  it('holds the skeleton until a restricted artifact\'s audience is read, then shows it in its section', async () => {
+  it('shows an artifact at once under Yours, and reading its audience only fills in its badge', async () => {
     let answer;
     audienceApi.loadArtifactAudience.mockReturnValue(new Promise((resolve) => { answer = resolve; }));
     render(<ArtifactsView artifacts={[art('everyone', 'Get Started')]} />);
 
-    expect(busy()).not.toBeNull();
-    expect(screen.queryByText('Get Started')).toBeNull();
-    expect(screen.queryByRole('region', { name: 'Yours' })).toBeNull();
+    expect(busy()).toBeNull();
+    const yours = screen.getByRole('region', { name: 'Yours' });
+    expect(yours).toHaveTextContent('Get Started');
+    expect(within(yours).getByText('Restricted')).toBeInTheDocument();
 
     await act(async () => { answer(AUDIENCES.everyone); });
-    expect(await screen.findByRole('region', { name: 'Everyone at Acme' })).toHaveTextContent('Get Started');
-    expect(screen.queryByRole('region', { name: 'Yours' })).toBeNull();
-    expect(busy()).toBeNull();
+    expect(await within(yours).findByText('Everyone at Acme')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Yours' })).toHaveTextContent('Get Started');
   });
 
-  it('waits for sharing and the teams before grouping', () => {
+  it('waits for sharing before grouping, and not for the teams', () => {
     sharing.status = 'loading';
     const page = render(<ArtifactsView artifacts={[art('plain', 'Notes', { publishedUrl: '' })]} />);
     expect(busy()).not.toBeNull();
@@ -150,16 +163,13 @@ describe('ArtifactsView loads once, in its final sections', () => {
     sharing.status = 'ready';
     sharing.teamsStatus = 'loading';
     page.rerender(<ArtifactsView artifacts={[art('plain', 'Notes', { publishedUrl: '' })]} />);
-    expect(busy()).not.toBeNull();
-
-    sharing.teamsStatus = 'ready';
-    page.rerender(<ArtifactsView artifacts={[art('plain', 'Notes', { publishedUrl: '' })]} />);
+    expect(busy()).toBeNull();
     expect(screen.getByRole('region', { name: 'Yours' })).toHaveTextContent('Notes');
   });
 
   it('shows the page anyway once the wait runs out', () => {
     vi.useFakeTimers();
-    audienceApi.loadArtifactAudience.mockReturnValue(new Promise(() => {}));
+    sharing.status = 'loading';
     render(<ArtifactsView artifacts={[art('everyone', 'Get Started')]} />);
     expect(busy()).not.toBeNull();
 
@@ -171,9 +181,9 @@ describe('ArtifactsView loads once, in its final sections', () => {
   it('never goes back to the skeleton when the list changes after it showed', async () => {
     const first = [art('everyone', 'Get Started')];
     const page = render(<ArtifactsView artifacts={first} />);
-    await screen.findByRole('region', { name: 'Everyone at Acme' });
+    await screen.findByRole('region', { name: 'Yours' });
 
-    audienceApi.loadArtifactAudience.mockReturnValue(new Promise(() => {}));
+    sharing.status = 'loading';
     page.rerender(<ArtifactsView artifacts={[...first, art('later', 'New deck')]} />);
     expect(busy()).toBeNull();
     expect(screen.getByText('Get Started')).toBeInTheDocument();

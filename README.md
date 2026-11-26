@@ -253,16 +253,21 @@ npm run dev:web
 
 Web development defaults to MindsHub UI off. In this build, Settings hides LLM Providers and Model Router, the composer hides model and reasoning-effort controls, and questions send `model: null` without a `reasoning_effort` override. The server uses its configured models and role-specific efforts. To configure providers and models in the development UI, run `VITE_PLATFORM_UI=true npm run dev:web`.
 
-This boots both processes:
+This boots both servers:
 
-1. The cowork-server FastAPI backend on `127.0.0.1:26866` (via `uv run cowork-server` from the sibling source directory).
-2. Vite dev server on `localhost:5173`, with `BUILD_TARGET=web`.
+1. The cowork-server FastAPI backend on `127.0.0.1:26866` (via `uv run cowork-server` from the sibling source directory). `scripts/start-server.mjs` hands it a fresh bearer token, window proof and app secret on stdin, as desktop main does (see [Loopback authentication](#loopback-authentication)). It takes the server as ready only when its `/api/v1/health/` answer reports `app_secret_protocol: 2` and proves it holds that app secret. Any other answer means something else holds the port, or the checkout predates the launch hand-off, and `dev:web` stops with an error that says so. It also stops as soon as the server it started exits.
+2. Vite dev server on `localhost:5173`, with `BUILD_TARGET=web`, in the `dev:web` process itself. `scripts/dev-web-vite.mjs` hands Vite's config the bearer token and the window proof as an argument to Vite's `createServer`, so neither value enters an environment variable or the client bundle.
 
 The dev server opens at `http://localhost:5173/` (a small Vite
 middleware rewrites `/` → `/index-web.html` so the bare URL is
 canonical). API calls hit the FastAPI sidecar via Vite's
-`/api` proxy. Press `Ctrl-C` once for a clean
+`/api` proxy, which adds the bearer token and the window proof to a request
+whose `Origin` (or, without one, whose `Host` and `Referer`) is Vite's own
+page, and removes a window proof from any other request
+(`src/renderer/dev-api-proxy.ts`). Press `Ctrl-C` once for a clean
 shutdown — vite quiesces first, then the python child.
+
+`dev:web` gives up the window proof's protection. Vite's proxy trusts a request's `Origin`, `Host` and `Referer` headers, and only a browser sets those honestly. Any local process, including an agent's, can send `Origin: http://localhost:5173` and get both values added. Test that an agent can't answer for the person in `npm run dev` or a packaged build.
 
 ### Build a production bundle
 
@@ -410,6 +415,18 @@ assets/
 - **Minds integration**: The GUI replicates the `/connect` flow — lists minds via REST API, handles datasource selection (normalizes string/object refs), and writes non-credential config to `~/.cowork/.env`. The MindsHub credential itself is never written there; see [MindsHub credentials](#mindshub-credentials).
 
 - **OTA updates**: The React UI and the Python backend update over-the-air (coupled, auto-applied at boot) without a new installer; the Electron shell auto-updates on stable/prod via `electron-updater`, installing on relaunch. See [Over-the-Air Updates](#over-the-air-updates).
+
+### Loopback authentication
+
+Desktop main makes three values fresh for every launch of the sidecar, each 32 random bytes in hex: the bearer token, the window proof and the app secret. It sets `COWORK_APP_SECRET_STDIN=2` in the sidecar's environment and writes the three as one JSON line to its stdin, `{"app_secret": …, "auth_token": …, "window_proof": …}`, then closes stdin. The values live only in desktop main's memory (`src/main/server-auth.ts`, `src/main/app-secret.ts`) and in the sidecar's: nothing writes them to disk or into a process environment, which the agent's code would inherit. cowork-server takes its bearer token from this line alone and removes any `COWORK_AUTH_TOKEN` line from `~/.cowork/.env`. A sidecar whose `/api/v1/health/` does not report `app_secret_protocol: 2` is incompatible, and the start fails, with no legacy fallback. A sidecar that refuses the hand-off exits with one line, `cowork-server: <problem>`, which the start error in the backend help panel repeats. A sidecar left running by an earlier app process is replaced, never adopted, since this process never handed it its token. `src/shared/server-launch.ts` holds the flag, the protocol number and the header name, which cowork-server's `cowork/app_secret.py` mirrors.
+
+- **Bearer token**: the session's one `onBeforeSendHeaders` listener (`src/main/server-token-listener.ts`) adds it to every renderer request to the sidecar, except from the document preview frame, a frame inside it, or a request with no frame.
+- **Window proof** (`X-Cowork-Window-Proof`): the same listener adds it only to a fetch or XMLHttpRequest from the main window's own top-level frame, and removes it from every other request to the sidecar. A frame inside the window, an image, a navigation, a download, another window and a request with no frame go without it. Desktop main's own requests carry both values through `authHeader()`.
+- **App secret** (`X-Cowork-App-Secret`): only desktop main's requests on the routes that hold MCP access tokens carry it, once the sidecar has proved over `/health` that it holds the secret.
+
+The listener and `authHeader()` get the bearer token and the window proof only once the sidecar has proved over `/health` that it holds the app secret, and lose both when it stops or exits on its own. While a start is pending, the listener holds every renderer request to `127.0.0.1:<port>` and lets it go when the start publishes both values, or ends without them (`untilServerStartSettles` in `src/main/server-process.ts`). So no renderer request reaches whatever holds the port during a start, and one the sidecar would refuse for want of a token waits for the token instead. Desktop main's own requests are not held.
+
+The Claude Code terminal runs with this app's environment minus `COWORK_*`, `MINDSHUB_*`, `CLAUDE_CODE_*`, `CLAUDECODE` and `ANTHROPIC_*`. The git calls in a task's repository run with it minus `COWORK_*` and `MINDSHUB_*` only. Desktop main sets no `OPENAI_*` or `ANTHROPIC_*` variable, so the user's own `OPENAI_*` values reach both, and their `ANTHROPIC_*` values reach the git calls. On Windows, where variable names ignore case, these names match in any case (`src/main/agent-env.ts`).
 
 ---
 
@@ -1140,10 +1157,10 @@ The React UI updates via a separate public repo: [`mindsdb/antontron-releases`](
 How it works:
 
 1. Code is merged to `main` — **every** push to `main` runs the prod pipeline (`prod-build-deploy.yml`), whose `auto-release` job computes a CalVer version (e.g. `2.26.7.16.1`) via the shared `calver-release.yml` reusable in [mindsdb/github-actions](https://github.com/mindsdb/github-actions), tags it, builds the prod installer, and calls `publish-ui` with that exact version, so the UI bundle and the prod app installer always publish the **same** version
-2. The `publish-ui` workflow builds the renderer (with the version baked into `__APP_VERSION__`) and creates a `.tar.gz` bundle with a SHA-256 checksum
-3. Using a `RELEASES_TOKEN`, it pushes the bundle as a GitHub Release and updates `latest.json` on GitHub Pages — both on the public `antontron-releases` repo
+2. The `publish-ui` workflow builds the renderer (with the version baked into `__APP_VERSION__`) in one job. A second job, which holds only the signing key and installs nothing, signs it with `scripts/sign-ui-bundle.mjs`. It writes the signed file list (`ota-manifest.json` and `ota-manifest.sig`) into the bundle, packs the `.tar.gz`, and signs the tarball's SHA-256, the version and the server floor for `latest.json`
+3. A third job uses the `RELEASES_TOKEN` to push the bundle as a GitHub Release and update `latest.json` on GitHub Pages, both on the public `antontron-releases` repo
 4. The app checks `latest.json` at launch and every 4 hours (static file, no auth, no API rate limits)
-5. An update is taken only if it passes the safety gates: strictly newer than the installed UI (no downgrades), SHA-256 verified, the server-first coupling held (a failed server update defers the UI), and any declared `min_server_version` floor satisfied
+5. An update is taken only if it passes the safety gates: `latest.json` carries a valid Ed25519 signature, the tarball matches the signed SHA-256, the extracted folder matches its signed file list, the signed version is strictly newer than the installed UI (no downgrades), the server-first coupling held (a failed server update defers the UI), and any declared `min_server_version` floor satisfied
 6. **The update is applied automatically at boot** — the UI reloads silently, no user choice involved. There is no manual/auto setting in Settings anymore (ENG-858); `UI_UPDATE_MODE` in `~/.anton/.env` remains as an env-only support/QA escape hatch, not a user-facing preference. A mid-session periodic check (every 4h) still only surfaces a banner and never auto-applies, so a long-running session can always see and apply an update without an unplanned reload. A freshly-swapped bundle must finish loading within 15s or it is rolled back and quarantined. See [docs/update-behavior.md](docs/update-behavior.md) for the full timing rules.
 
 ### Shell updates (auto-update / installer)
@@ -1161,9 +1178,8 @@ Both surface in the sidebar and in Settings → Updates. See `src/main/shell-aut
 | --- | --- | --- |
 | **Push to `main`** (normal path) | Every merge — the release train's auto-release calls `publish-ui` | Canonical CalVer, identical to the prod installer (e.g. `2.26.7.16.1`) |
 | **Manual dispatch** | [Actions UI](https://github.com/mindsdb/cowork/actions/workflows/publish-ui.yml) → Run workflow — re-publish/backfill | Entered version, or derived from `git describe` if empty |
-| **Tag push** | `git tag ui-v2.26.7.16.2 && git push origin ui-v2.26.7.16.2` — UI-only release | From the tag |
 
-The workflow checks for duplicate versions and skips if already published. Because the client refuses downgrades, un-shipping a bad bundle means publishing a **newer** fixed version, not re-pointing `latest.json` at an older one.
+The signing job runs in the `ui-signing` GitHub environment, which admits only `main`, so a dispatch from any other branch stops before it signs. The workflow checks for duplicate versions and skips if already published. Because the client refuses downgrades, un-shipping a bad bundle means publishing a **newer** fixed version, not re-pointing `latest.json` at an older one.
 
 #### Verifying a deploy
 
@@ -1173,13 +1189,15 @@ The workflow checks for duplicate versions and skips if already published. Becau
 
 ### Security
 
-- Every UI bundle is integrity-checked with **SHA-256** before extraction
-- Checksum mismatch → update discarded, app loads last known good UI
+- Every UI bundle is signed with **Ed25519** at release. The signing job holds `UI_SIGNING_KEY` and runs nothing but `scripts/sign-ui-bundle.mjs`. The app trusts only the public key in `src/main/ui-release-public-key.ts`, and the signer refuses a key whose public half differs from it. An unpackaged run (`npm run dev`, the e2e suites) also trusts `COWORK_OTA_TEST_PUBLIC_KEY`; a packaged build never reads it.
+- At download, the app checks the signature on `latest.json`, then the tarball against the signed SHA-256 before extraction, then the extracted folder against its signed file list. A missing, changed or extra file, or a symlink, discards the update, and the app keeps the UI it has.
+- Before **every load** from the cache, the app checks the folder against its signed file list again and hashes every file. A slot that fails is deleted and the bundled renderer loads, so the next check downloads a clean bundle. The version and the server floor come from the signed manifest.
+- `readServedUiFile` in `src/main/ui-updater.ts` returns a file of the loaded update only when its bytes match the manifest verified at load. The renderer's app scheme serves update files through it.
 - Previous UI version kept on disk for automatic **rollback**; a bundle that fails its post-swap load check is rolled back and **quarantined** (never re-applied)
-- Cache slots carry versioned provenance (`.ota-meta.json`) and are served only when strictly **newer than the bundled renderer** — a stale or legacy cache can never downgrade the UI
+- A cache slot is served only when its signed version is strictly **newer than the bundled renderer**, so a stale or legacy cache can never downgrade the UI. A slot an older shell wrote has no signed manifest, so it is deleted at the first launch.
 - OTA runs only in `prod` builds; the gate fails safe to OFF if the packaged build kind is missing or unrecognized
 - All downloads over HTTPS
-- `RELEASES_TOKEN` only has write access to the public releases repo — source code is never exposed
+- `RELEASES_TOKEN` only has write access to the public releases repo, and it can't publish a bundle the app accepts, because it never meets the signing key
 
 ### Boot sequence
 
@@ -1187,9 +1205,10 @@ The workflow checks for duplicate versions and skips if already published. Becau
 App starts
   ├─ If DEV_MODE is set → load Vite dev server or bundled renderer, skip OTA
   ├─ Load cached UI (instant, no network needed)
-  │   └─ Served only if: OTA enabled (prod build) + valid provenance
-  │      + strictly newer than bundled + server-compat floor verified;
-  │      otherwise the bundled renderer loads
+  │   └─ Served only if: OTA enabled (prod build) + signed manifest valid
+  │      + signed version strictly newer than bundled + server-compat floor
+  │      verified + every file matches the signed list (hashed now);
+  │      otherwise the bundled renderer loads, and a slot that failed is deleted
   ├─ Start cowork-server (spawn process, poll /health while the child lives)
   └─ After renderer loads: boot update check (UI manifest + server, in parallel)
       ├─ apply now (server first, then UI, health-checked reload) — unless the
@@ -1202,21 +1221,24 @@ The app **never blocks on a network request** — it always loads immediately fr
 ### File layout (on disk)
 
 ```
-{userData}/ui-cache/
-  version.json          # { "version": "1.2.0" }
-  current/              # Active renderer bundle
+{userData}/ui-cache/            # prod; other build kinds use <cowork home>/ui-cache/
+  current/              # Active renderer bundle, with ota-manifest.json and ota-manifest.sig
+  staging/              # A download, checked before it replaces current/
   previous/             # Rollback copy
+  rejected.json         # A version that failed its post-swap load check
 ```
 
 On GitHub (`mindsdb/antontron-releases`):
 
 ```
 gh-pages branch:
-  latest.json           # { "version": "1.2.0", "url": "...", "sha256": "..." }
+  latest.json           # { "version", "url", "sha256", "signed", "signature", ... }
+                        # signed: base64 of {kind, schema, version, sha256, minServerVersion}
+                        # signature: base64 Ed25519 signature over those bytes
 
 GitHub Releases:
   ui-v1.2.0/
-    ui-bundle.tar.gz    # The renderer build output
+    ui-bundle.tar.gz    # The renderer build output, with its signed file list
 ```
 
 ---
@@ -1314,7 +1336,7 @@ npm run dist:mac
 # electron-builder will: sign -> notarize -> staple -> create DMG
 ```
 
-The `electron-builder.yml` config and `scripts/notarize.js` hook are already included in this repo. The hardened-runtime entitlements (`build/entitlements.mac.plist`) are required because Electron uses JIT and dynamic linking.
+The `electron-builder.yml` config and `scripts/notarize.js` hook are already included in this repo. The hardened-runtime entitlements (`build/entitlements.mac.plist`) are required because Electron uses JIT and dynamic linking. They grant neither `allow-dyld-environment-variables` nor `disable-library-validation`, so the app and its helpers load only libraries signed by the same team (see [Release hardening](#release-hardening)).
 
 #### Troubleshooting
 
@@ -1350,6 +1372,23 @@ Export-PfxCertificate -Cert $cert -FilePath cowork-dev.pfx -Password (ConvertTo-
 > Self-signed apps trigger SmartScreen warnings. Only EV certs or Azure Trusted Signing build SmartScreen reputation.
 
 </details>
+
+### Release hardening
+
+A packaged build runs only the code MindsDB built into it, so a program running as the user can't start it in a way that loads code of its own.
+
+- **Electron fuses.** `electronFuses` in `electron-builder.yml` writes five fuses into every packaged build before signing, on both slices of the universal macOS app. `runAsNode`, `enableNodeOptionsEnvironmentVariable` and `enableNodeCliInspectArguments` are off. `enableEmbeddedAsarIntegrityValidation` and `onlyLoadAppFromAsar` are on. `grantFileProtocolExtraPrivileges` stays at Electron's default (on): with it off, Electron no longer serves `app.asar` over `file://`, and the main window loads its renderer that way, so it can go off only once the renderer loads through a custom scheme. So `ELECTRON_RUN_AS_NODE`, `NODE_OPTIONS` and `--inspect` have no effect, and a changed `app.asar` stops the app at start. `resetAdHocDarwinSignature` re-signs an unsigned local build ad hoc, so it still launches on Apple Silicon. `scripts/release-fuses.mjs` holds the expected values, and `src/main/release-hardening.invariant.test.ts` pins the config to them. To read a build's fuses, use `npx @electron/fuses read --app <path>`. On a universal app, that reads only the first slice, and `checkFuses` in `scripts/release-fuses.mjs` reads every slice.
+- **Entitlements.** The app and its helpers are signed without `allow-dyld-environment-variables` and `disable-library-validation`.
+- **Launch switches.** A packaged build exits at start, before any window exists, when its command line carries a switch that hands it or its traffic to whoever started it. The list is `DENIED_LAUNCH_SWITCHES` in `src/main/launch-guard.ts`: `--remote-debugging-port` and `--remote-debugging-pipe`, the switches that start a caller-chosen program in place of a child process, and the switches that expose the app's HTTPS traffic. It also removes `SSLKEYLOGFILE` from its environment. The only exception is a run whose Node inspector is active, which only a copy with the inspector fuse turned back on can reach. Proxy switches stay allowed. To debug, use `npm run dev` or `npm run dev:debug`.
+- **HTML lint mode.** anton checks generated pages by running this binary with `ANTON_HTML_LINT_TARGET`. A packaged build runs the lint runner shipped inside `app.asar` (`src/main/html-lint-runner.ts`) and ignores `ANTON_HTML_LINT_RUNNER`. The lint window serves a file target from its own folder through a lint-only scheme, so module scripts and `fetch` of sibling files work as they do in the app's viewer. An unpackaged run still loads the runner anton names.
+- **Certificates.** With the `nodeOptions` fuse off, Electron removes `NODE_EXTRA_CA_CERTS` from the environment. Desktop main's own Node HTTPS clients trust the operating system's root store, and the sidecar gets `NODE_USE_SYSTEM_CA=1`, so a corporate root installed in the system store keeps working.
+- **CI.** The macOS and Windows setup smokes check the installed app's fuses (and, on macOS, its entitlements). They then turn the inspector fuse back on in a copy of the app, which they re-sign ad hoc on macOS, and drive that copy with Playwright. The nightly pack smoke checks the fuses of an unsigned `--dir` build.
+
+Known limits:
+
+- Windows installs per user, so a program running as the user can rewrite the installed `.exe`, fuses included. The macOS app installs from a root-owned `.pkg` and keeps its code signature.
+- `app.asar.unpacked` (native modules) falls outside asar integrity. On macOS, library validation still covers those modules.
+- An older bundle MindsDB signed can be put back in the UI cache, as long as it is newer than the bundled renderer.
 
 ---
 
@@ -1510,7 +1549,7 @@ Hosted runners run Windows Server, not Windows 11, and x64 only; a person's chec
 | [`release-smoke.yml`](.github/workflows/release-smoke.yml) | Called after a prod release / nightly | Download the published installers in a real Chromium and check them |
 | [`macos-setup-smoke.yml`](.github/workflows/macos-setup-smoke.yml) | After Stable/prod macOS upload / nightly / manual | Install the published `.pkg` on a fresh profile and require every setup step through Start server to succeed |
 | [`windows-setup-smoke.yml`](.github/workflows/windows-setup-smoke.yml) | After Stable/prod Windows upload / nightly / manual | Install the published `.exe` on a fresh profile and a fresh machine's root store, and require every setup step through Start server to succeed |
-| [`publish-ui.yml`](.github/workflows/publish-ui.yml) | Push to `main` / `ui-v*` tag / manual | OTA UI bundle publish |
+| [`publish-ui.yml`](.github/workflows/publish-ui.yml) | Push to `main` / manual | OTA UI bundle: build, sign in the `ui-signing` environment, publish |
 
 ### Required GitHub Secrets
 
@@ -1518,7 +1557,7 @@ Apple signing: `APPLE_DEV_ID_APP_CERT_B64`, `APPLE_DEV_ID_APP_CERT_PASSWORD`, `A
 
 Windows signing: `SSL_USERNAME`, `SSL_PASSWORD`, `SSL_CREDENTIAL_ID`, `SSL_TOTP_SECRET`
 
-OTA UI publishing: `RELEASES_TOKEN` (fine-grained PAT scoped to `mindsdb/antontron-releases`)
+OTA UI publishing: `RELEASES_TOKEN` (fine-grained PAT scoped to `mindsdb/antontron-releases`), and `UI_SIGNING_KEY`, an environment secret of `ui-signing` only (the PKCS#8 PEM of the Ed25519 key whose public half is in `src/main/ui-release-public-key.ts`)
 
 > **No AWS secrets.** The upload job runs on `mdb-prod` and picks up AWS credentials from the pod's IAM role. The role needs `s3:GetObject` and `s3:PutObject` on `arn:aws:s3:::anton-installer/*` — `GetObject` as well as `PutObject`, because the publish path reads a key back to check whether it already holds these bytes, and copies the versioned key onto the alias server-side.
 
@@ -1534,7 +1573,19 @@ This section covers the one-time setup for [`publish-ui.yml`](.github/workflows/
    - Permissions: Contents (read/write), Metadata (read)
    - Save the token as `RELEASES_TOKEN` in the source repo's Settings → Secrets → Actions.
 3. Enable GitHub Pages on `antontron-releases`: Settings → Pages → Source "Deploy from a branch" → Branch `gh-pages` / `/ (root)`. The `gh-pages` branch is created automatically by the first workflow run.
-4. Verify with:
+4. Create the `ui-signing` environment before the first run, limited to `main`. GitHub would otherwise create it on first use with no rules. Then store the signing key in it, and only there:
+
+   ```bash
+   gh api --method PUT repos/mindsdb/cowork/environments/ui-signing \
+     -F 'deployment_branch_policy[protected_branches]=false' \
+     -F 'deployment_branch_policy[custom_branch_policies]=true'
+   gh api --method POST repos/mindsdb/cowork/environments/ui-signing/deployment-branch-policies \
+     -f name=main -f type=branch
+   gh secret set UI_SIGNING_KEY --env ui-signing --repo mindsdb/cowork < ui-signing.pem
+   ```
+
+   A new key pair means a new public key in `src/main/ui-release-public-key.ts`, shipped in a desktop release before the first bundle signed with the new key. The signing job refuses to sign while the two disagree.
+5. Verify with:
 
 ```bash
 curl https://mindsdb.github.io/antontron-releases/latest.json

@@ -1,7 +1,6 @@
 import { diagnostic } from '../shared/diagnostics';
 import { saveTokens, getRefreshToken, clearTokens, getTokenStoreVersion, getAccessToken, isAccessTokenExpired } from './token-store';
 import { stopServer, startServer, isServerRunning, isServerStarting, getServerPort, sidecarIsOnCurrentStores, ensureSidecarOnCurrentAccountRoot } from './server-process';
-import { resetServerAuthTokenCache } from './server-auth';
 import { checkInstallStatus } from './installer';
 import { claimDefaultRoot, writeActiveOrgSync } from './account-data';
 import { accountIdFromToken, activeOrgClaim, decodeJwtPayload, orgIdFromClaim } from './jwt';
@@ -1470,10 +1469,6 @@ export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }>
     diagnostic("main.minds-auth", "INFO", "minds_auth_account_data_root_changed_restarting_the_sidecar", '[minds-auth] account data root changed — restarting the sidecar');
     dataRootChanged = true;
     await stopServer();
-    // The bearer token lives in the account's own dotenv, so a cached one from
-    // the previous root would be refused by the new sidecar. Dropped AFTER the
-    // stop: its shutdown checkpoint authenticates, which re-latches the cache.
-    resetServerAuthTokenCache();
     await startServer();
   } else if (!isServerRunning() && !isServerStarting()) {
     await startServer();
@@ -1504,7 +1499,7 @@ export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }>
     try {
       // authHeader(): main-process fetch — the webRequest injection hook only
       // covers renderer requests, so this must carry the server bearer token
-      // itself when COWORK_REQUIRE_AUTH=true.
+      // and the window proof itself.
       const res = await timedFetch(`http://127.0.0.1:${port}/api/v1/settings/${key}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...authHeader() },

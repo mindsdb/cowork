@@ -9,15 +9,21 @@
 //
 // Nothing is ever published to a real release channel — the tarball is built
 // on the fly from an in-memory index.html, and the manifest's `url` points back
-// at this same server.
+// at this same server. Bundles and latest.json are signed with a key the spec
+// generates at runtime and hands the app through COWORK_OTA_TEST_PUBLIC_KEY.
 
 import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import crypto from 'node:crypto';
-import { execFileSync } from 'node:child_process';
 import type { AddressInfo } from 'node:net';
+import {
+  sha256Hex,
+  signBundleFolder,
+  signLatest,
+  tarBundleFolder,
+  type TestSigningKey,
+} from '../../tests/helpers/uiBundleSigning';
 
 export interface OtaFixture {
   /** UI CalVer this "release" advertises, e.g. "2.27.7.13.1". */
@@ -27,6 +33,8 @@ export interface OtaFixture {
   /** Raw HTML for the bundle's index.html. Defaults to a marked, healthy page.
    *  Pass `HANGING_HTML` to simulate a bundle that never finishes loading. */
   html?: string;
+  /** Serve latest.json without its `signed` and `signature` fields. */
+  unsigned?: boolean;
 }
 
 /** A healthy page carrying a marker the spec can assert loaded in the window. */
@@ -49,16 +57,22 @@ export function stallingHtml(hangUrl: string): string {
     `<script src="${hangUrl}"></script></head><body><div id="ota-fixture">stalling</div></body></html>`;
 }
 
-/** Build a real gzipped tar containing index.html — faithful to the code's
- *  actual `tar xzf` extraction path — and return it with its sha256. */
-export function buildBundle(fixture: OtaFixture): { tarball: Buffer; sha256: string } {
+/** Writes a bundle folder holding index.html and signs it the way a release
+ *  is signed. Used both to seed a cache slot and to build a served tarball. */
+export function writeSignedBundle(dir: string, fixture: OtaFixture, key: TestSigningKey): void {
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'index.html'), fixture.html ?? healthyHtml(fixture.version));
+  signBundleFolder(dir, fixture.version, fixture.minServerVersion ?? null, key);
+}
+
+/** Build a real gzipped tar of a signed bundle, faithful to the code's
+ *  actual `tar xzf` extraction path, and return it with its sha256. */
+export function buildBundle(fixture: OtaFixture, key: TestSigningKey): { tarball: Buffer; sha256: string } {
   const src = fs.mkdtempSync(path.join(os.tmpdir(), 'ota-fix-src-'));
   try {
-    fs.writeFileSync(path.join(src, 'index.html'), fixture.html ?? healthyHtml(fixture.version));
-    const tgz = path.join(src, 'bundle.tar.gz');
-    execFileSync('tar', ['czf', tgz, '-C', src, 'index.html']);
-    const tarball = fs.readFileSync(tgz);
-    return { tarball, sha256: crypto.createHash('sha256').update(tarball).digest('hex') };
+    writeSignedBundle(src, fixture, key);
+    const tarball = tarBundleFolder(src);
+    return { tarball, sha256: sha256Hex(tarball) };
   } finally {
     fs.rmSync(src, { recursive: true, force: true });
   }
@@ -74,13 +88,13 @@ export interface FixtureServer {
   close(): Promise<void>;
 }
 
-export async function startFixtureServer(initial: OtaFixture | null = null): Promise<FixtureServer> {
-  let state: { version: string; sha256: string; minServerVersion?: string; tarball: Buffer } | null = null;
+export async function startFixtureServer(key: TestSigningKey, initial: OtaFixture | null = null): Promise<FixtureServer> {
+  let state: { version: string; sha256: string; minServerVersion?: string; unsigned: boolean; tarball: Buffer } | null = null;
 
   const setFixture = (fixture: OtaFixture | null) => {
     if (!fixture) { state = null; return; }
-    const { tarball, sha256 } = buildBundle(fixture);
-    state = { version: fixture.version, sha256, minServerVersion: fixture.minServerVersion, tarball };
+    const { tarball, sha256 } = buildBundle(fixture, key);
+    state = { version: fixture.version, sha256, minServerVersion: fixture.minServerVersion, unsigned: !!fixture.unsigned, tarball };
   };
   setFixture(initial);
 
@@ -99,6 +113,9 @@ export async function startFixtureServer(initial: OtaFixture | null = null): Pro
         sha256: state.sha256,
       };
       if (state.minServerVersion) manifest.min_server_version = state.minServerVersion;
+      if (!state.unsigned) {
+        Object.assign(manifest, signLatest({ version: state.version, sha256: state.sha256, minServerVersion: state.minServerVersion ?? null }, key));
+      }
       const body = JSON.stringify(manifest);
       res.writeHead(200, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) });
       res.end(body);

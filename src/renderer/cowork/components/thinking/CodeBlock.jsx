@@ -4,7 +4,7 @@
 // Light: oneLight palette. Dark: vscDarkPlus, with our --surface-2
 // background substituted in so the block matches the modal chrome.
 
-import { useEffect, useState } from 'react';
+import { useBodyTheme } from '../../hooks/useBodyTheme';
 import { PrismAsyncLight as Prism } from 'react-syntax-highlighter';
 import python from 'react-syntax-highlighter/dist/esm/languages/prism/python';
 import javascript from 'react-syntax-highlighter/dist/esm/languages/prism/javascript';
@@ -21,22 +21,6 @@ Prism.registerLanguage('json', json);
 Prism.registerLanguage('bash', bash);
 Prism.registerLanguage('shell', bash);
 Prism.registerLanguage('sql', sql);
-
-function readBodyTheme() {
-  if (typeof document === 'undefined') return 'light';
-  return document.body?.dataset?.theme === 'dark' ? 'dark' : 'light';
-}
-
-function useBodyTheme() {
-  const [theme, setTheme] = useState(readBodyTheme);
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    const obs = new MutationObserver(() => setTheme(readBodyTheme()));
-    obs.observe(document.body, { attributes: true, attributeFilter: ['data-theme'] });
-    return () => obs.disconnect();
-  }, []);
-  return theme;
-}
 
 /* `wrap` breaks long lines, anywhere in a long token too, instead of
    scrolling them sideways: for one-line text such as a request's URL, where

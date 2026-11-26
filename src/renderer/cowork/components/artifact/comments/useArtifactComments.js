@@ -171,12 +171,14 @@ export function useArtifactComments(userDir, reportId, { enabled = true, onUnrea
   }, [userDir, reportId, apply]);
 
   const reply = useCallback(async (id, text) => {
-    if (!text || !text.trim()) return;
+    if (!text || !text.trim()) return false;
     try {
       const updated = await addCommentReply(userDir, reportId, id, text.trim());
       apply({ ...updated, type: 'thread.updated' });
+      return true;
     } catch (e) {
       setError(reasonFor(e, 'reply'));
+      return false;
     }
   }, [userDir, reportId, apply]);
 

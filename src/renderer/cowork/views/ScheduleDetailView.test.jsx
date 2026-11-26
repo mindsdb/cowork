@@ -142,6 +142,18 @@ describe('ScheduleDetailView — header and summary', () => {
     expect(await screen.findByText("GPT X isn't available, so this run used your default model.")).toBeInTheDocument();
   });
 
+  it('marks a run that started well after its slot as late', async () => {
+    vi.mocked(fetchScheduleRuns).mockResolvedValue({ runs: [
+      { ...RUNS[2], id: 'late', slotAt: '2026-09-29T08:30:00Z' },
+      { ...RUNS[1], id: 'on-time', slotAt: '2026-09-30T08:59:30Z' },
+    ] });
+    const { user } = setup();
+    const notes = await screen.findAllByText('Late');
+    expect(notes).toHaveLength(1);
+    await user.hover(notes[0]);
+    expect(await screen.findByText(/^Due .+\. (MindsHub was closed|The server was down)/)).toBeInTheDocument();
+  });
+
   it('goes back from the breadcrumb', async () => {
     const { user, props } = setup();
     await user.click(screen.getByRole('button', { name: /Scheduled Tasks/ }));
@@ -303,6 +315,27 @@ describe('ScheduleDetailView — how the last run went', () => {
     });
     setup();
     expect(await screen.findByText('Stopped at a limit')).toBeInTheDocument();
+    expect(screen.queryByText('Failed')).not.toBeInTheDocument();
+  });
+
+  it('says a run whose changes went unapproved, and offers the run and Run again, not Settings', async () => {
+    const lastRun = failed('writes_refused', { error: 'Run stopped short: a change needed approval.' });
+    const { props, user } = setup({ task: { ...TASK, state: 'active', lastRun }, onOpenSettings: vi.fn() });
+    const box = (await screen.findByText('The last run’s changes weren’t approved')).closest('[role="alert"]');
+    expect(within(box).getByText('Run stopped short: a change needed approval.')).toBeInTheDocument();
+    expect(within(box).queryByRole('button', { name: 'Open Settings' })).not.toBeInTheDocument();
+    await user.click(within(box).getByRole('button', { name: 'Review run' }));
+    expect(props.onOpenRunSession).toHaveBeenCalledWith('conv-9');
+    await user.click(within(box).getByRole('button', { name: 'Run again' }));
+    expect(props.onRunNow).toHaveBeenCalledWith('s1');
+  });
+
+  it('labels a run whose changes went unapproved in the run list', async () => {
+    vi.mocked(fetchScheduleRuns).mockResolvedValue({
+      runs: [{ id: 'run-5', status: 'failed', outcome: 'writes_refused', startedAt: '2026-10-02T09:00:00Z', error: 'Run stopped short.' }],
+    });
+    setup();
+    expect(await screen.findByText('Not approved')).toBeInTheDocument();
     expect(screen.queryByText('Failed')).not.toBeInTheDocument();
   });
 

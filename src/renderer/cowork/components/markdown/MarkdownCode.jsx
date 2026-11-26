@@ -1,15 +1,18 @@
 // react-markdown `code` slot replacement. Adapted from mdb-ai/MarkdownCode.
-// Three behaviours:
-//   - ```chartjs <full Chart.js config> → render the chart inline
+// Behaviours:
+//   - ```chartjs <full Chart.js config> → render the chart inline (parsed
+//                                        as JSON and capped, never eval'd)
+//   - ```mermaid <diagram source>       → render the diagram inline
 //   - ```chart  <intent JSON>          → not supported yet (no compile
 //                                        endpoint in our backend),
 //                                        shows error placeholder.
 //   - everything else                  → plain <code> with our token style
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChartLoadingState, ChartErrorState } from './ChartStates';
+import { ChartBlock, ChartLoadingState, ChartErrorState } from './ChartStates';
 import { MessageChart } from './MessageChart';
-import { parseChartIntent } from './utils';
+import { MessageMermaid } from './MessageMermaid';
+import { parseChartConfig, parseChartIntent, validateMermaidSource } from './utils';
 import { highlightCode } from './hljs';
 import Ico from '../Icons';
 import { Alert } from '../ui';
@@ -59,12 +62,65 @@ function CodeBlockPre({ overflowCue, source, children }) {
   );
 }
 
+/* The ordinary fenced block — Claude-style card with a language header, a
+   Copy button (handled by a delegated listener in MarkdownContent), and a
+   syntax-highlighted body. Also what a chart or diagram block shows under
+   "Show source". */
+function CodeBlockCard({ highlighted, raw, overflowCue = false }) {
+  const { t } = useTranslation('chat');
+  // No-language fences render via the plaintext fallback; suppress the
+  // label so the header reads as a bare Copy affordance instead of a
+  // noisy "plaintext" tag. The accessible Copy label is generalised
+  // for the same reason.
+  const isPlaintext = highlighted.language === 'plaintext';
+  return (
+    <div className="anton-code-block" data-language={highlighted.language}>
+      <div className="anton-code-block-header">
+        <span className="anton-code-block-lang">{isPlaintext ? '' : highlighted.language}</span>
+        <button
+          type="button"
+          className="anton-code-block-copy"
+          data-copy-code=""
+          aria-label={isPlaintext ? t('markdown.copyCode') : t('markdown.copyLanguageCode', { language: highlighted.language })}
+        >
+          <span className="anton-code-block-copy-icon anton-code-block-copy-icon--idle" aria-hidden="true">
+            {Ico.copy(12)}
+          </span>
+          <span className="anton-code-block-copy-icon anton-code-block-copy-icon--done" aria-hidden="true">
+            {Ico.check(12)}
+          </span>
+          {/* aria-live="polite" so screen readers announce the Copy →
+              Copied → Copy transition without interrupting whatever
+              they were reading. The delegated click listener in
+              MarkdownContent mutates this span's textContent, which
+              is what the live region picks up. */}
+          <span className="anton-code-block-copy-label" aria-live="polite">{t('markdown.copy')}</span>
+        </button>
+      </div>
+      <CodeBlockPre overflowCue={overflowCue} source={raw}>
+        <code
+          className={`hljs language-${highlighted.language}`}
+          data-source={raw}
+          dangerouslySetInnerHTML={{ __html: highlighted.html }}
+        />
+      </CodeBlockPre>
+    </div>
+  );
+}
+
+/* A chart/diagram fence's source as the ordinary code block, highlighted
+   only once someone asks to see it. */
+function FenceSource({ text, lang }) {
+  const raw = text.replace(/\n$/, '');
+  const highlighted = useMemo(() => highlightCode(raw, lang), [raw, lang]);
+  return <CodeBlockCard highlighted={highlighted} raw={raw} />;
+}
+
 export function MarkdownCode(props) {
   const { t } = useTranslation('chat');
   const lang = props?.className?.replace('language-', '') || '';
   const text = String(props?.children ?? '');
   const isBlock = props?.block === true;
-  const id = props?.id;
   const complete = props?.complete !== false; // assume complete unless told otherwise
   const conversationId = props?.conversationId || null;
   // Capability flags. Assistant turns leave these defaulted to true so
@@ -114,6 +170,16 @@ export function MarkdownCode(props) {
     return null;
   }, [enableCharts, lang, text]);
 
+  // ```chartjs / ```mermaid bodies are parsed and capped only once the
+  // fence is complete: a half-streamed body is never valid and is shown
+  // as the loading state instead.
+  const drawable = useMemo(() => {
+    if (!enableCharts || !complete) return null;
+    if (lang === 'chartjs') return parseChartConfig(text);
+    if (lang === 'mermaid') return validateMermaidSource(text);
+    return null;
+  }, [enableCharts, complete, lang, text]);
+
   // Highlighted output for ordinary fenced blocks. We skip the special
   // langs (chartjs/chart/data-vault-form*) so we don't pay the hljs
   // cost on blocks that have their own renderer. Computed unconditionally
@@ -123,7 +189,7 @@ export function MarkdownCode(props) {
   // special langs flow through here so they render as plain highlighted
   // code blocks (and `lang` is preserved as a header label).
   const highlighted = useMemo(() => {
-    const isChartLang = lang === 'chart' || lang === 'chartjs';
+    const isChartLang = lang === 'chart' || lang === 'chartjs' || lang === 'mermaid';
     const isSpecial = isFormLang || (enableCharts && isChartLang);
 
     if (isSpecial) return null;
@@ -279,8 +345,25 @@ export function MarkdownCode(props) {
   }
 
   // Legacy / direct chartjs format — full Chart.js config in the block.
-  if (enableCharts && lang === 'chartjs') {
-    return complete ? <MessageChart id={id || 'chart'} text={text} /> : <ChartLoadingState />;
+  // Both draw in the same block frame: actions in the code-block header,
+  // the loading state (at the chart's height) while the fence streams, the
+  // error state when it doesn't parse or is over a cap, and the fence's
+  // source on demand.
+  if (enableCharts && (lang === 'chartjs' || lang === 'mermaid')) {
+    let body;
+    if (!complete || !drawable) body = <ChartLoadingState />;
+    else if (drawable.error) body = <ChartErrorState error={drawable.error} />;
+    else if (lang === 'chartjs') body = <MessageChart config={drawable.config} />;
+    else body = <MessageMermaid source={drawable.source} />;
+    return (
+      <ChartBlock
+        kind={lang}
+        label={lang === 'chartjs' ? t('markdown.chart.chartLabel') : t('markdown.chart.diagramLabel')}
+        source={<FenceSource text={text} lang={lang === 'chartjs' ? 'json' : 'plaintext'} />}
+      >
+        {body}
+      </ChartBlock>
+    );
   }
 
   // Ordinary fenced block — Claude-style card with a language header,
@@ -288,45 +371,7 @@ export function MarkdownCode(props) {
   // and a syntax-highlighted body. MarkdownContent strips the outer
   // <pre> for fenced children so the <div> wrapper stays valid HTML.
   if ((lang || isBlock) && highlighted) {
-    const raw = text.replace(/\n$/, '');
-    // No-language fences render via the plaintext fallback; suppress the
-    // label so the header reads as a bare Copy affordance instead of a
-    // noisy "plaintext" tag. The accessible Copy label is generalised
-    // for the same reason.
-    const isPlaintext = highlighted.language === 'plaintext';
-    return (
-      <div className="anton-code-block" data-language={highlighted.language}>
-        <div className="anton-code-block-header">
-          <span className="anton-code-block-lang">{isPlaintext ? '' : highlighted.language}</span>
-          <button
-            type="button"
-            className="anton-code-block-copy"
-            data-copy-code=""
-            aria-label={isPlaintext ? t('markdown.copyCode') : t('markdown.copyLanguageCode', { language: highlighted.language })}
-          >
-            <span className="anton-code-block-copy-icon anton-code-block-copy-icon--idle" aria-hidden="true">
-              {Ico.copy(12)}
-            </span>
-            <span className="anton-code-block-copy-icon anton-code-block-copy-icon--done" aria-hidden="true">
-              {Ico.check(12)}
-            </span>
-            {/* aria-live="polite" so screen readers announce the Copy →
-                Copied → Copy transition without interrupting whatever
-                they were reading. The delegated click listener in
-                MarkdownContent mutates this span's textContent, which
-                is what the live region picks up. */}
-            <span className="anton-code-block-copy-label" aria-live="polite">{t('markdown.copy')}</span>
-          </button>
-        </div>
-        <CodeBlockPre overflowCue={overflowCue} source={raw}>
-          <code
-            className={`hljs language-${highlighted.language}`}
-            data-source={raw}
-            dangerouslySetInnerHTML={{ __html: highlighted.html }}
-          />
-        </CodeBlockPre>
-      </div>
-    );
+    return <CodeBlockCard highlighted={highlighted} raw={text.replace(/\n$/, '')} overflowCue={overflowCue} />;
   }
 
   // Inline code (single backticks) — kept visually distinct from fenced

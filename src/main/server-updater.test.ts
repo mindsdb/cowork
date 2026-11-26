@@ -21,8 +21,8 @@ vi.mock('./server-process', () => ({
 // buildKind reaches electron's `app`; stub it so the PyPI stream gate resolves
 // without a packaged app (mirrors server-source.test.ts).
 vi.mock('./cowork-home', () => ({ buildKind: vi.fn(() => 'prod') }));
-// authHeader reaches cowork-home's readEnvFile in turn; mocked at this
-// boundary instead so this file doesn't have to also stub that.
+/* The probe's headers are the running launch's, which no test here starts;
+   mocked at this boundary so probeAuthMismatch sends a fixed set. */
 vi.mock('./server-auth', () => ({ authHeader: vi.fn(() => ({})) }));
 vi.mock('fs');
 vi.mock('child_process');
@@ -34,6 +34,7 @@ vi.mock('https');
 
 import { forgetServerCapability, startServer, stopServer, isServerRunning } from './server-process';
 import { buildKind } from './cowork-home';
+import { authHeader } from './server-auth';
 import { lockedServerInstallArgs } from './server-release-install';
 import {
   maybeUpdateServer,
@@ -61,8 +62,8 @@ function mockPypi(bodyFor: (url: string) => string | null) {
 }
 
 /** Stub http.request for probeAuthMismatch's GET /conversations/ check. A
- *  200 (the default) means "not a mismatch"; mockAuthMismatch below flips it
- *  to 401 for the tests that exercise that path specifically. */
+ *  200 (the default) means "not a mismatch"; mockAuthProbe(401) flips it for
+ *  the tests that exercise that path specifically. */
 function mockAuthProbe(statusCode: number) {
   vi.mocked(http.request).mockImplementation(((_opts: unknown, cb: (r: unknown) => void) => {
     const res = new EventEmitter() as EventEmitter & { statusCode: number; resume: () => void };
@@ -268,7 +269,8 @@ describe('maybeUpdateServer (orchestration)', () => {
    * startServer() resolving {ok: true} was the update's only signal, so this
    * exact case reported success while every route but /health then 401'd.
    */
-  it('rolls back when the update answers /health but 401s on an authenticated route', async () => {
+  /** A git install one cowork commit behind its remote. */
+  function gitInstallBehindRemote(): void {
     const OLD_COWORK = 'a'.repeat(40);
     const OLD_ANTON = 'b'.repeat(40);
     const NEW_COWORK = 'c'.repeat(40);
@@ -301,6 +303,10 @@ describe('maybeUpdateServer (orchestration)', () => {
       }
       return {} as never;
     }) as never);
+  }
+
+  it('rolls back when the update answers /health but 401s on an authenticated route', async () => {
+    gitInstallBehindRemote();
 
     // Both the updated server AND the rolled-back one answer /health fine —
     // the mismatch has to be caught by the authenticated probe, not by
@@ -316,6 +322,22 @@ describe('maybeUpdateServer (orchestration)', () => {
     expect(result.error).toContain('auth mismatch');
     // The rollback path ran: prior commits reinstalled, server started twice.
     expect(vi.mocked(startServer)).toHaveBeenCalledTimes(2);
+  });
+
+  it("probes with the new launch's own headers, so a correct launch keeps the update", async () => {
+    gitInstallBehindRemote();
+    const launchHeaders = { Authorization: `Bearer ${'d4'.repeat(32)}`, 'X-Cowork-Window-Proof': 'e5'.repeat(32) };
+    vi.mocked(authHeader).mockReturnValueOnce(launchHeaders);
+    vi.mocked(startServer).mockResolvedValue({ ok: true, port: 26866 } as never);
+
+    const result = await maybeUpdateServer();
+
+    expect(result.updated).toBe(true);
+    expect(vi.mocked(startServer)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(http.request)).toHaveBeenCalledWith(
+      expect.objectContaining({ path: '/api/v1/conversations/', headers: launchHeaders }),
+      expect.any(Function),
+    );
   });
 });
 

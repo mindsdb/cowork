@@ -75,6 +75,36 @@ describe('coding-workspace', () => {
       expect(execFileMock).not.toHaveBeenCalled();
     });
 
+    it("runs git, and so the repository's hooks, without this app's or its server's settings, and with the user's provider keys", async () => {
+      process.env.COWORK_AUTH_TOKEN = 'ab'.repeat(32);
+      process.env.MINDSHUB_API_KEY = 'mdb_should_not_leak';
+      process.env.OPENAI_API_KEY = 'sk-the-users-own';
+      process.env.ANTHROPIC_API_KEY = 'sk-ant-the-users-own';
+      try {
+        const { ensureTaskWorktree } = await import('./coding-workspace');
+        failOnce();
+
+        await ensureTaskWorktree('/proj', 'task-env');
+
+        expect(execFileMock).toHaveBeenCalled();
+        for (const [, , opts] of execFileMock.mock.calls as [string, string[], { cwd: string; env: NodeJS.ProcessEnv }][]) {
+          expect(opts.cwd).toBe('/proj');
+          expect(opts.env).toBeDefined();
+          expect(opts.env).not.toHaveProperty('COWORK_AUTH_TOKEN');
+          expect(opts.env).not.toHaveProperty('MINDSHUB_API_KEY');
+          // Desktop main sets neither, so both are the user's own.
+          expect(opts.env.OPENAI_API_KEY).toBe('sk-the-users-own');
+          expect(opts.env.ANTHROPIC_API_KEY).toBe('sk-ant-the-users-own');
+          expect(opts.env.PATH).toBe(process.env.PATH);
+        }
+      } finally {
+        delete process.env.COWORK_AUTH_TOKEN;
+        delete process.env.MINDSHUB_API_KEY;
+        delete process.env.OPENAI_API_KEY;
+        delete process.env.ANTHROPIC_API_KEY;
+      }
+    });
+
     it('bootstraps a fresh git repo (init, .gitignore, initial commit) before creating the worktree', async () => {
       const { ensureTaskWorktree } = await import('./coding-workspace');
       // First git call (`rev-parse --is-inside-work-tree`) fails: not a repo yet.
