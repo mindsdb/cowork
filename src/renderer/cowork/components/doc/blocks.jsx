@@ -108,10 +108,15 @@ export function CodeBlock({ block, editable, onOps }) {
     () => (colourable(draft, language) ? highlightCode(draft, language).html : null),
     [draft, language],
   );
-  // A layer that appears after the box scrolled sideways starts where the box is.
-  useLayoutEffect(() => {
-    if (layerRef.current && ref.current) layerRef.current.scrollLeft = ref.current.scrollLeft;
-  }, [markup]);
+  const syncLayer = () => {
+    const layer = layerRef.current;
+    const box = ref.current;
+    if (!layer || !box) return;
+    layer.scrollLeft = box.scrollLeft;
+    layer.scrollTop = box.scrollTop;
+  };
+  // A layer that appears after the box scrolled starts where the box is.
+  useLayoutEffect(syncLayer, [markup]);
   useEffect(() => () => clearTimeout(copiedTimer.current), []);
   useEffect(() => {
     if (document.activeElement !== ref.current) setDraft(block.code || '');
@@ -120,7 +125,8 @@ export function CodeBlock({ block, editable, onOps }) {
     const el = ref.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
+    // The horizontal scrollbar takes height from the box; add it so the box has no vertical scroll.
+    el.style.height = `${el.scrollHeight + (el.offsetHeight - el.clientHeight)}px`;
   }, [draft]);
   const edit = (next) => { setDraft(next); setDirty(true); };
   const commit = () => {
@@ -175,7 +181,7 @@ export function CodeBlock({ block, editable, onOps }) {
           aria-label={t('code.label')}
           rows={1}
           onChange={(e) => edit(e.target.value)}
-          onScroll={(e) => { if (layerRef.current) layerRef.current.scrollLeft = e.currentTarget.scrollLeft; }}
+          onScroll={syncLayer}
           onBlur={commit}
           onKeyDown={(e) => {
             if (e.key === 'Tab') {

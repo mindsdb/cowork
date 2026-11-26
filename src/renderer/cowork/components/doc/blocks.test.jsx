@@ -161,6 +161,23 @@ describe('CodeBlock', () => {
     expect(layer(container).scrollLeft).toBe(40);
   });
 
+  it('moves the colours with the code when the box scrolls vertically', () => {
+    const { container } = render(<CodeBlock block={code({ language: 'js' })} editable onOps={() => {}} />);
+    box().scrollTop = 8;
+    fireEvent.scroll(box());
+    expect(layer(container).scrollTop).toBe(8);
+  });
+
+  it('adds the scrollbar height to the box height', () => {
+    render(<CodeBlock block={code({ language: 'js' })} editable onOps={() => {}} />);
+    const el = box();
+    Object.defineProperty(el, 'scrollHeight', { configurable: true, value: 50 });
+    Object.defineProperty(el, 'offsetHeight', { configurable: true, value: 58 });
+    Object.defineProperty(el, 'clientHeight', { configurable: true, value: 50 });
+    fireEvent.change(el, { target: { value: 'a much longer line of code' } });
+    expect(el.style.height).toBe('58px');
+  });
+
   it('colours code without the right to edit it too', () => {
     const { container } = render(<CodeBlock block={code({ language: 'js' })} editable={false} onOps={() => {}} />);
     expect(layer(container)).not.toBeNull();

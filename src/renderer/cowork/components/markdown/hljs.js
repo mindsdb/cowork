@@ -5,8 +5,8 @@
 // The same table decides what a doc's code block highlights.
 //
 // Token classes emitted by hljs (`.hljs-keyword`, `.hljs-string`, …)
-// are styled in cowork/styles/globals.css under a `.anton-code-block
-// code.hljs` scope so they can't leak into other surfaces.
+// are styled in cowork/styles/globals.css only under the code-block
+// scopes (`.anton-code-block`, `.doc-code`) so they can't leak into other surfaces.
 
 import hljs from 'highlight.js/lib/core';
 
