@@ -627,6 +627,9 @@ export async function checkConfigured(): Promise<{
   // Only a server that issues signed draft links reports them; the bridge
   // path never does.
   draftLinks?: boolean;
+  // Present only when /health reports it; lib/docsEnabled.ts decides what
+  // its absence (an older server, the bridge) means.
+  docsEnabled?: boolean;
 }> {
   if (isElectron && typeof bridge.checkConfigured === 'function') {
     return bridge.checkConfigured();
@@ -641,6 +644,7 @@ export async function checkConfigured(): Promise<{
     org_mode?: boolean;
     live_apps?: boolean;
     draft_links?: boolean;
+    docs_enabled?: unknown;
   };
   return {
     configured: Boolean(h.config_ready),
@@ -648,6 +652,7 @@ export async function checkConfigured(): Promise<{
     orgMode: Boolean(h.org_mode),
     liveApps: h.live_apps === true,
     draftLinks: h.draft_links === true,
+    ...(typeof h.docs_enabled === 'boolean' ? { docsEnabled: h.docs_enabled } : {}),
   };
 }
 
@@ -1483,6 +1488,23 @@ export async function notionFetchPage(name: string, page: string): Promise<Notio
     return bridge.notionFetchPage({ name, page });
   }
   return null;
+}
+
+export type PublishApprovalBridgeResult = NotionPagesBridgeResult;
+
+// Desktop: main sends the app secret an approval needs. An Electron shell from
+// before this bridge answers `unsupported`, so the dialog asks for an app
+// update instead of sending a request the server refuses. The web build has
+// no secret to send and gets null: the caller makes the request itself.
+export async function publishWithApproval(opts: {
+  kind: 'publish' | 'update';
+  path: string;
+  access?: Record<string, unknown>;
+  approvedDatasources: { engine: string; name: string }[];
+}): Promise<PublishApprovalBridgeResult | { ok: false; reason: 'unsupported' } | null> {
+  if (!isElectron) return null;
+  if (typeof bridge.publishWithApproval !== 'function') return { ok: false, reason: 'unsupported' };
+  return bridge.publishWithApproval(opts);
 }
 
 export interface DrivePickerFile {
@@ -2342,6 +2364,7 @@ export const host = {
   customMcpFinish,
   notionSearchPages,
   notionFetchPage,
+  publishWithApproval,
   onOAuthRefreshError,
   pickDriveFiles,
   cancelDrivePicker,

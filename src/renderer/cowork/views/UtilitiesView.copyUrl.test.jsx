@@ -16,8 +16,11 @@ const artifact = {
   publishedUrl: 'https://minds.example/artifacts/report',
 };
 
+// A widget (ENG-4684) the server lists by mistake: never offered for sharing.
+const widget = { path: '/tmp/picker.html', id: 'widget-1', title: 'Pick contacts', display: 'widget' };
+
 vi.mock('../api', () => ({
-  fetchPublishable: vi.fn(async () => ({ publishReady: true, artifacts: [artifact], history: [] })),
+  fetchPublishable: vi.fn(async () => ({ publishReady: true, artifacts: [artifact, widget], history: [] })),
   publishArtifact: vi.fn(),
   fetchMemory: vi.fn(async () => ({})),
   fetchDatasources: vi.fn(async () => ({})),
@@ -67,5 +70,11 @@ describe('UtilitiesView — publish artifact Copy URL button', () => {
 
     const message = await screen.findByText(/Couldn't copy — select the URL above/);
     expect(message.closest('[role="status"]')).not.toBeNull();
+  });
+
+  it('lists no widget to share (ENG-4684)', async () => {
+    render(<UtilitiesView kind="publish" />);
+    expect(await screen.findByText('Report')).toBeInTheDocument();
+    expect(screen.queryByText('Pick contacts')).toBeNull();
   });
 });

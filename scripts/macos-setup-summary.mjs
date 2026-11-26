@@ -5,7 +5,7 @@ import { channels, STEP_NAMES } from './macos-setup-contract.mjs';
 const PLATFORMS = { macos: 'macOS setup', windows: 'Windows setup' };
 const platform = process.env.SETUP_PLATFORM || 'macos';
 if (!Object.hasOwn(PLATFORMS, platform)) throw new Error(`Unknown setup platform: ${platform}`);
-const allowedSteps = new Set(['Preparation', 'Download package', 'Install package', 'Trim root store', 'Launch and isolate app', 'Setup', ...Object.values(STEP_NAMES)]);
+const allowedSteps = new Set(['Preparation', 'Download package', 'Install package', 'Check release fuses', 'Check entitlements', 'Prepare inspectable copy', 'Trim root store', 'Launch and isolate app', 'Setup', ...Object.values(STEP_NAMES)]);
 const failures = [];
 for (const channel of channels(process.env.CHANNELS)) {
   try {

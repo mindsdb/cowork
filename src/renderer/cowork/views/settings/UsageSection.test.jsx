@@ -5,12 +5,15 @@ import userEvent from '@testing-library/user-event';
 const hostMock = vi.hoisted(() => ({ host: { isElectron: true, isWeb: false, openExternal: vi.fn() } }));
 vi.mock('../../../platform/host', () => hostMock);
 vi.mock('../../lib/analytics', () => ({ trackBillingOpened: vi.fn(), trackUpgradeClicked: vi.fn() }));
-const accountMock = vi.hoisted(() => ({ user: { sub: 'u1', name: 'Hazem' } }));
+const accountMock = vi.hoisted(() => ({ user: { orgId: 'org-1', sub: 'u1', name: 'Hazem' } }));
 vi.mock('../../hooks/useAccountUser', () => ({ useAccountUser: () => accountMock.user }));
 
 import UsageSection from './UsageSection';
 import { HubUsageContext } from '../../lib/hubUsageContext';
-import { MINDS_ADD_FUNDS_URL, MINDS_BILLING_URL } from '../../../lib/mindsUrls';
+import { MINDS_ADD_FUNDS_URL, MINDS_BILLING_URL, consoleUrlFor } from '../../../lib/mindsUrls';
+
+// Console links name the session's organization and account (ENG-4333).
+const forOrg = (url) => consoleUrlFor(url, { organizationId: 'org-1', subject: 'u1' });
 
 const RESET = '2099-09-11T12:00:00Z';
 const usage = (over = {}) => ({
@@ -31,7 +34,7 @@ const renderWith = (u) => render(
 );
 
 beforeEach(() => {
-  accountMock.user = { sub: 'u1', name: 'Hazem' };
+  accountMock.user = { orgId: 'org-1', sub: 'u1', name: 'Hazem' };
   hostMock.host.openExternal.mockClear();
   refresh.mockClear();
 });
@@ -153,11 +156,11 @@ describe('UsageSection', () => {
     const { unmount } = renderWith(usage({ isBillingOwner: false }));
     expect(screen.getByText(/Only your organization's billing owner/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Add funds/ }));
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
     unmount();
     renderWith(usage());
     await user.click(screen.getByRole('button', { name: /Add funds/ }));
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_ADD_FUNDS_URL));
   });
 });
 

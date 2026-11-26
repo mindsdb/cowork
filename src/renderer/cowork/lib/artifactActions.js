@@ -85,10 +85,12 @@ export function isArtifactActionAvailable(id, { orgMode, hasBridge, published, h
  * every surface adds `canPreviewDocument` from `preview/kinds.js` to both.
  */
 export function artifactOpenTarget({
-  orgMode, published, canPreviewInline, canPreviewDraft, hasBridge, hasDraft, canDownload,
+  orgMode, published, canPreviewInline, canPreviewDraft, canPreviewPublished, hasBridge, hasDraft, canDownload,
 } = {}) {
   if (orgMode) {
-    if (canPreviewDraft) return 'preview';
+    // A full-stack app previews from its published address (the viewer frames
+    // it), so it gets Preview like a page, not the shared page in a tab.
+    if (canPreviewDraft || (canPreviewPublished && published)) return 'preview';
     if (published) return 'published';
     return hasDraft ? 'download' : null;
   }

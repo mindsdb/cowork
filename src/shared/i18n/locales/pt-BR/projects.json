@@ -24,10 +24,6 @@
         "untilMobile": "O MindsHub Air gratuito está pausado para todos até {until}. Isso não usa sua cota.",
         "dailyResetMobile": "O MindsHub Air gratuito está pausado para todos até o orçamento diário ser reiniciado. Isso não usa sua cota."
       },
-      "resting": {
-        "resetsAt": "Renova às {time}.",
-        "noReset": "O Air usa estes até acabarem."
-      },
       "balanceEmptySentence": "Seu saldo está vazio.",
       "percentLeft": "Resta {percent} da sua cota gratuita",
       "autoTopUpFailed": {
@@ -46,8 +42,6 @@
       },
       "balanceLow": {
         "title": "Saldo baixo",
-        "autoRefills": "Restam {usd}. A recarga automática o completa até {target} quando ficar abaixo de {floor}.",
-        "autoCovers": "Restam {usd}. A recarga automática vai cobrir.",
         "autoPending": "Restam {usd}. A recarga automática está aguardando seu banco.",
         "autoCapReached": "Restam {usd} e a recarga automática está pausada para respeitar o limite mensal. Adicione fundos para continuar.",
         "body": "Restam {usd}. Adicione fundos ou ative a recarga automática.",
@@ -83,7 +77,8 @@
         "lowThenWalletWithTime": "Depois disso, as tarefas usam seu saldo a preços de API até a renovação às {time}.",
         "lowThenPause": "Depois disso, as tarefas ficam pausadas até a renovação.",
         "lowThenPauseWithTime": "Depois disso, as tarefas ficam pausadas até {time}."
-      }
+      },
+      "resetsAt": "Renova às {time}."
     },
     "scheduleWhen": {
       "timeZone": "horário de {city}",
@@ -105,7 +100,9 @@
       "missedLabelServer": "Se o servidor estiver fora do ar nesse horário",
       "missedLabelApp": "Se o MindsHub estiver fechado nesse horário",
       "missedOnceTitleServer": "O horário desta tarefa única passou enquanto o servidor estava fora do ar",
-      "missedOnceTitleApp": "O horário desta tarefa única passou enquanto o MindsHub estava fechado"
+      "missedOnceTitleApp": "O horário desta tarefa única passou enquanto o MindsHub estava fechado",
+      "lateRunApp": "Prevista para {when}. O MindsHub estava fechado ou o computador em repouso.",
+      "lateRunServer": "Prevista para {when}. O servidor estava fora do ar ou ocupado."
     },
     "stopScheduleRun": {
       "unreachable": "Não foi possível acessar o servidor para parar a execução. Tente novamente.",
@@ -319,6 +316,7 @@
       "sections": {
         "mine": "Suas",
         "sharedWithMe": "Compartilhadas comigo",
+        "sharedByOthers": "Compartilhados por outros",
         "team": "Minhas equipes",
         "builtin": "Integradas"
       },
@@ -588,6 +586,7 @@
     "lastFailed": "Última falhou",
     "lastRunFailed": "Última execução falhou",
     "stoppedAtLimit": "Parada em um limite",
+    "writesRefused": "Requer aprovação",
     "done": "Concluída",
     "active": "Ativa"
   },
@@ -619,6 +618,7 @@
     "partialNote": "Algumas das ações podem ter sido concluídas. Revise a execução antes de executá-la novamente.",
     "limitTitle": "A última execução parou em um limite",
     "limitNote": "Parte do trabalho pode ter sido concluída. Revise a execução antes de executá-la novamente.",
+    "approvalTitle": "As alterações da última execução não foram aprovadas",
     "failedTitle": "A última execução falhou",
     "resume": "Retomar",
     "runNow": "Executar agora",
@@ -718,7 +718,8 @@
       "success": "Concluída",
       "failed": "Falhou",
       "cancelled": "Parada",
-      "stoppedAtLimit": "Parada em um limite"
+      "stoppedAtLimit": "Parada em um limite",
+      "writesRefused": "Não aprovada"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "Em execução agora",
@@ -735,6 +736,7 @@
     "scheduleAriaLabel": "Agendamento",
     "accountDefaultModel": "Modelo padrão da conta",
     "ranOnDefaultModel": "Modelo padrão",
+    "ranLate": "Atrasada",
     "modelUnavailable": "{model} não está disponível, então esta execução usou seu modelo padrão.",
     "succeededCount": "{total, plural, one {{succeeded} de # execução concluída} other {{succeeded} de # execuções concluídas}}",
     "promptAriaLabel": "Prompt",

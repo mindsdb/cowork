@@ -30,6 +30,9 @@ import { isArtifactLocalPath, isSafeExternalHref, openMarkdownHref } from './mar
 import { useSkillNames } from '../../lib/skillsStore';
 import { carryFigure, hasFigureMarks, locateFigure, placeFigures } from '../../lib/figureSources';
 import i18n from '../../../lib/i18n';
+import { chartBlockToPngBlob } from './utils';
+import { downloadBlob } from '../../lib/browserDownload';
+import { diagnostic } from '../../../../shared/diagnostics';
 
 // Shared walk for the text-splitting remark plugins below: every `text` node
 // is replaced by the nodes `splitText(value, node)` returns (kept as-is when it
@@ -787,13 +790,48 @@ export const MarkdownContent = memo(function MarkdownContent({
   );
 
   // Delegated click listener — every anton-code-block ships a [data-copy-code]
-  // button rendered by MarkdownCode. A single listener at this root survives
+  // button rendered by MarkdownCode, and every chart/diagram block (ChartBlock)
+  // its [data-chart-action] buttons. A single listener at this root survives
   // streaming re-renders (blocks come and go as chunks arrive) without
   // attaching/detaching per-block handlers.
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
+    const flashDone = (btn, doneText, idleText) => {
+      const label = btn.querySelector('.anton-code-block-copy-label');
+      btn.classList.add('is-copied');
+      if (label) label.textContent = doneText;
+      clearTimeout(btn._copyTimer);
+      btn._copyTimer = setTimeout(() => {
+        if (label) label.textContent = idleText;
+        btn.classList.remove('is-copied');
+      }, 1200);
+    };
+    const onChartAction = (btn) => {
+      const action = btn.getAttribute('data-chart-action');
+      const block = btn.closest('[data-chart-block]');
+      const idleText = btn.getAttribute('aria-label') || '';
+      chartBlockToPngBlob(block).then((blob) => {
+        if (!blob) return;
+        if (action === 'download-png') {
+          const name = block.getAttribute('data-chart-block') === 'mermaid' ? 'diagram.png' : 'chart.png';
+          if (downloadBlob(blob, name)) flashDone(btn, idleText, idleText);
+          return;
+        }
+        const clip = navigator.clipboard;
+        if (!clip || typeof clip.write !== 'function' || typeof ClipboardItem === 'undefined') return;
+        clip.write([new ClipboardItem({ 'image/png': blob })])
+          .then(() => flashDone(btn, i18n.t('markdown.copied', { ns: 'chat' }), idleText), () => {});
+      }).catch((e) => {
+        diagnostic('renderer.cowork.components.markdown.MarkdownContent', 'ERROR', 'chart_export_error', '[MarkdownContent] chart export failed', e);
+      });
+    };
     const onClick = (event) => {
+      const chartBtn = event.target?.closest?.('[data-chart-action]');
+      if (chartBtn && root.contains(chartBtn)) {
+        onChartAction(chartBtn);
+        return;
+      }
       const btn = event.target?.closest?.('[data-copy-code]');
       if (!btn || !root.contains(btn)) return;
       const block = btn.closest('.anton-code-block');
@@ -802,16 +840,11 @@ export const MarkdownContent = memo(function MarkdownContent({
       // `data-source` carries the raw source captured at render time —
       // safer than reading the highlighted DOM's textContent.
       const source = codeEl.getAttribute('data-source') ?? codeEl.textContent ?? '';
-      const finish = () => {
-        const label = btn.querySelector('.anton-code-block-copy-label');
-        btn.classList.add('is-copied');
-        if (label) label.textContent = i18n.t('markdown.copied', { ns: 'chat' });
-        clearTimeout(btn._copyTimer);
-        btn._copyTimer = setTimeout(() => {
-          if (label) label.textContent = i18n.t('markdown.copy', { ns: 'chat' });
-          btn.classList.remove('is-copied');
-        }, 1200);
-      };
+      const finish = () => flashDone(
+        btn,
+        i18n.t('markdown.copied', { ns: 'chat' }),
+        i18n.t('markdown.copy', { ns: 'chat' }),
+      );
       // navigator.clipboard requires a secure context + clipboard-write
       // permission; Electron renderers can run in contexts where it's
       // unavailable OR rejects silently, which is why the original

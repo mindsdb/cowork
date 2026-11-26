@@ -56,6 +56,7 @@ import { useKnownPeople, useMindsHubTeams, useOrgDirectory } from '../hooks/useO
 import { useRecipientTokens } from '../hooks/useRecipientTokens';
 import { LOAD_STATUS } from '../lib/sharingContract';
 import { useAccountUser } from '../hooks/useAccountUser';
+import { useConsoleLink } from '../hooks/useConsoleLink';
 import { RecipientRow, RecipientTile, recipientItems } from './RecipientRows';
 import i18n, { formatList, useTranslation } from '../../lib/i18n';
 
@@ -165,6 +166,7 @@ export function RecipientField({
   autoFocus = false,
 }) {
   const { t } = useTranslation('library');
+  const consoleLink = useConsoleLink();
   const teamIds = value?.teamIds || EMPTY_VALUE.teamIds;
   const userIds = value?.userIds || EMPTY_VALUE.userIds;
   const emails = value?.emails || EMPTY_VALUE.emails;
@@ -483,7 +485,7 @@ export function RecipientField({
             <button
               type="button"
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => { openExternal(MINDS_MEMBERS_URL); }}
+              onClick={() => { openExternal(consoleLink(MINDS_MEMBERS_URL)); }}
               className="bg-transparent border-0 cursor-pointer p-0 font-body text-xs font-semibold text-accent"
             >{t('recipients.invitePeople')}</button>
           </>

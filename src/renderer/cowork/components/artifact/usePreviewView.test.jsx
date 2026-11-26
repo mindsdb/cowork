@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { KEEP_PLACE_MS, normalizePreviewView, usePreviewView } from './usePreviewView';
+import { KEEP_PLACE_MS, PREVIEW_PARENT_SOURCE, normalizePreviewView, postPreviewSnapshot, postPreviewState, postPreviewTheme, usePreviewView } from './usePreviewView';
 
 let hook = null;
 
@@ -254,5 +254,50 @@ describe('usePreviewView keepPlace', () => {
     send(frame.contentWindow, { type: 'view-restored', status: 'ok' });
     await Promise.resolve();
     expect(done).toBe(true);
+  });
+});
+
+// ENG-4684: the app's theme goes down the same channel as `restore`.
+describe('postPreviewTheme', () => {
+  it('posts the theme with the parent tag', () => {
+    const win = { postMessage: vi.fn() };
+    postPreviewTheme(win, 'dark');
+    expect(win.postMessage).toHaveBeenCalledWith({ source: PREVIEW_PARENT_SOURCE, type: 'theme', mode: 'dark' }, '*');
+    postPreviewTheme(win, 'anything-else');
+    expect(win.postMessage).toHaveBeenLastCalledWith({ source: 'anton-preview-parent', type: 'theme', mode: 'light' }, '*');
+  });
+
+  it('skips a frame with no window yet', () => {
+    expect(() => postPreviewTheme(null, 'dark')).not.toThrow();
+    expect(() => postPreviewTheme({}, 'dark')).not.toThrow();
+  });
+});
+
+// ENG-4684: an inline page's saved state goes down the same channel.
+describe('postPreviewState', () => {
+  it('posts the state with the parent tag', () => {
+    const win = { postMessage: vi.fn() };
+    postPreviewState(win, { budget: 1200 });
+    expect(win.postMessage).toHaveBeenCalledWith({ source: PREVIEW_PARENT_SOURCE, type: 'state', state: { budget: 1200 } }, '*');
+  });
+
+  it('skips a frame with no window yet', () => {
+    expect(() => postPreviewState(null, {})).not.toThrow();
+    expect(() => postPreviewState({}, {})).not.toThrow();
+  });
+});
+
+// ENG-4684: the controls an inline page last reported go back the same way.
+describe('postPreviewSnapshot', () => {
+  it('posts the snapshot with the parent tag', () => {
+    const win = { postMessage: vi.fn() };
+    const snapshot = { controls: [{ label: 'p', name: 'p', type: 'range', value: '0.5' }], text: 'p = 0.5' };
+    postPreviewSnapshot(win, snapshot);
+    expect(win.postMessage).toHaveBeenCalledWith({ source: PREVIEW_PARENT_SOURCE, type: 'snapshot', snapshot }, '*');
+  });
+
+  it('skips a frame with no window yet', () => {
+    expect(() => postPreviewSnapshot(null, {})).not.toThrow();
+    expect(() => postPreviewSnapshot({}, {})).not.toThrow();
   });
 });

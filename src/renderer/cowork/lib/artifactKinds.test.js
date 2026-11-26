@@ -4,7 +4,8 @@ import { resolve } from 'node:path';
 import { load } from 'js-yaml';
 import {
   canDownloadArtifact, canDownloadOrgDraft, canShowInBrowserTab,
-  canPreviewLocally, canPreviewOrgDraft, isImageArtifact, isInlinePreviewable,
+  canPreviewLocally, canPreviewOrgDraft, isFilePageArtifact, isImageArtifact, isInlineArtifact, isInlinePreviewable,
+  isPublishableArtifact, isWidgetArtifact, PUBLISHABLE_FILE_EXTS,
 } from './artifactKinds';
 
 const FIXTURES = load(readFileSync(resolve(import.meta.dirname, 'artifactSurfaces.yaml'), 'utf-8'));
@@ -31,6 +32,34 @@ describe('isImageArtifact', () => {
   it('is false for null/undefined', () => {
     expect(isImageArtifact(null)).toBe(false);
     expect(isImageArtifact(undefined)).toBe(false);
+  });
+});
+
+// ENG-4687: a PDF, Word, Excel, PowerPoint, CSV or text file shares as a
+// read-only page of its own, like a web page or Markdown.
+describe('isPublishableArtifact', () => {
+  it('covers web pages, Markdown and files shared as a page, by declared ext or path', () => {
+    for (const path of ['/a/index.html', '/a/report.md', '/a/r.pdf', '/a/u.docx', '/a/m.xlsx', '/a/d.pptx', '/a/rows.csv', '/a/n.txt']) {
+      expect(isPublishableArtifact({ path })).toBe(true);
+    }
+    expect(isPublishableArtifact({ ext: '.pdf', path: '/a/report' })).toBe(true);
+  });
+
+  it('leaves out what has no page: images, code, archives', () => {
+    for (const path of ['/a/logo.png', '/a/main.py', '/a/bundle.zip']) {
+      expect(isPublishableArtifact({ path })).toBe(false);
+    }
+    expect(isPublishableArtifact(null)).toBe(false);
+  });
+
+  it('tells a file shared as a page from a page itself', () => {
+    expect(isFilePageArtifact({ path: '/a/m.xlsx' })).toBe(true);
+    expect(isFilePageArtifact({ path: '/a/index.html' })).toBe(false);
+    expect(isFilePageArtifact({ path: '/a/report.md' })).toBe(false);
+  });
+
+  it('lists the same kinds cowork-server renders a page for (file_page.PUBLISHABLE_FILE_SUFFIXES)', () => {
+    expect([...PUBLISHABLE_FILE_EXTS]).toEqual(['.pdf', '.docx', '.xlsx', '.pptx', '.csv', '.txt']);
   });
 });
 
@@ -151,5 +180,58 @@ describe('canShowInBrowserTab', () => {
 
   it('is false for a missing artifact', () => {
     expect(canShowInBrowserTab(null)).toBe(false);
+  });
+});
+
+// ENG-4684: the agent marks a chart or diagram to show live inside the reply
+// with metadata `display: "inline"`. The server may hand the field over at
+// the top of the card or under `metadata`; one predicate reads both.
+describe('isInlineArtifact', () => {
+  it('is true for display "inline" at the top level', () => {
+    expect(isInlineArtifact({ display: 'inline', ext: '.html' })).toBe(true);
+  });
+
+  it('is true for display "inline" nested under metadata', () => {
+    expect(isInlineArtifact({ metadata: { display: 'inline' } })).toBe(true);
+  });
+
+  it('tolerates case and surrounding whitespace', () => {
+    expect(isInlineArtifact({ display: ' Inline ' })).toBe(true);
+  });
+
+  it('prefers the top-level field over the nested one', () => {
+    expect(isInlineArtifact({ display: 'card', metadata: { display: 'inline' } })).toBe(false);
+  });
+
+  it('is false when the field is absent, empty or something else', () => {
+    expect(isInlineArtifact(null)).toBe(false);
+    expect(isInlineArtifact(undefined)).toBe(false);
+    expect(isInlineArtifact({})).toBe(false);
+    expect(isInlineArtifact({ display: '' })).toBe(false);
+    expect(isInlineArtifact({ display: 'block' })).toBe(false);
+    expect(isInlineArtifact({ display: true })).toBe(false);
+    expect(isInlineArtifact({ metadata: null })).toBe(false);
+  });
+
+  it('is true for a widget too, which renders the same way', () => {
+    expect(isInlineArtifact({ display: 'widget' })).toBe(true);
+    expect(isInlineArtifact({ metadata: { display: ' Widget ' } })).toBe(true);
+  });
+});
+
+// ENG-4684: `display: "widget"` collects input in the chat. It renders like
+// an inline artifact but is not a deliverable (no share, publish or list row).
+describe('isWidgetArtifact', () => {
+  it('is true for display "widget", top level or nested', () => {
+    expect(isWidgetArtifact({ display: 'widget' })).toBe(true);
+    expect(isWidgetArtifact({ metadata: { display: 'WIDGET ' } })).toBe(true);
+  });
+
+  it('is false for inline and everything else', () => {
+    expect(isWidgetArtifact({ display: 'inline' })).toBe(false);
+    expect(isWidgetArtifact({ display: 'card', metadata: { display: 'widget' } })).toBe(false);
+    expect(isWidgetArtifact({})).toBe(false);
+    expect(isWidgetArtifact(null)).toBe(false);
+    expect(isWidgetArtifact({ display: 1 })).toBe(false);
   });
 });

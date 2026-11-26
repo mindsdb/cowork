@@ -5,10 +5,12 @@ import path from 'path';
 import { readFileSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
 import { isSpaNavigation } from './web-spa-fallback';
+import { devApiProxyHook } from './dev-api-proxy';
 import { platformUiEnabled } from '../shared/ui-capabilities';
 import { withDeploymentBrand } from '../shared/deployment-brand';
 import { withDraftLinkFrameSources } from '../shared/draft-link-origins';
 import { orgBrandImageOrigins, withOrgBrandImageSources } from '../shared/org-brand-image-origins';
+import { galleryImageOrigins, withGalleryImageSources } from '../shared/gallery-image-origins';
 
 const pkg = JSON.parse(readFileSync(path.resolve(__dirname, '../../package.json'), 'utf-8'));
 
@@ -53,6 +55,13 @@ const IS_WEB = process.env.BUILD_TARGET === 'web';
 const WEB_ENTRY = 'index-web.html';
 
 const SERVER_PORT = Number(process.env.COWORK_SERVER_PORT || 26866);
+const VITE_PORT = Number(process.env.VITE_RENDERER_PORT || 5173);
+
+/* Under `npm run dev:web` only, the /api proxy adds the server's bearer token
+   and window proof to requests from Vite's own pages. dev-web hands them to
+   this config as a plugin's `api`, never in an environment variable, so
+   neither value reaches the client bundle (dev-api-proxy.ts). */
+const devApiProxy = devApiProxyHook(VITE_PORT);
 
 // `npm run dev` boots vite before Electron spawns the sidecar, so downgrade the expected startup ECONNREFUSED proxy noise to a calm line.
 const logger = createLogger();
@@ -118,11 +127,22 @@ const draftLinkFrameSources = webEntryTransform('cowork-draft-link-frame-sources
 // build time, hosted only. It rewrites only img-src, which neither transform
 // above touches.
 // Per environment: VITE_BRAND_ENV is the image's build-environment.
-function orgBrandImageSourcesFor(mode: string) {
-  const env = process.env.VITE_BRAND_ENV
+function brandEnvFor(mode: string) {
+  return process.env.VITE_BRAND_ENV
     || loadEnv(mode, path.resolve(__dirname, '../..'), 'VITE_').VITE_BRAND_ENV;
-  const origins = orgBrandImageOrigins(env);
+}
+
+function orgBrandImageSourcesFor(mode: string) {
+  const origins = orgBrandImageOrigins(brandEnvFor(mode));
   return webEntryTransform('cowork-org-brand-image-sources', (html) => withOrgBrandImageSources(html, origins));
+}
+
+// The Use Case Gallery shows the console's example pictures, so the hosted
+// page's img-src also names this environment's console (images only; the
+// gallery frames none of its pages). Same build-time, hosted-only reasoning.
+function galleryImageSourcesFor(mode: string) {
+  const origins = galleryImageOrigins(brandEnvFor(mode));
+  return webEntryTransform('cowork-gallery-image-sources', (html) => withGalleryImageSources(html, origins));
 }
 
 // The build's platform switch: on for desktop, and for web only when
@@ -145,7 +165,8 @@ export default defineConfig(({ mode }) => ({
     react(),
     babel({ presets: [reactCompilerPreset()] }),
     ...(IS_WEB ? [webSpaFallback, deploymentBrand] : []),
-    ...(IS_WEB && platformUiFor(mode) ? [draftLinkFrameSources, orgBrandImageSourcesFor(mode)] : []),
+    ...(IS_WEB && platformUiFor(mode) ? [draftLinkFrameSources, orgBrandImageSourcesFor(mode), galleryImageSourcesFor(mode)] : []),
+    devApiProxy.plugin,
   ],
   customLogger: logger,
   define: {
@@ -173,10 +194,21 @@ export default defineConfig(({ mode }) => ({
       : undefined,
   },
   server: {
-    port: Number(process.env.VITE_RENDERER_PORT || 5173),
+    port: VITE_PORT,
     strictPort: true,
     proxy: {
-      '/api': `http://127.0.0.1:${SERVER_PORT}`,
+      // changeOrigin: true is what Vite gives the plain string form.
+      '/api': {
+        target: `http://127.0.0.1:${SERVER_PORT}`,
+        changeOrigin: true,
+        /* cowork-server answers a path without its trailing slash, such as
+           POST /api/v1/responses, with a 307 to an absolute URL on its own
+           port. Rewritten back to Vite's host, the browser follows it through
+           this proxy, which adds the bearer and the proof, instead of going
+           straight to the server without them. */
+        autoRewrite: true,
+        configure: devApiProxy.configure,
+      },
     },
   },
   resolve: {

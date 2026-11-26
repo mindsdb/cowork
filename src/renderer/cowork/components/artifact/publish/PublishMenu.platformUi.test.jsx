@@ -34,9 +34,12 @@ function makeController(overrides = {}) {
 }
 
 function shareButton() {
-  // The trigger and the footer both read "Share"; the footer's is the one in the panel.
-  return within(screen.getByText('Share to the Web').parentElement).getByRole('button', { name: 'Share' });
+  // The trigger, the panel header and the footer all read "Share"; the
+  // footer's button is the one in the panel.
+  return within(screen.getByTestId('publish-menu-body').parentElement).getByRole('button', { name: 'Share' });
 }
+
+const accessDropdown = () => screen.getByTestId('access-dropdown');
 
 describe('PublishMenu with the platform UI off and no publish-token tag', () => {
   it('opens an unpublished artifact with nothing picked and Share disabled', () => {
@@ -44,6 +47,9 @@ describe('PublishMenu with the platform UI off and no publish-token tag', () => 
     render(<PublishMenu controller={ctrl} />);
     fireEvent.click(screen.getByText('Share'));
 
+    expect(accessDropdown()).toHaveAccessibleName('Who can access your app');
+    fireEvent.click(accessDropdown());
+    expect(screen.getAllByRole('radio')).toHaveLength(3);
     for (const radio of screen.getAllByRole('radio')) expect(radio).toHaveAttribute('aria-checked', 'false');
     expect(screen.queryByText('Only me')).toBeNull();
     expect(shareButton()).toBeDisabled();
@@ -57,10 +63,12 @@ describe('PublishMenu with the platform UI off and no publish-token tag', () => 
     render(<PublishMenu controller={ctrl} />);
     fireEvent.click(screen.getByText('Share'));
 
+    fireEvent.click(accessDropdown());
     fireEvent.click(screen.getByRole('radio', { name: /Public/ }));
+    expect(accessDropdown()).toHaveAccessibleName('Who can access your app: Public');
     expect(shareButton()).toBeEnabled();
     fireEvent.click(shareButton());
-    expect(ctrl.publish).toHaveBeenCalledWith({ mode: 'public' });
+    expect(ctrl.publish).toHaveBeenCalledWith({ mode: 'public' }, expect.anything());
   });
 
   it('opens an artifact already shared as Public on Public, without claiming the internet', async () => {
@@ -98,6 +106,9 @@ describe('PublishMenu with the platform UI off and no publish-token tag', () => 
     rerender(<PublishMenu controller={makeController()} />);
     fireEvent.click(screen.getByText('Share'));
 
+    expect(accessDropdown()).toHaveAccessibleName('Who can access your app');
+    fireEvent.click(accessDropdown());
+    expect(screen.getAllByRole('radio').length).toBeGreaterThan(0);
     for (const radio of screen.getAllByRole('radio')) expect(radio).toHaveAttribute('aria-checked', 'false');
     expect(shareButton()).toBeDisabled();
   });

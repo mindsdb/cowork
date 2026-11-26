@@ -14,6 +14,8 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import Ico from '../Icons';
 import { fetchCanBuildCustomConnector, fetchConnectors } from '../../api';
 import { host } from '../../../platform/host';
+import { desktopDownloadUrl } from '../../lib/desktopOffer';
+import { trackDesktopOfferDownloadClicked } from '../../lib/analytics';
 import { useOrgMode } from '../../../lib/orgMode';
 import { connectorInitials } from '../../lib/connectionIdentity';
 import { PLATFORM_UI } from '../../../lib/deployment';
@@ -495,7 +497,10 @@ export default function ConnectorPicker({ open, onPick, onDesktopOnly, onClose, 
               {t('connectorPicker.cloudNote.before')}{' '}
               {host.isMobileShell ? t('connectorPicker.cloudNote.link') : (<button
                 type="button"
-                onClick={() => host.openExternal('https://mindshub.ai/download')}
+                onClick={() => {
+                  trackDesktopOfferDownloadClicked({ feature: 'connector', entry: 'connector_note' });
+                  host.openExternal(desktopDownloadUrl('connector'));
+                }}
                 className="font-medium underline underline-offset-2 bg-transparent border-0 p-0 cursor-pointer text-inherit [font:inherit]"
               >
                 {t('connectorPicker.cloudNote.link')}

@@ -34,7 +34,10 @@ const accountUser = vi.hoisted(() => vi.fn(() => null));
 vi.mock('../hooks/useAccountUser', () => ({ useAccountUser: () => accountUser() }));
 
 import ChatView, { ModelUnavailableCard } from './ChatView';
-import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_BUDGETS_URL, MINDS_BUDGETS_DENIAL_URL } from '../../lib/mindsUrls';
+import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL, MINDS_BUDGETS_URL, MINDS_BUDGETS_DENIAL_URL, consoleUrlFor } from '../../lib/mindsUrls';
+
+// Console links name the session's organization and account (ENG-4333).
+const forOrg = (url) => consoleUrlFor(url, { organizationId: 'org-1', subject: 'u1' });
 import { HubUsageContext } from '../lib/hubUsageContext';
 
 const taskWith = (messages) => ({
@@ -53,7 +56,7 @@ beforeEach(() => {
   analyticsMock.trackBillingOpened.mockClear();
   analyticsMock.trackKeyProvisioningRefused.mockClear();
   hostMock.host.openExternal.mockClear();
-  accountUser.mockReset().mockReturnValue(null);
+  accountUser.mockReset().mockReturnValue({ orgId: 'org-1', sub: 'u1' });
   hostMock.host.mindshubFinalize.mockReset().mockResolvedValue({ ok: true });
   // Reset rather than clear: one test below overrides the resolved value, and
   // without this both that value and the call count leak into every test after
@@ -70,7 +73,7 @@ describe('billing_opened trigger per call site', () => {
     await user.click(screen.getByRole('button', { name: 'Add funds' }));
 
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('token_limit');
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
   });
 
   it('included_allowance_exhausted: the free-allowance card records its own trigger (ENG-1537)', async () => {
@@ -84,7 +87,7 @@ describe('billing_opened trigger per call site', () => {
     await user.click(screen.getByRole('button', { name: 'Add funds' }));
 
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('included_allowance_exhausted');
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
   });
 
   it('free_serving_paused: the paused-free-Air card records its own trigger, not token_limit', async () => {
@@ -97,7 +100,7 @@ describe('billing_opened trigger per call site', () => {
 
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('free_serving_paused');
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledTimes(1);
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
   });
 
   it('budget_exceeded: View budgets records its own trigger and opens the Budgets tab', async () => {
@@ -108,7 +111,7 @@ describe('billing_opened trigger per call site', () => {
 
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('budget_exceeded');
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledTimes(1);
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(new URL(MINDS_BUDGETS_DENIAL_URL).toString());
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BUDGETS_DENIAL_URL));
   });
 
   it("budget_exceeded: signed in, View budgets opens the task organization's Budgets tab", async () => {
@@ -126,6 +129,19 @@ describe('billing_opened trigger per call site', () => {
     expect(opened.searchParams.get('from')).toBe('budget_denial');
   });
 
+  it("included_allowance_exhausted: Set up auto top up opens the owner's own organization's auto top up form (ENG-4333)", async () => {
+    const user = userEvent.setup();
+    render(
+      <HubUsageContext.Provider value={{ usage: { reachable: true, isBillingOwner: true }, providerType: 'minds-cloud', refresh: () => {} }}>
+        <ChatView task={taskWith(failedTurn('included_allowance_exhausted', "You've used this month's free tokens.", { resetAt: '2099-01-01T00:00:00Z' }))} />
+      </HubUsageContext.Provider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Set up auto top up' }));
+
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_AUTO_TOP_UP_URL));
+  });
+
   it('free_serving_paused: a billing owner lands on the add-funds form, like the other stopped-task cards', async () => {
     const user = userEvent.setup();
     render(
@@ -136,7 +152,7 @@ describe('billing_opened trigger per call site', () => {
 
     await user.click(screen.getByRole('button', { name: 'Add funds' }));
 
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_ADD_FUNDS_URL));
   });
 
   it('token_limit with free allowance left: Add funds keeps its trigger and the Air switch records nothing', async () => {
@@ -163,7 +179,7 @@ describe('billing_opened trigger per call site', () => {
 
     await user.click(screen.getByRole('button', { name: 'Add funds' }));
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('token_limit');
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
   });
 
   it('model_access_denied: the credits-denial card records its own trigger', async () => {
@@ -173,7 +189,24 @@ describe('billing_opened trigger per call site', () => {
     await user.click(screen.getByRole('button', { name: 'Top up balance' }));
 
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('model_access_denied');
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
+  });
+
+  it.each([
+    ['window_allowance_exhausted', 'Your included allowance is used up.', { resetAt: '2099-01-01T00:00:00Z' }],
+    ['model_not_in_tier', 'Not in your plan.', {}],
+  ])("%s: Add funds opens this session's organization's add-credits dialog (ENG-4333)", async (code, content, extra) => {
+    const user = userEvent.setup();
+    render(
+      <HubUsageContext.Provider value={{ usage: { reachable: true, isBillingOwner: true }, providerType: 'minds-cloud', refresh: () => {} }}>
+        <ChatView task={taskWith(failedTurn(code, content, extra))} />
+      </HubUsageContext.Provider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Add funds' }));
+
+    expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith(code);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_ADD_FUNDS_URL));
   });
 
   it('model_access_denied: a billing owner lands on the add-credits dialog', async () => {
@@ -187,7 +220,7 @@ describe('billing_opened trigger per call site', () => {
     await user.click(screen.getByRole('button', { name: 'Top up balance' }));
 
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('model_access_denied');
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_ADD_FUNDS_URL));
   });
 
   it('model_access_denied: a member gets the billing page, not a dialog they cannot submit', async () => {
@@ -200,7 +233,7 @@ describe('billing_opened trigger per call site', () => {
 
     await user.click(screen.getByRole('button', { name: 'Top up balance' }));
 
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
   });
 
   it('model_disabled: even a billing owner gets the plain billing page, since credits cannot re-enable it', async () => {
@@ -213,7 +246,7 @@ describe('billing_opened trigger per call site', () => {
 
     await user.click(screen.getByRole('button', { name: 'Top up balance' }));
 
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
   });
 
   it('model_disabled: the same card records the code that rendered, not a credit denial', async () => {
@@ -238,7 +271,7 @@ describe('billing_opened trigger per call site', () => {
     await user.click(screen.getByRole('button', { name: 'Start for free' }));
 
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('connect_provider');
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
   });
 
   it('fires on the click, not on the render — a repaint must not inflate the count', () => {
@@ -264,7 +297,7 @@ describe('key_provisioning_refused on the reconnect handler', () => {
 
     expect(analyticsMock.trackKeyProvisioningRefused).toHaveBeenCalledWith('billing_opened');
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('key_provisioning_refused');
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
   });
 
   it('a plain reconnect failure records nothing — a failure is not a refusal', async () => {

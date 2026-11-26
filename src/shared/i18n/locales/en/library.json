@@ -378,7 +378,8 @@
     "custom": "Custom",
     "legacy": "Saved by an older version. Disconnect it and connect again.",
     "activateLabel": "{action, select, view {View} reconnect {Reconnect} other {Manage}} {title}: {subtitle}{hint}",
-    "removing": "Removing…"
+    "removing": "Removing…",
+    "settingsLabel": "Settings for {title}: {subtitle}"
   },
   "datasource": {
     "failed": "That did not work.",

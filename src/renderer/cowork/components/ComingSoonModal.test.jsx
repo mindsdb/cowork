@@ -5,13 +5,20 @@ import { changeLocale } from '../../lib/i18n';
 const openExternal = vi.hoisted(() => vi.fn());
 const hostState = vi.hoisted(() => ({ isMobileShell: false }));
 vi.mock('../../platform/host', () => ({
-  host: { openExternal, get isMobileShell() { return hostState.isMobileShell; } },
+  host: { openExternal, isWeb: true, get isMobileShell() { return hostState.isMobileShell; } },
 }));
+const analytics = vi.hoisted(() => ({
+  trackDesktopOfferShown: vi.fn(),
+  trackDesktopOfferDownloadClicked: vi.fn(),
+}));
+vi.mock('../lib/analytics', () => analytics);
 
 import ComingSoonModal from './ComingSoonModal';
 
 beforeEach(() => {
   openExternal.mockClear();
+  analytics.trackDesktopOfferShown.mockClear();
+  analytics.trackDesktopOfferDownloadClicked.mockClear();
   hostState.isMobileShell = false;
 });
 
@@ -25,33 +32,54 @@ it('offers no download inside the mobile app', () => {
   hostState.isMobileShell = true;
   const onClose = vi.fn();
   render(<ComingSoonModal feature="Channels" onClose={onClose} />);
-  expect(screen.queryByText('Download the app')).toBeNull();
+  expect(screen.queryByText('Download the Desktop app')).toBeNull();
+  // The note must not tell the person to download what the phone can't install.
+  expect(screen.getByText('Channels runs in the Desktop app on a computer.')).toBeTruthy();
+  expect(screen.getByRole('dialog').textContent).not.toMatch(/download/i);
   fireEvent.click(screen.getAllByRole('button', { name: 'Close' }).at(-1));
   expect(onClose).toHaveBeenCalledTimes(1);
   expect(openExternal).not.toHaveBeenCalled();
+  // No offer to download, so nothing is counted as one.
+  expect(analytics.trackDesktopOfferShown).not.toHaveBeenCalled();
+});
+
+it('gives the mobile app an unnamed note with no download instruction', () => {
+  hostState.isMobileShell = true;
+  render(<ComingSoonModal feature="" onClose={vi.fn()} />);
+  expect(screen.getByText('This runs in the Desktop app on a computer.')).toBeTruthy();
+  expect(screen.getByRole('dialog').textContent).not.toMatch(/download/i);
 });
 
 describe('ComingSoonModal', () => {
   it('stays closed when no feature is set', () => {
     render(<ComingSoonModal feature={null} onClose={vi.fn()} />);
-    expect(screen.queryByText('Coming soon to Cloud')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(analytics.trackDesktopOfferShown).not.toHaveBeenCalled();
   });
 
-  it('interpolates the feature name into the body copy', () => {
-    render(<ComingSoonModal feature="Channels" onClose={vi.fn()} />);
+  it('says the connector runs in the Desktop app today, without "coming soon"', () => {
+    render(<ComingSoonModal feature="Jira" onClose={vi.fn()} />);
+    expect(screen.getByText('Jira runs in the Desktop app')).toBeTruthy();
     expect(
-      screen.getByText(/Channels isn’t\s+available on Cloud just yet/),
+      screen.getByText('Jira runs in the Desktop app today. Download it to connect Jira there.'),
     ).toBeTruthy();
+    expect(screen.queryByText(/coming soon|just yet/i)).toBeNull();
   });
 
-  it('opens the download link with the os=auto + from=cowork-web params and closes', () => {
+  it('records the offer with the connector, and opens the tagged download link on Download', () => {
     const onClose = vi.fn();
-    render(<ComingSoonModal feature="Channels" onClose={onClose} />);
+    render(<ComingSoonModal feature="Jira" connectorId="jira" onClose={onClose} />);
+    expect(analytics.trackDesktopOfferShown).toHaveBeenCalledWith({
+      feature: 'connector', entry: 'connector_directory', connectorId: 'jira', offer: 'download',
+    });
 
-    fireEvent.click(screen.getByText('Download the app'));
+    fireEvent.click(screen.getByText('Download the Desktop app'));
 
+    expect(analytics.trackDesktopOfferDownloadClicked).toHaveBeenCalledWith({
+      feature: 'connector', entry: 'connector_directory', connectorId: 'jira',
+    });
     expect(openExternal).toHaveBeenCalledWith(
-      'https://mindshub.ai/download?os=auto&from=cowork-web',
+      'https://mindshub.ai/download?os=auto&from=cowork-web-connector',
     );
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -72,8 +100,13 @@ describe('ComingSoonModal', () => {
     render(<ComingSoonModal feature="HasData" onClose={onClose}
       offer={{ kind: 'connect', onAccept }} />);
 
-    expect(screen.queryByText('Download the app')).toBeNull();
-    expect(screen.getByText(/connect it now as a custom connector/)).toBeTruthy();
+    expect(screen.queryByText('Download the Desktop app')).toBeNull();
+    expect(screen.getByText(
+      'HasData runs in the Desktop app today. Here, you can connect it now as a custom connector.',
+    )).toBeTruthy();
+    expect(analytics.trackDesktopOfferShown).toHaveBeenCalledWith(
+      expect.objectContaining({ offer: 'connect_custom' }),
+    );
     fireEvent.click(screen.getByText('Connect your custom HasData'));
 
     expect(onAccept).toHaveBeenCalledTimes(1);
@@ -88,14 +121,14 @@ describe('ComingSoonModal', () => {
     expect(screen.getByText('Build a custom connector')).toBeTruthy();
   });
 
-  it('keeps the download copy, and no offer, inside the mobile app', () => {
+  it('shows the mobile note, and no offer, inside the mobile app', () => {
     hostState.isMobileShell = true;
     render(<ComingSoonModal feature="HasData" onClose={vi.fn()}
       offer={{ kind: 'connect', onAccept: vi.fn() }} />);
 
     expect(screen.queryByText(/connect it now as a custom connector/)).toBeNull();
     expect(screen.queryByText('Connect your custom HasData')).toBeNull();
-    expect(screen.getByText(/HasData isn’t\s+available on Cloud just yet/)).toBeTruthy();
+    expect(screen.getByText('HasData runs in the Desktop app on a computer.')).toBeTruthy();
   });
 
   it('shows the offer body and both buttons in the UI language', async () => {
@@ -103,7 +136,7 @@ describe('ComingSoonModal', () => {
     const { rerender } = render(<ComingSoonModal feature="HasData" onClose={vi.fn()}
       offer={{ kind: 'connect', onAccept: vi.fn() }} />);
 
-    expect(screen.getByText(/HasData ist in der Cloud noch nicht verfügbar\. Sie können es jetzt als benutzerdefinierten Connector verbinden\./)).toBeTruthy();
+    expect(screen.getByText('HasData läuft heute in der Desktop-App. Hier können Sie es jetzt als benutzerdefinierten Connector verbinden.')).toBeTruthy();
     expect(screen.getByText('Ihren benutzerdefinierten HasData-Connector verbinden')).toBeTruthy();
 
     rerender(<ComingSoonModal feature="HasData" onClose={vi.fn()}

@@ -401,6 +401,7 @@
       <a href="#test-8">8. Rollback / cache clear</a>
       <a href="#test-9">9. About panel version</a>
       <a href="#test-10">10. Standard dev mode</a>
+      <a href="#test-11">11. Changed cache file</a>
 
       <span class="toc-section">Reference</span>
       <a href="#env-vars">Env vars</a>
@@ -425,6 +426,7 @@
         <a href="#test-8">8. Rollback</a>
         <a href="#test-9">9. About panel</a>
         <a href="#test-10">10. Standard dev</a>
+        <a href="#test-11">11. Changed cache</a>
         <a href="#env-vars">Env vars</a>
         <a href="#troubleshooting">Troubleshooting</a>
       </nav>
@@ -481,8 +483,15 @@
     <pre class="code-out"><code>{
   "version": "2.0.4-e94e713",
   "url": "https://github.com/mindsdb/antontron-releases/releases/download/ui-v2.0.4-e94e713/ui-bundle.tar.gz",
-  "sha256": "5b15b66a5a7bcf9a319418e22f601e2ce3f610ac0edc45d6cc45fc3ad53af1d3"
+  "sha256": "5b15b66a5a7bcf9a319418e22f601e2ce3f610ac0edc45d6cc45fc3ad53af1d3",
+  "signed": "eyJraW5kIjoiY293b3JrLXVpLWxhdGVzdCIsLi4ufQ==",
+  "signature": "…base64 Ed25519 signature…"
 }</code></pre>
+    <p>
+      The app uses only the signed fields: <code>signed</code> decodes to the version, the tarball's
+      SHA-256 and the server floor, and <code>signature</code> must verify with the release key. A
+      manifest without them offers no update to a current shell.
+    </p>
     <p>
       If this fails or 404s, the OTA system has nothing to serve — the update check will report
       "up to date" and the app will load its bundled renderer.
@@ -526,8 +535,8 @@
         <span class="path">.../ui-cache/previous/</span>
       </div>
       <div class="row">
-        <span class="what">Version metadata</span>
-        <span class="path">.../ui-cache/version.json</span>
+        <span class="what">Signed file list of the active bundle</span>
+        <span class="path">.../ui-cache/current/ota-manifest.json</span>
       </div>
       <div class="row">
         <span class="what">Electron logs</span>
@@ -581,8 +590,9 @@ grep -v 'DEV_MODE' ~/.anton/.env > /tmp/.env.tmp && mv /tmp/.env.tmp ~/.anton/.e
 ls ~/Library/Application\ Support/Anton/ui-cache/current/
 # Should contain index.html and assets
 
-cat ~/Library/Application\ Support/Anton/ui-cache/version.json
-# Should show {"version":"2.0.4-e94e713"}</code></pre>
+python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' \
+  ~/Library/Application\ Support/Anton/ui-cache/current/ota-manifest.json
+# Should show 2.0.4-e94e713</code></pre>
     </section>
 
     <!-- ───────────── Test 2 ───────────── -->
@@ -640,7 +650,7 @@ echo 'UI_UPDATE_MODE=auto' >> ~/.anton/.env</code></pre>
         <li>A full-screen overlay appears with a spinner and "Updating to …" message</li>
         <li>After a few seconds (download time), the overlay says "Almost there…"</li>
         <li>The app reloads automatically — no user interaction needed</li>
-        <li>After reload, the app is running the OTA bundle (check <code>version.json</code>)</li>
+        <li>After reload, the app is running the OTA bundle (check the version in <code>current/ota-manifest.json</code>)</li>
         <li>No update banner appears (auto mode doesn't use the banner)</li>
       </ul>
 
@@ -878,6 +888,34 @@ grep -v 'DEV_MODE' ~/.anton/.env > /tmp/.env.tmp && mv /tmp/.env.tmp ~/.anton/.e
       </ul>
     </section>
 
+    <!-- ───────────── Test 11 ───────────── -->
+    <section class="test" id="test-11">
+      <div class="test-head">
+        <span class="test-num">Test 11</span>
+        <h2 class="test-title" style="margin: 0; scroll-margin-top: 0;">A changed cache file is refused</h2>
+        <span class="test-pill pill-todo"><span class="dot"></span> Re-run</span>
+      </div>
+      <p>The app checks every cached file against the bundle's signed file list before each load, not only at download.</p>
+
+      <p class="step-label">Steps</p>
+      <ol>
+        <li>Run <a href="#test-3">Test 3</a> so the app takes a page update, then quit it.</li>
+        <li>
+          Change one byte of one cached file:
+          <pre><code>cd ~/Library/Application\ Support/Anton/ui-cache/current
+f=$(ls assets/*.js | head -1); printf 'x' | dd of="$f" bs=1 seek=0 conv=notrunc</code></pre>
+        </li>
+        <li>Relaunch the app from Terminal.</li>
+      </ol>
+
+      <p class="step-label">What to verify</p>
+      <ul class="verify">
+        <li>Terminal shows <code>ui_updater_cached_ui_refused_hash_mismatch</code></li>
+        <li><code>ui-cache/current/</code> is gone, and the app runs the bundled renderer</li>
+        <li>The next update check downloads the bundle again</li>
+      </ul>
+    </section>
+
     <hr/>
 
     <!-- ───────────── Env vars ───────────── -->
@@ -935,7 +973,7 @@ grep -v 'DEV_MODE' ~/.anton/.env > /tmp/.env.tmp && mv /tmp/.env.tmp ~/.anton/.e
         <summary>The update overlay is stuck</summary>
         <div class="body">
           <ul>
-            <li>Could mean the download is slow or failed. Check Terminal for <code>[ui-updater] download failed</code> or SHA-256 mismatch errors.</li>
+            <li>Could mean the download is slow or failed. Check Terminal for <code>[ui-updater] download failed</code>, SHA-256 mismatch errors, or a <code>ui_updater_downloaded_ui_refused_…</code> line naming why a bundle failed its signature check.</li>
             <li>Kill the app, clear the cache, and relaunch.</li>
           </ul>
         </div>

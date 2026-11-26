@@ -7,6 +7,7 @@
 import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
+import { checkFuses } from './release-fuses.mjs';
 
 const require = createRequire(import.meta.url);
 const asar = require('@electron/asar'); // dep of electron-builder
@@ -18,6 +19,8 @@ const fail = (msg) => { failures.push(msg); console.error(`  ✗ ${msg}`); };
 // ── Locate the packaged app ─────────────────────────────────────────────────
 const releaseDir = 'release';
 let resourcesDir = null;
+// What release-fuses.mjs reads the fuses from: the .app bundle on macOS, the executable on Windows.
+let fusesPath = null;
 
 if (process.platform === 'darwin') {
   const macDirs = fs.existsSync(releaseDir)
@@ -26,13 +29,18 @@ if (process.platform === 'darwin') {
   for (const dir of macDirs) {
     const apps = fs.readdirSync(path.join(releaseDir, dir)).filter((f) => f.endsWith('.app'));
     if (apps.length) {
-      resourcesDir = path.join(releaseDir, dir, apps[0], 'Contents', 'Resources');
+      fusesPath = path.join(releaseDir, dir, apps[0]);
+      resourcesDir = path.join(fusesPath, 'Contents', 'Resources');
       break;
     }
   }
 } else {
   const winDir = path.join(releaseDir, 'win-unpacked');
-  if (fs.existsSync(winDir)) resourcesDir = path.join(winDir, 'resources');
+  if (fs.existsSync(winDir)) {
+    resourcesDir = path.join(winDir, 'resources');
+    const executables = fs.readdirSync(winDir).filter((f) => f.endsWith('.exe'));
+    if (executables.length === 1) fusesPath = path.join(winDir, executables[0]);
+  }
 }
 
 if (!resourcesDir || !fs.existsSync(resourcesDir)) {
@@ -88,6 +96,18 @@ if (process.platform === 'darwin') {
   fs.existsSync(credPath)
     ? ok('server-credentials.json present (Windows-only extraResources)')
     : fail('server-credentials.json missing from the Windows package');
+}
+
+// ── Electron fuses ──────────────────────────────────────────────────────────
+if (!fusesPath) {
+  fail('no single packaged executable to read the fuses from');
+} else {
+  try {
+    const { mismatches } = await checkFuses(fusesPath);
+    mismatches.length ? mismatches.forEach((line) => fail(`fuse ${line}`)) : ok('release fuses set');
+  } catch (error) {
+    fail(`could not read the fuses: ${error.message}`);
+  }
 }
 
 // ── Verdict ─────────────────────────────────────────────────────────────────

@@ -31,6 +31,7 @@ import {
   matchesIndex,
   mergeArtifactIndex,
 } from './artifactLiveness';
+import { withArtifactTitle } from './artifactList';
 
 const GLOBAL_SCOPE_KEY = 'g:';
 
@@ -58,6 +59,7 @@ let _inFlight = null;
 let _loadGen = 0;
 const _subscribers = new Set();
 const _deleteListeners = new Set();
+const _renameListeners = new Set();
 
 function _recomputeBorn() {
   _bornEffective = _bornPending ? mergeArtifactIndex(_born, _bornPending) : _born;
@@ -192,6 +194,26 @@ export function onArtifactDeleted(listener) {
   return () => _deleteListeners.delete(listener);
 }
 
+/** A doc's title as its editor has it now, from whichever surface opened it:
+ *  every list showing the doc's card takes it, since none refetches on a
+ *  rename. */
+export function noteArtifactRenamed(id, title) {
+  const cards = withArtifactTitle(_cards, id, title);
+  if (cards !== _cards) {
+    _cards = cards;
+    _emit();
+  }
+  for (const listener of _renameListeners) {
+    try { listener({ id, title }); } catch { /* ignored */ }
+  }
+}
+
+/** Called with { id, title } on every noteArtifactRenamed. Returns the unsubscribe function. */
+export function onArtifactRenamed(listener) {
+  _renameListeners.add(listener);
+  return () => _renameListeners.delete(listener);
+}
+
 /** The decision, outside React. */
 export function artifactDeletedNow(card, { live = false } = {}) {
   return isArtifactDeleted(card, {
@@ -262,4 +284,5 @@ export function __resetForTests() {
   _recomputeBorn();
   _subscribers.clear();
   _deleteListeners.clear();
+  _renameListeners.clear();
 }

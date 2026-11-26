@@ -36,6 +36,7 @@ import { useHubWorkspaces } from '../hooks/useHubWorkspaces';
 import { tileLetter, tileStyle } from '../lib/letterTile';
 import { openExternal } from '../../platform/host';
 import { MINDS_WORKSPACES_URL } from '../../lib/mindsUrls';
+import { useConsoleLink } from '../hooks/useConsoleLink';
 import { useTranslation } from '../../lib/i18n';
 
 // The letter square. Colour is hashed from the id, not the name, so a rename
@@ -58,6 +59,7 @@ export function WorkspaceSelector({ user, returnFocusRef }) {
   const { enabled, reachable, workspaces, activeWorkspaceId, switching, switchWorkspace } =
     useHubWorkspaces(user);
   const { t } = useTranslation('shell');
+  const consoleLink = useConsoleLink();
   const toastManager = useToastManager();
   const preserveFocusOnRemoval = useCallback((element) => {
     // React 19 calls this cleanup before removing the focused trigger. A delayed
@@ -163,7 +165,7 @@ export function WorkspaceSelector({ user, returnFocusRef }) {
       label: t('workspace.manage'),
       hint: <Icon of={ArrowUpRight} size={12} />,
       title: t('common.opensInBrowser'),
-      onClick: () => openExternal(MINDS_WORKSPACES_URL),
+      onClick: () => openExternal(consoleLink(MINDS_WORKSPACES_URL)),
     },
   ];
 

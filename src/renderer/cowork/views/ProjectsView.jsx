@@ -273,6 +273,7 @@ function ProjectDetail({
   disabledConnections = [],
   onUpdateConnectorMute,
   onStartVoiceCall = null,
+  dictationAvailable = false,
   // The browser and call icons, in the header beside New project.
   topShortcuts = null,
   browserSwitch = null,
@@ -475,6 +476,7 @@ function ProjectDetail({
                 disabledConnections={disabledConnections}
                 onUpdateConnectorMute={onUpdateConnectorMute}
                 onStartVoiceCall={onStartVoiceCall}
+                dictationAvailable={dictationAvailable}
                 browserSwitch={browserSwitch}
                 metaReadOnly
                 modelReadOnly={false}
@@ -595,6 +597,7 @@ export default function ProjectsView({
   disabledConnections = [],
   onUpdateConnectorMute,
   onStartVoiceCall = null,
+  dictationAvailable = false,
   topShortcuts = null,
   browserSwitch = null,
   onNavigateToConnectors,
@@ -833,6 +836,7 @@ export default function ProjectsView({
         disabledConnections={disabledConnections}
         onUpdateConnectorMute={onUpdateConnectorMute}
         onStartVoiceCall={onStartVoiceCall}
+        dictationAvailable={dictationAvailable}
         topShortcuts={topShortcuts}
         browserSwitch={browserSwitch}
         onOpenSettings={onOpenSettings}

@@ -48,29 +48,27 @@
   },
   "status": {
     "badge": {
+      "onlyYou": "Only you",
       "public": "Public",
-      "password": "Password",
+      "publicPassword": "Public · password",
       "restricted": "Restricted"
     },
     "hint": {
       "notSharedYet": "Not shared yet. Open it and choose Share to get a web link.",
-      "notShareable": "Not shared. Only web pages and Markdown documents can be shared as a link.",
+      "notShareable": "Not shared. Web pages, documents, spreadsheets, decks, PDFs, CSV and text files can be shared as a link; this kind of file can't.",
       "orgRestricted": "Restricted. Open Share to see who can open the link.",
       "ownerOnly": "Shared, but only you can open the link.",
+      "password": "Anyone with the link and the password can open it.",
       "chosenPeople": "Shared. Only the people you chose can open the link.",
       "unknown": "Shared. Who can open the link could not be confirmed, so it is treated as restricted.",
       "sharedWith": "Shared with {names}",
       "sharedWithMore": "Shared with {names} and {count} more"
     },
-    "sharingFailed": "Sharing failed",
-    "couldNotShare": "Couldn't share.",
     "tryAgain": "Try again",
-    "sharing": "Sharing…",
     "updating": "Updating…",
     "stoppingSharing": "Stopping sharing…",
     "deleting": "Deleting…",
     "notShared": "Not shared",
-    "draft": "Draft",
     "unsharedChanges": "Unshared changes"
   },
   "liveAppShare": {
@@ -133,6 +131,8 @@
       "hoursAgo": "{count, plural, one {# hour ago} other {# hours ago}}",
       "daysAgo": "{count, plural, one {# day ago} other {# days ago}}",
       "replies": "{count, plural, one {# reply} other {# replies}}",
+      "replyPlaceholder": "Reply…",
+      "replyAriaLabel": "Reply to this comment",
       "edited": "(edited)",
       "unattachedTip": "The part of the artifact this comment referred to is no longer available.",
       "generalTip": "General feedback about the whole artifact.",
@@ -306,6 +306,12 @@
   },
   "publish": {
     "ownedByOther": "This artifact was published by another owner.",
+    "datasources": {
+      "notice": "Publishing uploads the credentials of these connections: {list}",
+      "review": "This app sends the credentials of connections you haven't approved. Review them in Share and publish again.",
+      "updateApp": "Update the app to publish this app with its connections. You can also ask the agent to publish it from the chat.",
+      "unapproved": "Published without the credentials of: {list}"
+    },
     "linkLeftLive": {
       "unrecorded": "This link was shared before {product} recorded who shares each page, so {product} can’t update it or take it down. Update shares a new link, and Stop sharing or deleting the artifact leaves this one open to anyone who has it. Ask your administrator to remove it.",
       "otherArtifact": "Nothing was taken down: this artifact’s record pointed at another artifact’s page, {link}.",
@@ -333,6 +339,8 @@
       "specificDesc": "Only the people you list"
     },
     "whoCanAccess": "Who can access your app",
+    "whoCanAccessDoc": "Who can access your doc",
+    "updatesAsYouEdit": "Updates as you edit",
     "addPassword": "Add a password",
     "hide": "Hide",
     "show": "Show",
@@ -353,7 +361,6 @@
     "makeLive": "Make live",
     "shared": "Shared",
     "share": "Share",
-    "shareToWeb": "Share to the Web",
     "sharingBusy": "Sharing",
     "websiteUrl": "Website URL",
     "change": "Change",
@@ -470,6 +477,7 @@
     "backendFailed": "Backend failed to start",
     "proxyUnavailable": "Preview proxy unavailable",
     "noMountUrl": "Preview mount returned no URL",
+    "appNotPublishedYet": "This app shows here once it's published, which happens right after it's created. Try again in a moment.",
     "loadFailed": "Could not load artifact",
     "portNotReady": "Backend port not available yet — preview is still loading.",
     "remoteNoUrl": "This artifact is served from a remote server and has no open URL yet.",
@@ -510,8 +518,6 @@
       "title": "Title (A–Z)",
       "type": "Type"
     },
-    "shareProtected": "Share protected",
-    "shareRestricted": "Share restricted",
     "downloadFailed": "Could not download this artifact.",
     "menu": "Artifact menu",
     "openProject": "Open {project}",
@@ -519,9 +525,7 @@
     "openViewer": "Open viewer",
     "showInExplorer": "Show in Explorer",
     "deleteItem": "Delete artifact",
-    "onlyHtmlMd": "Only HTML and Markdown artifacts can be shared.",
-    "sharedToast": "{mode, select, password {Shared (password protected) — {url}} restricted {Shared (restricted) — {url}} other {Shared — {url}}}",
-    "mindsApiKey": "Set your Minds API key in Settings to share artifacts.",
+    "onlyHtmlMd": "Only web pages, documents, spreadsheets, decks, PDFs, CSV and text files can be shared.",
     "stoppedOnMindsHub": "Stopped sharing on MindsHub.",
     "stopped": "Stopped sharing.",
     "updated": "Updated the shared version.",
@@ -546,11 +550,9 @@
       "noMatch": "No artifacts match these filters.",
       "clear": "Clear filters",
       "status": "Status",
-      "allStatuses": "All statuses"
-    },
-    "owner": {
-      "you": "You",
-      "youHint": "Yours, shared with others."
+      "allStatuses": "All statuses",
+      "access": "Access",
+      "allAccess": "All access levels"
     },
     "openComments": "{count, plural, one {# open comment} other {# open comments}}",
     "openCommentsHint": "Open the preview on its comments"
@@ -923,7 +925,15 @@
     "sourceHint": "Change text and layout on the page",
     "commentsHint": "Leave and review feedback",
     "statsHint": "Who viewed and for how long",
-    "commentsOpen": "Comments, {count} open"
+    "commentsOpen": "Comments, {count} open",
+    "openChat": "Open chat",
+    "openChatHint": "Close the preview and go to the chat this was made in",
+    "openChatUnavailable": {
+      "noOrigin": "Not made in a chat, or made before chats were recorded",
+      "deleted": "The chat this was made in has been deleted",
+      "colleague": "Made in a colleague's chat, which only they can open",
+      "unreachable": "The chat this was made in can't be reached right now"
+    }
   },
   "liveEditPanel": {
     "close": "Close Live edit panel",
