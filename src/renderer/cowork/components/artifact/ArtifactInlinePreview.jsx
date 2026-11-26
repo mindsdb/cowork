@@ -23,6 +23,9 @@
 //   - Where the user is in the page (its tab or slide, scroll, hash) is the
 //     viewer's own view report (usePreviewView), handed up through `onView`
 //     so Preview opens the viewer on the same place.
+//   - While the live frame is mounted, a voice call's operator sees it
+//     (screenWidgets.js): its state, the text of the page it loaded, and
+//     whether it can be submitted.
 //
 // With `revisionId` the frame shows that saved revision instead of the
 // draft: an earlier chat card opened to see the page as it was then. That is
@@ -40,6 +43,7 @@ import { useIntersection } from '../../hooks/useIntersection';
 import { useBodyTheme } from '../../hooks/useBodyTheme';
 import { useDraftLinks } from '../../../lib/draftLinks';
 import { draftLinkLifetimeMs } from '../../lib/draftLinkRules';
+import { showWidgetOnScreen } from '../../lib/voice/screenWidgets';
 
 export const INLINE_MIN_HEIGHT = 160;
 export const INLINE_MAX_HEIGHT = 640;
@@ -125,6 +129,15 @@ export function ArtifactInlinePreview({ artifact, title = '', revisionId = '', o
   useInlineArtifactState(iframeRef, artifact, { enabled: mounted && !revisionId, onSubmit });
   // The live page's place, for the viewer to open on. A snapshot has none.
   const { view } = usePreviewView(iframeRef, { enabled: mounted && !revisionId, resetKey });
+  // What a voice call's operator reads of the live frame: the artifact, the
+  // page it loaded through srcdoc (a page loaded by URL can't be read here)
+  // and its Submit. Read when the operator asks.
+  const onScreenRef = useRef(null);
+  onScreenRef.current = { artifact, html: source?.doc || '', onSubmit };
+  useEffect(() => {
+    if (!mounted || revisionId) return undefined;
+    return showWidgetOnScreen(() => onScreenRef.current);
+  }, [mounted, revisionId]);
   const onViewRef = useRef(onView);
   onViewRef.current = onView;
   useEffect(() => { onViewRef.current?.(revisionId ? null : view); }, [view, revisionId]);

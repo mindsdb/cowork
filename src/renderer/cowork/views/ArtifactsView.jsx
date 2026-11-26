@@ -41,7 +41,7 @@ import { SharedLiveAppsSection } from '../components/artifacts/SharedLiveAppsSec
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import {
   canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, canShowInBrowserTab,
-  isHtmlArtifact, isPublishableArtifact, isBackendArtifact, isInlinePreviewable,
+  isHtmlArtifact, isPublishableArtifact, isBackendArtifact, isInlinePreviewable, isWidgetArtifact,
 } from '../lib/artifactKinds';
 import { canPreviewDocument } from '../preview/kinds';
 import { trackArtifactPublished } from '../lib/analytics';
@@ -852,7 +852,10 @@ export default function ArtifactsView({
   const orgMode = useOrgMode();
   // In MindsHub mode a restricted card doesn't say who it reaches; read it,
   // so its section, badge and hover say (useArtifactAudiences).
-  const { list, settled: audiencesSettled } = useArtifactAudiencesState(cards, { enabled: orgMode });
+  // A widget (ENG-4684) is input collected in the chat, not a deliverable:
+  // cowork-server leaves it out of the list, and so does the page.
+  const deliverables = useMemo(() => cards.filter((a) => !isWidgetArtifact(a)), [cards]);
+  const { list, settled: audiencesSettled } = useArtifactAudiencesState(deliverables, { enabled: orgMode });
   const liveApps = useLiveApps();
   // App hands down a new list after each turn, so the states re-read with it.
   const liveAppStates = useLiveAppStates(liveApps, list);

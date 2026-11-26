@@ -54,7 +54,7 @@ import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth, provis
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { GeneratedImageCard } from '../components/GeneratedImageCard';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
-import { BACKEND_ARTIFACT_TYPES, canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isBackendArtifact, isHtmlArtifact, isImageArtifact, isInlineArtifact, isPublishableArtifact } from '../lib/artifactKinds';
+import { BACKEND_ARTIFACT_TYPES, canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isBackendArtifact, isHtmlArtifact, isImageArtifact, isInlineArtifact, isPublishableArtifact, isWidgetArtifact } from '../lib/artifactKinds';
 import { useLiveApps } from '../../lib/liveApps';
 import { canPreviewDocument } from '../preview/kinds';
 import { downloadArtifactFile } from '../lib/artifactDownload';
@@ -970,7 +970,10 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false, i
   // an image, or before the artifact card carries a serveUrl (org mode, or the
   // live-turn card streamed in ahead of ChatView.jsx's serveUrl passthrough).
   const { src: thumbSrc } = useBlobImageSrc({ url: isImage ? (artifactServeUrl(artifact) || null) : null });
-  const published = !!artifact.publishedUrl;
+  // A widget (ENG-4684) collects input in the chat and is not a deliverable:
+  // no Share, and no shared page to open (a stray published URL included).
+  const widget = isWidgetArtifact(artifact);
+  const published = !!artifact.publishedUrl && !widget;
   const hasBridge = host.isElectron || !host.isWeb;
   const canDownload = canDownloadArtifact(artifact);
   const openTarget = artifactOpenTarget({
@@ -1198,6 +1201,7 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false, i
    * which the viewer would show disabled without.
    */
   const shareAction = onShare && !deleted
+    && !widget
     && isPublishableArtifact(artifact)
     && !(liveApps && BACKEND_ARTIFACT_TYPES.has(artifact.type) && !published)
     && capabilities?.canEdit !== false

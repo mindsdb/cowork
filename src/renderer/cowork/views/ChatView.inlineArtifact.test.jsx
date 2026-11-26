@@ -144,6 +144,19 @@ describe('ArtifactCard inline mode', () => {
     expect(screen.queryByTestId('artifact-inline-preview')).toBeNull();
   });
 
+  it('shows a widget live like an inline artifact, but offers no Share: it is not a deliverable', async () => {
+    const onShare = vi.fn();
+    const { unmount } = render(<ArtifactCard artifact={card({ display: 'inline' })} onOpen={vi.fn()} onShare={onShare} />);
+    expect(await screen.findByTitle('Revenue by month')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Share' })).toBeInTheDocument();
+    unmount();
+
+    render(<ArtifactCard artifact={card({ display: 'widget', publishedUrl: 'https://x.4nton.ai/p' })} onOpen={vi.fn()} onShare={onShare} />);
+    expect(await screen.findByTitle('Revenue by month')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Share' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Shared link|Open link/ })).toBeNull();
+  });
+
   it('shows no live page for a deleted artifact', () => {
     deleted.mockReturnValue(true);
     render(<ArtifactCard artifact={card({ display: 'inline' })} onOpen={vi.fn()} />);
