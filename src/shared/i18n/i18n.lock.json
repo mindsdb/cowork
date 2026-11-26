@@ -39303,6 +39303,40 @@
       "text": "b2fb075aa965"
     }
   },
+  "chat:chatView.cards.balanceEmptyAirOnPlan": {
+    "de": {
+      "from": "088c3388c1dd",
+      "text": "ae0afdbc9789"
+    },
+    "es": {
+      "from": "088c3388c1dd",
+      "text": "984744a5438f"
+    },
+    "fr": {
+      "from": "088c3388c1dd",
+      "text": "33d2c4e932fa"
+    },
+    "it": {
+      "from": "088c3388c1dd",
+      "text": "3cfb686b3d11"
+    },
+    "ja": {
+      "from": "088c3388c1dd",
+      "text": "2bb8503e2199"
+    },
+    "ko": {
+      "from": "088c3388c1dd",
+      "text": "be653c9b35e8"
+    },
+    "pt-BR": {
+      "from": "088c3388c1dd",
+      "text": "6f4158c30044"
+    },
+    "zh-CN": {
+      "from": "088c3388c1dd",
+      "text": "0027ef19c8f6"
+    }
+  },
   "chat:chatView.cards.balanceRanOut": {
     "de": {
       "from": "9b28ed708a43",
@@ -140825,6 +140859,40 @@
     "zh-CN": {
       "from": "e08f5cbc8a7c",
       "text": "c185a1c197ac"
+    }
+  },
+  "projects:messages.usage.budgetExceeded.airOnPlan": {
+    "de": {
+      "from": "ff12602ae733",
+      "text": "c8db15e0937d"
+    },
+    "es": {
+      "from": "ff12602ae733",
+      "text": "138c0e568728"
+    },
+    "fr": {
+      "from": "ff12602ae733",
+      "text": "5d20bef387dc"
+    },
+    "it": {
+      "from": "ff12602ae733",
+      "text": "9adfdd6db25d"
+    },
+    "ja": {
+      "from": "ff12602ae733",
+      "text": "1615f71bfa72"
+    },
+    "ko": {
+      "from": "ff12602ae733",
+      "text": "ba17ec31eb77"
+    },
+    "pt-BR": {
+      "from": "ff12602ae733",
+      "text": "a17e2dfa4864"
+    },
+    "zh-CN": {
+      "from": "ff12602ae733",
+      "text": "26940fbd9eb7"
     }
   },
   "projects:messages.usage.budgetExceeded.raise": {

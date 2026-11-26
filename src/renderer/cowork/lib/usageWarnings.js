@@ -5,9 +5,9 @@
 // composer knows about the current pick. Output is copy + action keys; the
 // renderer decides how to paint them and where the actions open.
 //
-// Two resources, always named apart: the FREE MindsHub Air allowance, which
-// refills on its own, and the PAID balance. "Out of tokens" on its own is never
-// one of the outputs.
+// Two resources, always named apart: the FREE allowance, which refills on its
+// own and carries MindsHub Air, the router and any pick the Free tier covers,
+// and the PAID balance. "Out of tokens" on its own is never one of the outputs.
 
 import { MINDSHUB_AIR_MODEL_ID, MODEL_ROUTER_ID } from './modelCatalog';
 import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL, mindsUpgradeUrl } from '../../lib/mindsUrls';
@@ -176,8 +176,8 @@ export function formatResetTime(iso, now = new Date()) {
   return `${d.toLocaleDateString(dateLocale(), { month: 'short', day: 'numeric' })}, ${time}`;
 }
 
-// `available`: Air can run on the free tokens right now. -1 is auth's uncapped
-// sentinel; 0 or a missing limit means there is no grant to draw from.
+// `available`: a free pick can run on the free tokens right now. -1 is auth's
+// uncapped sentinel; 0 or a missing limit means there is no grant to draw from.
 // `fractionLeft` is a number only for a capped grant, so it doubles as the test
 // for "there is a figure worth showing": an uncapped grant has nothing to count
 // down and a missing one has nothing to count.
@@ -212,30 +212,49 @@ export function noFreeGrantSentence() {
  * @typedef {{ status: FreeAllowanceStatus, resetsAt: string | null }} FreeAllowanceState
  */
 
-/** Where the free MindsHub Air allowance stands, for a surface outside the
- *  composer bar that has to say so (ChatView's stopped-task cards, the
- *  Settings probe notice).
+/** Where the free allowance stands, for a surface outside the composer bar
+ *  that has to say so (ChatView's stopped-task cards, the Settings probe
+ *  notice).
  *
  *  `has_room` and `spent` only ever describe a capped grant from a reachable
- *  read. `no_grant` is the sidecar's explicit no-grant value, a limit of 0,
- *  which cowork-server sends only when auth reports `free_grant_eligible:
- *  false`. It carries no `resetsAt`: nothing refills, so no card may name a
- *  refill time, even if an older sidecar still relays one. Everything else is
- *  `no_figure`: signed out or unreachable, a missing figure, or auth's uncapped
- *  sentinel, none of which gives a card a number to speak from. A missing read
- *  is unknown, never `no_grant`. `resetsAt` is the refill instant auth
- *  reported, carried whenever the read is reachable and a grant exists,
- *  because a caller that already knows the allowance is spent (the gate said
- *  so) still needs the time.
+ *  read without a paid plan. `no_grant` is the sidecar's explicit no-grant
+ *  value, a limit of 0, which cowork-server sends only when auth reports
+ *  `free_grant_eligible: false`. It carries no `resetsAt`: nothing refills, so
+ *  no card may name a refill time, even if an older sidecar still relays one.
+ *  Everything else is `no_figure`: signed out or unreachable, a missing figure,
+ *  auth's uncapped sentinel, or a Plus or Pro plan, none of which gives a card
+ *  a free allowance to speak from. On Plus and Pro, auth's `/me` serves the
+ *  plan's own windows in the flat allowance fields that cowork-server relays
+ *  as `freeTokens`, so that figure is the plan's, and a subscriber has no free
+ *  allowance to name. A card that offers the switch to Air reads `airRoom`,
+ *  which answers from the plan's windows there. A missing read is unknown,
+ *  never `no_grant`. `resetsAt` is the refill instant auth reported, carried
+ *  whenever the read is reachable and a grant exists, because a caller that
+ *  already knows the allowance is spent (the gate said so) still needs the
+ *  time.
  *
  *  @returns {FreeAllowanceState} */
 export function freeAllowanceState(usage) {
   if (!usage?.reachable) return { status: 'no_figure', resetsAt: null };
+  if (isPaidPlan(planOf(usage))) return { status: 'no_figure', resetsAt: null };
   if (usage.freeTokens?.limit === 0) return { status: 'no_grant', resetsAt: null };
   const resetsAt = usage.freeTokens?.resetsAt || null;
   const f = freeState(usage.freeTokens);
   if (f.fractionLeft === null) return { status: 'no_figure', resetsAt };
   return { status: f.available ? 'has_room' : 'spent', resetsAt };
+}
+
+/** Which allowance can run MindsHub Air right now, for a stopped-task card
+ *  that offers the switch to it: `'free'` while the free allowance has room
+ *  (`freeAllowanceState`), `'plan'` on Plus or Pro while no plan window is
+ *  used up, since Air runs on the plan's windows there, and null when neither
+ *  is known to have room.
+ *
+ *  @returns {'free' | 'plan' | null} */
+export function airRoom(usage) {
+  const plan = planOf(usage);
+  if (isPaidPlan(plan)) return windowState(plan).exhausted ? null : 'plan';
+  return freeAllowanceState(usage).status === 'has_room' ? 'free' : null;
 }
 
 /** Whether a hub usage `balance` says the wallet cannot pay: auth flagged it
@@ -254,12 +273,21 @@ export function isBalanceUsable(balance) {
   return !!balance && !isBalanceEmpty(balance) && Number(balance.usd) > 0;
 }
 
-/** What in a usage read decides model locks, as a comparable string (null if unknown). Prefers
- *  `walletCanConsume` (set for members too; never shown in UI), else the balance (ENG-4147). */
+/** Whether a usage read says the wallet cannot pay. Prefers `walletCanConsume`,
+ *  auth's `wallet.can_consume` from `/me`, which a member gets even when the
+ *  wallet read itself is refused and the read carries no balance. Without it,
+ *  the balance answers through `isBalanceEmpty`. A read with neither says
+ *  nothing about the wallet, so it is not an empty one. */
+function isWalletEmpty(usage) {
+  return typeof usage?.walletCanConsume === 'boolean' ? !usage.walletCanConsume : isBalanceEmpty(usage?.balance);
+}
+
+/** What in a usage read decides model locks, as a comparable string (null if unknown). Reads
+ *  the wallet through `isWalletEmpty`, so `walletCanConsume` (set for members too; never shown
+ *  in UI) wins over the balance (ENG-4147). */
 export function modelAccessSignature(usage) {
   if (!usage?.reachable) return null;
-  const walletEmpty = typeof usage.walletCanConsume === 'boolean' ? !usage.walletCanConsume : isBalanceEmpty(usage.balance);
-  const base = `${walletEmpty}|${freeAllowanceState(usage).status}`;
+  const base = `${isWalletEmpty(usage)}|${freeAllowanceState(usage).status}`;
   // A plan change moves model locks too (ENG-4186): an upgrade unlocks rows,
   // and a window filling or freeing up locks or unlocks the ones it covers.
   // Only with a plan, so the signature without one reads as before.
@@ -292,7 +320,7 @@ export function allowanceStopCopy({ resetAt = null, usage = null } = {}) {
   return time ? trBilling('allowanceStop.withTime', { time }) : trBilling('allowanceStop.noTime');
 }
 
-/** What a stop on auth's daily free-Air spend fuse says (`free_serving_paused`
+/** What a stop on auth's daily free spend fuse says (`free_serving_paused`
  *  on a turn, `free_air_daily_spend_fuse_exceeded` on the Settings probe). The
  *  fuse lifts at the next UTC midnight, which the gate sends as its reset
  *  instant, on a desktop or a hosted turn. Without a usable one (a hosted turn
@@ -305,16 +333,18 @@ export function freeServingPausedCopy(resetAt) {
 
 /** What a stop on a spent budget says (`budget_exceeded`), after a
  *  lead naming the budget, for the stopped-task card and the Settings notice.
- *  Credits do not lift it, so it never asks for funds; Air is named only while
- *  the hub read shows its free allowance has room. `budgetScope` picks who can
- *  raise it; without one the copy names no role. */
+ *  Credits do not lift it, so it never asks for funds. Air is named only while
+ *  the hub read shows an allowance that can run it (`airRoom`), and the
+ *  sentence names that allowance: the free one, or the plan's on Plus or Pro.
+ *  `budgetScope` picks who can raise it; without one the copy names no role. */
 export function budgetExceededCopy({ usage = null, budgetScope = null, budgetModelLabel = null } = {}) {
   const scope = budgetScopeOf(budgetScope);
   // A per-model budget names its model and says the others still work.
   const model = { hasModel: budgetModelLabel ? 'true' : 'other', model: budgetModelLabel || '' };
-  return freeAllowanceState(usage).status === 'has_room'
-    ? tr('budgetExceeded.airHasRoom', { scope, ...model })
-    : tr('budgetExceeded.raise', { scope, ...model });
+  const room = airRoom(usage);
+  if (room === 'free') return tr('budgetExceeded.airHasRoom', { scope, ...model });
+  if (room === 'plan') return tr('budgetExceeded.airOnPlan', { scope, ...model });
+  return tr('budgetExceeded.raise', { scope, ...model });
 }
 
 /** The picked model id: an id string, a catalog option ({ id }), or null. */
@@ -622,6 +652,11 @@ function planWindowWarning(plan, { balanceUsable, balanceCarries = false }) {
  *                    plan's windows are not its news. Without a paid plan, a
  *                    task on a model the Free tier covers spends the free
  *                    tokens as an Air task does. Same gates the bar uses.
+ *
+ * On Plus or Pro no task spends a free allowance, whatever its pick: auth's
+ * `/me` serves the plan's own windows in the flat allowance fields that
+ * cowork-server relays as `freeTokens`, so that figure moving is the plan's
+ * windows moving, and the window kinds below already say so.
  */
 export function usageTransitions(prev, next, {
   model: modelIn = null, providerType = 'minds-cloud', coveredByTier = null,
@@ -633,9 +668,22 @@ export function usageTransitions(prev, next, {
   const after = freeState(next.freeTokens);
   const planBefore = planOf(prev);
   const planAfter = planOf(next);
-  const spendsFree = !isExplicitPaidModel(pickedModelId(modelIn), coveredByTier, planAfter);
+  const spendsFree = !isPaidPlan(planAfter)
+    && !isExplicitPaidModel(pickedModelId(modelIn), coveredByTier, planAfter);
   // A task on a healthy wallet keeps going on it; that is not news (ENG-4188).
-  if (!before.out && after.out && spendsFree && !balanceCarriesNextTask(next.balance, next.autoTopUp)) {
+  // "Now using your balance" is true only of a wallet that may pay. The read
+  // says a wallet cannot pay through `isWalletEmpty`, which prefers
+  // `walletCanConsume`, or through a balance that holds nothing. cowork-server's
+  // `MindsHubUsageView` (`cowork/schemas/mindshub_usage.py`, built by
+  // `parse_usage` in `cowork/services/mindshub_usage.py`) sends no balance when
+  // the wallet read fails or the caller may not see the wallet, as for a member
+  // without billing access, and still carries `walletCanConsume` from `/me`
+  // then. Only a read with neither leaves the wallet unknown, and the notice
+  // stands. A wallet that cannot pay gets the stop card instead, once the next
+  // call is refused.
+  const walletMayPay = !isWalletEmpty(next) && (!next.balance || isBalanceUsable(next.balance));
+  if (!before.out && after.out && spendsFree && !balanceCarriesNextTask(next.balance, next.autoTopUp)
+      && walletMayPay) {
     out.push({ kind: 'free_used', resetsAt: next.freeTokens?.resetsAt || null });
   }
   // A long task can drain the allowance without the composer bar ever being

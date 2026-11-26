@@ -99,6 +99,7 @@
       "taskStopped": "任务已停止",
       "providerLimitBody": "已达到提供商的用量上限。开始其他任务前，请联系管理员。",
       "addFunds": "充值",
+      "balanceEmptyAirOnPlan": "你的余额为零，因此无法运行此模型。你的套餐额度仍可用于 MindsHub Air。",
       "switchToAir": "切换到 MindsHub Air",
       "balanceRanOut": "任务完成前你的余额已用完。开始其他任务前，请先充值。",
       "balanceEmptyAirLeft": "你的余额为零，因此无法运行此模型。MindsHub Air 仍有免费额度可用。",

@@ -1931,8 +1931,8 @@ export async function setActiveHubWorkspace(workspaceId) {
 }
 
 /**
- * The signed-in account's free MindsHub Air allowance, paid balance, and auto
- * top up state (ENG-1782). Never throws: signed out, an unreachable sidecar,
+ * The signed-in account's free allowance, paid balance, and auto top up
+ * state (ENG-1782). Never throws: signed out, an unreachable sidecar,
  * and an old sidecar with no such route all answer the same dark shape, and
  * the composer notice and Settings tab render nothing for it.
  */

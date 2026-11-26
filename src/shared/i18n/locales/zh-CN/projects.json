@@ -61,6 +61,7 @@
         "balanceLowToo": "你的余额也不多了（{usd}）。"
       },
       "budgetExceeded": {
+        "airOnPlan": "{hasModel, select, true {{scope, select, org {在所有者或管理员于“预算”中提高上限前，{model} 无法运行。其他模型仍可使用。} other {在管理员于“预算”中提高上限前，{model} 无法运行。其他模型仍可使用。}}} other {{scope, select, org {在所有者或管理员于“预算”中提高上限前，付费模型无法运行。套餐额度未用完时，MindsHub Air 仍可使用。} other {在管理员于“预算”中提高上限前，付费模型无法运行。套餐额度未用完时，MindsHub Air 仍可使用。}}}}",
         "raise": "{hasModel, select, true {{scope, select, org {在所有者或管理员于“预算”中提高上限前，{model} 无法运行。其他模型仍可使用。} other {在管理员于“预算”中提高上限前，{model} 无法运行。其他模型仍可使用。}}} other {{scope, select, org {在所有者或管理员于“预算”中提高上限前，付费模型无法运行。} other {在管理员于“预算”中提高上限前，付费模型无法运行。}}}}",
         "airHasRoom": "{hasModel, select, true {{scope, select, org {在所有者或管理员于“预算”中提高上限前，{model} 无法运行。其他模型仍可使用。} other {在管理员于“预算”中提高上限前，{model} 无法运行。其他模型仍可使用。}}} other {{scope, select, org {在所有者或管理员于“预算”中提高上限前，付费模型无法运行。免费额度未用完时，MindsHub Air 仍可使用。} other {在管理员于“预算”中提高上限前，付费模型无法运行。免费额度未用完时，MindsHub Air 仍可使用。}}}}"
       },

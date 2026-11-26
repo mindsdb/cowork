@@ -99,6 +99,7 @@
       "taskStopped": "Aufgabe gestoppt",
       "providerLimitBody": "Das Nutzungslimit des Anbieters wurde erreicht. Wenden Sie sich an Ihren Administrator, bevor Sie eine weitere Aufgabe starten.",
       "addFunds": "Guthaben aufladen",
+      "balanceEmptyAirOnPlan": "Ihr Guthaben ist leer, daher kann dieses Modell nicht ausgeführt werden. Das Kontingent Ihres Plans deckt MindsHub Air weiterhin ab.",
       "switchToAir": "Zu MindsHub Air wechseln",
       "balanceRanOut": "Ihr Guthaben war aufgebraucht, bevor diese Aufgabe abgeschlossen war. Laden Sie Guthaben auf, bevor Sie eine weitere Aufgabe starten.",
       "balanceEmptyAirLeft": "Ihr Guthaben ist leer, daher kann dieses Modell nicht ausgeführt werden. Für MindsHub Air ist noch Gratiskontingent übrig.",

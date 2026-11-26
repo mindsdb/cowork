@@ -2889,7 +2889,7 @@ export default function SettingsView({
     />
   );
 
-  /* Usage (ENG-1782): the free MindsHub Air allowance, balance, auto top up.
+  /* Usage (ENG-1782): the free allowance, balance, auto top up.
      Reads the usage App polls (HubUsageContext); every action deep-links to
      the console. */
   const renderUsageSection = () => (

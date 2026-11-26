@@ -99,6 +99,7 @@
       "taskStopped": "Tâche arrêtée",
       "providerLimitBody": "La limite d’utilisation du fournisseur a été atteinte. Contactez votre administrateur avant de lancer une autre tâche.",
       "addFunds": "Ajouter des fonds",
+      "balanceEmptyAirOnPlan": "Votre solde est vide : ce modèle ne peut donc pas s’exécuter. Le quota de votre forfait couvre toujours MindsHub Air.",
       "switchToAir": "Passer à MindsHub Air",
       "balanceRanOut": "Votre solde a été épuisé avant la fin de cette tâche. Ajoutez des fonds avant de lancer une autre tâche.",
       "balanceEmptyAirLeft": "Votre solde est vide : ce modèle ne peut donc pas s’exécuter. Il vous reste du quota gratuit sur MindsHub Air.",

@@ -5,8 +5,8 @@ import { isAppVisible, subscribeAppVisibility } from '../code/useAppVisible';
 import { planOf } from '../lib/subscriptionPlan';
 import { setUsagePlanTier } from '../lib/usagePlanTier';
 
-/* The signed-in account's usage: the free MindsHub Air allowance, paid
-   balance, auto top up.
+/* The signed-in account's usage: the free allowance, paid balance, auto top
+   up.
 
    Same shape and the same failure philosophy as useHubWorkspaces: `reachable`
    false is the resting state, so every surface renders exactly as it did before
