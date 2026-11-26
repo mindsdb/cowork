@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { START_SURFACE_PATTERN, coworkStartSurface } from '../../lib/startSurface';
 
 // analytics.js reads import.meta.env (POSTHOG_KEY), the __APP_VERSION__ global
 // (APP_VERSION) and host.isElectron (SURFACE) into module-level constants at
@@ -1245,6 +1246,80 @@ describe('billing + provisioning events (ENG-1533)', () => {
 
     const event = await sentEvent(fetchMock, 'token_cap_hit');
     expect(event.properties.reason).toBe('token_limit');
+  });
+});
+
+describe('upgrade_clicked', () => {
+  /* capture() stamps `surface` with the client type after the caller's
+     properties, so a card sent as `surface` never reached PostHog. These run
+     the real capture() and read the body it posts. */
+  it('names the placement and its start surface, and keeps surface for the desktop client', async () => {
+    const fetchMock = mockFetch();
+    const { trackUpgradeClicked } = await importAnalytics();
+
+    trackUpgradeClicked('allowance_card', 'plus', 'free');
+
+    const { properties } = await sentEvent(fetchMock, 'upgrade_clicked');
+    expect(properties.placement).toBe('allowance_card');
+    expect(properties.start_surface).toBe('cowork_allowance_card');
+    expect(properties.surface).toBe('desktop');
+    expect(properties.tier).toBe('plus');
+    expect(properties.from_tier).toBe('free');
+  });
+
+  it('keeps the placement on the web client, whose surface is web', async () => {
+    hostState.isElectron = false;
+    const fetchMock = mockFetch();
+    const { trackUpgradeClicked } = await importAnalytics();
+
+    trackUpgradeClicked('allowance_card', 'plus', 'free');
+
+    const { properties } = await sentEvent(fetchMock, 'upgrade_clicked');
+    expect(properties.placement).toBe('allowance_card');
+    expect(properties.start_surface).toBe('cowork_allowance_card');
+    expect(properties.surface).toBe('web');
+  });
+
+  it('records a click with no placement as unknown and names no start surface', async () => {
+    const fetchMock = mockFetch();
+    const { trackUpgradeClicked } = await importAnalytics();
+
+    trackUpgradeClicked(undefined, 'pro', 'plus');
+
+    const { properties } = await sentEvent(fetchMock, 'upgrade_clicked');
+    expect(properties.placement).toBe('unknown');
+    expect(properties).not.toHaveProperty('start_surface');
+    expect(properties.surface).toBe('desktop');
+  });
+
+  it('every placement a call site sends is in the EVENTS vocabulary, which names no other, and makes a start surface the subscription keeps', () => {
+    /* The comment on EVENTS.UPGRADE_CLICKED is the list a conversion query
+       is written from, and the console link carries the same placement as
+       `start_surface`, which the subscription service stores only when it
+       matches START_SURFACE_PATTERN. Reads the source, because the call
+       sites pass string literals: `upgrade.open(tier, '<placement>')` or
+       `openUpgrade(action, '<placement>')`. */
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const rendererRoot = path.resolve(here, '../..');
+    const vocabularyLine = fs.readFileSync(path.join(here, 'analytics.js'), 'utf8')
+      .split('\n')
+      .find((line) => line.includes('UPGRADE_CLICKED:'));
+    const placementList = vocabularyLine.match(/placement: ((?:'[a-z_]+'\|?)+)/)[1];
+    const vocabulary = new Set([...placementList.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]));
+
+    const sent = new Set();
+    for (const rel of fs.readdirSync(rendererRoot, { recursive: true })) {
+      if (!/\.(jsx?|tsx?)$/.test(rel) || /\.test\./.test(rel)) continue;
+      const src = fs.readFileSync(path.join(rendererRoot, rel), 'utf8');
+      for (const call of src.matchAll(/(?:\bupgrade\.open|\bopenUpgrade)\([^,()]*,\s*'([a-z_]+)'/g)) sent.add(call[1]);
+      for (const call of src.matchAll(/\btrackUpgradeClicked\(\s*'([a-z_]+)'/g)) sent.add(call[1]);
+    }
+
+    // Guards the sweep itself: a path or regex that matched nothing would pass.
+    expect(sent.has('allowance_card')).toBe(true);
+    expect(sent.has('usage_bar')).toBe(true);
+    expect([...sent].sort()).toEqual([...vocabulary].sort());
+    for (const placement of sent) expect(coworkStartSurface(placement)).toMatch(START_SURFACE_PATTERN);
   });
 });
 

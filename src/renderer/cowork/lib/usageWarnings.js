@@ -71,9 +71,11 @@ export function upgradeAction(tier) {
  *  An upgrade always opens the plan's confirm dialog for the organization this
  *  session runs in (`organizationId`, `subject`): the console checks who may
  *  buy before it subscribes, and callers only offer an upgrade where one can
- *  be bought (see hooks/useUpgradeOffer). */
-export function usageActionUrl(action, { isBillingOwner = false, organizationId = null, subject = null } = {}) {
-  if (action?.key === 'upgrade') return mindsUpgradeUrl(action.tier, { organizationId, subject });
+ *  be bought (see hooks/useUpgradeOffer). `placement` names where the upgrade
+ *  was offered, which the link carries as its start surface (mindsUpgradeUrl);
+ *  every other action ignores it. */
+export function usageActionUrl(action, { isBillingOwner = false, organizationId = null, subject = null, placement = null } = {}) {
+  if (action?.key === 'upgrade') return mindsUpgradeUrl(action.tier, { organizationId, subject }, placement);
   if (!isBillingOwner) return MINDS_BILLING_URL;
   if (action?.key === 'addFunds') return MINDS_ADD_FUNDS_URL;
   if (action?.key === 'setUpAutoTopUp' || action?.key === 'manageAutoTopUp') return MINDS_AUTO_TOP_UP_URL;

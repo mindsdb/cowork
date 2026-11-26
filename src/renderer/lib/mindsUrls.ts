@@ -2,6 +2,8 @@
 // cowork SPA views (billing/API-key links), so every external MindsHub
 // destination is derived in one place from the two VITE_ overrides.
 
+import { START_SURFACE_PARAM, coworkStartSurface } from './startSurface';
+
 // Derive the MindsHub API base from the SPA's own origin so a single web build
 // serves every environment without baking a per-env URL. The MindsHub cloud API
 // is a sibling of the cowork host on the same domain, reached by swapping the
@@ -161,12 +163,16 @@ export function consoleUrlFor(
 
 /** The console link that opens the plan's confirm dialog for `tier` (Plus
  *  unless Pro is named), for the organization and account this session runs
- *  in. */
+ *  in. A `placement` names the card or control that offered the upgrade, and
+ *  the link carries it as its start surface (see startSurface.ts). */
 export function mindsUpgradeUrl(
   tier: string | null | undefined,
   account: { organizationId?: string | null; subject?: string | null } = {},
+  placement?: string | null,
 ): string {
-  return consoleUrlFor(MINDS_UPGRADE_URL[tier === 'pro' ? 'pro' : 'plus'], account);
+  const target = new URL(consoleUrlFor(MINDS_UPGRADE_URL[tier === 'pro' ? 'pro' : 'plus'], account));
+  if (placement) target.searchParams.set(START_SURFACE_PARAM, coworkStartSurface(placement));
+  return target.toString();
 }
 
 // Environment-independent MindsHub destinations (docs site + support page).
