@@ -284,7 +284,10 @@ export function ArtifactViewerBody({
           src={previewUrl || undefined}
           srcDoc={previewDoc || undefined}
           onLoad={() => { setIframeReady(true); layer.onIframeLoad(); }}
-          sandbox={previewKind === 'proxy'
+          // A local proxy and a published app are origins of their own, so
+          // allow-same-origin keeps theirs (never Cowork's): a published app's
+          // page needs it for its viewer session.
+          sandbox={previewKind === 'proxy' || previewKind === 'published'
             ? 'allow-scripts allow-same-origin allow-popups allow-forms allow-modals'
             : 'allow-scripts allow-popups allow-forms allow-modals'}
           style={{

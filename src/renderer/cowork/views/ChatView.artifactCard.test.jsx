@@ -222,19 +222,22 @@ describe('inline artifact banner in org mode', () => {
     expect(screen.queryByRole('button', { name: 'Shared link' })).toBeNull();
   });
 
-  it('opens the shared page for a draft it cannot render', async () => {
+  it('previews a published full-stack app beside Share, like a page (ENG-4687)', async () => {
     /*
-     * A fullstack app needs the loopback proxy only Desktop runs, so nothing
-     * here can render it and the published page is the only destination left.
+     * The server can't start its backend here, but the app runs at its
+     * published address, which the viewer frames: Preview, not the shared
+     * page in a tab.
      */
     setOrgMode(true);
     const user = userEvent.setup();
     render(<ChatView task={taskWithArtifact(artifactStep({ type: 'fullstack-stateless-app' }))} />);
 
-    await user.click(screen.getByRole('button', { name: 'Open' }));
+    expect(screen.queryByRole('button', { name: 'Open' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Share' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Preview' }));
 
-    expect(openExternal).toHaveBeenCalledWith(PUBLISHED_URL);
-    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+    expect(openExternal).not.toHaveBeenCalled();
+    expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
   });
 
   it('offers no button when it can neither preview nor share', () => {

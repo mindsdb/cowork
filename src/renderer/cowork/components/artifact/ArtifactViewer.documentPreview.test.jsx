@@ -355,7 +355,7 @@ describe('the other previews', () => {
   it('keep the HTML frame sandbox exactly as it was', () => {
     const body = readFileSync(join(__dirname, 'ArtifactViewerBody.jsx'), 'utf8');
     expect(body).toContain([
-      "          sandbox={previewKind === 'proxy'",
+      "          sandbox={previewKind === 'proxy' || previewKind === 'published'",
       "            ? 'allow-scripts allow-same-origin allow-popups allow-forms allow-modals'",
       "            : 'allow-scripts allow-popups allow-forms allow-modals'}",
     ].join('\n'));

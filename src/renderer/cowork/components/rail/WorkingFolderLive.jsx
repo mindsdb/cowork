@@ -44,7 +44,7 @@ import { useTranslation } from '../../../lib/i18n';
 const RAIL_COLLAPSED_ROWS = 6;
 import {
   canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, canShowInBrowserTab,
-  isInlinePreviewable,
+  isBackendArtifact, isInlinePreviewable,
 } from '../../lib/artifactKinds';
 import { canPreviewDocument } from '../../preview/kinds';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
@@ -485,6 +485,7 @@ export function WorkingFolderLive({
       published: !!artifact.publishedUrl,
       canPreviewInline: (hasBridge ? isInlinePreviewable(artifact) : canPreviewLocally(artifact)) || canPreviewDoc,
       canPreviewDraft: canPreviewOrgDraft(artifact) || canPreviewDoc,
+      canPreviewPublished: isBackendArtifact(artifact),
       hasBridge,
       hasDraft: canDownloadOrgDraft(artifact),
       canDownload: canDownloadArtifact(artifact),

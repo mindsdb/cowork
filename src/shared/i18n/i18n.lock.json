@@ -30293,6 +30293,40 @@
       "text": "81c9f04cef71"
     }
   },
+  "artifacts:viewer.appNotPublishedYet": {
+    "de": {
+      "from": "ca5e120db453",
+      "text": "34cd815a937d"
+    },
+    "es": {
+      "from": "ca5e120db453",
+      "text": "0d83c6e9290c"
+    },
+    "fr": {
+      "from": "ca5e120db453",
+      "text": "8eb4ccd39354"
+    },
+    "it": {
+      "from": "ca5e120db453",
+      "text": "f88cca273e79"
+    },
+    "ja": {
+      "from": "ca5e120db453",
+      "text": "c97895ede850"
+    },
+    "ko": {
+      "from": "ca5e120db453",
+      "text": "b77b4e084c57"
+    },
+    "pt-BR": {
+      "from": "ca5e120db453",
+      "text": "c146376ff96d"
+    },
+    "zh-CN": {
+      "from": "ca5e120db453",
+      "text": "b1e64a24755c"
+    }
+  },
   "artifacts:viewer.askLaunchFailed": {
     "de": {
       "from": "181ba0dcd3ca",

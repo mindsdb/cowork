@@ -153,6 +153,16 @@ const CLOSE_PROMPTS = {
   saving: 'viewer.closePrompt.saving',
 };
 
+// A published app's address, for the preview frame: an https page, or ''.
+export function publishedAppUrl(value) {
+  try {
+    const url = new URL(String(value || ''));
+    return url.protocol === 'https:' ? url.href : '';
+  } catch {
+    return '';
+  }
+}
+
 export function ArtifactViewer({
   open,
   artifact,
@@ -891,6 +901,24 @@ export function ArtifactViewer({
     // being thrown away merely because editing metadata finished loading.
     const baseVersion = artifact?.mtime || (openNonceRef.current += 1);
     const cacheVersion = `${baseVersion}.${reloadNonce}`;
+    // An org deployment can't start a full-stack app's backend (preview-mount
+    // is desktop-only), but the app already runs at its published address: it
+    // is published for its owner alone when it's created. The preview frames
+    // that page, which lets this Cowork web app be its ancestor
+    // (mindshub_services' frame-ancestors). An address that isn't an https
+    // page is no preview.
+    if (orgMode && isBackendArtifact) {
+      const liveUrl = publishedAppUrl(pub.publishedUrl || artifact?.publishedUrl);
+      if (!liveUrl) {
+        setErr(t('viewer.appNotPublishedYet'));
+        setLoading(false);
+        return () => { cancelled = true; };
+      }
+      setPreviewKind('published');
+      setPreviewUrl(withArtifactVersion(liveUrl, cacheVersion));
+      setLoading(false);
+      return () => { cancelled = true; };
+    }
     if (draftPreviewUrl && !isText && (!isBackendArtifact || !hasActionPath)) {
       const linkRef = draftLinkEnabled ? artifactWorkspaceRef(artifact) : null;
       if (linkRef) {
@@ -1054,7 +1082,7 @@ export function ArtifactViewer({
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, textExt, isImage, liveAppView, showDocumentPreview, reloadNonce, draftLinkEnabled]);
+  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, textExt, isImage, liveAppView, showDocumentPreview, reloadNonce, draftLinkEnabled, orgMode, pub.publishedUrl, artifact?.publishedUrl]);
 
   // Opening comments on a preview mounted before the key arrived is the one
   // time a reload is worth it: the user asked for the markers.

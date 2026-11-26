@@ -482,6 +482,7 @@ function useArtifactOpen(artifact, onOpenViewer, { liveAppCard = false, liveAppA
     published,
     canPreviewInline: (hasBridge ? isInlinePreviewable(artifact) : canPreviewLocally(artifact)) || canPreviewDoc,
     canPreviewDraft: canPreviewOrgDraft(artifact) || canPreviewDoc,
+    canPreviewPublished: isBackendArtifact(artifact),
     hasBridge,
     hasDraft: canDownloadOrgDraft(artifact),
     canDownload: canDownloadArtifact(artifact),

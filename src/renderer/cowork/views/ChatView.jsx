@@ -959,6 +959,8 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
     published,
     canPreviewInline,
     canPreviewDraft,
+    // A full-stack app: the viewer frames it at its published address.
+    canPreviewPublished: BACKEND_ARTIFACT_TYPES.has(artifact.type),
     hasBridge,
     hasDraft: canDownloadOrgDraft(artifact),
     canDownload,

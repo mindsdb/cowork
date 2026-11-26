@@ -477,6 +477,7 @@
     "backendFailed": "Backend konnte nicht gestartet werden",
     "proxyUnavailable": "Vorschau-Proxy nicht verfügbar",
     "noMountUrl": "Die Vorschau-Einbindung hat keine URL zurückgegeben",
+    "appNotPublishedYet": "Diese App wird hier angezeigt, sobald sie veröffentlicht ist – direkt nach dem Erstellen. Versuche es gleich noch einmal.",
     "loadFailed": "Artefakt konnte nicht geladen werden",
     "portNotReady": "Backend-Port noch nicht verfügbar – die Vorschau wird noch geladen.",
     "remoteNoUrl": "Dieses Artefakt wird von einem Remote-Server bereitgestellt und hat noch keine URL zum Öffnen.",

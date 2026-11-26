@@ -477,6 +477,7 @@
     "backendFailed": "Le backend n’a pas pu démarrer",
     "proxyUnavailable": "Proxy d’aperçu indisponible",
     "noMountUrl": "Le montage de l’aperçu n’a renvoyé aucune URL",
+    "appNotPublishedYet": "Cette app s'affiche ici dès qu'elle est publiée, juste après sa création. Réessayez dans un instant.",
     "loadFailed": "Impossible de charger l’artefact",
     "portNotReady": "Le port du backend n’est pas encore disponible — l’aperçu est toujours en cours de chargement.",
     "remoteNoUrl": "Cet artefact est servi par un serveur distant et n’a pas encore d’URL à ouvrir.",
