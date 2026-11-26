@@ -198,7 +198,9 @@ describe.each(data.documentArtifacts)('a $type artifact', (artifactData) => {
     expect(mountArtifactPreview).not.toHaveBeenCalled();
     expect(loadArtifactDraftDocument).not.toHaveBeenCalled();
     expect(previewArtifact).not.toHaveBeenCalled();
-    for (const request of Object.values(workspaceApi)) expect(request).not.toHaveBeenCalled();
+    // Its workspace loads, as any artifact's does (ENG-4687), but a document
+    // has no comments, so nothing provisions them.
+    expect(workspaceApi.enableDraftComments).not.toHaveBeenCalled();
   });
 
   it('keeps the comment layer, comments and preview diagnostics off', async () => {
@@ -221,8 +223,10 @@ describe.each(data.documentArtifacts)('a $type artifact', (artifactData) => {
     expect(screen.queryByRole('button', { name: 'Source' })).toBeNull();
     expect(screen.queryByRole('button', { name: /^Comments/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Live edit' })).toBeNull();
-    expect(workspaceApi.loadArtifactSource).not.toHaveBeenCalled();
-    expect(calls.body.at(-1).workspace.source).toBeNull();
+    // Its workspace loads (ENG-4687), and a text file an older server sends
+    // beside the document still opens no editor: it isn't the document.
+    await waitFor(() => expect(workspaceApi.loadArtifactSource).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: 'Live edit' })).toBeNull();
   });
 
   it('offers no "Address with agent"', async () => {
@@ -232,26 +236,31 @@ describe.each(data.documentArtifacts)('a $type artifact', (artifactData) => {
     expect(screen.queryByText('Address with agent')).toBeNull();
   });
 
-  // ENG-4687: a document that shares as a page of its own gets the chat bar,
-  // and its messages go to the artifact's chat: the agent changes the file.
-  it('offers the chat bar, which sends a change to the artifact\'s chat', async () => {
+  // ENG-4687: a document's chat bar follows its workspace's capabilities, as a
+  // web page's does: shown when quick edits are on, and with messages going to
+  // the artifact's chat when the server says its edits don't run in place.
+  it('offers the chat bar the workspace allows, sending to the chat when edits don\'t run in place', async () => {
+    workspaceApi.loadArtifactSource.mockResolvedValue({
+      path: artifact.path.split('/').pop(), binary: true, revision: { id: 'rev-1' },
+      capabilities: { role: 'owner', canEdit: true, canQuickEdit: true, quickEditDirect: false },
+    });
+    workspaceApi.loadArtifactReview.mockResolvedValue({ capabilities: { role: 'owner', canEdit: true, canQuickEdit: true } });
     const onAddressWithAgent = vi.fn(async () => true);
     renderViewer(artifact, { onAddressWithAgent, conversationId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' });
     await waitFor(() => expect(previewFrames()).toHaveLength(1));
 
-    const input = screen.getByLabelText('Ask for a change');
+    const input = await screen.findByLabelText('Ask for a change');
     fireEvent.change(input, { target: { value: 'Add a summary slide' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
     await waitFor(() => expect(onAddressWithAgent).toHaveBeenCalled());
     expect(JSON.stringify(onAddressWithAgent.mock.calls[0])).toContain('Add a summary slide');
-    // Nothing here edits the file itself: no editable source was ever asked for.
-    expect(workspaceApi.loadArtifactSource).not.toHaveBeenCalled();
   });
 
-  it('offers no chat bar to someone who can\'t change it', async () => {
-    renderViewer({ ...artifact, capabilities: { role: 'reviewer', canEdit: false } });
+  it('offers no chat bar when the workspace doesn\'t allow quick edits', async () => {
+    renderViewer(artifact);
     await waitFor(() => expect(previewFrames()).toHaveLength(1));
+    await waitFor(() => expect(workspaceApi.loadArtifactSource).toHaveBeenCalled());
     expect(screen.queryByLabelText('Ask for a change')).toBeNull();
   });
 });
