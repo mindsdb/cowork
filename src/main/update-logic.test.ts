@@ -357,6 +357,20 @@ describe('parseUiManifest', () => {
     expect(parseUiManifest(JSON.stringify({ ...valid, min_server_version: '' }))).toBeNull();
     expect(parseUiManifest(JSON.stringify({ ...valid, minServerVersion: {} }))).toBeNull();
   });
+
+  it('keeps the signed fields as raw strings for the verifier', () => {
+    expect(parseUiManifest(JSON.stringify({ ...valid, signed: 'c2lnbmVk', signature: 'c2ln' }))).toEqual({
+      ...valid,
+      signed: 'c2lnbmVk',
+      signature: 'c2ln',
+    });
+  });
+
+  it('drops a signed field that is not a non-empty string, without rejecting the manifest', () => {
+    // An older shell still reads the unsigned fields; the verifier then refuses the missing pair.
+    expect(parseUiManifest(JSON.stringify({ ...valid, signed: 7, signature: '' }))).toEqual(valid);
+    expect(parseUiManifest(JSON.stringify({ ...valid, signed: 'c2lnbmVk' }))).toEqual({ ...valid, signed: 'c2lnbmVk' });
+  });
 });
 
 describe('looksLikeBrokenInstall', () => {

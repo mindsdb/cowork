@@ -1660,6 +1660,15 @@ describe('app secret handoff', () => {
     expect(authHeader()).toEqual({ Authorization: `Bearer ${handoff.auth_token}`, [WINDOW_PROOF_HEADER]: handoff.window_proof });
   });
 
+  it('points Node programs the server starts at the system trust store', async () => {
+    spawnAnswering({ app_secret_protocol: HANDOFF_PROTOCOL });
+
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+
+    const opts = vi.mocked(cp.spawn).mock.calls[0][2] as cp.SpawnOptions;
+    expect(opts.env?.NODE_USE_SYSTEM_CA).toBe('1');
+  });
+
   it("puts the server's refusal line in the start error when it exits over a bad hand-off", async () => {
     /* The line cowork-server prints for a hand-off without window_proof: the
        refusal prefix from cowork/cli.py, then the message of the

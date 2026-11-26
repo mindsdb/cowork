@@ -415,6 +415,12 @@ export interface UIManifest {
   // actually ships — so it never falsely advertises a reinstall for a UI-only
   // publish. Absent → no shell-update notice.
   shellVersion?: string;
+  /* The signed release fields, kept as the raw strings latest.json carries: `signed` is the
+     base64 of the signed JSON and `signature` its base64 Ed25519 signature. Only a release whose
+     pair verifies (verifyLatestSignature in ui-signature.ts) is offered, and its signed version,
+     sha256 and server floor replace the unsigned fields above. */
+  signed?: string;
+  signature?: string;
 }
 
 /** Should a UI bundle be withheld because the running server can't be shown to
@@ -448,8 +454,10 @@ export function uiServerCompatSkipReason(input: {
 }
 
 /** Validate a fetched latest.json body into a UIManifest, or null.
- *  Field types are checked (not just presence) — this output drives the OTA
- *  download + extract, so nothing non-string may pass as validated. */
+ *  Field types are checked (not just presence), so nothing non-string may pass
+ *  as validated. The OTA download uses only the signed fields, once
+ *  verifyLatestSignature (ui-signature.ts) has verified them; `signed` and
+ *  `signature` are each kept only when it is a non-empty string. */
 export function parseUiManifest(jsonText: string): UIManifest | null {
   try {
     const data = JSON.parse(jsonText);
@@ -474,6 +482,8 @@ export function parseUiManifest(jsonText: string): UIManifest | null {
     // reject the whole manifest and break OTA.
     const sv = data.shellVersion ?? data.shell_version ?? (data.shell && typeof data.shell === 'object' ? data.shell.version : undefined);
     if (isNonEmptyString(sv)) manifest.shellVersion = sv;
+    if (isNonEmptyString(data.signed)) manifest.signed = data.signed;
+    if (isNonEmptyString(data.signature)) manifest.signature = data.signature;
     return manifest;
   } catch {
     return null;
