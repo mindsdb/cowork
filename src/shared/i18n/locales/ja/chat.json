@@ -76,7 +76,12 @@
       "deletedBadge": "削除済み",
       "share": "共有",
       "shareTooltip": "開けるユーザーを選択",
-      "updatedBelow": "{title} · 下で更新済み"
+      "updatedBelow": "{title} · 下で更新済み",
+      "goToLatestTooltip": "最新バージョンへスクロール",
+      "showThisVersion": "このバージョン",
+      "hideThisVersion": "非表示",
+      "openLink": "リンクを開く",
+      "openLinkTooltip": "アーティファクトのリンクを新しいタブで開きます"
     },
     "kinds": {
       "provider": "プロバイダー",

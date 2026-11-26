@@ -76,7 +76,12 @@
       "deletedBadge": "Eliminato",
       "share": "Condividi",
       "shareTooltip": "Scegli chi può aprirlo",
-      "updatedBelow": "{title} · aggiornato più in basso"
+      "updatedBelow": "{title} · aggiornato più in basso",
+      "goToLatestTooltip": "Scorri all'ultima versione",
+      "showThisVersion": "Questa versione",
+      "hideThisVersion": "Nascondi",
+      "openLink": "Apri link",
+      "openLinkTooltip": "Apri il link dell'artefatto in una nuova scheda"
     },
     "kinds": {
       "provider": "Provider",

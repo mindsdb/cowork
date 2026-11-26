@@ -19,7 +19,8 @@ import { Icon } from '../components/ui/Icon';
 import ArtifactRepairCard from '../components/ArtifactRepairCard';
 import { parseArtifactRepairPrompt } from '../lib/artifactRepairPrompt';
 import { inlineSubmitChatPrompt, parseQuickEditPrompt } from '../lib/quickEditPrompt';
-import { MESSAGE_CARD_SLOT, cardRevisionId, isSupersededInline, latestInlineArtifactByKey } from '../lib/inlineArtifactCards';
+import { MESSAGE_CARD_SLOT, cardRevisionId, inlineArtifactKey, isSupersededInline, latestInlineArtifactByKey } from '../lib/inlineArtifactCards';
+import { artifactShareState } from '../lib/orgSharing';
 import { planQuickEditCards } from '../lib/quickEditGroup';
 import { QuickEditGroupCard } from '../components/chat/QuickEditGroupCard';
 import { ArtifactRefPill } from '../components/artifacts/ArtifactRefPill';
@@ -682,30 +683,50 @@ function StepArtifacts({ steps, onOpen, onShare, projectPath, live = false, late
 }
 
 // An inline artifact a later card shows again (ENG-4684): one line,
-// "<title> · updated below", that opens to the page as this card made it
-// (its `revision_id`, when the server sends one) or else as it is now. The
-// frame mounts only while open.
+// "<title> · updated below", that scrolls to the live copy further down (the
+// card marked with the same `data-inline-artifact` key). "This version" opens
+// the page as this card made it (its `revision_id`, when the server sends
+// one, else as it is now). The frame mounts only while open.
+export function scrollToLiveInlineArtifact(key) {
+  if (!key || typeof document === 'undefined') return false;
+  const live = [...document.querySelectorAll('[data-inline-artifact]')]
+    .filter((el) => el.getAttribute('data-inline-artifact') === key);
+  const target = live[live.length - 1];
+  if (!target) return false;
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  return true;
+}
+
 export function ArtifactInlineChip({ artifact, onInlineSubmit = null }) {
   const { t } = useTranslation('chat');
   const [open, setOpen] = useState(false);
   const revisionId = cardRevisionId(artifact);
+  const key = inlineArtifactKey(artifact);
   return (
     <ChatCardShell kind={false} className="gap-0 px-3 py-1" data-testid="artifact-inline-chip">
-      <Collapsible
-        variant="compact"
-        open={open}
-        onOpenChange={setOpen}
-        title={<span className="block truncate">{t('chatView.artifactCard.updatedBelow', { title: artifact.title || '' })}</span>}
-      >
-        {open && (
+      <div className="flex min-w-0 items-center gap-2">
+        <button
+          type="button"
+          className="min-w-0 flex-1 truncate text-left text-sm text-muted hover:text-fg"
+          title={t('chatView.artifactCard.goToLatestTooltip')}
+          onClick={() => scrollToLiveInlineArtifact(key)}
+        >
+          {t('chatView.artifactCard.updatedBelow', { title: artifact.title || '' })} ↓
+        </button>
+        <Button size="sm" variant="ghost" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+          {open ? t('chatView.artifactCard.hideThisVersion') : t('chatView.artifactCard.showThisVersion')}
+        </Button>
+      </div>
+      {open && (
+        <div className="pt-1">
           <ArtifactInlinePreview
             artifact={artifact}
             title={artifact.title || ''}
             revisionId={revisionId}
             onSubmit={onInlineSubmit ? (submission) => onInlineSubmit(artifact, submission) : null}
           />
-        )}
-      </Collapsible>
+        </div>
+      )}
     </ChatCardShell>
   );
 }
@@ -1181,8 +1202,14 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false, i
    * A document preview keeps the file one click away beside it: Download on
    * web, and on desktop Open, which hands the file to the default app.
    */
+  // "Shared link" only once the link reaches someone besides the owner
+  // (artifactShareState, the Share button's own rule); before that it is
+  // just the artifact's link.
+  const linkShared = artifactShareState(artifact).shared === true;
   const sharedLinkAction = !deleted && showSharedLink
-    ? { label: t('chatView.artifactCard.sharedLink'), onClick: handleOpenPublished, tooltip: t('chatView.artifactCard.sharedLinkTooltip') }
+    ? linkShared
+      ? { label: t('chatView.artifactCard.sharedLink'), onClick: handleOpenPublished, tooltip: t('chatView.artifactCard.sharedLinkTooltip') }
+      : { label: t('chatView.artifactCard.openLink'), onClick: handleOpenPublished, tooltip: t('chatView.artifactCard.openLinkTooltip') }
     : null;
   const downloadAction = !deleted && openTarget !== 'download'
     && (orgMode ? canDownloadOrgDraft(artifact) : (!hasBridge && canPreviewDoc && canDownload))
@@ -1263,6 +1290,7 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false, i
           ? artifact.title
           : (canActivate ? t('chatView.artifactCard.actionTarget', { action: activateLabel, target: artifact.title }) : noDestinationReason)}
       className={cn('railed chat-artifact-card', showInline && 'is-inline')}
+      data-inline-artifact={showInline ? inlineArtifactKey(artifact) || undefined : undefined}
     >
       <div
         className={cn(
