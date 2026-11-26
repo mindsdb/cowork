@@ -156,6 +156,8 @@ export interface ArtifactViewerProps {
    * clicked, a new object per click: the preview opens on the same place.
    */
   viewRequest?: { view: object } | null;
+  /** An inline artifact's Submit from the full view: the chat card's turn. */
+  onInlineSubmit?: ((artifact: object, submission: { state: unknown; message: string }) => void) | null;
 }
 
 export const ArtifactViewer: ComponentType<ArtifactViewerProps>;
