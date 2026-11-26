@@ -513,7 +513,19 @@
       "missingType": "グラフの種類が指定されていません",
       "unsupportedType": "サポートされていないグラフの種類です：「{type}」。サポートされている種類：{supported}。",
       "invalidJson": "グラフの仕様のJSONが無効です",
-      "error": "エラー：{error}"
+      "error": "エラー：{error}",
+      "loading": "グラフを描画中…",
+      "chartLabel": "グラフ",
+      "diagramLabel": "図",
+      "copyImage": "画像としてコピー",
+      "downloadPng": "PNG をダウンロード",
+      "showSource": "ソースを表示",
+      "hideSource": "ソースを隠す",
+      "tooLarge": "仕様が {limit} KB を超えています",
+      "tooManyDatasets": "データセットが多すぎます（{count}）。上限は {limit} です",
+      "tooManyPoints": "データポイントが多すぎます（{count}）。上限は {limit} です",
+      "tooManyNodes": "ノードが多すぎます（{count}）。上限は {limit} です",
+      "emptyDiagram": "図が空です"
     }
   },
   "taskModes": {

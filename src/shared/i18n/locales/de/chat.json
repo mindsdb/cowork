@@ -513,7 +513,19 @@
       "missingType": "Diagrammtyp fehlt",
       "unsupportedType": "Nicht unterstützter Diagrammtyp: „{type}“. Unterstützt: {supported}.",
       "invalidJson": "Ungültiges JSON in der Diagrammspezifikation",
-      "error": "FEHLER: {error}"
+      "error": "FEHLER: {error}",
+      "loading": "Diagramm wird gezeichnet…",
+      "chartLabel": "Diagramm",
+      "diagramLabel": "Schaubild",
+      "copyImage": "Als Bild kopieren",
+      "downloadPng": "PNG herunterladen",
+      "showSource": "Quelltext anzeigen",
+      "hideSource": "Quelltext ausblenden",
+      "tooLarge": "Die Spezifikation ist größer als {limit} KB",
+      "tooManyDatasets": "Zu viele Datenreihen ({count}); das Limit ist {limit}",
+      "tooManyPoints": "Zu viele Datenpunkte ({count}); das Limit ist {limit}",
+      "tooManyNodes": "Zu viele Knoten ({count}); das Limit ist {limit}",
+      "emptyDiagram": "Das Schaubild ist leer"
     }
   },
   "taskModes": {
