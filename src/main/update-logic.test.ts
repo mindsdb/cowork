@@ -21,6 +21,7 @@ import {
   uiServerCompatSkipReason,
   decideStartWait,
   startFailureMessage,
+  serverStartRefusal,
   shellUpdateIsNewer,
   shellDownloadUrl,
   shellAutoUpdateIsActive,
@@ -707,6 +708,16 @@ describe('decideStartWait', () => {
   });
 });
 
+/* Lines cowork-server prints when it refuses a launch hand-off, word for word:
+   cowork/cli.py prints the refusal prefix before the message of the
+   LaunchHandoffError that read_handoff_from_stdin in cowork/app_secret.py
+   raises. Literals, since this repository cannot import the server's code. */
+const SERVER_REFUSALS = {
+  late: 'cowork-server: no launch hand-off arrived on stdin within 10 s',
+  missing: 'cowork-server: the launch hand-off on stdin has no auth_token',
+  malformed: 'cowork-server: the launch hand-off on stdin is not valid JSON',
+} as const;
+
 describe('startFailureMessage', () => {
   it('names a failed credential clear as the reason the start stopped', () => {
     expect(startFailureMessage({ kind: 'credential-clear', exitCode: 3, spawnError: null, elapsedMs: 2_000 }))
@@ -728,6 +739,12 @@ describe('startFailureMessage', () => {
       .toBe('The backend exited while starting up (code 1) after 3.4s.');
   });
 
+  it("adds the server's own refusal line to an exit", () => {
+    const refusal = SERVER_REFUSALS.late;
+    expect(startFailureMessage({ kind: 'exited', exitCode: 1, spawnError: null, elapsedMs: 10_400, refusal }))
+      .toBe(`The backend exited while starting up (code 1) after 10s. ${refusal}`);
+  });
+
   it('says so when the process died without an exit code', () => {
     expect(startFailureMessage({ kind: 'exited', exitCode: null, spawnError: null, elapsedMs: 15_000 }))
       .toBe('The backend exited while starting up (no exit code) after 15s.');
@@ -741,6 +758,23 @@ describe('startFailureMessage', () => {
   it('names an incompatible backend without blaming startup time', () => {
     expect(startFailureMessage({ kind: 'incompatible', exitCode: null, spawnError: null, elapsedMs: 250 }))
       .toBe('The backend is running, but it is too old for this version of MindsHub Cowork.');
+  });
+});
+
+describe('serverStartRefusal', () => {
+  it("finds cowork-server's refusal as the last line of the attempt's output", () => {
+    const output = `INFO: loading settings\r\n  ${SERVER_REFUSALS.missing}  \n`;
+    expect(serverStartRefusal(output)).toBe(SERVER_REFUSALS.missing);
+  });
+
+  it('takes the last refusal when there are several, even with output after it', () => {
+    const output = `${SERVER_REFUSALS.malformed}\n${SERVER_REFUSALS.late}\nuv: process exited with 1\n`;
+    expect(serverStartRefusal(output)).toBe(SERVER_REFUSALS.late);
+  });
+
+  it('is null when the attempt printed no refusal', () => {
+    expect(serverStartRefusal('Traceback (most recent call last):\nImportError: no module named x\n')).toBeNull();
+    expect(serverStartRefusal('')).toBeNull();
   });
 });
 
