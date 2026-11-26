@@ -257,6 +257,13 @@
       "schedule": "Regelmäßig ausführen",
       "scheduled": "„{title}“ geplant",
       "scheduledDone": "Geplant ✓"
+    },
+    "desktopApp": {
+      "kind": "Desktop-App",
+      "title": "{title} läuft in der Desktop-App",
+      "body": "Apps, die ihre eigenen Daten speichern, laufen vorerst in der Cowork-Desktop-App. Öffnen Sie dieses Projekt dort, um sie zu verwenden.",
+      "download": "Desktop-App herunterladen",
+      "untitled": "Diese App"
     }
   },
   "composer": {

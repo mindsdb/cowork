@@ -92,6 +92,13 @@ vi.mock('../api', async (importOriginal) => {
 vi.mock('../lib/artifactDownload', () => ({
   downloadArtifactFile: (...a) => downloadArtifactFile(...a),
 }));
+// Whether this build offers the desktop app (a platform web build does; a
+// self-hosted one doesn't): the stateful app card's download button follows it.
+let offersDesktop = true;
+vi.mock('../lib/desktopOffer', async (importOriginal) => ({
+  ...(await importOriginal()),
+  desktopOfferAvailable: () => offersDesktop,
+}));
 
 import ChatView, { artifactStepToCard } from './ChatView';
 import { setOrgMode } from '../../lib/orgMode';
@@ -1261,3 +1268,56 @@ describe('Share on the inline artifact card', () => {
     expect(viewer).toHaveAttribute('data-share-entry', 'viewer');
   });
 });
+
+// Stateful full-stack apps don't publish for now (ENG-232). The cloud app can
+// only run one by publishing it, so its card offers the desktop app; the
+// desktop app keeps the ordinary card, without Share.
+describe('a stateful full-stack app', () => {
+  const stateful = (overrides = {}) => artifactStep({
+    type: 'fullstack-stateful-app', action: 'fullstack-stateful-app', title: 'Team Todo', ...overrides,
+  });
+  afterEach(() => { offersDesktop = true; });
+
+  it('offers the desktop app in the cloud instead of Preview and Share', async () => {
+    setOrgMode(true);
+    hostIsWeb = true;
+    const user = userEvent.setup();
+    render(<ChatView task={taskWithArtifact(stateful())} />);
+
+    const card = screen.getByTestId('desktop-app-card');
+    expect(card).toHaveTextContent('Team Todo runs in the desktop app');
+    expect(card).toHaveTextContent('Apps that keep their own data run in the Cowork desktop app for now.');
+    expect(screen.queryByRole('button', { name: 'Preview' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Share' })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Download the desktop app' }));
+    expect(openExternal).toHaveBeenCalledWith('https://mindshub.ai/download?os=auto&from=cowork-web-app');
+  });
+
+  it('still says where it runs, without a download, where this build offers no app', () => {
+    setOrgMode(true);
+    offersDesktop = false;
+    render(<ChatView task={taskWithArtifact(stateful())} />);
+
+    expect(screen.getByTestId('desktop-app-card')).toHaveTextContent('runs in the desktop app');
+    expect(screen.queryByRole('button', { name: 'Download the desktop app' })).toBeNull();
+  });
+
+  it('keeps the ordinary card on desktop, with no Share', () => {
+    setOrgMode(false);
+    render(<ChatView task={taskWithArtifact(stateful())} />);
+
+    expect(screen.queryByTestId('desktop-app-card')).toBeNull();
+    expect(screen.getAllByText('Team Todo').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'Share' })).toBeNull();
+  });
+
+  it('leaves a stateless app as it was in the cloud', () => {
+    setOrgMode(true);
+    render(<ChatView task={taskWithArtifact(artifactStep({ type: 'fullstack-stateless-app' }))} />);
+
+    expect(screen.queryByTestId('desktop-app-card')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Share' })).toBeInTheDocument();
+  });
+});
+

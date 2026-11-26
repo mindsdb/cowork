@@ -59,7 +59,7 @@ import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth, provis
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { GeneratedImageCard } from '../components/GeneratedImageCard';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
-import { BACKEND_ARTIFACT_TYPES, canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isBackendArtifact, isHtmlArtifact, isImageArtifact, isInlineArtifact, isPublishableArtifact, isWidgetArtifact } from '../lib/artifactKinds';
+import { BACKEND_ARTIFACT_TYPES, canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isBackendArtifact, isHtmlArtifact, isImageArtifact, isInlineArtifact, isPublishableArtifact, isStatefulApp, isWidgetArtifact } from '../lib/artifactKinds';
 import { useLiveApps } from '../../lib/liveApps';
 import { canPreviewDocument } from '../preview/kinds';
 import { downloadArtifactFile } from '../lib/artifactDownload';
@@ -107,7 +107,8 @@ import { useBudgetsUrl } from '../hooks/useBudgetsUrl';
 import { useConsoleLink } from '../hooks/useConsoleLink';
 import { useUpgradeOffer } from '../hooks/useUpgradeOffer';
 import { cleanRequiredTier } from '../lib/subscriptionPlan';
-import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
+import { trackBillingOpened, trackDesktopOfferDownloadClicked, trackDesktopOfferShown, trackKeyProvisioningRefused } from '../lib/analytics';
+import { desktopDownloadUrl, desktopOfferAvailable } from '../lib/desktopOffer';
 import { useHubUsageContext } from '../lib/hubUsageContext';
 import { budgetPeriodOf, budgetScopeOf, budgetModelName } from '../lib/budgetScope';
 import { USAGE_ACTIONS, upgradeAction, usageActionUrl, formatResetTime, formatPercentShort, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy, budgetExceededCopy } from '../lib/usageWarnings';
@@ -922,7 +923,44 @@ function StepConnectorDrafts({ steps, onConnect }) {
   );
 }
 
-export function ArtifactCard({ artifact, onOpen, onShare = null, live = false, inlineSuperseded = false, onInlineSubmit = null }) {
+/*
+ * The cloud app can only run a full-stack app by publishing it, and stateful
+ * apps don't publish for now (ENG-232), so there the card for one offers the
+ * desktop app, where it builds and runs, instead of a Preview that can't load
+ * and a Share that's refused. Everywhere else it's the ordinary card.
+ */
+export function ArtifactCard(props) {
+  const orgMode = useOrgMode();
+  if (orgMode && isStatefulApp(props.artifact)) return <DesktopAppCard artifact={props.artifact} />;
+  return <ArtifactCardView {...props} />;
+}
+
+function DesktopAppCard({ artifact }) {
+  const { t } = useTranslation('chat');
+  // A self-hosted build has no app of ours to offer, and the mobile app can't
+  // install it: the card still says where the app runs, with no button.
+  const offer = desktopOfferAvailable();
+  useEffect(() => {
+    if (offer) trackDesktopOfferShown({ feature: 'fullstack_app', entry: 'chat_card' });
+  }, [offer]);
+  const download = () => {
+    trackDesktopOfferDownloadClicked({ feature: 'fullstack_app', entry: 'chat_card' });
+    host.openExternal(desktopDownloadUrl('fullstack_app'));
+  };
+  return (
+    <ChatCardShell
+      className="max-w-[560px]"
+      kind={t('chatView.desktopApp.kind')}
+      title={t('chatView.desktopApp.title', { title: artifact.title || t('chatView.desktopApp.untitled') })}
+      actions={offer ? cardActions([{ label: t('chatView.desktopApp.download'), onClick: download, primary: true }]) : null}
+      data-testid="desktop-app-card"
+    >
+      {t('chatView.desktopApp.body')}
+    </ChatCardShell>
+  );
+}
+
+function ArtifactCardView({ artifact, onOpen, onShare = null, live = false, inlineSuperseded = false, onInlineSubmit = null }) {
   // This card is an artifact surface like the panel's rows, so it answers to the
   // same deployment gate. Without it the chat offered a local preview, Export
   // and Show in Finder for content an org deployment does not serve, while the

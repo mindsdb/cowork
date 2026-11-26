@@ -30,7 +30,7 @@ import { absoluteDraftUrl, inlineArtifactFrameDocument } from './workspace/inlin
 import { draftLinksWithdrawal, draftLinkUrl } from '../../lib/draftLinkRules';
 import { setDraftLinks } from '../../../lib/draftLinks';
 import { inlineHtmlFromApi } from '../../lib/inlineHtmlAssets';
-import { BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
+import { BACKEND_ARTIFACT_TYPES, isStatefulApp } from '../../lib/artifactKinds';
 import { getAccessToken, host } from '../../../platform/host';
 import { viewSessionFrameUrl } from '../../../lib/viewSession';
 import { diagnostic } from '../../../../shared/diagnostics';
@@ -154,7 +154,13 @@ export async function loadHtmlPreview({
   // framed. An address that isn't an https page is no preview.
   if (isBackend && publishedApp) {
     const liveUrl = publishedAppUrl(publishedApp.url);
-    if (!liveUrl) throw new HtmlPreviewError(tr('viewer.appNotPublishedYet'), { stage: 'published' });
+    if (!liveUrl) {
+      // A stateful app is never published for now (ENG-232), so it won't
+      // be "yet" either: it runs in the desktop app. One published before
+      // that keeps running and shows above.
+      const reason = isStatefulApp(artifact) ? 'viewer.statefulAppNeedsDesktop' : 'viewer.appNotPublishedYet';
+      throw new HtmlPreviewError(tr(reason), { stage: 'published' });
+    }
     const framed = withArtifactVersion(liveUrl, cacheVersion);
     const url = publishedApp.accessMode === 'restricted'
       ? await viewSessionFrameUrl(framed, getAccessToken)

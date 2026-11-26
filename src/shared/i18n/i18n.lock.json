@@ -31721,6 +31721,40 @@
       "text": "26ce258102c9"
     }
   },
+  "artifacts:viewer.statefulAppNeedsDesktop": {
+    "de": {
+      "from": "e1a6bab4de91",
+      "text": "737dfffcac9d"
+    },
+    "es": {
+      "from": "e1a6bab4de91",
+      "text": "dc7136bb56f1"
+    },
+    "fr": {
+      "from": "e1a6bab4de91",
+      "text": "6878e210b06f"
+    },
+    "it": {
+      "from": "e1a6bab4de91",
+      "text": "96d87199d0c5"
+    },
+    "ja": {
+      "from": "e1a6bab4de91",
+      "text": "97abc5d3cbcf"
+    },
+    "ko": {
+      "from": "e1a6bab4de91",
+      "text": "66842480b431"
+    },
+    "pt-BR": {
+      "from": "e1a6bab4de91",
+      "text": "dd602cb0008d"
+    },
+    "zh-CN": {
+      "from": "e1a6bab4de91",
+      "text": "da75dbb726b6"
+    }
+  },
   "artifacts:viewer.suggestionSuperseded": {
     "de": {
       "from": "6d675c6c7ffe",
@@ -40117,6 +40151,176 @@
     "zh-CN": {
       "from": "c9f91c8d7551",
       "text": "7189f714d536"
+    }
+  },
+  "chat:chatView.desktopApp.body": {
+    "de": {
+      "from": "477cb9f85108",
+      "text": "07b057500beb"
+    },
+    "es": {
+      "from": "477cb9f85108",
+      "text": "9e72a4be7ca2"
+    },
+    "fr": {
+      "from": "477cb9f85108",
+      "text": "283caf2a31cd"
+    },
+    "it": {
+      "from": "477cb9f85108",
+      "text": "8602c7ff96fe"
+    },
+    "ja": {
+      "from": "477cb9f85108",
+      "text": "c9728e3f291f"
+    },
+    "ko": {
+      "from": "477cb9f85108",
+      "text": "6afcf835a46f"
+    },
+    "pt-BR": {
+      "from": "477cb9f85108",
+      "text": "13e87a3b2143"
+    },
+    "zh-CN": {
+      "from": "477cb9f85108",
+      "text": "9a27555284eb"
+    }
+  },
+  "chat:chatView.desktopApp.download": {
+    "de": {
+      "from": "8ca864a3f0c7",
+      "text": "b1b479bde170"
+    },
+    "es": {
+      "from": "8ca864a3f0c7",
+      "text": "48595c60624f"
+    },
+    "fr": {
+      "from": "8ca864a3f0c7",
+      "text": "1ff8580d26d9"
+    },
+    "it": {
+      "from": "8ca864a3f0c7",
+      "text": "b947c7bc2a10"
+    },
+    "ja": {
+      "from": "8ca864a3f0c7",
+      "text": "6a2ba25c0c48"
+    },
+    "ko": {
+      "from": "8ca864a3f0c7",
+      "text": "206db5d60a07"
+    },
+    "pt-BR": {
+      "from": "8ca864a3f0c7",
+      "text": "fe9c6a228f20"
+    },
+    "zh-CN": {
+      "from": "8ca864a3f0c7",
+      "text": "297775d673c3"
+    }
+  },
+  "chat:chatView.desktopApp.kind": {
+    "de": {
+      "from": "7102842054a4",
+      "text": "6eaada5ba772"
+    },
+    "es": {
+      "from": "7102842054a4",
+      "text": "be5143901993"
+    },
+    "fr": {
+      "from": "7102842054a4",
+      "text": "b59c3a0bb7fc"
+    },
+    "it": {
+      "from": "7102842054a4",
+      "text": "18237776671e"
+    },
+    "ja": {
+      "from": "7102842054a4",
+      "text": "3daee6ba022c"
+    },
+    "ko": {
+      "from": "7102842054a4",
+      "text": "5ddb99db5ed3"
+    },
+    "pt-BR": {
+      "from": "7102842054a4",
+      "text": "5fcbf3c4ccb1"
+    },
+    "zh-CN": {
+      "from": "7102842054a4",
+      "text": "f6e7febc0bcc"
+    }
+  },
+  "chat:chatView.desktopApp.title": {
+    "de": {
+      "from": "ca03391fd3a9",
+      "text": "c5bfd3e4db4f"
+    },
+    "es": {
+      "from": "ca03391fd3a9",
+      "text": "c6e4271467ef"
+    },
+    "fr": {
+      "from": "ca03391fd3a9",
+      "text": "8657102aea14"
+    },
+    "it": {
+      "from": "ca03391fd3a9",
+      "text": "51b20dc914fc"
+    },
+    "ja": {
+      "from": "ca03391fd3a9",
+      "text": "af8c42009987"
+    },
+    "ko": {
+      "from": "ca03391fd3a9",
+      "text": "39ea47631b19"
+    },
+    "pt-BR": {
+      "from": "ca03391fd3a9",
+      "text": "fb706a6e552c"
+    },
+    "zh-CN": {
+      "from": "ca03391fd3a9",
+      "text": "12457d3428a1"
+    }
+  },
+  "chat:chatView.desktopApp.untitled": {
+    "de": {
+      "from": "0982cb1775e6",
+      "text": "e17a45eccc82"
+    },
+    "es": {
+      "from": "0982cb1775e6",
+      "text": "d89ed9f2dfb8"
+    },
+    "fr": {
+      "from": "0982cb1775e6",
+      "text": "ca15389b29fd"
+    },
+    "it": {
+      "from": "0982cb1775e6",
+      "text": "17b46979373b"
+    },
+    "ja": {
+      "from": "0982cb1775e6",
+      "text": "429b8f5fa02d"
+    },
+    "ko": {
+      "from": "0982cb1775e6",
+      "text": "b715044e5ca8"
+    },
+    "pt-BR": {
+      "from": "0982cb1775e6",
+      "text": "9721d687da0f"
+    },
+    "zh-CN": {
+      "from": "0982cb1775e6",
+      "text": "9beb8d8524e5"
     }
   },
   "chat:chatView.errors.billingUnavailableBody": {

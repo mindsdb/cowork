@@ -257,6 +257,13 @@
       "schedule": "일정에 따라 실행하기",
       "scheduled": "‘{title}’ 예약됨",
       "scheduledDone": "예약됨 ✓"
+    },
+    "desktopApp": {
+      "kind": "데스크톱 앱",
+      "title": "{title}은(는) 데스크톱 앱에서 실행됩니다",
+      "body": "자체 데이터를 저장하는 앱은 현재 Cowork 데스크톱 앱에서 실행됩니다. 사용하려면 데스크톱 앱에서 이 프로젝트를 여십시오.",
+      "download": "데스크톱 앱 다운로드",
+      "untitled": "이 앱"
     }
   },
   "composer": {

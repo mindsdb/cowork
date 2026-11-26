@@ -257,6 +257,13 @@
       "schedule": "Run this on a schedule",
       "scheduled": "Scheduled “{title}”",
       "scheduledDone": "Scheduled ✓"
+    },
+    "desktopApp": {
+      "kind": "Desktop app",
+      "title": "{title} runs in the desktop app",
+      "body": "Apps that keep their own data run in the Cowork desktop app for now. Open this project there to use it.",
+      "download": "Download the desktop app",
+      "untitled": "This app"
     }
   },
   "composer": {

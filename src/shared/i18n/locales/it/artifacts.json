@@ -478,6 +478,7 @@
     "proxyUnavailable": "Proxy dell’anteprima non disponibile",
     "noMountUrl": "Il montaggio dell’anteprima non ha restituito alcun URL",
     "appNotPublishedYet": "Questa app compare qui quando viene pubblicata, subito dopo la creazione. Riprova tra un momento.",
+    "statefulAppNeedsDesktop": "Per ora, le app che conservano i propri dati funzionano nell’app desktop di Cowork. Apri questo progetto lì per usare questa app.",
     "loadFailed": "Impossibile caricare l’artefatto",
     "portNotReady": "La porta del backend non è ancora disponibile: l’anteprima è ancora in caricamento.",
     "remoteNoUrl": "Questo artefatto è servito da un server remoto e non ha ancora un URL da aprire.",

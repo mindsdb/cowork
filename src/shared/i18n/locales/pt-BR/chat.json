@@ -257,6 +257,13 @@
       "schedule": "Executar isso de forma agendada",
       "scheduled": "“{title}” agendada",
       "scheduledDone": "Agendado ✓"
+    },
+    "desktopApp": {
+      "kind": "App para desktop",
+      "title": "{title} funciona no app para desktop",
+      "body": "Por enquanto, apps que guardam os próprios dados funcionam no app do Cowork para desktop. Abra este projeto lá para usá-lo.",
+      "download": "Baixar o app para desktop",
+      "untitled": "Este app"
     }
   },
   "composer": {

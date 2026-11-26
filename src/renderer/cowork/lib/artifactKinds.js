@@ -107,8 +107,22 @@ export function isFilePageArtifact(a) {
  * PUBLISHABLE_FILE_EXTS. Broader than isHtmlArtifact(): those are
  * publishable but NOT live-previewable as an iframe.
  */
+/*
+ * A full-stack app that keeps its own data. Publishing one is off for now
+ * (cowork-server artifact_metadata.STATEFUL_APP_TYPE, ENG-232): it builds and
+ * runs in the desktop app, and the web app offers the desktop app instead.
+ */
+export const STATEFUL_APP_TYPE = 'fullstack-stateful-app';
+
+export function isStatefulApp(a) {
+  return a?.type === STATEFUL_APP_TYPE;
+}
+
 export function isPublishableArtifact(a) {
-  if (!a) return false;
+  // The server's word wins: `canPublish` false is an artifact every publish
+  // route refuses (a widget, a stateful app). A stateful app is refused even
+  // before its capabilities load.
+  if (!a || isStatefulApp(a) || a.capabilities?.canPublish === false) return false;
   const ext = _ext(a);
   const path = _path(a);
   return ext === '.html' || path.endsWith('.html')

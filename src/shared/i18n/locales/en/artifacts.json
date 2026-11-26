@@ -478,6 +478,7 @@
     "proxyUnavailable": "Preview proxy unavailable",
     "noMountUrl": "Preview mount returned no URL",
     "appNotPublishedYet": "This app shows here once it's published, which happens right after it's created. Try again in a moment.",
+    "statefulAppNeedsDesktop": "Apps that keep their own data run in the Cowork desktop app for now. Open this project there to use this app.",
     "loadFailed": "Could not load artifact",
     "portNotReady": "Backend port not available yet — preview is still loading.",
     "remoteNoUrl": "This artifact is served from a remote server and has no open URL yet.",

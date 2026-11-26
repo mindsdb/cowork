@@ -16,6 +16,7 @@ export const DESKTOP_DOWNLOAD_FROM = {
   code_mode: 'cowork-web-code',
   local_folder: 'cowork-web-folder',
   connector: 'cowork-web-connector',
+  fullstack_app: 'cowork-web-app',
 };
 
 export function desktopDownloadUrl(feature) {

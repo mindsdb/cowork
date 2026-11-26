@@ -257,6 +257,13 @@
       "schedule": "Exécuter selon un planning",
       "scheduled": "« {title} » planifiée",
       "scheduledDone": "Planifié ✓"
+    },
+    "desktopApp": {
+      "kind": "Application de bureau",
+      "title": "{title} fonctionne dans l’application de bureau",
+      "body": "Pour l’instant, les applications qui conservent leurs propres données fonctionnent dans l’application de bureau Cowork. Ouvrez ce projet dans celle-ci pour l’utiliser.",
+      "download": "Télécharger l’application de bureau",
+      "untitled": "Cette application"
     }
   },
   "composer": {

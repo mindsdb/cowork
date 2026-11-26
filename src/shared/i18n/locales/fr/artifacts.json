@@ -478,6 +478,7 @@
     "proxyUnavailable": "Proxy d’aperçu indisponible",
     "noMountUrl": "Le montage de l’aperçu n’a renvoyé aucune URL",
     "appNotPublishedYet": "Cette app s'affiche ici dès qu'elle est publiée, juste après sa création. Réessayez dans un instant.",
+    "statefulAppNeedsDesktop": "Pour l’instant, les applications qui conservent leurs propres données fonctionnent dans l’application de bureau Cowork. Ouvrez ce projet dans celle-ci pour utiliser cette application.",
     "loadFailed": "Impossible de charger l’artefact",
     "portNotReady": "Le port du backend n’est pas encore disponible — l’aperçu est toujours en cours de chargement.",
     "remoteNoUrl": "Cet artefact est servi par un serveur distant et n’a pas encore d’URL à ouvrir.",

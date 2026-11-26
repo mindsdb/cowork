@@ -125,7 +125,7 @@ import { mountArtifactPreview } from '../../api';
 const app = {
   id: 'aaaaaaaaaaaa4aaa8aaaaaaaaaaaaaaa',
   title: 'Team Shared Todo',
-  type: 'fullstack-stateful-app',
+  type: 'fullstack-stateless-app',
   ext: '.html',
   path: '/artifacts/team-shared-todo/static/index.html',
   canonicalPath: '/artifacts/team-shared-todo/static/index.html',
@@ -197,6 +197,21 @@ describe('ArtifactViewer: a full-stack app on an org deployment', () => {
     expect(await screen.findByText(/This app shows here once it's published/)).toBeInTheDocument();
     expect(screen.queryByTitle('Team Shared Todo')).toBeNull();
     expect(mountArtifactPreview).not.toHaveBeenCalled();
+  });
+
+  it('says a stateful app runs in the desktop app, since it never gets published for now', async () => {
+    render(<ArtifactViewer open artifact={{ ...app, type: 'fullstack-stateful-app' }} onClose={vi.fn()} />);
+
+    expect(await screen.findByText(/Apps that keep their own data run in the Cowork desktop app/)).toBeInTheDocument();
+    expect(screen.queryByTitle('Team Shared Todo')).toBeNull();
+    expect(mountArtifactPreview).not.toHaveBeenCalled();
+  });
+
+  it('still frames a stateful app published before publishing them was turned off', async () => {
+    published.url = LIVE;
+    render(<ArtifactViewer open artifact={{ ...app, type: 'fullstack-stateful-app' }} onClose={vi.fn()} />);
+
+    expect((await screen.findByTitle('Team Shared Todo')).getAttribute('src')).toContain(LIVE);
   });
 
   it('frames nothing but an https page', async () => {

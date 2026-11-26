@@ -257,6 +257,13 @@
       "schedule": "按计划运行",
       "scheduled": "已安排“{title}”",
       "scheduledDone": "已安排 ✓"
+    },
+    "desktopApp": {
+      "kind": "桌面应用",
+      "title": "{title} 在桌面应用中运行",
+      "body": "目前，保存自身数据的应用在 Cowork 桌面应用中运行。请在桌面应用中打开此项目来使用它。",
+      "download": "下载桌面应用",
+      "untitled": "此应用"
     }
   },
   "composer": {

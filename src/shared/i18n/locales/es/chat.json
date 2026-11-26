@@ -257,6 +257,13 @@
       "schedule": "Ejecutar esto de forma programada",
       "scheduled": "Se programó «{title}»",
       "scheduledDone": "Programado ✓"
+    },
+    "desktopApp": {
+      "kind": "App de escritorio",
+      "title": "{title} funciona en la app de escritorio",
+      "body": "Por ahora, las apps que guardan sus propios datos funcionan en la app de escritorio de Cowork. Abre este proyecto allí para usarla.",
+      "download": "Descargar la app de escritorio",
+      "untitled": "Esta app"
     }
   },
   "composer": {

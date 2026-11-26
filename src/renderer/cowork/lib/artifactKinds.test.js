@@ -38,6 +38,14 @@ describe('isImageArtifact', () => {
 // ENG-4687: a PDF, Word, Excel, PowerPoint, CSV or text file shares as a
 // read-only page of its own, like a web page or Markdown.
 describe('isPublishableArtifact', () => {
+  it('refuses a stateful full-stack app, and anything the server says it would refuse', () => {
+    const page = { path: '/a/app/static/index.html', ext: '.html' };
+    expect(isPublishableArtifact({ ...page, type: 'fullstack-stateful-app' })).toBe(false);
+    expect(isPublishableArtifact({ ...page, type: 'fullstack-stateless-app' })).toBe(true);
+    expect(isPublishableArtifact({ ...page, capabilities: { canPublish: false } })).toBe(false);
+    expect(isPublishableArtifact({ ...page, capabilities: { canEdit: true } })).toBe(true);
+  });
+
   it('covers web pages, Markdown and files shared as a page, by declared ext or path', () => {
     for (const path of ['/a/index.html', '/a/report.md', '/a/r.pdf', '/a/u.docx', '/a/m.xlsx', '/a/d.pptx', '/a/rows.csv', '/a/n.txt']) {
       expect(isPublishableArtifact({ path })).toBe(true);

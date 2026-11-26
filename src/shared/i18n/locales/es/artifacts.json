@@ -478,6 +478,7 @@
     "proxyUnavailable": "El proxy de la vista previa no está disponible",
     "noMountUrl": "El montaje de la vista previa no devolvió ninguna URL",
     "appNotPublishedYet": "Esta app se muestra aquí cuando se publica, justo después de crearse. Vuelve a intentarlo en un momento.",
+    "statefulAppNeedsDesktop": "Por ahora, las apps que guardan sus propios datos funcionan en la app de escritorio de Cowork. Abre este proyecto allí para usar esta app.",
     "loadFailed": "No se pudo cargar el artefacto",
     "portNotReady": "El puerto del backend aún no está disponible: la vista previa sigue cargando.",
     "remoteNoUrl": "Este artefacto se sirve desde un servidor remoto y aún no tiene una URL para abrir.",
