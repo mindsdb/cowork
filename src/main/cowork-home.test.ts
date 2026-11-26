@@ -289,6 +289,79 @@ describe('migrateLegacyHomeInto (legacy ~/.anton seeding is PROD-ONLY)', () => {
     expect(fs.existsSync(home)).toBe(true);
     expect(fs.readdirSync(home)).toEqual([]);
   });
+
+  const modeOf = (entry: string) => fs.lstatSync(entry).mode & 0o777;
+
+  it.each([0o022, 0o002])('creates a fresh home at 0700 under umask %o', (mask) => {
+    const previous = process.umask(mask);
+    try {
+      migrateLegacyHomeInto('stable', home, legacyHome);
+    } finally {
+      process.umask(previous);
+    }
+    expect(modeOf(home)).toBe(0o700);
+  });
+
+  it('prod: a 0644 legacy .env reaches the home at 0600, and the legacy pair is tightened first', () => {
+    seedLegacy();
+    fs.chmodSync(legacyHome, 0o755);
+    fs.chmodSync(path.join(legacyHome, '.env'), 0o644);
+    fs.chmodSync(path.join(legacyHome, 'cowork', 'state.json'), 0o644);
+
+    fs.mkdirSync(home, { mode: 0o755 });
+    fs.chmodSync(home, 0o755);
+    migrateLegacyHomeInto('prod', home, legacyHome, { platform: 'linux' });
+
+    expect(modeOf(home)).toBe(0o700);
+    expect(modeOf(path.join(home, '.env'))).toBe(0o600);
+    expect(modeOf(path.join(home, 'state.json'))).toBe(0o600);
+    expect(modeOf(legacyHome)).toBe(0o700);
+    expect(modeOf(path.join(legacyHome, '.env'))).toBe(0o600);
+    // The legacy file stays where it is: the anton CLI still reads it.
+    expect(fs.readFileSync(path.join(legacyHome, '.env'), 'utf8')).toBe('ANTON_MINDS_URL=prod');
+  });
+
+  it('prod: copies through a linked legacy .env at 0600 without changing the link target', () => {
+    fs.mkdirSync(legacyHome, { recursive: true });
+    const target = path.join(root, 'real.env');
+    fs.writeFileSync(target, 'ANTON_MINDS_URL=prod');
+    fs.chmodSync(target, 0o644);
+    fs.symlinkSync(target, path.join(legacyHome, '.env'));
+
+    migrateLegacyHomeInto('prod', home, legacyHome, { platform: 'linux' });
+
+    expect(modeOf(path.join(home, '.env'))).toBe(0o600);
+    expect(modeOf(target)).toBe(0o644);
+  });
+
+  it('a migration that throws midway has still created the home at 0700', () => {
+    // A folder where the legacy .env should be makes the copy throw.
+    fs.mkdirSync(path.join(legacyHome, '.env'), { recursive: true });
+
+    expect(() => migrateLegacyHomeInto('prod', home, legacyHome, { platform: 'linux' })).toThrow();
+    expect(modeOf(home)).toBe(0o700);
+  });
+
+  it.each(['dev', 'stable', 'preview'] as const)('packaged %s repairs the source without importing it', (kind) => {
+    seedLegacy();
+    fs.chmodSync(legacyHome, 0o755);
+    fs.chmodSync(path.join(legacyHome, '.env'), 0o644);
+
+    migrateLegacyHomeInto(kind, home, legacyHome, { platform: 'linux', packaged: true });
+
+    expect(modeOf(legacyHome)).toBe(0o700);
+    expect(modeOf(path.join(legacyHome, '.env'))).toBe(0o600);
+    expect(fs.readdirSync(home)).toEqual([]);
+  });
+
+  it('unpackaged development leaves the legacy home alone', () => {
+    seedLegacy();
+    fs.chmodSync(legacyHome, 0o755);
+
+    migrateLegacyHomeInto('dev', home, legacyHome, { platform: 'linux' });
+
+    expect(modeOf(legacyHome)).toBe(0o755);
+  });
 });
 
 // The account's own dotenv and provider state live in its own data root, so a

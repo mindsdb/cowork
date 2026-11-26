@@ -24,12 +24,13 @@ vi.mock('./cowork-home', () => ({
   coworkHome: () => '/home/u/.cowork',
   buildKind: () => 'prod',
 }));
+const sourceState = vi.hoisted(() => ({ overrides: [] as string[] }));
 vi.mock('./server-source', () => ({
   getChannel: () => 'pypi',
   getInstallSpec: () => ({
     channel: 'pypi',
     package: 'cowork-server>=0.26.7.27.3',
-    overrides: [],
+    overrides: sourceState.overrides,
   }),
   getMinServerVersion: () => '0.26.7.27.3',
 }));
@@ -167,7 +168,25 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  sourceState.overrides = [];
   vi.clearAllMocks();
+});
+
+describe('runInstaller: uv overrides file', () => {
+  it('hands uv the overrides file and removes its folder once uv exits', async () => {
+    sourceState.overrides = ['anton-agent @ git+https://github.com/mindsdb/anton.git@feat/x'];
+    vi.mocked(fs.mkdtempSync).mockImplementation(((prefix: string) => `${prefix}test`) as never);
+    setupMachine({ uvProbed: true, toolListVersion: '0.26.8.2.1' });
+
+    await expect(runInstaller(fakeWindow().win)).resolves.toBe(true);
+
+    const folder = vi.mocked(fs.mkdtempSync).mock.results[0]?.value as string;
+    const install = vi.mocked(cp.spawn).mock.calls.at(-1);
+    expect((install?.[2] as { env?: NodeJS.ProcessEnv })?.env?.UV_OVERRIDE).toBe(path.join(folder, 'overrides.txt'));
+    expect(fs.rmSync).toHaveBeenCalledWith(folder, { recursive: true, force: true });
+    const removed = vi.mocked(fs.rmSync).mock.invocationCallOrder.at(-1) ?? 0;
+    expect(removed).toBeGreaterThan(vi.mocked(cp.spawn).mock.invocationCallOrder.at(-1) ?? Infinity);
+  });
 });
 
 describe('runInstaller — uv discovery scenarios', () => {

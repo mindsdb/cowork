@@ -51,6 +51,32 @@ jobs:
         if: runner.os == 'Windows'
         with:
           node-version: 22
+      # On Windows, modes do nothing, so the profile's access list is what keeps
+      # other accounts out of every Cowork home (pinPrivateDir in
+      # src/main/private-files.ts only creates the folder there). A folder and
+      # a file made with Node under the profile must grant no Allow rule to
+      # Everyone, Authenticated Users, Users or INTERACTIVE. The loose sibling
+      # grants Users read and must trip the same check, so the check can fail.
+      # One matrix entry is enough: the access list does not depend on Python.
+      - name: Folders under the profile grant no broad group access
+        if: runner.os == 'Windows' && matrix.python == '3.12'
+        shell: pwsh
+        run: |
+          $probe = node -e "const fs=require('fs'),os=require('os'),p=require('path');const d=p.join(os.homedir(),'.cowork-acl-probe');fs.mkdirSync(d,{recursive:true});fs.writeFileSync(p.join(d,'cowork.db'),'x');process.stdout.write(d)"
+          # Everyone, Authenticated Users, Users, INTERACTIVE
+          $broad = 'S-1-1-0', 'S-1-5-11', 'S-1-5-32-545', 'S-1-5-4'
+          function Get-BroadGrants([string]$path) {
+            (Get-Acl -LiteralPath $path).GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) |
+              Where-Object { $_.AccessControlType -eq 'Allow' -and $broad -contains $_.IdentityReference.Value }
+          }
+          icacls $probe
+          foreach ($path in $probe, (Join-Path $probe 'cowork.db')) {
+            if (Get-BroadGrants $path) { throw "$path grants a broad group access" }
+          }
+          $loose = Join-Path $env:USERPROFILE '.cowork-acl-loose'
+          New-Item -ItemType Directory -Force $loose | Out-Null
+          icacls $loose /grant '*S-1-5-32-545:(OI)(CI)R' | Out-Null
+          if (-not (Get-BroadGrants $loose)) { throw 'the check missed a folder that grants Users read' }
       - name: Install the supported resolver and the fixture packaging and TLS libraries
         run: python -m pip install uv==0.7.22 packaging==26.0 cryptography==50.0.2
       - name: Verify release installs, rollback, controlled-index failures and download trust
@@ -92,6 +118,23 @@ jobs:
             Import-Certificate -FilePath $_.FullName -CertStoreLocation "Cert:\LocalMachine\$store" | Out-Null
             "Restored $($_.BaseName)"
           }
+
+  windows-project-privacy:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: ./.github/actions/retry
+        with:
+          command: npm ci
+      - name: Verify real project and checkout permissions
+        run: npm exec -- vitest run --project main src/main/coding-workspace.windows.test.ts
 
   nginx-logging:
     runs-on: ubuntu-latest

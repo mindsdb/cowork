@@ -18,7 +18,7 @@ import type { UtilityProcess, WebContents } from 'electron';
 import { IPC } from '../shared/ipc-channels';
 import { mindsApiRoot } from '../shared/minds-endpoint';
 import { detectClaudeCode, revealMindsApiKey, revealMindsBaseUrl } from './coding-mode';
-import { ensureTaskWorktree, removeTaskWorktree } from './coding-workspace';
+import { PrivateWorkspaceError, ensureTaskWorktree, removeTaskWorktree } from './coding-workspace';
 import { getEnvPath } from './uv-paths';
 import { sanitizedParentEnv } from './agent-env';
 
@@ -154,19 +154,21 @@ export async function startCodingTerminal(
     cwd = worktree.path;
     isNewSession = worktree.isNew;
   } catch (err: any) {
+    if (err instanceof PrivateWorkspaceError) return { ok: false, reason: err.message };
     // eslint-disable-next-line no-console
     diagnostic("main.coding-terminal", "ERROR", "coding_terminal_failed_to_set_up_task_worktree_falling_back_to_project_dir", '[coding-terminal] failed to set up task worktree, falling back to project dir', err?.message || err);
   }
 
-  // Per-project, not a single shared dir — keeps MindsHub Claude Code
-  // sessions/config isolated per project and separate from the user's own
-  // claude.ai profile (~/.claude). Lives under .claude-mindshub/config/,
-  // alongside .claude-mindshub/tasks/<taskId>/ (the worktrees) — everything
-  // MindsHub/coding-mode-owned under one directory, deliberately not
-  // `.claude/` (Claude Code's own real per-project state dir; see
-  // coding-workspace.ts for why that name is reserved). Trust is recorded
-  // against `cwd` (resolved above), not the project root, since that's the
-  // CLI's actual working directory once worktrees are in play.
+  /* Per-project, not a single shared dir: keeps MindsHub Claude Code
+   * sessions/config isolated per project and separate from the user's own
+   * claude.ai profile (~/.claude). Lives under .claude-mindshub/config/,
+   * alongside .claude-mindshub/tasks/<taskId>/ (the worktrees), so everything
+   * MindsHub/coding-mode-owned sits under one directory, deliberately not
+   * `.claude/` (Claude Code's own real per-project state dir; see
+   * coding-workspace.ts for why that name is reserved). ensureTaskWorktree
+   * made that directory owner-only as its first step, git or no git. Trust is
+   * recorded against `cwd` (resolved above), not the project root, since
+   * that's the CLI's actual working directory once worktrees are in play. */
   const claudeConfigDir = path.join(opts.projectPath, '.claude-mindshub', 'config');
   ensureClaudeConfigDefaults(claudeConfigDir, cwd);
 

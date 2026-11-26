@@ -16,7 +16,8 @@ vi.mock('./uv-paths', () => ({
 
 const ensureTaskWorktreeMock = vi.hoisted(() => vi.fn());
 const removeTaskWorktreeMock = vi.hoisted(() => vi.fn());
-vi.mock('./coding-workspace', () => ({
+vi.mock('./coding-workspace', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./coding-workspace')>()),
   ensureTaskWorktree: ensureTaskWorktreeMock,
   removeTaskWorktree: removeTaskWorktreeMock,
 }));
@@ -79,6 +80,18 @@ describe('coding-terminal', () => {
       isNew: true,
     }));
     removeTaskWorktreeMock.mockResolvedValue(undefined);
+  });
+
+  it('returns the privacy error before writing config or starting the terminal', async () => {
+    const { PrivateWorkspaceError } = await import('./coding-workspace');
+    const { startCodingTerminal } = await import('./coding-terminal');
+    ensureTaskWorktreeMock.mockRejectedValue(new PrivateWorkspaceError('Cannot secure the project'));
+
+    const result = await startCodingTerminal('private-task', { projectPath: '/proj', message: '', model: 'kimi' }, 80, 24, fakeSender());
+
+    expect(result).toEqual({ ok: false, reason: 'Cannot secure the project' });
+    expect(forkMock).not.toHaveBeenCalled();
+    expect(fsStore.size).toBe(0);
   });
 
   it('forks the pty host and reports ok once it acks "started"', async () => {

@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { BuildKind } from './channels';
+import { updateEnvFile } from './dotenv-update';
 import { NON_PROD_POSTHOG_KEY, posthogKeyForBuildKind } from '../shared/analytics-project';
 
 export { NON_PROD_POSTHOG_KEY };
@@ -29,13 +30,15 @@ export function usageEventsOn(accountVars: Record<string, string>): boolean {
 
 /** Writes the switch into the account dotenv at `envPath`: off adds
  *  `COWORK_USAGE_EVENTS=false`, on removes that line, and the other lines stay.
- *  The sidecar reads it at its next start. Throws when the file cannot be
+ *  The write goes through the private atomic writer, so the file ends 0600.
+ *  The sidecar reads it at its next start. Rejects when the file cannot be
  *  written. */
-export function writeUsageEventsPref(envPath: string, enabled: boolean): void {
-  const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
-  const lines = existing.split('\n').filter((l) => l.length > 0 && !l.startsWith(`${USAGE_EVENTS_PREF}=`));
-  if (!enabled) lines.push(`${USAGE_EVENTS_PREF}=false`);
-  fs.writeFileSync(envPath, lines.join('\n') + '\n', 'utf-8');
+export async function writeUsageEventsPref(envPath: string, enabled: boolean): Promise<void> {
+  await updateEnvFile(envPath, (existing) => {
+    const lines = (existing ?? '').split('\n').filter((line) => line.length > 0 && !line.startsWith(`${USAGE_EVENTS_PREF}=`));
+    if (!enabled) lines.push(`${USAGE_EVENTS_PREF}=false`);
+    return lines.join('\n') + '\n';
+  });
 }
 
 /** Only prod builds count as real users' turns: every other kind sends to the

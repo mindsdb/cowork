@@ -3,13 +3,13 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-// writeEnvFileAtomic is #548's atomic + lock-tolerant writer (ENG-1209). Stub
-// it so we can drive the "write still fails after retries" path deterministically
-// without importing minds-auth's electron/keychain dependencies.
+/* writeEnvFileAtomic is the atomic, lock-tolerant private writer. Stub it so
+ * we can drive the "write still fails after retries" path deterministically. */
 const writeEnvFileAtomic = vi.hoisted(() => vi.fn());
-vi.mock('./minds-auth', () => ({ writeEnvFileAtomic }));
+vi.mock('./private-files', () => ({ writeEnvFileAtomic }));
 
 import { scrubEnvCredentials, LOGOUT_ENV_KEYS } from './logout-env';
+import { writeUsageEventsPref } from './analytics-env';
 
 const KEYS = ['ANTON_ANTHROPIC_API_KEY', 'ANTON_OPENAI_API_KEY'];
 
@@ -26,6 +26,32 @@ describe('scrubEnvCredentials (ENG-1206)', () => {
   afterEach(() => {
     fs.rmSync(dir, { recursive: true, force: true });
     for (const k of KEYS) delete process.env[k];
+  });
+
+  it('scrubs the latest dotenv when a preference write is retrying', async () => {
+    fs.writeFileSync(envPath, 'ANTON_OPENAI_API_KEY=test\n');
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    writeEnvFileAtomic.mockImplementationOnce(async (file, content) => {
+      await held;
+      fs.writeFileSync(file, content);
+    }).mockImplementation(async (file, content) => { fs.writeFileSync(file, content); });
+
+    const preference = writeUsageEventsPref(envPath, false);
+    const logout = scrubEnvCredentials(envPath, KEYS);
+    expect(writeEnvFileAtomic).toHaveBeenCalledTimes(1);
+    release();
+    await Promise.all([preference, logout]);
+    expect(fs.readFileSync(envPath, 'utf8').trim()).toBe('COWORK_USAGE_EVENTS=false');
+  });
+
+  it('runs a queued edit even if the previous write fails', async () => {
+    writeEnvFileAtomic.mockRejectedValueOnce(new Error('failed to replace'));
+    const failed = writeUsageEventsPref(envPath, false);
+    const next = writeUsageEventsPref(envPath, true);
+    await expect(failed).rejects.toThrow('failed to replace');
+    await expect(next).resolves.toBeUndefined();
+    expect(writeEnvFileAtomic).toHaveBeenCalledTimes(2);
   });
 
   it('rewrites the .env without the credential keys and clears process.env', async () => {

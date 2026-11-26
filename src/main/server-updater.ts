@@ -205,11 +205,12 @@ function runUv(uv: string, args: string[], extraEnv?: NodeJS.ProcessEnv): Promis
 /** Reinstall from a git spec (cowork-server + anton at the given refs). */
 function installGit(uv: string, coworkRef?: string, antonRef?: string): Promise<{ ok: boolean; stderr: string; unchanged?: boolean }> {
   const spec = getInstallSpec({ coworkRef, antonRef });
+  const overrides = writeUvOverrides(spec.overrides);
   return runUv(
     uv,
     ['tool', 'install', spec.package, '--force', '--reinstall', '--python', PYTHON_RANGE],
-    writeUvOverrides(spec.overrides),
-  );
+    overrides.env,
+  ).finally(() => overrides.remove());
 }
 
 /** Clean `--force --reinstall` on whatever source the venv actually came from

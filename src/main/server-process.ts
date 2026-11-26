@@ -999,6 +999,9 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // page. Pin the origin to the port we actually spawned on. Google does
       // not validate the port for loopback (127.0.0.1) redirect URIs.
       COWORK_SERVER_ORIGIN: getServerOrigin(),
+      // The desktop owns its per-project folders. Managed servers retain the
+      // permissions selected by the operator for their mounted workspaces.
+      COWORK_PRIVATE_PROJECT_DIRS: 'true',
       // Lets anton's html artifact lint reuse the Chromium
       // we already ship instead of needing its own browser install.
       // `process.execPath` is the binary currently running us — correct in

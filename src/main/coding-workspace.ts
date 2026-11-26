@@ -25,6 +25,8 @@
 import { execFile } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { diagnostic } from '../shared/diagnostics';
+import { pinPrivateDir, restrictToOwnerOnWindows, type PlatformOption } from './private-files';
 
 import { sanitizedParentEnv } from './agent-env';
 
@@ -137,10 +139,39 @@ export interface TaskWorktree {
   isNew: boolean;
 }
 
-/** Get (or lazily create) the worktree for a task in a given repo. Never
- *  throws — a git failure just means the caller falls back to running
- *  directly in `repoPath` (logged by the caller, not here). */
-export async function ensureTaskWorktree(repoPath: string, taskId: string): Promise<TaskWorktree> {
+/** A Git failure permits running in the project. A privacy failure must
+ * reach the terminal before it seeds config or launches Claude there. */
+export class PrivateWorkspaceError extends Error {}
+
+async function ensurePrivateMindshubDir(repoPath: string, options: PlatformOption): Promise<void> {
+  const dir = path.join(repoPath, MINDSHUB_DIRNAME);
+  try {
+    pinPrivateDir(dir, { ...options, allowHomeLink: false });
+    if ((options.platform ?? process.platform) === 'win32') {
+      const before = fs.lstatSync(dir, { bigint: true });
+      await restrictToOwnerOnWindows(dir, options);
+      const after = fs.lstatSync(dir, { bigint: true });
+      if (!after.isDirectory() || before.dev !== after.dev || before.ino !== after.ino) {
+        throw new Error('The project directory changed during ACL setup');
+      }
+    }
+  } catch (err) {
+    diagnostic("main.coding-workspace", "WARNING", "coding_workspace_could_not_make_the_mindshub_folder_private", '[coding-workspace] could not make the .claude-mindshub folder private', err);
+    throw new PrivateWorkspaceError('Could not secure the project’s .claude-mindshub directory.');
+  }
+}
+
+/** Get (or lazily create) the worktree for a task in a given repo, inside a
+ *  `.claude-mindshub` made owner-only first, before any git step can fail. A
+ *  git failure rejects, and the caller falls back to running directly in
+ *  `repoPath` (logged by the caller, not here). `platform` is a parameter
+ *  only so tests can run the Windows access list on any machine. */
+export async function ensureTaskWorktree(
+  repoPath: string,
+  taskId: string,
+  options: PlatformOption = {},
+): Promise<TaskWorktree> {
+  await ensurePrivateMindshubDir(repoPath, options);
   const worktreePath = taskWorktreePath(repoPath, taskId);
   if (fs.existsSync(worktreePath)) {
     ensureSharedLinks(repoPath, worktreePath);

@@ -134,26 +134,33 @@ describe('writeUsageEventsPref', () => {
   beforeEach(() => { envPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'usage-events-')), '.env'); });
   afterEach(() => { fs.rmSync(path.dirname(envPath), { recursive: true, force: true }); });
 
-  it('adds the off line and keeps the other lines', () => {
+  it('adds the off line and keeps the other lines', async () => {
     fs.writeFileSync(envPath, 'ANTON_TERMS_CONSENT=true\nCOWORK_KEYCHAIN=false\n');
-    writeUsageEventsPref(envPath, false);
+    await writeUsageEventsPref(envPath, false);
     expect(fs.readFileSync(envPath, 'utf-8')).toBe('ANTON_TERMS_CONSENT=true\nCOWORK_KEYCHAIN=false\nCOWORK_USAGE_EVENTS=false\n');
   });
 
-  it('removes the off line when turned back on, and keeps the other lines', () => {
+  it('removes the off line when turned back on, and keeps the other lines', async () => {
     fs.writeFileSync(envPath, 'ANTON_TERMS_CONSENT=true\nCOWORK_USAGE_EVENTS=false\nCOWORK_KEYCHAIN=false\n');
-    writeUsageEventsPref(envPath, true);
+    await writeUsageEventsPref(envPath, true);
     expect(fs.readFileSync(envPath, 'utf-8')).toBe('ANTON_TERMS_CONSENT=true\nCOWORK_KEYCHAIN=false\n');
   });
 
-  it('writes one off line however often it is turned off', () => {
-    writeUsageEventsPref(envPath, false);
-    writeUsageEventsPref(envPath, false);
+  it('writes one off line however often it is turned off', async () => {
+    await writeUsageEventsPref(envPath, false);
+    await writeUsageEventsPref(envPath, false);
     expect(fs.readFileSync(envPath, 'utf-8')).toBe('COWORK_USAGE_EVENTS=false\n');
   });
 
-  it('throws when the dotenv cannot be written', () => {
+  it.skipIf(process.platform === 'win32')('leaves a dotenv an older build wrote at 0644 owner-only', async () => {
+    fs.writeFileSync(envPath, 'ANTON_OPENAI_API_KEY=sk-test\n');
+    fs.chmodSync(envPath, 0o644);
+    await writeUsageEventsPref(envPath, false);
+    expect(fs.statSync(envPath).mode & 0o777).toBe(0o600);
+  });
+
+  it('rejects when the dotenv cannot be written', async () => {
     fs.rmSync(path.dirname(envPath), { recursive: true, force: true });
-    expect(() => writeUsageEventsPref(envPath, false)).toThrow();
+    await expect(writeUsageEventsPref(envPath, false)).rejects.toThrow();
   });
 });

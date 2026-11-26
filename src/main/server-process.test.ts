@@ -1655,6 +1655,7 @@ describe('app secret handoff', () => {
     for (const value of values) expect(value).toMatch(/^[0-9a-f]{64}$/);
     expect(new Set(values).size).toBe(3);
     expect(opts.env?.COWORK_APP_SECRET_STDIN).toBe('2');
+    expect(opts.env?.COWORK_PRIVATE_PROJECT_DIRS).toBe('true');
     expect(Object.values(opts.env ?? {}).some((v) => values.some((value) => String(v).includes(value)))).toBe(false);
     expect(appSecretHeader()).toEqual({ [APP_SECRET_HEADER]: handoff.app_secret });
     expect(authHeader()).toEqual({ Authorization: `Bearer ${handoff.auth_token}`, [WINDOW_PROOF_HEADER]: handoff.window_proof });
