@@ -198,8 +198,14 @@ export default function GalleryColumn({
   const [focusDetail, setFocusDetail] = useState(0);
   const searchRef = useRef(null);
 
+  // Asked for focus (opened, or reopened where the person left it): the search
+  // box, or the opened example's heading while the list and its search box are
+  // hidden under it, so Escape and the arrow keys act on the column.
   useEffect(() => {
-    if (focusSearch) searchRef.current?.focus();
+    if (!focusSearch) return;
+    if (openId) setFocusDetail((n) => n + 1);
+    else searchRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusSearch]);
 
   const view = useMemo(

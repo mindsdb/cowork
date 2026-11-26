@@ -3,6 +3,7 @@ import { render, screen, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import GalleryColumn from './GalleryColumn';
 import { readGalleryManifest } from './galleryManifest';
+import { ALL_CATEGORIES } from './galleryFilter';
 
 const { trackGalleryExampleOpened, trackGallerySearched } = vi.hoisted(() => ({
   trackGalleryExampleOpened: vi.fn(),
@@ -165,6 +166,22 @@ describe('GalleryColumn example', () => {
     expect(screen.getByRole('heading', { name: 'Turn a bank statement into a spreadsheet' })).toBeInTheDocument();
     await user.keyboard('{Escape}');
     expect(onHide).toHaveBeenLastCalledWith('escape');
+  });
+
+  it('reopened where the person left an example, puts focus on it so Escape folds the column', async () => {
+    const { user, onHide } = setup({
+      focusSearch: true,
+      place: { query: '', category: ALL_CATEGORIES, openId: 'research-a-prospect-and-draft-outreach' },
+      onPlaceChange: vi.fn(),
+    });
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Research a prospect and draft outreach' }));
+    await user.keyboard('{Escape}');
+    expect(onHide).toHaveBeenLastCalledWith('escape');
+  });
+
+  it('opened on the list, puts focus in the search box', () => {
+    setup({ focusSearch: true });
+    expect(document.activeElement).toBe(screen.getByRole('searchbox'));
   });
 
   it('shows a written result with what Cowork made and starts from it', async () => {
