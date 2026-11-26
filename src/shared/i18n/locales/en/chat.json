@@ -76,12 +76,12 @@
       "deletedBadge": "Deleted",
       "share": "Share",
       "shareTooltip": "Choose who can open it",
-      "updatedBelow": "{title} · updated below",
       "goToLatestTooltip": "Scroll to the latest version",
-      "showThisVersion": "This version",
-      "hideThisVersion": "Hide",
       "openLink": "Open link",
-      "openLinkTooltip": "Open the artifact's link in a new tab"
+      "openLinkTooltip": "Open the artifact's link in a new tab",
+      "updatedSeeBelow": "This was updated. See the latest version below.",
+      "previewThisVersion": "Preview this version",
+      "hideVersionPreview": "Hide this version"
     },
     "kinds": {
       "provider": "Provider",

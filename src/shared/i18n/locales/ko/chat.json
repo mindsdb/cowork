@@ -76,12 +76,12 @@
       "deletedBadge": "삭제됨",
       "share": "공유",
       "shareTooltip": "열 수 있는 사람 선택",
-      "updatedBelow": "{title} · 아래에서 업데이트됨",
       "goToLatestTooltip": "최신 버전으로 스크롤",
-      "showThisVersion": "이 버전",
-      "hideThisVersion": "숨기기",
       "openLink": "링크 열기",
-      "openLinkTooltip": "아티팩트 링크를 새 탭에서 엽니다"
+      "openLinkTooltip": "아티팩트 링크를 새 탭에서 엽니다",
+      "updatedSeeBelow": "업데이트되었습니다. 최신 버전은 아래에 있습니다.",
+      "previewThisVersion": "이 버전 미리 보기",
+      "hideVersionPreview": "이 버전 숨기기"
     },
     "kinds": {
       "provider": "공급자",

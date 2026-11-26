@@ -682,11 +682,10 @@ function StepArtifacts({ steps, onOpen, onShare, projectPath, live = false, late
   );
 }
 
-// An inline artifact a later card shows again (ENG-4684): one line,
-// "<title> · updated below", that scrolls to the live copy further down (the
-// card marked with the same `data-inline-artifact` key). "This version" opens
-// the page as this card made it (its `revision_id`, when the server sends
-// one, else as it is now). The frame mounts only while open.
+// An inline artifact a later card shows again (ENG-4684) renders as the plain
+// artifact card: "This was updated. See the latest version below." scrolls to
+// the live copy (the card marked with the same `data-inline-artifact` key),
+// and "Preview this version" opens the page as this card made it.
 export function scrollToLiveInlineArtifact(key) {
   if (!key || typeof document === 'undefined') return false;
   const live = [...document.querySelectorAll('[data-inline-artifact]')]
@@ -695,40 +694,6 @@ export function scrollToLiveInlineArtifact(key) {
   if (!target) return false;
   target.scrollIntoView({ behavior: 'smooth', block: 'start' });
   return true;
-}
-
-export function ArtifactInlineChip({ artifact, onInlineSubmit = null }) {
-  const { t } = useTranslation('chat');
-  const [open, setOpen] = useState(false);
-  const revisionId = cardRevisionId(artifact);
-  const key = inlineArtifactKey(artifact);
-  return (
-    <ChatCardShell kind={false} className="gap-0 px-3 py-1" data-testid="artifact-inline-chip">
-      <div className="flex min-w-0 items-center gap-2">
-        <button
-          type="button"
-          className="min-w-0 flex-1 truncate text-left text-sm text-muted hover:text-fg"
-          title={t('chatView.artifactCard.goToLatestTooltip')}
-          onClick={() => scrollToLiveInlineArtifact(key)}
-        >
-          {t('chatView.artifactCard.updatedBelow', { title: artifact.title || '' })} ↓
-        </button>
-        <Button size="sm" variant="ghost" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-          {open ? t('chatView.artifactCard.hideThisVersion') : t('chatView.artifactCard.showThisVersion')}
-        </Button>
-      </div>
-      {open && (
-        <div className="pt-1">
-          <ArtifactInlinePreview
-            artifact={artifact}
-            title={artifact.title || ''}
-            revisionId={revisionId}
-            onSubmit={onInlineSubmit ? (submission) => onInlineSubmit(artifact, submission) : null}
-          />
-        </div>
-      )}
-    </ChatCardShell>
-  );
 }
 
 // One turn's steps and ask_user cards, rendered in event order: work done
@@ -1248,11 +1213,25 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false, i
     && !canPreviewDoc
     && openTarget === 'preview'
     && canActivate;
+  /*
+   * A later card shows this artifact live (latestInlineArtifactByKey), so
+   * this one is the plain card: no frame until "Preview this version" opens
+   * the page as this card made it (`revision_id`, else as it is now).
+   */
+  const superseded = showInline && inlineSuperseded;
+  const liveInline = showInline && !superseded;
+  const [versionOpen, setVersionOpen] = useState(false);
+  const framed = liveInline || (superseded && versionOpen);
   const primaryDisabled = needsLocalPath && !canAct;
   const primaryReason = primaryDisabled ? (disabledReason || t('chatView.artifactCard.noFilePath')) : '';
-  const openAction = !deleted && primaryAction
-    ? { ...primaryAction, disabled: primaryDisabled, tooltip: primaryDisabled ? undefined : primaryAction.tooltip }
-    : null;
+  const openAction = superseded
+    ? {
+      label: versionOpen ? t('chatView.artifactCard.hideVersionPreview') : t('chatView.artifactCard.previewThisVersion'),
+      onClick: () => setVersionOpen((v) => !v),
+    }
+    : !deleted && primaryAction
+      ? { ...primaryAction, disabled: primaryDisabled, tooltip: primaryDisabled ? undefined : primaryAction.tooltip }
+      : null;
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
   /*
    * Whole-card click → preview. The inner buttons (the primary action,
@@ -1261,10 +1240,6 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false, i
    * instead of opening, mirroring the prior button behaviour. Cursor +
    * hover lift mark the entire surface as interactive at a glance.
    */
-  // A later card shows this artifact live: this one folds to a line.
-  if (showInline && inlineSuperseded) {
-    return <ArtifactInlineChip artifact={artifact} onInlineSubmit={onInlineSubmit} />;
-  }
   return (
     <>
       {/* Outside the Card on purpose: Card renders role="button", and ARIA
@@ -1279,18 +1254,19 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false, i
         open the viewer. */}
     <Card
       as="div"
-      interactive={canActivate && !showInline}
+      interactive={canActivate && !framed}
       flat
       padding="none"
-      onActivate={canActivate && !showInline ? handleOpen : undefined}
-      role={showInline ? 'group' : undefined}
+      onActivate={canActivate && !framed ? handleOpen : undefined}
+      role={framed ? 'group' : undefined}
       aria-label={deleted
         ? t('chatView.artifactCard.deletedAriaLabel', { title: artifact.title })
-        : showInline
+        : framed
           ? artifact.title
           : (canActivate ? t('chatView.artifactCard.actionTarget', { action: activateLabel, target: artifact.title }) : noDestinationReason)}
-      className={cn('railed chat-artifact-card', showInline && 'is-inline')}
-      data-inline-artifact={showInline ? inlineArtifactKey(artifact) || undefined : undefined}
+      className={cn('railed chat-artifact-card', framed && 'is-inline')}
+      data-inline-artifact={liveInline ? inlineArtifactKey(artifact) || undefined : undefined}
+      data-testid={superseded ? 'artifact-inline-superseded' : undefined}
     >
       <div
         className={cn(
@@ -1316,7 +1292,16 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false, i
           className="m-0 block min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-base font-semibold text-ink underline-offset-[3px] enabled:hover:underline disabled:cursor-not-allowed disabled:opacity-70"
         >{artifact.title}</button>
         <span className="flex min-w-0 items-center gap-1.5 font-body text-xs text-ink-3">
-          <span className="shrink-0">{artifact.kind && artifact.kind !== 'live artifact' ? artifact.kind : t('chatView.artifactCard.liveArtifact')}</span>
+          {superseded ? (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); scrollToLiveInlineArtifact(inlineArtifactKey(artifact)); }}
+              title={t('chatView.artifactCard.goToLatestTooltip')}
+              className="m-0 min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-xs text-ink-3 underline-offset-[3px] hover:underline"
+            >{t('chatView.artifactCard.updatedSeeBelow')}</button>
+          ) : (
+            <span className="shrink-0">{artifact.kind && artifact.kind !== 'live artifact' ? artifact.kind : t('chatView.artifactCard.liveArtifact')}</span>
+          )}
           {deleted && <Badge variant="muted" size="xs">{t('chatView.artifactCard.deletedBadge')}</Badge>}
         </span>
         {/* A disabled button takes no hover, so its reason is said here, in
@@ -1356,11 +1341,12 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false, i
           <ActionBar size="sm" align="start" className="flex-wrap" primary={openAction} />
         )}
       </div>
-      {showInline && (
+      {framed && (
         <div className="chat-artifact-card__frame">
           <ArtifactInlinePreview
             artifact={artifact}
             title={artifact.title || ''}
+            revisionId={superseded ? cardRevisionId(artifact) : undefined}
             onSubmit={onInlineSubmit ? (submission) => onInlineSubmit(artifact, submission) : null}
           />
         </div>
