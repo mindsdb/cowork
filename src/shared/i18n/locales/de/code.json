@@ -1442,7 +1442,7 @@
     },
     "allowanceExhausted": {
       "title": "Ihr enthaltenes Kontingent ist aufgebraucht",
-      "body": "Laden Sie Guthaben auf, um sofort weiterzumachen, oder warten Sie, bis das Kontingent wieder aufgefüllt ist, und fahren Sie dann in dieser Aufgabe fort."
+      "body": "Laden Sie Guthaben auf, um sofort weiterzumachen, oder warten Sie, bis das Kontingent zurückgesetzt wird, und fahren Sie dann in dieser Aufgabe fort."
     },
     "freeAirPaused": {
       "title": "Kostenlose Modelle sind pausiert",

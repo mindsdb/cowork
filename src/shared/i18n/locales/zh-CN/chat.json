@@ -131,7 +131,7 @@
     },
     "usageAlert": {
       "freeLow": "免费额度剩余 {percent}",
-      "freeLowRefills": "免费额度剩余 {percent} · {time} 恢复",
+      "freeLowRefills": "免费额度剩余 {percent} · {time} 重置",
       "freeUsed": "免费额度已用完 · 正在使用你的余额",
       "freeUsedUntil": "免费额度已用完 · {time} 前将使用你的余额",
       "windowLow": "已使用 {percent} 的{window, select, 7d {每周} other {5 小时}}额度",

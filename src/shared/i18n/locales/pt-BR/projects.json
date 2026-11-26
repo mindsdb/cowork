@@ -51,9 +51,7 @@
       "freeUsed": {
         "title": "Cota gratuita esgotada",
         "body": "Os modelos gratuitos agora usam seu saldo até sua cota ser renovada.",
-        "bodyWithTime": "Os modelos gratuitos agora usam seu saldo até sua cota ser renovada às {time}.",
-        "bodyWithUsd": "Os modelos gratuitos agora usam seu saldo (restam {usd}) até sua cota ser renovada.",
-        "bodyWithUsdWithTime": "Os modelos gratuitos agora usam seu saldo (restam {usd}) até sua cota ser renovada às {time}."
+        "bodyWithTime": "Os modelos gratuitos agora usam seu saldo até sua cota ser renovada às {time}."
       },
       "freeLow": {
         "body": "Depois disso, os modelos gratuitos usarão seu saldo até sua cota ser renovada.",

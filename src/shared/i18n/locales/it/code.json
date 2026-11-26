@@ -1442,7 +1442,7 @@
     },
     "allowanceExhausted": {
       "title": "Hai esaurito la quota inclusa",
-      "body": "Aggiungi crediti per continuare subito oppure attendi che la quota si ricarichi, poi continua in questa attività."
+      "body": "Aggiungi crediti per continuare subito oppure attendi che la quota si rinnovi, poi continua in questa attività."
     },
     "freeAirPaused": {
       "title": "I modelli gratuiti sono in pausa",

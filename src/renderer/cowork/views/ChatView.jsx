@@ -1904,7 +1904,7 @@ function UsageAlertCard({
   // One quiet line, not a card: the composer bar says the same a few pixels
   // below. Running low says what is true of the allowance, not of this turn:
   // the router resolves per turn and can land on a paid model.
-  // No usable refill time drops the clause rather than leaving "refills".
+  // No usable reset time drops the clause rather than leaving a bare "resets at".
   const refillsAt = formatResetTime(resetsAt);
   // A Plus or Pro window (ENG-4186): its share used, or that it filled up,
   // and when it frees up. Never a dollar or token figure.

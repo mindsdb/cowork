@@ -12,7 +12,7 @@
       "noFreeGrant": "Ce compte n’inclut pas de jetons gratuits. Tous les modèles utilisent votre solde.",
       "allowanceStop": {
         "noGrant": "{noGrant} Votre solde est épuisé : ajoutez des fonds pour continuer.",
-        "withTime": "Votre quota gratuit est épuisé, tout comme votre solde. Ajoutez des fonds pour continuer, ou attendez qu’il se renouvelle à {time}.",
+        "withTime": "Votre quota gratuit est épuisé, tout comme votre solde. Ajoutez des fonds pour continuer, ou attendez sa réinitialisation à {time}.",
         "noTime": "Votre quota gratuit est épuisé, tout comme votre solde. Ajoutez des fonds pour continuer.",
         "noTimeMobile": "Votre quota gratuit est épuisé, tout comme votre solde.",
         "noGrantMobile": "{noGrant} Votre solde est épuisé.",
@@ -34,8 +34,8 @@
       "balanceEmpty": {
         "title": "Solde épuisé",
         "body": "Ajoutez des fonds pour lancer une autre tâche.",
-        "freeUsedToo": "Votre quota gratuit est également épuisé. Ajoutez des fonds ou attendez qu’il se renouvelle.",
-        "freeUsedTooWithTime": "Votre quota gratuit est également épuisé. Ajoutez des fonds ou attendez qu’il se renouvelle à {time}.",
+        "freeUsedToo": "Votre quota gratuit est également épuisé. Ajoutez des fonds ou attendez sa réinitialisation.",
+        "freeUsedTooWithTime": "Votre quota gratuit est également épuisé. Ajoutez des fonds ou attendez sa réinitialisation à {time}.",
         "freeUsedTooMobile": "Votre quota gratuit est également épuisé.",
         "freeUsedTooWithTimeMobile": "Votre quota gratuit est également épuisé. Réinitialisation à {time}.",
         "bodyMobile": "Votre solde est vide. Les modèles payants sont indisponibles."
@@ -50,14 +50,12 @@
       },
       "freeUsed": {
         "title": "Quota gratuit épuisé",
-        "body": "Les modèles gratuits utilisent désormais votre solde jusqu’au renouvellement de votre quota.",
-        "bodyWithTime": "Les modèles gratuits utilisent désormais votre solde jusqu’au renouvellement de votre quota à {time}.",
-        "bodyWithUsd": "Les modèles gratuits utilisent désormais votre solde (il reste {usd}) jusqu’au renouvellement de votre quota.",
-        "bodyWithUsdWithTime": "Les modèles gratuits utilisent désormais votre solde (il reste {usd}) jusqu’au renouvellement de votre quota à {time}."
+        "body": "Les modèles gratuits utilisent désormais votre solde jusqu’à la réinitialisation de votre quota.",
+        "bodyWithTime": "Les modèles gratuits utilisent désormais votre solde jusqu’à la réinitialisation de votre quota à {time}."
       },
       "freeLow": {
-        "body": "Ensuite, les modèles gratuits utiliseront votre solde jusqu’au renouvellement de votre quota.",
-        "bodyWithTime": "Ensuite, les modèles gratuits utiliseront votre solde jusqu’au renouvellement de votre quota à {time}.",
+        "body": "Ensuite, les modèles gratuits utiliseront votre solde jusqu’à la réinitialisation de votre quota.",
+        "bodyWithTime": "Ensuite, les modèles gratuits utiliseront votre solde jusqu’à la réinitialisation de votre quota à {time}.",
         "balanceLowToo": "Votre solde est également bas ({usd})."
       },
       "budgetExceeded": {

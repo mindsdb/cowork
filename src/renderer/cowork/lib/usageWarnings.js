@@ -300,11 +300,11 @@ export function modelAccessSignature(usage) {
  *  card and the Settings probe notice alike. The drained-wallet card's
  *  spent-allowance branch describes the same state, so it uses this too.
  *
- *  An org with no free grant is told that, and never a refill time. Otherwise
- *  the refill time is the gate's (`resetAt`), falling back to the hub usage
+ *  An org with no free grant is told that, and never a reset time. Otherwise
+ *  the reset time is the gate's (`resetAt`), falling back to the hub usage
  *  read's. When neither is a usable future instant, the sentence offers funds
- *  alone: nothing then says the allowance refills at all, and the org may have
- *  no grant to refill. */
+ *  alone: nothing then says the allowance resets at all, and the org may have
+ *  no grant to reset. */
 export function allowanceStopCopy({ resetAt = null, usage = null } = {}) {
   const free = freeAllowanceState(usage);
   if (!offersBilling()) {
@@ -361,7 +361,7 @@ function isExplicitPaidModel(model, coveredByTier, plan) {
   return isPaidPlan(plan) || coveredByTier !== 'free';
 }
 
-/* `${key}WithTime` with the refill time, or `${key}` when none is quotable. */
+/* `${key}WithTime` with the reset time, or `${key}` when none is quotable. */
 function withResetTime(free, key, vars, translate = tr) {
   const time = formatResetTime(free?.resetsAt);
   return time ? translate(`${key}WithTime`, { ...vars, time }) : translate(key, vars);
@@ -527,12 +527,15 @@ export function deriveUsageWarning(usage, {
   // A healthy wallet just carries Air until the refill: no bar (ENG-4188).
   if (freeInUse && f.out && balanceCarries) return null;
 
+  // Only a read with no balance gets here, so the note names no wallet figure:
+  // an empty wallet stopped above, a short one said so, and one that carries
+  // the next task says nothing.
   if (freeInUse && f.out) {
     return {
       kind: 'free_used',
       tone: 'info',
       title: tr('freeUsed.title'),
-      body: usd ? withResetTime(free, 'freeUsed.bodyWithUsd', { usd }) : withResetTime(free, 'freeUsed.body'),
+      body: withResetTime(free, 'freeUsed.body'),
       actions: [USAGE_ACTIONS.viewUsage],
     };
   }

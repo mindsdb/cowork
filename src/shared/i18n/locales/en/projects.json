@@ -12,7 +12,7 @@
       "noFreeGrant": "This account does not include free tokens. Every model uses your balance.",
       "allowanceStop": {
         "noGrant": "{noGrant} Your balance is empty, so add funds to continue.",
-        "withTime": "Your free allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at {time}.",
+        "withTime": "Your free allowance is used up and your balance is empty. Add funds to keep working, or wait for it to reset at {time}.",
         "noTime": "Your free allowance is used up and your balance is empty. Add funds to keep working.",
         "noTimeMobile": "Your free allowance is used up and your balance is empty.",
         "noGrantMobile": "{noGrant} Your balance is empty.",
@@ -34,8 +34,8 @@
       "balanceEmpty": {
         "title": "Balance empty",
         "body": "Add funds to start another task.",
-        "freeUsedToo": "Your free allowance is used up too. Add funds, or wait for it to refill.",
-        "freeUsedTooWithTime": "Your free allowance is used up too. Add funds, or wait for it to refill at {time}.",
+        "freeUsedToo": "Your free allowance is used up too. Add funds, or wait for it to reset.",
+        "freeUsedTooWithTime": "Your free allowance is used up too. Add funds, or wait for it to reset at {time}.",
         "freeUsedTooMobile": "Your free allowance is used up too.",
         "freeUsedTooWithTimeMobile": "Your free allowance is used up too. Resets at {time}.",
         "bodyMobile": "Your balance is empty. Paid models are unavailable."
@@ -50,14 +50,12 @@
       },
       "freeUsed": {
         "title": "Free allowance used up",
-        "body": "Free models now use your balance until your allowance refills.",
-        "bodyWithTime": "Free models now use your balance until your allowance refills at {time}.",
-        "bodyWithUsd": "Free models now use your balance ({usd} left) until your allowance refills.",
-        "bodyWithUsdWithTime": "Free models now use your balance ({usd} left) until your allowance refills at {time}."
+        "body": "Free models now use your balance until your allowance resets.",
+        "bodyWithTime": "Free models now use your balance until your allowance resets at {time}."
       },
       "freeLow": {
-        "body": "After that, free models use your balance until your allowance refills.",
-        "bodyWithTime": "After that, free models use your balance until your allowance refills at {time}.",
+        "body": "After that, free models use your balance until your allowance resets.",
+        "bodyWithTime": "After that, free models use your balance until your allowance resets at {time}.",
         "balanceLowToo": "Your balance is low too ({usd})."
       },
       "budgetExceeded": {

@@ -131,7 +131,7 @@
     },
     "usageAlert": {
       "freeLow": "Quota gratuita rimanente: {percent}",
-      "freeLowRefills": "Quota gratuita rimanente: {percent} · si ricarica alle {time}",
+      "freeLowRefills": "Quota gratuita rimanente: {percent} · si rinnova alle {time}",
       "freeUsed": "Quota gratuita esaurita · ora usi il tuo saldo",
       "freeUsedUntil": "Quota gratuita esaurita · usi il tuo saldo fino alle {time}",
       "windowLow": "Hai usato il {percent} della quota {window, select, 7d {settimanale} other {di 5 ore}}",

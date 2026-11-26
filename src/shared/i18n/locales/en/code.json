@@ -1442,7 +1442,7 @@
     },
     "allowanceExhausted": {
       "title": "Your included allowance is used up",
-      "body": "Add credits to continue now, or wait for the allowance to refill, then continue in this task."
+      "body": "Add credits to continue now, or wait for the allowance to reset, then continue in this task."
     },
     "freeAirPaused": {
       "title": "Free models are paused",

@@ -12,7 +12,7 @@
       "noFreeGrant": "此账户不含免费令牌。所有模型都会使用你的余额。",
       "allowanceStop": {
         "noGrant": "{noGrant}你的余额已用完，请充值后继续。",
-        "withTime": "你的免费额度已用完，余额也已用完。请充值以继续工作，或等待额度在 {time} 恢复。",
+        "withTime": "你的免费额度已用完，余额也已用完。请充值以继续工作，或等待额度在 {time} 重置。",
         "noTime": "你的免费额度已用完，余额也已用完。请充值以继续工作。",
         "noTimeMobile": "你的免费额度已用完，余额也已用完。",
         "noGrantMobile": "{noGrant} 你的余额已用完。",
@@ -34,8 +34,8 @@
       "balanceEmpty": {
         "title": "余额已用完",
         "body": "请充值以开始新任务。",
-        "freeUsedToo": "你的免费额度也已用完。请充值，或等待额度恢复。",
-        "freeUsedTooWithTime": "你的免费额度也已用完。请充值，或等待额度在 {time} 恢复。",
+        "freeUsedToo": "你的免费额度也已用完。请充值，或等待额度重置。",
+        "freeUsedTooWithTime": "你的免费额度也已用完。请充值，或等待额度在 {time} 重置。",
         "freeUsedTooMobile": "你的免费额度也已用完。",
         "freeUsedTooWithTimeMobile": "你的免费额度也已用完。 将于 {time} 重置。",
         "bodyMobile": "你的余额已用完。付费模型不可用。"
@@ -50,14 +50,12 @@
       },
       "freeUsed": {
         "title": "免费额度已用完",
-        "body": "在额度恢复前，免费模型将使用你的余额。",
-        "bodyWithTime": "在额度于 {time} 恢复前，免费模型将使用你的余额。",
-        "bodyWithUsd": "在额度恢复前，免费模型将使用你的余额（剩余 {usd}）。",
-        "bodyWithUsdWithTime": "在额度于 {time} 恢复前，免费模型将使用你的余额（剩余 {usd}）。"
+        "body": "在额度重置前，免费模型将使用你的余额。",
+        "bodyWithTime": "在额度于 {time} 重置前，免费模型将使用你的余额。"
       },
       "freeLow": {
-        "body": "之后，在额度恢复前，免费模型将使用你的余额。",
-        "bodyWithTime": "之后，在额度于 {time} 恢复前，免费模型将使用你的余额。",
+        "body": "之后，在额度重置前，免费模型将使用你的余额。",
+        "bodyWithTime": "之后，在额度于 {time} 重置前，免费模型将使用你的余额。",
         "balanceLowToo": "你的余额也不多了（{usd}）。"
       },
       "budgetExceeded": {

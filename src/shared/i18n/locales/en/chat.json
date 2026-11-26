@@ -131,7 +131,7 @@
     },
     "usageAlert": {
       "freeLow": "Free allowance {percent} left",
-      "freeLowRefills": "Free allowance {percent} left · refills at {time}",
+      "freeLowRefills": "Free allowance {percent} left · resets at {time}",
       "freeUsed": "Free allowance used up · now using your balance",
       "freeUsedUntil": "Free allowance used up · now using your balance until {time}",
       "windowLow": "{percent} of your {window, select, 7d {weekly} other {5-hour}} allowance used",

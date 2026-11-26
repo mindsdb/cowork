@@ -46,13 +46,13 @@ describe('ChatView usage notices', () => {
 
   it('marks the allowance running low with one quiet line after the reply, not a card', () => {
     render(<ChatView task={task([{ kind: 'free_low', fractionLeft: 0.124, resetsAt: '2099-09-11T12:00:00Z', createdAt: '2099-08-28T10:00:00Z' }])} />);
-    const line = screen.getByText(/^Free allowance 12% left · refills at Sep 1[12], 12:00 PM$/);
+    const line = screen.getByText(/^Free allowance 12% left · resets at Sep 1[12], 12:00 PM$/);
     const reply = screen.getByText('Done. Here is the digest.');
     expect(reply.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByText('Free allowance running low')).toBeNull();
   });
 
-  it('drops the refill clause when there is no refill time', () => {
+  it('drops the reset clause when there is no reset time', () => {
     render(<ChatView task={task([
       { kind: 'free_low', fractionLeft: 0.124, createdAt: '2099-08-28T10:00:00Z', anchorId: 'u0' },
       { kind: 'free_used', createdAt: '2099-08-28T10:00:00Z', anchorId: 'u0' },

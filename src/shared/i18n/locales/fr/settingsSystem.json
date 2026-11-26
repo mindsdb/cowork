@@ -173,9 +173,9 @@
       "used": "{percent} de votre quota utilisé",
       "left": "{percent} restant",
       "meterLabel": "Quota gratuit utilisé",
-      "usedUpUntil": "Épuisé. Les modèles gratuits utilisent désormais votre solde jusqu’au renouvellement du quota à {time}.",
-      "usedUp": "Épuisé. Les modèles gratuits utilisent désormais votre solde jusqu’au renouvellement du quota.",
-      "afterUntil": "Ensuite, les modèles gratuits utilisent votre solde jusqu’au renouvellement du quota à {time}.",
+      "usedUpUntil": "Épuisé. Les modèles gratuits utilisent désormais votre solde jusqu’à la réinitialisation du quota à {time}.",
+      "usedUp": "Épuisé. Les modèles gratuits utilisent désormais votre solde jusqu’à la réinitialisation du quota.",
+      "afterUntil": "Ensuite, les modèles gratuits utilisent votre solde jusqu’à la réinitialisation du quota à {time}.",
       "after": "Ensuite, les modèles gratuits utilisent votre solde."
     },
     "autoTopUp": {

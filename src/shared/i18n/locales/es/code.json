@@ -1441,8 +1441,8 @@
       "body": "Este turno se detuvo. Espera un momento y luego continúa en esta tarea."
     },
     "allowanceExhausted": {
-      "title": "Agotaste tu saldo incluido",
-      "body": "Agrega créditos para continuar ahora o espera a que se renueve el saldo, y luego continúa en esta tarea."
+      "title": "Agotaste tu cupo incluido",
+      "body": "Agrega créditos para continuar ahora o espera a que se renueve el cupo, y luego continúa en esta tarea."
     },
     "freeAirPaused": {
       "title": "Los modelos gratuitos están en pausa",

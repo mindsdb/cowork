@@ -173,9 +173,9 @@
       "used": "{percent} Ihres Kontingents verbraucht",
       "left": "{percent} übrig",
       "meterLabel": "Verbrauchtes Gratiskontingent",
-      "usedUpUntil": "Aufgebraucht. Kostenlose Modelle werden jetzt von Ihrem Guthaben abgerechnet, bis das Kontingent wieder aufgefüllt wird ({time}).",
-      "usedUp": "Aufgebraucht. Kostenlose Modelle werden jetzt von Ihrem Guthaben abgerechnet, bis das Kontingent wieder aufgefüllt wird.",
-      "afterUntil": "Danach nutzen kostenlose Modelle Ihr Guthaben, bis das Kontingent wieder aufgefüllt wird ({time}).",
+      "usedUpUntil": "Aufgebraucht. Kostenlose Modelle werden jetzt von Ihrem Guthaben abgerechnet, bis das Kontingent um {time} zurückgesetzt wird.",
+      "usedUp": "Aufgebraucht. Kostenlose Modelle werden jetzt von Ihrem Guthaben abgerechnet, bis das Kontingent zurückgesetzt wird.",
+      "afterUntil": "Danach nutzen kostenlose Modelle Ihr Guthaben, bis das Kontingent um {time} zurückgesetzt wird.",
       "after": "Danach nutzen kostenlose Modelle Ihr Guthaben."
     },
     "autoTopUp": {

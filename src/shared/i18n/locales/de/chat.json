@@ -131,7 +131,7 @@
     },
     "usageAlert": {
       "freeLow": "Gratiskontingent: noch {percent}",
-      "freeLowRefills": "Gratiskontingent: noch {percent} · wird um {time} aufgefüllt",
+      "freeLowRefills": "Gratiskontingent: noch {percent} · wird um {time} zurückgesetzt",
       "freeUsed": "Gratiskontingent aufgebraucht · Ihr Guthaben wird jetzt verwendet",
       "freeUsedUntil": "Gratiskontingent aufgebraucht · Ihr Guthaben wird bis {time} verwendet",
       "windowLow": "{percent} Ihres {window, select, 7d {Wochenkontingents} other {5-Stunden-Kontingents}} verbraucht",

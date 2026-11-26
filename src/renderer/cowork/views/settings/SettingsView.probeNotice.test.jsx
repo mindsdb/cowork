@@ -136,7 +136,7 @@ describe('SettingsView: probe notice follows the sidecar reason', () => {
     expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
   });
 
-  it('a spent allowance names the refill time the gate sent when the org has a grant', async () => {
+  it('a spent allowance names the reset time the gate sent when the org has a grant', async () => {
     const user = userEvent.setup();
     const refill = inHours(2);
     spies.testProviders.mockResolvedValue(probeFailure('HTTP 429', { code: 'included_allowance_exhausted', resetAt: refill }));
@@ -145,16 +145,16 @@ describe('SettingsView: probe notice follows the sidecar reason', () => {
       usage={hubUsage({ limit: 100, used: 100, remaining: 0, resetsAt: refill })}
     />);
 
-    const copy = `Your free allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at ${formatResetTime(refill)}.`;
+    const copy = `Your free allowance is used up and your balance is empty. Add funds to keep working, or wait for it to reset at ${formatResetTime(refill)}.`;
     await waitFor(() => expect(screen.getAllByText(copy).length).toBeGreaterThan(0));
 
     await user.click(screen.getAllByRole('button', { name: /Add funds/ })[0]);
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('allowance_used_notice');
   });
 
-  it('a spent allowance on an org with no free grant says so and names no refill', async () => {
+  it('a spent allowance on an org with no free grant says so and names no reset', async () => {
     /* Auth still sends a reset instant to a no-grant org until its gate change
-       ships. Nothing refills there, so the notice must not repeat it. */
+       ships. Nothing resets there, so the notice must not repeat it. */
     const fromGate = inHours(2);
     spies.testProviders.mockResolvedValue(probeFailure('HTTP 429', { code: 'included_allowance_exhausted', resetAt: fromGate }));
     render(<Harness
@@ -163,7 +163,7 @@ describe('SettingsView: probe notice follows the sidecar reason', () => {
     />);
 
     await waitFor(() => expect(screen.getAllByText(`${NO_FREE_GRANT_SENTENCE} Your balance is empty, so add funds to continue.`).length).toBeGreaterThan(0));
-    expect(screen.queryByText(/refill/i)).toBeNull();
+    expect(screen.queryByText(/reset/i)).toBeNull();
   });
 
   it('a spent budget links to Budgets, never asks for funds, and names Air while it has room', async () => {

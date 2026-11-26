@@ -12,7 +12,7 @@
       "noFreeGrant": "Dieses Konto enthält keine kostenlosen Tokens. Jedes Modell wird über Ihr Guthaben abgerechnet.",
       "allowanceStop": {
         "noGrant": "{noGrant} Ihr Guthaben ist aufgebraucht. Laden Sie es auf, um weiterzumachen.",
-        "withTime": "Ihr Gratiskontingent und Ihr Guthaben sind aufgebraucht. Laden Sie Guthaben auf, um weiterzuarbeiten, oder warten Sie, bis das Kontingent um {time} wieder aufgefüllt wird.",
+        "withTime": "Ihr Gratiskontingent und Ihr Guthaben sind aufgebraucht. Laden Sie Guthaben auf, um weiterzuarbeiten, oder warten Sie, bis das Kontingent um {time} zurückgesetzt wird.",
         "noTime": "Ihr Gratiskontingent und Ihr Guthaben sind aufgebraucht. Laden Sie Guthaben auf, um weiterzuarbeiten.",
         "noTimeMobile": "Ihr Gratiskontingent und Ihr Guthaben sind aufgebraucht.",
         "noGrantMobile": "{noGrant} Ihr Guthaben ist aufgebraucht.",
@@ -34,8 +34,8 @@
       "balanceEmpty": {
         "title": "Guthaben aufgebraucht",
         "body": "Laden Sie Guthaben auf, um eine weitere Aufgabe zu starten.",
-        "freeUsedToo": "Auch Ihr Gratiskontingent ist aufgebraucht. Laden Sie Guthaben auf oder warten Sie, bis das Kontingent wieder aufgefüllt wird.",
-        "freeUsedTooWithTime": "Auch Ihr Gratiskontingent ist aufgebraucht. Laden Sie Guthaben auf oder warten Sie, bis das Kontingent um {time} wieder aufgefüllt wird.",
+        "freeUsedToo": "Auch Ihr Gratiskontingent ist aufgebraucht. Laden Sie Guthaben auf oder warten Sie, bis das Kontingent zurückgesetzt wird.",
+        "freeUsedTooWithTime": "Auch Ihr Gratiskontingent ist aufgebraucht. Laden Sie Guthaben auf oder warten Sie, bis das Kontingent um {time} zurückgesetzt wird.",
         "freeUsedTooMobile": "Auch Ihr Gratiskontingent ist aufgebraucht.",
         "freeUsedTooWithTimeMobile": "Auch Ihr Gratiskontingent ist aufgebraucht. Wird um {time} zurückgesetzt.",
         "bodyMobile": "Ihr Guthaben ist aufgebraucht. Kostenpflichtige Modelle sind nicht verfügbar."
@@ -50,14 +50,12 @@
       },
       "freeUsed": {
         "title": "Gratiskontingent aufgebraucht",
-        "body": "Kostenlose Modelle werden jetzt über Ihr Guthaben abgerechnet, bis Ihr Kontingent wieder aufgefüllt wird.",
-        "bodyWithTime": "Kostenlose Modelle werden jetzt über Ihr Guthaben abgerechnet, bis Ihr Kontingent um {time} wieder aufgefüllt wird.",
-        "bodyWithUsd": "Kostenlose Modelle werden jetzt über Ihr Guthaben abgerechnet (noch {usd}), bis Ihr Kontingent wieder aufgefüllt wird.",
-        "bodyWithUsdWithTime": "Kostenlose Modelle werden jetzt über Ihr Guthaben abgerechnet (noch {usd}), bis Ihr Kontingent um {time} wieder aufgefüllt wird."
+        "body": "Kostenlose Modelle werden jetzt über Ihr Guthaben abgerechnet, bis Ihr Kontingent zurückgesetzt wird.",
+        "bodyWithTime": "Kostenlose Modelle werden jetzt über Ihr Guthaben abgerechnet, bis Ihr Kontingent um {time} zurückgesetzt wird."
       },
       "freeLow": {
-        "body": "Danach werden kostenlose Modelle über Ihr Guthaben abgerechnet, bis Ihr Kontingent wieder aufgefüllt wird.",
-        "bodyWithTime": "Danach werden kostenlose Modelle über Ihr Guthaben abgerechnet, bis Ihr Kontingent um {time} wieder aufgefüllt wird.",
+        "body": "Danach werden kostenlose Modelle über Ihr Guthaben abgerechnet, bis Ihr Kontingent zurückgesetzt wird.",
+        "bodyWithTime": "Danach werden kostenlose Modelle über Ihr Guthaben abgerechnet, bis Ihr Kontingent um {time} zurückgesetzt wird.",
         "balanceLowToo": "Auch Ihr Guthaben ist niedrig ({usd})."
       },
       "budgetExceeded": {

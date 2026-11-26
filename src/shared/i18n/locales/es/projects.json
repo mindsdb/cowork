@@ -51,9 +51,7 @@
       "freeUsed": {
         "title": "Cupo gratuito agotado",
         "body": "Los modelos gratuitos ahora usan tu saldo hasta que se renueve tu cupo.",
-        "bodyWithTime": "Los modelos gratuitos ahora usan tu saldo hasta que se renueve tu cupo a las {time}.",
-        "bodyWithUsd": "Los modelos gratuitos ahora usan tu saldo (quedan {usd}) hasta que se renueve tu cupo.",
-        "bodyWithUsdWithTime": "Los modelos gratuitos ahora usan tu saldo (quedan {usd}) hasta que se renueve tu cupo a las {time}."
+        "bodyWithTime": "Los modelos gratuitos ahora usan tu saldo hasta que se renueve tu cupo a las {time}."
       },
       "freeLow": {
         "body": "Después, los modelos gratuitos usarán tu saldo hasta que se renueve tu cupo.",

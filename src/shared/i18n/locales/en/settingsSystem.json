@@ -173,9 +173,9 @@
       "used": "{percent} of your allowance used",
       "left": "{percent} left",
       "meterLabel": "Free allowance used",
-      "usedUpUntil": "Used up. Free models now use your balance until it refills at {time}.",
-      "usedUp": "Used up. Free models now use your balance until it refills.",
-      "afterUntil": "After that, free models use your balance until it refills at {time}.",
+      "usedUpUntil": "Used up. Free models now use your balance until it resets at {time}.",
+      "usedUp": "Used up. Free models now use your balance until it resets.",
+      "afterUntil": "After that, free models use your balance until it resets at {time}.",
       "after": "After that, free models use your balance."
     },
     "autoTopUp": {

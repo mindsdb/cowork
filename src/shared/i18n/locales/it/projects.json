@@ -51,9 +51,7 @@
       "freeUsed": {
         "title": "Quota gratuita esaurita",
         "body": "I modelli gratuiti ora usano il tuo saldo finché la quota non si rinnova.",
-        "bodyWithTime": "I modelli gratuiti ora usano il tuo saldo finché la quota non si rinnova alle {time}.",
-        "bodyWithUsd": "I modelli gratuiti ora usano il tuo saldo (restano {usd}) finché la quota non si rinnova.",
-        "bodyWithUsdWithTime": "I modelli gratuiti ora usano il tuo saldo (restano {usd}) finché la quota non si rinnova alle {time}."
+        "bodyWithTime": "I modelli gratuiti ora usano il tuo saldo finché la quota non si rinnova alle {time}."
       },
       "freeLow": {
         "body": "Dopodiché, i modelli gratuiti useranno il tuo saldo finché la quota non si rinnova.",

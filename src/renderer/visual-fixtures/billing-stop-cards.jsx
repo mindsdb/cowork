@@ -75,7 +75,7 @@ const CASES = [
   },
   {
     id: 'token-limit-free-spent',
-    label: 'Drained wallet and the free allowance is spent too: both resources named, with the refill time.',
+    label: 'Drained wallet and the free allowance is spent too: both resources named, with the reset time.',
     render: () => <BalanceEmptyCard {...COMMON} usage={SPENT} isBillingOwner onSwitchToAir={noop} />,
   },
   {
@@ -90,22 +90,22 @@ const CASES = [
   },
   {
     id: 'allowance-exhausted-gate-time',
-    label: 'Free allowance spent, with the refill time the gate sent on the failure (a desktop turn, or a hosted one on a current cowork-server).',
+    label: 'Free allowance spent, with the reset time the gate sent on the failure (a desktop turn, or a hosted one on a current cowork-server).',
     render: () => <AllowanceExhaustedCard {...COMMON} resetAt={GATE_REFILL} usage={SPENT} isBillingOwner />,
   },
   {
     id: 'allowance-exhausted-hub-time',
-    label: 'Free allowance spent, no time on the failure (a hosted turn from an older cowork-server): the refill time comes from hub usage.',
+    label: 'Free allowance spent, no time on the failure (a hosted turn from an older cowork-server): the reset time comes from hub usage.',
     render: () => <AllowanceExhaustedCard {...COMMON} resetAt={null} usage={SPENT} isBillingOwner />,
   },
   {
     id: 'allowance-exhausted-no-time',
-    label: 'Free allowance spent with no usable time anywhere (none on the failure, hub usage dark): funds only, and no refill promised.',
+    label: 'Free allowance spent with no usable time anywhere (none on the failure, hub usage dark): funds only, and no reset promised.',
     render: () => <AllowanceExhaustedCard {...COMMON} resetAt={null} usage={DARK} isBillingOwner />,
   },
   {
     id: 'allowance-exhausted-no-grant',
-    label: 'The same stop on an org with no free grant: the no-grant sentence, and no refill time even though the gate sent one.',
+    label: 'The same stop on an org with no free grant: the no-grant sentence, and no reset time even though the gate sent one.',
     render: () => <AllowanceExhaustedCard {...COMMON} resetAt={GATE_REFILL} usage={NO_GRANT} isBillingOwner />,
   },
   {

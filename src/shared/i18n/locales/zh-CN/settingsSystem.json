@@ -173,9 +173,9 @@
       "used": "已使用 {percent} 的额度",
       "left": "剩余 {percent}",
       "meterLabel": "免费额度已用量",
-      "usedUpUntil": "已用完。在 {time} 额度恢复前，免费模型将使用你的余额。",
-      "usedUp": "已用完。在额度恢复前，免费模型将使用你的余额。",
-      "afterUntil": "用完后，在 {time} 额度恢复前，免费模型将使用你的余额。",
+      "usedUpUntil": "已用完。在 {time} 额度重置前，免费模型将使用你的余额。",
+      "usedUp": "已用完。在额度重置前，免费模型将使用你的余额。",
+      "afterUntil": "用完后，在 {time} 额度重置前，免费模型将使用你的余额。",
       "after": "用完后，免费模型将使用你的余额。"
     },
     "autoTopUp": {

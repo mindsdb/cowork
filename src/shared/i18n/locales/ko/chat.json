@@ -131,7 +131,7 @@
     },
     "usageAlert": {
       "freeLow": "무료 제공량 {percent} 남음",
-      "freeLowRefills": "무료 제공량 {percent} 남음 · {time}에 충전",
+      "freeLowRefills": "무료 제공량 {percent} 남음 · {time}에 초기화",
       "freeUsed": "무료 제공량 모두 사용 · 이제 잔액에서 차감됨",
       "freeUsedUntil": "무료 제공량 모두 사용 · {time}까지 잔액에서 차감됨",
       "windowLow": "{window, select, 7d {주간} other {5시간}} 제공량의 {percent} 사용함",

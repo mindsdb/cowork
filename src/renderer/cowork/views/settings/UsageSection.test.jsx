@@ -61,6 +61,7 @@ describe('UsageSection', () => {
     expect(screen.getByText(/87% left/)).toBeInTheDocument();
     // A clock time; the period spend below it stays a date range.
     expect(screen.getByText(/Resets at Sep 1[12], 12:00 PM/)).toBeInTheDocument();
+    expect(screen.getByText(/^After that, free models use your balance until it resets at Sep 1[12], 12:00 PM\.$/)).toBeInTheDocument();
     expect(screen.getByText('$99.63')).toBeInTheDocument();
     expect(screen.getByText('$0.37')).toBeInTheDocument();
     expect(screen.getByText(/credit spent Aug 1 to Sep 1/)).toBeInTheDocument();
@@ -92,6 +93,20 @@ describe('UsageSection', () => {
     expect(screen.getByText('99.6%')).toBeInTheDocument();
     expect(screen.getByText(/0\.4% left/)).toBeInTheDocument();
     expect(screen.queryByText('100%')).toBeNull();
+  });
+
+  it('says a spent allowance resets, at the time auth gave or with no time', () => {
+    /* At the time auth gives (refresh_at in auth's plan_windows.py) only the
+       oldest spend ages out, so the copy says the allowance resets then and
+       never that it refills. */
+    const { unmount } = renderWith(usage({
+      freeTokens: { percentRemaining: 0, limit: 100, used: 100, remaining: 0, resetsAt: RESET },
+    }));
+    expect(screen.getByText(/^Used up\. Free models now use your balance until it resets at Sep 1[12], 12:00 PM\.$/)).toBeInTheDocument();
+    unmount();
+
+    renderWith(usage({ freeTokens: { percentRemaining: 0, limit: 100, used: 100, remaining: 0, resetsAt: null } }));
+    expect(screen.getByText('Used up. Free models now use your balance until it resets.')).toBeInTheDocument();
   });
 
   it('is quiet while the first read is in flight, not an error', () => {

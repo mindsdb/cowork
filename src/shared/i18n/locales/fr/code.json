@@ -1442,7 +1442,7 @@
     },
     "allowanceExhausted": {
       "title": "Votre quota inclus est épuisé",
-      "body": "Ajoutez des crédits pour continuer maintenant, ou attendez que le quota soit renouvelé, puis continuez dans cette tâche."
+      "body": "Ajoutez des crédits pour continuer maintenant, ou attendez la réinitialisation du quota, puis continuez dans cette tâche."
     },
     "freeAirPaused": {
       "title": "Les modèles gratuits sont en pause",
