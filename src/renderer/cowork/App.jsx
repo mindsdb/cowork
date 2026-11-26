@@ -2255,17 +2255,22 @@ function AppCore() {
       .then((rows) => setCustomConnectors(toCustomConnectionRows(rows)))
       .catch(() => setCustomConnectors([]));
   }, [orgMode]);
+  const refreshConnectors = useCallback(() => fetchDatasources()
+    .then((data) => setConnectors(Array.isArray(data?.connections) ? data.connections : []))
+    .catch(() => {}), []);
   // Connecting or removing a database happens in two other places — the
   // connect form's panel and the connections page — and both already announce
   // it with this event, which is also what the project Context card listens
   // to. Without this the composer's toggles would keep the boot-time list for
   // the rest of the session: a connection made now would never appear, and a
-  // removed one would never leave.
+  // removed one would never leave. A custom MCP server that a sign-in saved
+  // after its form stopped waiting is announced the same way, and lives in
+  // the connections list.
   useEffect(() => {
-    const onChanged = () => { refreshDatasourceConnectors(); refreshCustomConnectors(); };
+    const onChanged = () => { refreshConnectors(); refreshDatasourceConnectors(); refreshCustomConnectors(); };
     window.addEventListener('anton:connections-changed', onChanged);
     return () => window.removeEventListener('anton:connections-changed', onChanged);
-  }, [refreshDatasourceConnectors, refreshCustomConnectors]);
+  }, [refreshConnectors, refreshDatasourceConnectors, refreshCustomConnectors]);
   // That one refresh lands while a fresh connection can still be pending, and
   // the composer offers verified connections only, so without this a database
   // that passes its check a moment later stays absent until a reload.
