@@ -76,7 +76,12 @@
       "deletedBadge": "Gelöscht",
       "share": "Teilen",
       "shareTooltip": "Festlegen, wer es öffnen kann",
-      "updatedBelow": "{title} · unten aktualisiert"
+      "updatedBelow": "{title} · unten aktualisiert",
+      "goToLatestTooltip": "Zur neuesten Version scrollen",
+      "showThisVersion": "Diese Version",
+      "hideThisVersion": "Ausblenden",
+      "openLink": "Link öffnen",
+      "openLinkTooltip": "Den Link des Artefakts in einem neuen Tab öffnen"
     },
     "kinds": {
       "provider": "Anbieter",
