@@ -134,7 +134,7 @@ describe('useNotices', () => {
   it('notifies once for a notice that arrives while the app is open, and opens it on click', async () => {
     const api = fakeApi();
     const onOpen = vi.fn();
-    renderHook(() => useNotices({ api, onOpen }));
+    const { result } = renderHook(() => useNotices({ api, onOpen }));
     await flush();
     const fresh = notice({ createdAt: new Date(NOW + 30_000).toISOString() });
     vi.setSystemTime(NOW + 60_000);
@@ -144,8 +144,12 @@ describe('useNotices', () => {
     expect(shown).toHaveLength(1);
     expect(shown[0].title).toBe('Scheduled task failed');
     expect(shown[0].options.body).toContain('Weekly digest');
-    shown[0].onclick();
+    expect(result.current.unreadCount).toBe(1);
+    act(() => shown[0].onclick());
     expect(onOpen).toHaveBeenCalledWith(fresh);
+    // Opened from its notification, it is read: the bell stops counting it.
+    expect(api.markNoticeRead).toHaveBeenCalledWith('n1');
+    expect(result.current.unreadCount).toBe(0);
     // Still unread on the next polls: not announced again.
     api.list = [fresh, notice({ id: 'n0', createdAt: ago(10 * 60_000) })];
     await act(async () => { vi.advanceTimersByTime(NOTICE_POLL_MS); });
@@ -203,8 +207,9 @@ describe('useNotices', () => {
     expect(shownToast).toMatchObject({
       id: 'notice-n1', type: 'success', title: 'Scheduled task “Weekly digest” finished a run.',
     });
-    shownToast.actionProps.onClick();
+    act(() => shownToast.actionProps.onClick());
     expect(onOpen).toHaveBeenCalledWith(fresh);
+    expect(api.markNoticeRead).toHaveBeenCalledWith('n1');
     expect(closeToast).toHaveBeenCalledWith('notice-n1');
     expect(shown).toHaveLength(0);
   });

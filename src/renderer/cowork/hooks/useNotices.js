@@ -46,7 +46,8 @@ const DEFAULT_API = { fetchNotices, markNoticeRead, markAllNoticesRead };
 //   server without notices (404), which hides the bell. Such a server is
 //   still asked on each poll, quietly, so the bell appears after it updates.
 // - A fresh notice raises a desktop or browser notification where the user
-//   allows one, and a toast otherwise; each opens its target on click.
+//   allows one, and a toast otherwise; each opens its target on click and
+//   marks the notice read, as picking it in the bell does.
 //   Which run endings post a notice is the account's choice, applied by the
 //   server.
 // - A task the server auto-paused gets its own notification
@@ -102,7 +103,7 @@ export function useNotices({
           actionProps: {
             children: msg('openAction'),
             onClick: () => {
-              open(notice);
+              refs.current.openNotice(notice);
               refs.current.closeToast?.(id);
             },
           },
@@ -113,11 +114,11 @@ export function useNotices({
       const shown = new Notification(text.title, { body: text.body, tag: `notice-${notice.id}` });
       shown.onclick = () => {
         window.focus();
-        open(notice);
+        refs.current.openNotice(notice);
         shown.close();
       };
     }
-  }, [open]);
+  }, []);
 
   const loadList = useCallback(async () => {
     setListStatus((s) => (s === 'ready' ? s : 'loading'));
@@ -186,8 +187,9 @@ export function useNotices({
     };
   }, [poll]);
 
-  // Opens a notice from the list and marks it read. The list and count change
-  // at once; a failed write is corrected by the next read.
+  // Opens a notice, from the list or from its notification or toast, and
+  // marks it read. The list and count change at once; a failed write is
+  // corrected by the next read.
   const openNotice = useCallback((notice) => {
     if (!notice) return;
     if (!notice.readAt) {
@@ -198,6 +200,7 @@ export function useNotices({
     }
     open(notice);
   }, [open]);
+  refs.current.openNotice = openNotice;
 
   const markAllRead = useCallback(() => {
     const readAt = new Date().toISOString();
