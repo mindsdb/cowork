@@ -69,7 +69,7 @@ describe('PublishMenu analytics', () => {
   it('opens with the viewer when asked, and records that open once, from where it was asked', () => {
     render(<PublishMenu openRequest={{}} controller={makeController({ entry: 'chat_card' })} />);
 
-    expect(screen.getByText('Share to the Web')).toBeInTheDocument();
+    expect(screen.getByTestId('publish-menu-body')).toBeInTheDocument();
     expect(report.reportShareOpened).toHaveBeenCalledTimes(1);
     expect(report.reportShareOpened).toHaveBeenCalledWith(ARTIFACT, { entry: 'chat_card', isShared: false });
   });
@@ -77,7 +77,7 @@ describe('PublishMenu analytics', () => {
   it('records the open once under StrictMode, which mounts the menu twice in development', () => {
     render(<StrictMode><PublishMenu openRequest={{}} controller={makeController({ entry: 'chat_card' })} /></StrictMode>);
 
-    expect(screen.getByText('Share to the Web')).toBeInTheDocument();
+    expect(screen.getByTestId('publish-menu-body')).toBeInTheDocument();
     expect(report.reportShareOpened).toHaveBeenCalledTimes(1);
   });
 
@@ -87,21 +87,21 @@ describe('PublishMenu analytics', () => {
     first.unmount();
     render(<PublishMenu openRequest={request} controller={makeController({ entry: 'chat_card' })} />);
 
-    expect(screen.queryByText('Share to the Web')).toBeNull();
+    expect(screen.queryByTestId('publish-menu-body')).toBeNull();
     expect(report.reportShareOpened).toHaveBeenCalledTimes(1);
   });
 
   it('stays closed and records nothing until clicked when not asked to open', () => {
     render(<PublishMenu controller={makeController({ entry: 'chat_card' })} />);
 
-    expect(screen.queryByText('Share to the Web')).toBeNull();
+    expect(screen.queryByTestId('publish-menu-body')).toBeNull();
     expect(report.reportShareOpened).not.toHaveBeenCalled();
   });
 
   it('does not open a disabled panel, and records nothing', () => {
     render(<PublishMenu openRequest={{}} disabled controller={makeController({ entry: 'chat_card' })} />);
 
-    expect(screen.queryByText('Share to the Web')).toBeNull();
+    expect(screen.queryByTestId('publish-menu-body')).toBeNull();
     expect(report.reportShareOpened).not.toHaveBeenCalled();
   });
 

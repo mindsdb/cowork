@@ -260,7 +260,13 @@ export function fetchMindsHubPeopleByEmails(emails: string[]): Promise<MindsHubP
 export function publishArtifact(
   path: string,
   access?: import('./lib/sharingContract').ArtifactAccessPayload | null,
+  options?: { approvedDatasources?: { engine: string; name: string }[] },
 ): Promise<Record<string, unknown>>;
+export function updateArtifact(
+  path: string,
+  options?: { approvedDatasources?: { engine: string; name: string }[] },
+): Promise<Record<string, unknown>>;
+export function fetchPendingDatasources(path: string): Promise<{ engine: string; name: string; label: string }[]>;
 
 /** Mobile app push (ENG-4023): register this device's APNs/FCM token. Rejects with `status` on a refusal. */
 export function registerPushDevice(body: {

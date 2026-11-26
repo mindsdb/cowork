@@ -15,8 +15,10 @@ import {
   artifactDeletedNow,
   deleteArtifactAndSync,
   noteArtifactCreated,
+  noteArtifactRenamed,
   noteArtifactsFromSteps,
   onArtifactDeleted,
+  onArtifactRenamed,
   revalidate,
   scopeKeyOf,
   setArtifactsScope,
@@ -328,6 +330,24 @@ describe('live cards', () => {
 });
 
 // The chat's quick-edit pill names an artifact by its slug (ENG-4227).
+describe('noteArtifactRenamed', () => {
+  it('retitles the loaded card and tells every listener, even after one throws', async () => {
+    vi.mocked(fetchArtifactsStrict).mockResolvedValue([serverCard({ title: 'Clock' })]);
+    await revalidate();
+    const after = vi.fn();
+    onArtifactRenamed(() => { throw new Error('boom'); });
+    const stop = onArtifactRenamed(after);
+
+    noteArtifactRenamed('7db94eb8', 'World clock');
+
+    expect(artifactCardBySlug('clock-7db94eb8')).toMatchObject({ title: 'World clock' });
+    expect(after).toHaveBeenCalledWith({ id: '7db94eb8', title: 'World clock' });
+    stop();
+    noteArtifactRenamed('7db94eb8', 'Clock');
+    expect(after).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('artifactCardBySlug', () => {
   beforeEach(() => {
     __resetForTests();

@@ -73,9 +73,7 @@ describe('UsageBar on a plan inside the mobile app', () => {
 
   it.each([
     ['a used-up window, empty wallet', plus(100), 'window_exhausted', /5-hour allowance used up.*Tasks on your plan are paused until/],
-    ['a used-up window, funded wallet', plus(100, WALLET), 'window_on_wallet', /5-hour allowance used up.*Resets at/],
-    ['a window past 80%, funded wallet', plus(85, WALLET), 'window_low', /85% of your 5-hour allowance used.*Resets at/],
-    ['a window past 80%, empty wallet', plus(85), 'window_low', /85% of your 5-hour allowance used.*After that, tasks pause until/],
+    ['a window past 90%, empty wallet', plus(92), 'window_low', /92% of your 5-hour allowance used.*After that, tasks pause until/],
   ])('%s says how full the window is, with no wallet and no buttons', (_name, usage, kind, text) => {
     hostMock.host.isMobileShell = true;
     try {
@@ -92,10 +90,15 @@ describe('UsageBar on a plan inside the mobile app', () => {
     }
   });
 
-  it('says nothing for a plan with room, or for a pick outside the plan', () => {
+  it('says nothing for a plan with room, a wallet that carries on, or a pick outside the plan', () => {
     hostMock.host.isMobileShell = true;
     try {
       expect(deriveComposerWarning(plus(30), { model: null })).toBeNull();
+      // Short of 90%, or a funded wallet behind the plan: the task is not
+      // about to stop, so there is nothing to say (ENG-4719).
+      expect(deriveComposerWarning(plus(85), { model: null })).toBeNull();
+      expect(deriveComposerWarning(plus(100, WALLET), { model: null })).toBeNull();
+      expect(deriveComposerWarning(plus(92, WALLET), { model: null })).toBeNull();
       expect(deriveComposerWarning(plus(100), { model: 'claude-opus-5-5', coveredByTier: 'pro' })).toBeNull();
     } finally {
       hostMock.host.isMobileShell = false;
@@ -111,12 +114,12 @@ describe('UsageBar on a plan inside the mobile app', () => {
     }
   });
 
-  it('on a Free plan, warns that the free tokens run low, with no actions', () => {
+  it('on a Free plan, warns once the free tokens are nearly gone, with no actions', () => {
     hostMock.host.isMobileShell = true;
     try {
       const free = {
         ...read,
-        freeTokens: { limit: 100, used: 88, remaining: 12, resetsAt: IN_2H },
+        freeTokens: { limit: 100, used: 92, remaining: 8, resetsAt: IN_2H },
         plan: { ...read.plan, tier: 'free', windows: [] },
       };
       const warning = deriveComposerWarning(free, { model: null });

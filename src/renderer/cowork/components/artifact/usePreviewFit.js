@@ -22,8 +22,24 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 export const MIN_FIT_SCALE = 0.35;
 const MAX_HEIGHT = 100000;
 
-function size(value) {
+/** A reported height, or null when it is not a sane positive number. */
+export function previewSize(value) {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= MAX_HEIGHT ? value : null;
+}
+const size = previewSize;
+
+/**
+ * The shim's report carried by a `message` event, or null when the event is
+ * not one or did not come from the frame in `frame` (no frame means no sender
+ * to trust). Shared by every listener on the preview's `anton-preview`
+ * channel that reads a single frame: this hook and the inline chat preview.
+ */
+export function previewReportFrom(event, frame) {
+  const data = event?.data;
+  if (!data || typeof data !== 'object' || data.source !== 'anton-preview') return null;
+  const win = frame && frame.contentWindow;
+  if (!win || event.source !== win) return null;
+  return data;
 }
 
 /**
@@ -45,11 +61,8 @@ export function usePreviewFit(iframeRef, { enabled = true, resetKey = '' } = {})
   useEffect(() => {
     if (!enabled) return undefined;
     const onMessage = (event) => {
-      const data = event.data;
-      if (!data || typeof data !== 'object' || data.source !== 'anton-preview') return;
-      const frame = iframeRef.current;
-      const win = frame && frame.contentWindow;
-      if (!win || event.source !== win) return;
+      const data = previewReportFrom(event, iframeRef.current);
+      if (!data) return;
       if (data.type === 'document-start') {
         reset();
         return;

@@ -55,6 +55,12 @@ import Sidebar from './Sidebar';
 const baseProps = { tasks: [], onNavigate: () => {}, showWorkspaceSwitch: true };
 
 describe('Sidebar — web build without the platform UI', () => {
+  it('shows no Code entry, since there is no desktop app to offer', () => {
+    render(<Sidebar {...baseProps} showWorkspaceSwitch={false} />);
+    expect(screen.queryByRole('button', { name: /^Code/ })).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
   it('shows no other-app note under an empty task list', () => {
     render(<Sidebar {...baseProps} tasksStatus="ready" />);
     expect(screen.getByText('No tasks yet')).toBeInTheDocument();

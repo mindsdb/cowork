@@ -65,8 +65,9 @@ vi.mock('../hooks/useOrgSharing', async (importOriginal) => ({
 import ArtifactsView from './ArtifactsView';
 import { setOrgMode } from '../../lib/orgMode';
 
-// With sharing in the org, the Artifacts page groups owner first: Yours, My
-// teams, Everyone at the org (the caller's own), then Shared with me (ENG-4455).
+// With sharing in the org, the Artifacts page groups by whose an artifact is,
+// and only that (ENG-4647): Yours, then Shared by others. Who each reaches is
+// its badge and the Access filter.
 const art = (id, title, extra = {}) => ({
   id, path: `/proj/.anton/artifacts/${id}/index.html`, title, type: 'html-app', mtime: 2000,
   draftUrl: `/api/v1/artifacts/drafts/project/${id}/index.html`, publishedUrl: '',
@@ -85,14 +86,14 @@ afterEach(() => { localStorage.clear(); setOrgMode(false); });
 describe.each(['grid', 'list'])('ArtifactsView sections (%s)', (view) => {
   beforeEach(() => { localStorage.setItem('anton:artifacts-view', view); });
 
-  it('groups the caller\'s own first and what others shared last', () => {
+  it('puts every artifact in one of two groups: the caller\'s own, then what others shared', () => {
     render(<ArtifactsView artifacts={ARTIFACTS} />);
-    const sections = screen.getAllByRole('region', { name: /Yours|Shared with me|My teams|Everyone at Acme/ });
-    expect(sections.map((s) => s.getAttribute('aria-label'))).toEqual(['Yours', 'My teams', 'Everyone at Acme', 'Shared with me']);
-    expect(sections[0]).toHaveTextContent('Sales deck');
-    expect(sections[1]).toHaveTextContent('Team board');
-    expect(sections[2]).toHaveTextContent('Company page');
-    expect(sections[3]).toHaveTextContent('Their report');
+    const sections = screen.getAllByRole('region', { name: /Yours|Shared by others|Shared with me|My teams|Everyone at Acme/ });
+    expect(sections.map((s) => s.getAttribute('aria-label'))).toEqual(['Yours', 'Shared by others']);
+    // The caller's own, at every access level, are all under Yours.
+    for (const title of ['Sales deck', 'Team board', 'Company page']) expect(sections[0]).toHaveTextContent(title);
+    expect(sections[0]).not.toHaveTextContent('Their report');
+    expect(sections[1]).toHaveTextContent('Their report');
   });
 
   it('keeps one ungrouped list where the org does not share', () => {

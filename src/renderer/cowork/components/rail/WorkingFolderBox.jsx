@@ -18,6 +18,7 @@ export function WorkingFolderBox({
   defaultOpen = true,
   conversationId = null,
   onAddressWithAgent,
+  onOpenDoc,
 }) {
   const { t } = useTranslation('shell');
   const liveApps = useLiveApps();
@@ -39,6 +40,7 @@ export function WorkingFolderBox({
           isStreaming={isStreaming}
           conversationId={conversationId}
           onAddressWithAgent={onAddressWithAgent}
+          onOpenDoc={onOpenDoc}
           onProjectResolved={setResolvedProjectId}
           receivedCopy={receivedCopy}
           onReceivedCopyShown={() => setReceivedCopy(null)}

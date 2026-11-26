@@ -47,6 +47,7 @@ export declare const MAX_EMAILS_PER_LOOKUP: 50;
 export declare const INVALID_EMAIL_CODE: 'invalid_email';
 export declare const INVALID_ID_CODE: 'invalid_id';
 export declare const SHARE_ORG_REQUIRED_CODE: 'share_org_required';
+export declare const PUBLISH_SHELL_TOO_OLD_CODE: 'publish_shell_too_old';
 
 /** One of `GET /hub/people/`'s two lookups. */
 export interface PeopleLookup {

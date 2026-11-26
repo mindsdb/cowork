@@ -1,0 +1,314 @@
+{
+  "doc": "Documento",
+  "pane": {
+    "status": {
+      "agentWriting": "O agente está escrevendo",
+      "notSaved": "Ainda não salvo",
+      "saving": "Salvando…"
+    },
+    "showTabs": "Mostrar guias",
+    "showTabsChanged": "Mostrar guias (uma guia mudou)",
+    "openSharedPage": "Abrir a página compartilhada",
+    "openInBrowser": "Abrir no navegador",
+    "shareToOpen": "Compartilhe para abrir em um navegador",
+    "showChat": "Mostrar o chat",
+    "expand": "Expandir",
+    "close": "Fechar",
+    "closeDoc": "Fechar documento",
+    "renameDoc": "Renomear documento: {title}",
+    "docName": "Nome do documento",
+    "loading": "Carregando documento",
+    "gone": "Este documento não existe mais.",
+    "openFailed": "Não foi possível abrir este documento. {reason}",
+    "offline": "Não foi possível acessar o servidor local do Cowork. Suas edições ficam guardadas aqui e serão salvas assim que ele voltar.",
+    "dismiss": "Dispensar",
+    "undo": "Desfazer"
+  },
+  "export": {
+    "label": "Exportar",
+    "downloadAs": "Baixar como",
+    "format": {
+      "docx": "Word (.docx)",
+      "pdf": "PDF",
+      "md": "Markdown",
+      "html": "Página HTML"
+    },
+    "copyMarkdown": "Copiar como Markdown",
+    "exporting": "Exportando {name}…",
+    "failed": "Falha ao exportar",
+    "failedStatus": "Falha ao exportar ({status})",
+    "copied": "Copiado como Markdown",
+    "copyFailed": "Falha ao copiar",
+    "copyDocFailed": "Não foi possível copiar o documento"
+  },
+  "notice": {
+    "deletedTab": "Guia “{title}” excluída",
+    "deletedColumn": "Coluna “{name}” excluída",
+    "deletedRows": "{count, plural, one {Linha excluída} other {# linhas excluídas}}",
+    "deletedBlocks": "{count, plural, one {Bloco excluído} other {# blocos excluídos}}",
+    "cantUndo": "Não é possível desfazer: isso mudou desde então.",
+    "cantRedo": "Não é possível refazer: o documento mudou desde então.",
+    "editTooBig": "Essa edição era grande demais para ser salva. O documento mostra o que está salvo.",
+    "editFailed": "Não foi possível salvar essa edição. O documento mostra o que está salvo.",
+    "imageFailed": "Não foi possível adicionar essa imagem",
+    "imageFailedStatus": "Não foi possível adicionar essa imagem ({status})",
+    "imageTooLarge": "Essa imagem é grande demais para um documento (no máximo 10 MB).",
+    "openPageFailed": "Não foi possível abrir a página",
+    "openInBrowserFailed": "Não foi possível abrir este documento em um navegador",
+    "requestFailed": "Falha na solicitação do documento ({status})",
+    "timeout": "O servidor demorou demais para responder."
+  },
+  "card": {
+    "open": "Abrir documento: {title}",
+    "deleted": "Documento excluído: {title}",
+    "kindDeleted": "Documento · excluído",
+    "kindOpen": "Documento · aberto ao lado do chat",
+    "showing": "Aberto",
+    "openButton": "Abrir"
+  },
+  "chip": {
+    "me": "Você"
+  },
+  "column": {
+    "resize": "Redimensionar o documento"
+  },
+  "page": {
+    "untitled": "Sem título",
+    "title": "Título",
+    "edited": "Editado {age}",
+    "new": "Novo documento",
+    "byAgent": "Escrito com o agente"
+  },
+  "tabs": {
+    "label": "Guias",
+    "add": "Adicionar guia",
+    "addHint": "Adicionar uma nova guia a este documento",
+    "hide": "Ocultar guias",
+    "changed": "Alterada",
+    "showChanged": "Mostrar a guia alterada",
+    "name": "Nome da guia",
+    "menu": "Guia {title}",
+    "options": "Opções de {title}",
+    "rename": "Renomear",
+    "moveUp": "Mover para cima",
+    "moveDown": "Mover para baixo",
+    "delete": "Excluir guia"
+  },
+  "block": {
+    "kind": {
+      "paragraph": "Parágrafo",
+      "heading": "Título {level}",
+      "listItem": "Item de lista",
+      "task": "Afazer",
+      "quote": "Citação",
+      "callout": "Destaque",
+      "table": "Tabela",
+      "chart": "Gráfico",
+      "metrics": "Métricas",
+      "code": "Código",
+      "image": "Imagem",
+      "divider": "Divisor",
+      "pending": "Seção a escrever",
+      "other": "Bloco"
+    },
+    "empty": {
+      "paragraph": "Parágrafo vazio",
+      "heading": "Título {level} vazio",
+      "listItem": "Item de lista vazio",
+      "task": "Afazer vazio",
+      "quote": "Citação vazia",
+      "callout": "Destaque vazio"
+    },
+    "named": "{kind} “{words}”",
+    "addBelow": "Adicionar um bloco abaixo de {block}",
+    "options": "Opções de {block}",
+    "optionsMenu": "Opções do bloco",
+    "startWriting": "Comece a escrever ou digite / para ver os blocos",
+    "typeSlash": "Digite / para ver os blocos",
+    "markDone": "Marcar como concluído",
+    "markNotDone": "Marcar como não concluído"
+  },
+  "menu": {
+    "turnInto": "Transformar em",
+    "calloutColor": "Cor do destaque",
+    "editWithAgent": "Editar com o agente…",
+    "duplicate": "Duplicar",
+    "moveUp": "Mover para cima",
+    "moveDown": "Mover para baixo",
+    "delete": "Excluir"
+  },
+  "insert": {
+    "label": "Inserir um bloco",
+    "noMatch": "Nenhum bloco corresponde a “{query}”",
+    "group": {
+      "basic": "Básicos",
+      "data": "Dados",
+      "other": "Outros",
+      "agent": "Agente"
+    },
+    "item": {
+      "paragraph": "Texto",
+      "heading1": "Título 1",
+      "heading2": "Título 2",
+      "heading3": "Título 3",
+      "bullet": "Lista com marcadores",
+      "numbered": "Lista numerada",
+      "task": "Lista de afazeres",
+      "quote": "Citação",
+      "callout": "Destaque",
+      "table": "Tabela",
+      "chart": "Gráfico",
+      "metrics": "Métricas",
+      "code": "Código",
+      "divider": "Divisor",
+      "image": "Imagem",
+      "ask": "Pedir ao agente para escrever…"
+    }
+  },
+  "tone": {
+    "info": "Informação",
+    "success": "Sucesso",
+    "warning": "Aviso",
+    "danger": "Perigo",
+    "note": "Nota"
+  },
+  "format": {
+    "label": "Formatação",
+    "bold": "Negrito",
+    "italic": "Itálico",
+    "strike": "Tachado",
+    "code": "Código",
+    "link": "Link",
+    "addLink": "Adicionar link",
+    "linkAddress": "Endereço do link",
+    "linkPlaceholder": "Cole um link e pressione Enter"
+  },
+  "ask": {
+    "label": "Editar com o agente",
+    "request": "Pedido para o agente",
+    "placeholderWrite": "O que o agente deve escrever aqui?",
+    "placeholderChange": "O que deve mudar?",
+    "send": "Enviar"
+  },
+  "comments": {
+    "edit": "Editar",
+    "editHint": "Digitar no documento",
+    "commentHint": "Comentar — clique em um bloco ou selecione palavras"
+  },
+  "chart": {
+    "label": "Gráfico",
+    "title": "Título do gráfico",
+    "kind": {
+      "bar": "Colunas",
+      "hbar": "Barras",
+      "stacked": "Empilhadas",
+      "line": "Linha",
+      "area": "Área",
+      "donut": "Rosca"
+    },
+    "inUnit": "Em {unit}",
+    "followsTable": "Atualiza com a tabela",
+    "showTable": "Mostrar a tabela",
+    "makeTable": "Transformar os dados em uma tabela",
+    "tableGone": "A tabela deste gráfico não está mais nesta guia.",
+    "noColumn": "A tabela não tem a coluna “{column}”.",
+    "noNumbers": "Ainda não há números para desenhar.",
+    "drawFrom": "Desenhar a partir de uma tabela",
+    "useTable": "Usar uma tabela…",
+    "tableOption": "Tabela {number}: {columns}",
+    "total": "Total",
+    "totalUnit": "Total ({unit})"
+  },
+  "table": {
+    "kind": {
+      "text": "Texto",
+      "number": "Número",
+      "status": "Status",
+      "date": "Data"
+    },
+    "type": "Tipo",
+    "sortAsc": "Classificar em ordem crescente",
+    "sortDesc": "Classificar em ordem decrescente",
+    "insertLeft": "Inserir coluna à esquerda",
+    "insertRight": "Inserir coluna à direita",
+    "deleteColumn": "Excluir coluna",
+    "columnName": "Nome da coluna",
+    "columnMenu": "Coluna {column}",
+    "columnOptions": "Opções da coluna {column}",
+    "addColumn": "Adicionar coluna",
+    "rowOptions": "Opções da linha",
+    "rowOptionsFor": "Opções da linha {number}",
+    "insertAbove": "Inserir linha acima",
+    "insertBelow": "Inserir linha abaixo",
+    "deleteRow": "Excluir linha",
+    "newRow": "Nova linha",
+    "other": "Outro…",
+    "clear": "Limpar",
+    "setValue": "Definir {column}",
+    "newValue": "Novo valor de {column}",
+    "cellValue": "{column}: {value}",
+    "cellEmpty": "{column}: vazio",
+    "dateValue": "Data: {value}",
+    "dateEmpty": "Data: vazia",
+    "cell": "{column}, linha {number}"
+  },
+  "metrics": {
+    "label": "Rótulo",
+    "change": "Variação"
+  },
+  "code": {
+    "label": "Código",
+    "language": "Linguagem do código",
+    "plainText": "texto simples",
+    "copy": "Copiar código",
+    "copied": "Copiado"
+  },
+  "image": {
+    "label": "Imagem",
+    "caption": "Adicionar uma legenda"
+  },
+  "pending": {
+    "writing": "Escrevendo:",
+    "toWrite": "A escrever:"
+  },
+  "versions": {
+    "title": "Histórico de versões",
+    "saved": "Salvo automaticamente",
+    "loading": "Carregando versões…",
+    "loadFailed": "Não foi possível carregar as versões. Tente novamente em instantes.",
+    "current": "Versão atual",
+    "none": "As versões anteriores aparecem aqui à medida que o documento muda.",
+    "hint": "Escolha uma versão para vê-la antes de restaurar.",
+    "viewing": "Visualizando {when}",
+    "changedSince": "Alterado desde esta versão",
+    "older": "Versão anterior",
+    "newer": "Versão mais recente",
+    "back": "Voltar para a atual",
+    "restoreThis": "Restaurar esta versão",
+    "confirmTitle": "Restaurar esta versão?",
+    "confirmLead": "O documento volta a ficar como estava {when}.",
+    "agentWriting": "O agente ainda está escrevendo. O que ele escrever em seguida vai para a versão que você restaurar.",
+    "nothingLost": "Nada se perde. A versão atual fica no histórico de versões, então você pode voltar para ela.",
+    "sharedUpdates": "A página compartilhada também é atualizada.",
+    "cancel": "Cancelar",
+    "restore": "Restaurar",
+    "restoring": "Restaurando…",
+    "restoredFrom": "Versão restaurada: {when}",
+    "undo": "Desfazer",
+    "openFailed": "Não foi possível abrir essa versão",
+    "restoreFailed": "Não foi possível restaurar essa versão",
+    "undoFailed": "Não foi possível desfazer a restauração",
+    "earlier": "Alterações anteriores",
+    "who": {
+      "agent": "Agente",
+      "user": "Você"
+    },
+    "today": "Hoje",
+    "yesterday": "Ontem",
+    "whenTitle": "{day}, {time}",
+    "whenPhrase": "{day, select, today {hoje às {time}} yesterday {ontem às {time}} other {{date} às {time}}}",
+    "justNow": "agora mesmo",
+    "minutesAgo": "{count, plural, other {há # min}}",
+    "hoursAgo": "{count, plural, other {há # h}}"
+  }
+}

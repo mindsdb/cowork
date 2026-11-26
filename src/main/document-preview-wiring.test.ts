@@ -117,10 +117,21 @@ describe('the main window wiring in app.ts', () => {
     }
   });
 
-  it('registers serverTokenListener with the guard and the per-request port and token getters', () => {
-    for (const dep of ['serverTokenListener({', 'guard: previewGuard,', 'serverPort: getServerPort,', 'token: getServerAuthToken,', 'viteDevPort,']) {
+  it('registers serverTokenListener with the guard and the per-request port, token and proof getters', () => {
+    for (const dep of ['serverTokenListener({', 'guard: previewGuard,', 'serverPort: getServerPort,', 'token: getServerAuthToken,', 'windowProof: getWindowProof,', 'viteDevPort,']) {
       expect(listener).toContain(dep);
     }
+  });
+
+  it("gives the listener this window's contents as the main window, and nothing once it is destroyed", () => {
+    const captured = createWindow.indexOf('const proofWindow = mainWindow;');
+    expect(captured).toBeGreaterThan(-1);
+    expect(captured).toBeLessThan(listenerStart);
+    expect(listener).toContain('mainWindow: () => (proofWindow.isDestroyed() ? null : proofWindow.webContents),');
+  });
+
+  it("holds the server's requests while a start is pending, before the Minds gate sees them", () => {
+    expect(listener).toMatch(/gate: gatesInOrder\(\s*holdWhileServerStarts\(getServerPort, untilServerStartSettles\),\s*\(details, settle\) => gateMindsResponseCreationRequest\(/);
   });
 
   it('leaves the frame to the listener and hands the Minds gate\'s answer back to it', () => {

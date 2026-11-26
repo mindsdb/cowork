@@ -48,29 +48,27 @@
   },
   "status": {
     "badge": {
+      "onlyYou": "仅自己",
       "public": "公开",
-      "password": "密码",
+      "publicPassword": "公开 · 密码",
       "restricted": "受限"
     },
     "hint": {
       "notSharedYet": "尚未分享。打开后选择“分享”即可获取网页链接。",
-      "notShareable": "未分享。只有网页和 Markdown 文档可以通过链接分享。",
+      "notShareable": "未分享。网页、文档、电子表格、演示文稿、PDF、CSV 和文本文件可以通过链接分享；这种文件不能。",
       "orgRestricted": "受限。打开“分享”可查看谁能打开此链接。",
       "ownerOnly": "已分享，但只有你能打开此链接。",
+      "password": "任何拥有链接和密码的人都可以打开。",
       "chosenPeople": "已分享。只有你选择的人能打开此链接。",
       "unknown": "已分享。无法确认谁能打开此链接，因此按受限处理。",
       "sharedWith": "已与 {names} 共享",
       "sharedWithMore": "已与 {names} 及另外 {count} 个对象共享"
     },
-    "sharingFailed": "分享失败",
-    "couldNotShare": "无法分享。",
     "tryAgain": "重试",
-    "sharing": "正在分享…",
     "updating": "正在更新…",
     "stoppingSharing": "正在停止分享…",
     "deleting": "正在删除…",
     "notShared": "未分享",
-    "draft": "草稿",
     "unsharedChanges": "有未分享的更改"
   },
   "liveAppShare": {
@@ -133,6 +131,8 @@
       "hoursAgo": "{count, plural, other {# 小时前}}",
       "daysAgo": "{count, plural, other {# 天前}}",
       "replies": "{count, plural, other {# 条回复}}",
+      "replyPlaceholder": "回复…",
+      "replyAriaLabel": "回复此评论",
       "edited": "（已编辑）",
       "unattachedTip": "此评论所指的产物部分已不存在。",
       "generalTip": "针对整个产物的总体反馈。",
@@ -306,6 +306,12 @@
   },
   "publish": {
     "ownedByOther": "此产物由其他所有者发布。",
+    "datasources": {
+      "notice": "发布将上传以下连接的凭据：{list}",
+      "review": "此应用会发送你尚未批准的连接的凭据。请在“分享”中查看后重新发布。",
+      "updateApp": "请更新应用，以便连同其连接一起发布此应用。你也可以在聊天中让智能体发布它。",
+      "unapproved": "已发布，但未包含以下凭据：{list}"
+    },
     "linkLeftLive": {
       "unrecorded": "此链接是在 {product} 开始记录每个页面的分享者之前分享的，因此 {product} 无法更新或下线它。选择“更新”会以新链接分享；选择“停止分享”或删除产物后，任何持有此链接的人仍可打开它。请联系管理员将其移除。",
       "otherArtifact": "未下线任何页面：此产物的记录指向了另一个产物的页面（{link}）。",
@@ -333,6 +339,8 @@
       "specificDesc": "仅限你列出的人"
     },
     "whoCanAccess": "谁可以访问你的应用",
+    "whoCanAccessDoc": "谁可以访问你的文档",
+    "updatesAsYouEdit": "随编辑实时更新",
     "addPassword": "添加密码",
     "hide": "隐藏",
     "show": "显示",
@@ -353,7 +361,6 @@
     "makeLive": "设为上线版本",
     "shared": "已分享",
     "share": "分享",
-    "shareToWeb": "分享到网页",
     "sharingBusy": "正在分享",
     "websiteUrl": "网站 URL",
     "change": "更改",
@@ -470,6 +477,7 @@
     "backendFailed": "后端启动失败",
     "proxyUnavailable": "预览代理不可用",
     "noMountUrl": "预览挂载未返回 URL",
+    "appNotPublishedYet": "此应用发布后会显示在这里，发布会在创建后立即进行。请稍后再试。",
     "loadFailed": "无法加载产物",
     "portNotReady": "后端端口尚不可用 — 预览仍在加载中。",
     "remoteNoUrl": "此产物由远程服务器提供，暂时还没有可打开的 URL。",
@@ -510,8 +518,6 @@
       "title": "标题（A–Z）",
       "type": "类型"
     },
-    "shareProtected": "分享受密码保护",
-    "shareRestricted": "分享受限",
     "downloadFailed": "无法下载此产物。",
     "menu": "产物菜单",
     "openProject": "打开 {project}",
@@ -519,9 +525,7 @@
     "openViewer": "打开查看器",
     "showInExplorer": "在资源管理器中显示",
     "deleteItem": "删除产物",
-    "onlyHtmlMd": "只有 HTML 和 Markdown 产物可以分享。",
-    "sharedToast": "{mode, select, password {已分享（密码保护）— {url}} restricted {已分享（受限）— {url}} other {已分享 — {url}}}",
-    "mindsApiKey": "请先在“设置”中填写你的 Minds API 密钥，然后再分享产物。",
+    "onlyHtmlMd": "只有网页、文档、电子表格、演示文稿、PDF、CSV 和文本文件可以分享。",
     "stoppedOnMindsHub": "已停止在 MindsHub 上分享。",
     "stopped": "已停止分享。",
     "updated": "已更新分享的版本。",
@@ -546,11 +550,9 @@
       "noMatch": "没有符合这些筛选条件的工件。",
       "clear": "清除筛选",
       "status": "状态",
-      "allStatuses": "所有状态"
-    },
-    "owner": {
-      "you": "你",
-      "youHint": "你的内容，已与他人共享。"
+      "allStatuses": "所有状态",
+      "access": "访问权限",
+      "allAccess": "所有访问级别"
     },
     "openComments": "{count, plural, other {# 条未解决评论}}",
     "openCommentsHint": "打开预览并查看评论"
@@ -923,7 +925,15 @@
     "sourceHint": "修改页面上的文字和布局",
     "commentsHint": "留下并查看反馈",
     "statsHint": "谁看过以及看了多久",
-    "commentsOpen": "评论，{count} 条待处理"
+    "commentsOpen": "评论，{count} 条待处理",
+    "openChat": "打开聊天",
+    "openChatHint": "关闭预览并前往创建它的聊天",
+    "openChatUnavailable": {
+      "noOrigin": "不是在聊天中创建的，或创建于聊天记录功能推出之前",
+      "deleted": "创建它的聊天已被删除",
+      "colleague": "在同事的聊天中创建，只有该同事可以打开",
+      "unreachable": "暂时无法访问创建它的聊天"
+    }
   },
   "liveEditPanel": {
     "close": "关闭实时编辑面板",

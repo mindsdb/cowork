@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 // A web build without the platform UI whose page has no SPA wrapper
 // publish-token tag, which keeps the shared-token choices: no "Only me", and
@@ -42,8 +43,12 @@ describe('AccessChooser with the platform UI off and no publish-token tag', () =
     expect(ACCESS_LABELS.password.desc).toBe('Anyone with the URL and the password');
   });
 
-  it('renders no choice selected and offers no "Only me"', () => {
+  it('renders no choice selected and offers no "Only me"', async () => {
+    const user = userEvent.setup();
     render(<AccessChooser value={newAccessDraft()} onChange={() => {}} />);
+    // Closed, the dropdown names no choice; open, none of its options is checked.
+    expect(screen.getByTestId('access-dropdown')).toHaveAccessibleName('Who can access your app');
+    await user.click(screen.getByTestId('access-dropdown'));
     const radios = screen.getAllByRole('radio');
     expect(radios).toHaveLength(3);
     for (const radio of radios) expect(radio).toHaveAttribute('aria-checked', 'false');

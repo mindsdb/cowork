@@ -20,6 +20,7 @@ import { mindsApiRoot } from '../shared/minds-endpoint';
 import { detectClaudeCode, revealMindsApiKey, revealMindsBaseUrl } from './coding-mode';
 import { ensureTaskWorktree, removeTaskWorktree } from './coding-workspace';
 import { getEnvPath } from './uv-paths';
+import { sanitizedParentEnv } from './agent-env';
 
 // Last-resort fallback only — real requests use revealMindsBaseUrl(), the
 // actual host the stored key was minted against (dev/preview/stable builds
@@ -27,24 +28,6 @@ import { getEnvPath } from './uv-paths';
 // this unconditionally 401s on every non-prod build despite a valid key.
 const MINDSHUB_INFERENCE_FALLBACK_URL = 'https://api.mindshub.ai';
 const START_TIMEOUT_MS = 15_000;
-
-// Vars Claude Code (or any nested Claude session, including a dev running
-// this very app from inside one) sets on ITSELF and expects a *fresh*
-// process not to inherit — e.g. CLAUDE_CODE_CHILD_SESSION makes a nested
-// `claude` think it's a child of an outer session and disables transcript
-// saving. If our own Electron process inherited any of these from its
-// parent shell, the embedded CLI must not see them; ANTHROPIC_* is stripped
-// too since ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN are set explicitly
-// below and a stray inherited ANTHROPIC_API_KEY could otherwise compete
-// with them for which credential the CLI picks.
-function sanitizedParentEnv(): NodeJS.ProcessEnv {
-  const clean: NodeJS.ProcessEnv = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (key.startsWith('CLAUDE_CODE_') || key === 'CLAUDECODE' || key.startsWith('ANTHROPIC_')) continue;
-    clean[key] = value;
-  }
-  return clean;
-}
 
 function readJsonFile(filePath: string): Record<string, unknown> {
   try {
@@ -240,7 +223,7 @@ export async function startCodingTerminal(
       // the CLI's own history for this cwd instead of replaying it.
       initialInput: isNewSession && opts.message ? `${opts.message}\r` : undefined,
       env: {
-        ...sanitizedParentEnv(),
+        ...sanitizedParentEnv(process.env, { forClaudeCode: true }),
         PATH: getEnvPath(),
         TERM: 'xterm-256color',
         COLORTERM: 'truecolor',

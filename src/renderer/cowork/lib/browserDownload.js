@@ -32,6 +32,31 @@ export function downloadFilename(path, fallback = 'download') {
   return String(path ?? '').split(/[\\/]/).filter(Boolean).pop() || fallback;
 }
 
+/**
+ * The file name a `Content-Disposition` header suggests, or `fallback`.
+ *
+ * A server that names a file outside ASCII sends two spellings: a lossy ASCII
+ * `filename="..."` for old clients and the real name as RFC 5987
+ * `filename*=UTF-8''<percent-encoded>`. Prefer the latter; a malformed one
+ * falls back to the ASCII spelling rather than failing the save.
+ */
+export function contentDispositionFilename(header, fallback = 'download') {
+  const value = String(header ?? '');
+  const extended = /(?:^|;)\s*filename\*\s*=\s*"?([^;"]*)"?/i.exec(value)?.[1]?.trim();
+  if (extended) {
+    const [, charset, encoded] = /^([^']*)'[^']*'(.*)$/.exec(extended) || [];
+    if (charset && /^utf-8$/i.test(charset) && encoded) {
+      try {
+        const name = downloadFilename(decodeURIComponent(encoded), '');
+        if (name) return name;
+      } catch { /* bad percent-encoding: use the plain spelling */ }
+    }
+  }
+  const plain = /(?:^|;)\s*filename\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^;\s]+))/i.exec(value);
+  const name = plain ? (plain[1] !== undefined ? plain[1].replace(/\\(.)/g, '$1') : plain[2]) : '';
+  return downloadFilename(name, fallback);
+}
+
 /** Save the bytes behind a URL the browser can fetch on its own. */
 export function downloadUrl(url, filename) {
   if (!url || host.isMobileShell) return false;
