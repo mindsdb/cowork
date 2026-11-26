@@ -628,6 +628,14 @@ describe('restrictToOwnerOnWindows', () => {
     expect(sddlIsOwnerOnly(sddl, USER)).toBe(expected);
   });
 
+  it.each([
+    ['S-1-5-21-1-2-3-500', 'LA', true],
+    ['S-1-5-21-1-2-3-501', 'LG', true],
+    ['S-1-5-21-1-2-3-1001', 'LA', false],
+  ])('reads the user %s written as %s: %s', (sid, alias, expected) => {
+    expect(sddlIsOwnerOnly(`D:PAI(A;OICI;FA;;;OW)(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;${alias})`, sid)).toBe(expected);
+  });
+
   it('rejects an ACL failure so the caller can stop private writes', async () => {
     const dir = folder(path.join(root, 'repo', '.claude-mindshub'), 0o755);
     windowsTools({ applyFails: true });

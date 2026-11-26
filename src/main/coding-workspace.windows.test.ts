@@ -68,7 +68,7 @@ it.skipIf(process.platform !== 'win32')('applies a list that reads back as owner
     execFileSync('icacls', [path.join(repo, '.claude-mindshub'), '/save', saved, '/L', '/Q']);
     const sddl = fs.readFileSync(saved).toString('utf16le');
     expect(sid).not.toBeNull();
-    expect(sddl).toContain(sid as string);
+    // SDDL can write the user as an alias, such as LA for a runner's built-in Administrator.
     expect(sddlIsOwnerOnly(sddl, sid)).toBe(true);
   } finally {
     fs.rmSync(repo, { recursive: true, force: true });

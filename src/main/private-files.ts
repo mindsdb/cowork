@@ -500,7 +500,15 @@ export function sddlIsOwnerOnly(sddl: string, userSid: string | null): boolean {
     if (flags.includes('ID')) return false;
     if (kind === 'A' && rights === 'FA' && flags.includes('OI') && flags.includes('CI') && !flags.includes('IO')) granted.add(sid);
   }
-  return ['SY', 'BA', 'OW', ...(userSid ? [userSid] : [])].every((sid) => granted.has(sid));
+  if (!['SY', 'BA', 'OW'].every((sid) => granted.has(sid))) return false;
+  return userSid === null || sddlForms(userSid).some((form) => granted.has(form));
+}
+
+/* The ways SDDL can write a SID: the account with RID 500 is `LA` and the one
+ * with RID 501 `LG`, as a CI runner's built-in Administrator shows. */
+function sddlForms(sid: string): string[] {
+  const alias = ({ '500': 'LA', '501': 'LG' } as Record<string, string>)[sid.slice(sid.lastIndexOf('-') + 1)];
+  return sid.startsWith('S-1-5-21-') && alias ? [sid, alias] : [sid];
 }
 
 /* `icacls /save` reads the folder's own list and walks nothing below it.
