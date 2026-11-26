@@ -9,7 +9,7 @@ import Spinner from '../ui/Spinner';
 import { host } from '../../../platform/host';
 import { useTranslation } from '../../../lib/i18n';
 import { takeCustomMcpCompletion } from '../../lib/customMcpFinish';
-import { reportCustomMcpFinish } from '../../lib/customMcpWebConnect';
+import { nudgeCustomMcpSignIns } from '../../lib/customMcpWebConnect';
 import { connectErrorMessage } from './CustomMcpConnectModal';
 
 const EXPIRED = { ok: false, code: 'expired', reason: '' };
@@ -20,10 +20,13 @@ let finishing = null;
 function finishOnce() {
   if (!finishing) {
     const completion = takeCustomMcpCompletion();
-    finishing = (completion ? host.customMcpFinish(completion) : Promise.resolve(EXPIRED)).then((finished) => {
-      reportCustomMcpFinish(finished);
-      return finished;
-    });
+    // Whatever this page heard, the waiting tab reads its own sign-in's status.
+    finishing = completion
+      ? host.customMcpFinish(completion).then((finished) => {
+        nudgeCustomMcpSignIns();
+        return finished;
+      })
+      : Promise.resolve(EXPIRED);
   }
   return finishing;
 }

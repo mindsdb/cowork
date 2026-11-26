@@ -1,5 +1,5 @@
-// The finish page posts the sign-in's completion once per page load and tells
-// the tab that started the sign-in how it ended.
+// The finish page posts the sign-in's completion once per page load, and then
+// nudges the tab that started the sign-in to read its own status.
 
 import { render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 describe('CustomMcpFinishPage', () => {
-  it("shows auth's refusal and tells the waiting tab its code and message, once for a remount", async () => {
+  it("shows auth's refusal and nudges the waiting tab once, across a remount", async () => {
     const reason = "This server's tokens expire and it gives no refresh token, so it cannot be used on cloud.";
     takeCustomMcpCompletion.mockReturnValue('A'.repeat(43));
     customMcpFinish.mockResolvedValue({ ok: false, code: 'no_refresh_token', reason });
@@ -37,13 +37,12 @@ describe('CustomMcpFinishPage', () => {
     render(<CustomMcpFinishPage />);
 
     expect(await screen.findByText(new RegExp(reason.slice(0, 30)))).toBeTruthy();
-    await vi.waitFor(() => expect(tab.heard).toHaveLength(1));
-    expect(tab.heard).toEqual([{ ok: false, code: 'no_refresh_token', reason }]);
+    await vi.waitFor(() => expect(tab.heard).toEqual(['finished']));
     expect(customMcpFinish).toHaveBeenCalledTimes(1);
     tab.close();
   });
 
-  it('tells the waiting tab of a success and closes itself', async () => {
+  it('closes itself after a success, having nudged the waiting tab', async () => {
     takeCustomMcpCompletion.mockReturnValue('A'.repeat(43));
     customMcpFinish.mockResolvedValue({ ok: true, name: `cm-${'a'.repeat(32)}` });
     const close = vi.spyOn(window, 'close').mockImplementation(() => {});
@@ -51,8 +50,21 @@ describe('CustomMcpFinishPage', () => {
 
     render(<CustomMcpFinishPage />);
 
-    await vi.waitFor(() => expect(tab.heard).toEqual([{ ok: true }]));
+    await vi.waitFor(() => expect(tab.heard).toEqual(['finished']));
     expect(close).toHaveBeenCalled();
+    tab.close();
+  });
+
+  it('nudges no one when this page load took no completion', async () => {
+    takeCustomMcpCompletion.mockReturnValue(null);
+    const tab = listen();
+
+    render(<CustomMcpFinishPage />);
+
+    expect(await screen.findByText(/expired/i)).toBeTruthy();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(tab.heard).toEqual([]);
+    expect(customMcpFinish).not.toHaveBeenCalled();
     tab.close();
   });
 });

@@ -8,7 +8,7 @@ vi.mock('../lib/keycloak', () => ({ getAccessToken: vi.fn(async () => 'member-to
 
 import { getAccessToken } from '../lib/keycloak';
 import { __resetOrganizationRequestBoundaryForTests } from '../cowork/lib/organizationRequestBoundary';
-import { reportCustomMcpFinish } from '../cowork/lib/customMcpWebConnect';
+import { nudgeCustomMcpSignIns } from '../cowork/lib/customMcpWebConnect';
 import { host, isWeb } from './host';
 
 type Call = { method: string; path: string; body: unknown; signal: AbortSignal; headers: Record<string, string> };
@@ -375,39 +375,40 @@ describe('custom MCP on web', () => {
     expect(await host.customMcpSummary(NAME)).toMatchObject({ ok: false, code: 'unavailable' });
   });
 
-  it("shows the finish page's refusal at once and leaves its pop-up open with the reason", async () => {
+  it("shows auth's refusal as soon as the finish page nudges, and leaves the pop-up open", async () => {
     const popup = fakePopup();
     vi.spyOn(window, 'open').mockImplementation(() => popup as unknown as Window);
+    const detail = "This server's tokens expire and it gives no refresh token, so it cannot be used on cloud.";
     answer = (call) => (call.path === '/connect'
       ? { status: 200, body: { status: 'pending', auth_url: 'https://auth.example.com/authorize', state: 'st', name: NAME } }
-      : { status: 200, body: { status: 'error', name: NAME } });
-    const reason = "This server's tokens expire and it gives no refresh token, so it cannot be used on cloud.";
+      : { status: 200, body: { status: 'error', name: NAME, error: 'no_refresh_token', detail } });
 
+    const started = Date.now();
     const connecting = host.customMcpConnect({ label: 'Tracker', url: URL_, confirmedLoginHosts: ['auth.example.com'] });
     await untilSent(1);
     await vi.waitFor(() => expect(popup.location.href).not.toBe(''));
-    reportCustomMcpFinish({ ok: false, code: 'no_refresh_token', reason });
+    nudgeCustomMcpSignIns();
 
-    expect(await connecting).toEqual({ ok: false, code: 'no_refresh_token', reason });
+    expect(await connecting).toEqual({ ok: false, code: 'no_refresh_token', reason: detail });
+    expect(Date.now() - started).toBeLessThan(2500);
     expect(popup.close).not.toHaveBeenCalled();
-    expect(calls.map((call) => call.path)).toEqual(['/connect']);
+    expect(calls.map((call) => call.path)).toEqual(['/connect', '/status?state=st']);
   });
 
-  it("reads the status as soon as the finish page reports a success, without the poll's wait", async () => {
+  it("goes by this tab's own status whatever the finish page's request met", async () => {
+    // A finish page's /finish can time out at the relay while auth still finishes the sign-in.
     const popup = fakePopup();
     vi.spyOn(window, 'open').mockImplementation(() => popup as unknown as Window);
     answer = (call) => (call.path === '/connect'
       ? { status: 200, body: { status: 'pending', auth_url: 'https://auth.example.com/authorize', state: 'st', name: NAME } }
       : { status: 200, body: { status: 'success', label: 'Tracker', server_url: URL_, tools_on: 1, tools_unavailable: false } });
 
-    const started = Date.now();
     const connecting = host.customMcpConnect({ label: 'Tracker', url: URL_, confirmedLoginHosts: ['auth.example.com'] });
     await untilSent(1);
     await vi.waitFor(() => expect(popup.location.href).not.toBe(''));
-    reportCustomMcpFinish({ ok: true });
+    nudgeCustomMcpSignIns();
 
     expect(await connecting).toMatchObject({ ok: true, id: NAME, toolsOn: 1 });
-    expect(Date.now() - started).toBeLessThan(2500);
     expect(calls.map((call) => call.path)).toEqual(['/connect', '/status?state=st']);
     expect(popup.close).toHaveBeenCalled();
   });
