@@ -292,7 +292,8 @@ describe('UsageBar', () => {
 
 describe('mobile usage copy from real account states', () => {
   it.each([
-    ['standing allowance', { balance: { usd: 0, canConsume: false }, freeTokens: { limit: 100, remaining: 50, resetsAt: '2099-09-11T12:00:00Z' } }, /50% of your free allowance left/],
+    ['nearly-gone allowance', { balance: { usd: 0, canConsume: false }, freeTokens: { limit: 100, remaining: 8, resetsAt: '2099-09-11T12:00:00Z' } }, /8% of your free allowance left/],
+    ['allowance with room', { balance: { usd: 0, canConsume: false }, freeTokens: { limit: 100, remaining: 50, resetsAt: '2099-09-11T12:00:00Z' } }, /^$/],
     ['empty wallet', { balance: { usd: 0, canConsume: false } }, /balance is empty/i],
     ['low wallet', { balance: { usd: 8.42, canConsume: true, alert: 'low' } }, /\$8.42/],
     ['failed auto top up', { autoTopUp: { enabled: true, status: 'payment_failed' } }, /couldn't charge your card/i],
