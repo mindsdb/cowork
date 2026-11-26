@@ -4194,62 +4194,65 @@ body[data-theme] .markdown-steps :is(strong, b) {
    inside our wrapper so the page can't accidentally inherit hljs
    styling elsewhere. The palette pulls from the cyberpunk accent set:
    cyan for names/titles, mint for strings, purple for keywords,
-   sand for numbers/built-ins, low-contrast ink-4 for comments. */
-.anton-code-block .hljs-keyword,
-.anton-code-block .hljs-selector-tag,
-.anton-code-block .hljs-literal,
-.anton-code-block .hljs-doctag { color: rgb(196, 144, 255); }
-.anton-code-block .hljs-string,
-.anton-code-block .hljs-regexp,
-.anton-code-block .hljs-attr,
-.anton-code-block .hljs-symbol,
-.anton-code-block .hljs-template-tag,
-.anton-code-block .hljs-template-variable { color: rgb(125, 226, 184); }
-.anton-code-block .hljs-number,
-.anton-code-block .hljs-built_in,
-.anton-code-block .hljs-builtin-name { color: rgb(246, 199, 121); }
-.anton-code-block .hljs-comment,
-.anton-code-block .hljs-quote { color: var(--ink-4); }
-.anton-code-block .hljs-title,
-.anton-code-block .hljs-title.class_,
-.anton-code-block .hljs-title.function_,
-.anton-code-block .hljs-section { color: var(--ink); }
-.anton-code-block .hljs-name,
-.anton-code-block .hljs-tag,
-.anton-code-block .hljs-meta,
-.anton-code-block .hljs-variable,
-.anton-code-block .hljs-bullet { color: rgb(123, 178, 255); }
-.anton-code-block .hljs-property,
-.anton-code-block .hljs-params { color: var(--ink-2); }
-.anton-code-block .hljs-deletion { color: rgb(255, 122, 145); background: color-mix(in srgb, rgb(255, 122, 145) 12%, transparent); }
-.anton-code-block .hljs-addition { color: rgb(125, 226, 184); background: color-mix(in srgb, rgb(125, 226, 184) 12%, transparent); }
+   sand for numbers/built-ins, low-contrast ink-4 for comments.
+   A doc's code block (.doc-code) takes the same palette; cowork-server's page copies it (__fixtures__/docs-code-highlight/contract.json). */
+:is(.anton-code-block, .doc-code) .hljs-keyword,
+:is(.anton-code-block, .doc-code) .hljs-selector-tag,
+:is(.anton-code-block, .doc-code) .hljs-literal,
+:is(.anton-code-block, .doc-code) .hljs-doctag { color: rgb(196, 144, 255); }
+:is(.anton-code-block, .doc-code) .hljs-string,
+:is(.anton-code-block, .doc-code) .hljs-regexp,
+:is(.anton-code-block, .doc-code) .hljs-attr,
+:is(.anton-code-block, .doc-code) .hljs-symbol,
+:is(.anton-code-block, .doc-code) .hljs-template-tag,
+:is(.anton-code-block, .doc-code) .hljs-template-variable { color: rgb(125, 226, 184); }
+:is(.anton-code-block, .doc-code) .hljs-number,
+:is(.anton-code-block, .doc-code) .hljs-built_in,
+:is(.anton-code-block, .doc-code) .hljs-builtin-name { color: rgb(246, 199, 121); }
+:is(.anton-code-block, .doc-code) .hljs-comment,
+:is(.anton-code-block, .doc-code) .hljs-quote { color: var(--ink-4); }
+:is(.anton-code-block, .doc-code) .hljs-title,
+:is(.anton-code-block, .doc-code) .hljs-title.class_,
+:is(.anton-code-block, .doc-code) .hljs-title.function_,
+:is(.anton-code-block, .doc-code) .hljs-section { color: var(--ink); }
+:is(.anton-code-block, .doc-code) .hljs-name,
+:is(.anton-code-block, .doc-code) .hljs-tag,
+:is(.anton-code-block, .doc-code) .hljs-meta,
+:is(.anton-code-block, .doc-code) .hljs-variable,
+:is(.anton-code-block, .doc-code) .hljs-bullet { color: rgb(123, 178, 255); }
+:is(.anton-code-block, .doc-code) .hljs-property,
+:is(.anton-code-block, .doc-code) .hljs-params { color: var(--ink-2); }
+:is(.anton-code-block, .doc-code) .hljs-deletion { color: rgb(255, 122, 145); background: rgba(255, 122, 145, 0.12); }
+:is(.anton-code-block, .doc-code) .hljs-addition { color: rgb(125, 226, 184); background: rgba(125, 226, 184, 0.12); }
 .anton-code-block .hljs-emphasis { font-style: italic; }
 .anton-code-block .hljs-strong { font-weight: 600; }
 
 /* Light-mode palette — same hue families, lower brightness so they
    stay readable against the pale surface tokens. */
-body[data-theme="light"] .anton-code-block .hljs-keyword,
-body[data-theme="light"] .anton-code-block .hljs-selector-tag,
-body[data-theme="light"] .anton-code-block .hljs-literal,
-body[data-theme="light"] .anton-code-block .hljs-doctag { color: rgb(124, 58, 175); }
-body[data-theme="light"] .anton-code-block .hljs-string,
-body[data-theme="light"] .anton-code-block .hljs-regexp,
-body[data-theme="light"] .anton-code-block .hljs-attr,
-body[data-theme="light"] .anton-code-block .hljs-symbol,
-body[data-theme="light"] .anton-code-block .hljs-template-tag,
-body[data-theme="light"] .anton-code-block .hljs-template-variable { color: rgb(20, 121, 79); }
-body[data-theme="light"] .anton-code-block .hljs-number,
-body[data-theme="light"] .anton-code-block .hljs-built_in,
-body[data-theme="light"] .anton-code-block .hljs-builtin-name { color: rgb(170, 100, 0); }
-body[data-theme="light"] .anton-code-block .hljs-title,
-body[data-theme="light"] .anton-code-block .hljs-title.class_,
-body[data-theme="light"] .anton-code-block .hljs-title.function_,
-body[data-theme="light"] .anton-code-block .hljs-section { color: rgb(17, 85, 98); }
-body[data-theme="light"] .anton-code-block .hljs-name,
-body[data-theme="light"] .anton-code-block .hljs-tag,
-body[data-theme="light"] .anton-code-block .hljs-meta,
-body[data-theme="light"] .anton-code-block .hljs-variable,
-body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169); }
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-keyword,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-selector-tag,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-literal,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-doctag { color: rgb(124, 58, 175); }
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-string,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-regexp,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-attr,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-symbol,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-template-tag,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-template-variable { color: rgb(20, 121, 79); }
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-number,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-built_in,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-builtin-name { color: rgb(170, 100, 0); }
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-title,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-title.class_,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-title.function_,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-section { color: rgb(17, 85, 98); }
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-name,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-tag,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-meta,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-variable,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-bullet { color: rgb(28, 76, 169); }
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-deletion { color: rgb(180, 35, 60); background: rgba(180, 35, 60, 0.12); }
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-addition { color: rgb(20, 121, 79); background: rgba(20, 121, 79, 0.12); }
 
 /* ─── iOS auto-zoom suppression (mobile only) ─────────────────────────
    iOS Safari auto-zooms when a text input with computed font-size < 16px

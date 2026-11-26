@@ -368,6 +368,27 @@ body[data-theme="dark"] .doc-root {
   tab-size: 2;
 }
 
+/* Highlighted code: hljs's colours on a layer under the textarea, whose own
+   text is transparent, so the caret, the selection and typing stay the
+   textarea's. Every character must land where the textarea draws it: the
+   layer repeats the box's metrics, and token styles change colour only. */
+.doc-code__body { position: relative; }
+.doc-code__hl {
+  position: absolute; inset: 0; margin: 0; overflow: hidden; pointer-events: none;
+  padding: 12px 14px;
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6;
+  color: var(--ink); white-space: pre; tab-size: 2;
+}
+/* Tailwind's preflight gives <code> its own font; the layer's metrics must win. */
+.doc-code__hl code { font: inherit; }
+.doc-code__text.doc-code__text--hl { position: relative; color: transparent; caret-color: var(--ink); }
+/* High contrast replaces the transparent text with a system colour; the
+   layer would show each character twice. */
+@media (forced-colors: active) {
+  .doc-code__hl { display: none; }
+  .doc-code__text.doc-code__text--hl { color: CanvasText; }
+}
+
 /* Image */
 .doc-figure { margin: 10px 0; }
 .doc-figure img { max-width: 100%; border-radius: var(--r-lg); border: 1px solid var(--line); display: block; }
