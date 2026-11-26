@@ -19,9 +19,10 @@ import {
  * The desktop document preview's isolation. The host window
  * (helpers/document-preview-electron-app.cjs) runs on the main window's
  * production webPreferences and preload (main-window-preferences.ts), with the
- * production guard (document-preview-guard.ts), and adds the server token to
- * loopback requests with app.ts's own listener (server-token-listener.ts). A
- * loopback server records which requests arrived with the token.
+ * production guard (document-preview-guard.ts), and adds the server token and
+ * the window proof to loopback requests with app.ts's own listener
+ * (server-token-listener.ts). A loopback server records which requests arrived
+ * with the token and which with the proof.
  *
  * The isolation checks build the real preview frame from frameDocument.ts's
  * exports. The real frame's policy blocks fetches and server images, so the
@@ -203,6 +204,8 @@ test.describe('the server token', () => {
 
       await expect.poll(() => pathsUnder(folder)).toEqual(expect.arrayContaining([`${folder}data.txt`, `${folder}image.png`]));
       expect(requestsUnder(folder).filter((request) => request.authorized !== surface.token)).toEqual([]);
+      /* Only the main window's top-level fetches carry the window proof, never a frame's. */
+      expect(requestsUnder(folder).filter((request) => request.proved)).toEqual([]);
       /* The guard reads the same name at the same event, before the frame's first request. */
       const namesAtCreation = (await host.record()).framesCreated.slice(framesBefore);
       const expectedName = surface.previewName ? PREVIEW_FRAME_NAME : '';
@@ -234,7 +237,7 @@ test.describe('the server token', () => {
     }, `${server.origin}${folder}`);
 
     await expect.poll(() => pathsUnder(folder)).toEqual([`${folder}image.png`, `${folder}nested.txt`, `${folder}renamed.txt`]);
-    expect(requestsUnder(folder).filter((request) => request.authorized)).toEqual([]);
+    expect(requestsUnder(folder).filter((request) => request.authorized || request.proved)).toEqual([]);
     /* Electron named the nested frame, so the guard's parent walk, not the no-frame rule, kept the token off. */
     expect((await host.record()).listenerCalls).toContainEqual({ path: `${folder}nested.txt`, hadFrame: true });
   });
@@ -244,7 +247,7 @@ test.describe('the server token', () => {
     const status = await host.app.evaluate(async ({ net }, url) => (await net.fetch(url)).status, `${server.origin}/no-frame/data.txt`);
     expect(status).toBe(200);
     expect((await host.record()).listenerCalls).toContainEqual({ path: '/no-frame/data.txt', hadFrame: false });
-    expect(requestsUnder('/no-frame/')).toEqual([{ path: '/no-frame/data.txt', authorized: false }]);
+    expect(requestsUnder('/no-frame/')).toEqual([{ path: '/no-frame/data.txt', authorized: false, proved: false }]);
   });
 
   test("reaches the main window's fetch, image, redirect follow-up and download", async () => {
@@ -267,6 +270,16 @@ test.describe('the server token', () => {
 
     await expect.poll(() => pathsUnder(folder)).toEqual(['data.txt', 'download', 'image.png', 'redirect', 'redirected'].map((file) => `${folder}${file}`));
     expect(requestsUnder(folder).filter((request) => !request.authorized)).toEqual([]);
+    /* The proof goes on the window's fetches and their redirect follow-up, never on an image or a download. */
+    expect(requestsUnder(folder).filter((request) => request.proved).map((request) => request.path))
+      .toEqual(['data.txt', 'redirect', 'redirected'].map((file) => `${folder}${file}`));
+  });
+
+  test("replaces a window proof the main window's fetch brought with the real one", async () => {
+    const url = `${server.origin}/forged/data.txt`;
+    await host.page.evaluate((href) => fetch(href, { headers: { 'X-Cowork-Window-Proof': 'forged' } }).then(() => undefined), url);
+
+    expect(requestsUnder('/forged/')).toEqual([{ path: '/forged/data.txt', authorized: true, proved: true }]);
   });
 });
 
@@ -308,7 +321,7 @@ test.describe('the navigation guard', () => {
     await frame.click('#next');
 
     await expect.poll(() => frame.url()).toBe(`${folder}next.txt`);
-    expect(requestsUnder('/viewer/next.txt')).toEqual([{ path: '/viewer/next.txt', authorized: true }]);
+    expect(requestsUnder('/viewer/next.txt')).toEqual([{ path: '/viewer/next.txt', authorized: true, proved: false }]);
   });
 
   test('holds an unmarked srcdoc frame in place', async () => {

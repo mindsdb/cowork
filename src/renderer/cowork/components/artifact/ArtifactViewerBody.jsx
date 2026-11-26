@@ -26,7 +26,7 @@ const FONT_MONO = "var(--font-mono)";
 // Full-bleed "Preview" placeholder shown over the preview region until the
 // iframe has actually painted (or while a text preview is fetching), so the
 // user never sees a flash of empty grey.
-function PreviewPlaceholder() {
+export function PreviewPlaceholder() {
   const { t } = useTranslation('artifacts');
   return (
     <div aria-hidden="true" style={{
@@ -100,6 +100,7 @@ export function ArtifactViewerBody({
     draftUrl: draftPreviewUrl,
     contentVersion,
     document: documentPreview,
+    revisionDocument,
     error: err,
     setError: setErr,
     isText,
@@ -153,7 +154,7 @@ export function ArtifactViewerBody({
     || /\.html?$/i.test(sourcePath)
   );
   const editorKey = htmlSource ? `${workspace.source.artifactId || ''}:${sourcePath}` : '';
-  const showEditor = (layers ? layers.source : workspace.mode === 'edit') && !!workspace.source;
+  const showEditor = (layers ? layers.source : workspace.mode === 'edit') && !!workspace.source && !workspace.source.binary;
   const [retainedEditorKey, setRetainedEditorKey] = useState('');
   // The one side panel (ViewerSidePanel) holds whichever of Live edit, the
   // comments inbox and Stats is open; the viewer keeps them exclusive.
@@ -190,7 +191,7 @@ export function ArtifactViewerBody({
     return () => window.clearTimeout(handle);
   }, [editorKey, iframeReady, retainedEditorKey, showEditor]);
 
-  const sourceEditor = workspace.source ? (
+  const sourceEditor = workspace.source && !workspace.source.binary ? (
     <ArtifactSourceEditor
       source={workspace.source}
       value={workspace.draft}
@@ -283,7 +284,10 @@ export function ArtifactViewerBody({
           src={previewUrl || undefined}
           srcDoc={previewDoc || undefined}
           onLoad={() => { setIframeReady(true); layer.onIframeLoad(); }}
-          sandbox={previewKind === 'proxy'
+          // A local proxy and a published app are origins of their own, so
+          // allow-same-origin keeps theirs (never Cowork's): a published app's
+          // page needs it for its viewer session.
+          sandbox={previewKind === 'proxy' || previewKind === 'published'
             ? 'allow-scripts allow-same-origin allow-popups allow-forms allow-modals'
             : 'allow-scripts allow-popups allow-forms allow-modals'}
           style={{
@@ -407,6 +411,7 @@ export function ArtifactViewerBody({
           busy={repairBusy || workspace.status === 'saving'}
           contentType={workspace.source?.contentType}
           baseUrl={draftPreviewUrl}
+          documentFor={revisionDocument}
           onClose={() => workspace.setComparison(null)}
           onRestore={workspace.restoreRevision}
           publishReview={publishReview}

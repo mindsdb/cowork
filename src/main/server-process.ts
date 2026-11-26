@@ -32,11 +32,11 @@ import { accountDataRoot, coworkHome, buildKind, readEnvFile } from './cowork-ho
 import { loadBundledServerCredentials } from './credential-provisioning';
 import { MINDS_ENV_SLUG } from './minds-urls';
 import { analyticsEnv, antonDotenvNames, usageEventsOn } from './analytics-env';
-import { authHeader, resetServerAuthTokenCache } from './server-auth';
-import { APP_CHALLENGE_HEADER, APP_SECRET_STDIN_ENV, appSecretStdinLine, clearAppSecret, judgeServer, newAppChallenge, newAppSecret, serverTrust, setServerTrust } from './app-secret';
-import { isMcpAccessModeMigrated } from './keychain-service';
+import { authHeader, clearServerCredentials, newServerCredentials, publishServerCredentials } from './server-auth';
+import { APP_CHALLENGE_HEADER, clearAppSecret, judgeServer, newAppChallenge, newAppSecret, serverTrust, setServerTrust } from './app-secret';
+import { HANDOFF_PROTOCOL, STDIN_FLAG, launchStdinLine, type LaunchHandoff } from '../shared/server-launch';
 import { withServerLifecycle } from './server-lifecycle';
-import { decideStartWait, startFailureMessage } from './update-logic';
+import { decideStartWait, serverStartRefusal, startFailureMessage } from './update-logic';
 import {
   hasPendingCredentialClear,
   installedServerClearsPendingCredentials,
@@ -254,6 +254,41 @@ let serverStarted = false;
 // (which would race for the same port and the second would fail).
 let pendingStart: Promise<StartServerResult> | null = null;
 
+/*
+ * The token listener (app.ts, holdWhileServerStarts in
+ * server-token-listener.ts) holds the window's requests to the server's
+ * address while a start is pending. The hold begins before the start's first
+ * port clear and ends when the start publishes the launch's bearer token and
+ * window proof, or when the start ends any other way (startServer's finally).
+ * So no request reaches whatever takes the port in that time, and one the
+ * real server would refuse for want of a token waits for it instead. The
+ * limit releases the requests of a start that never ends, such as one still
+ * waiting on a keychain prompt, without the values.
+ */
+let startHold: { readonly released: Promise<void>; readonly release: () => void } | null = null;
+
+function holdRequestsForStart(limitMs: number): void {
+  if (startHold) return;
+  let resolve!: () => void;
+  const released = new Promise<void>((r) => { resolve = r; });
+  const limit = setTimeout(releaseRequestsHeldForStart, limitMs);
+  limit.unref?.();
+  startHold = { released, release: () => { clearTimeout(limit); resolve(); } };
+}
+
+function releaseRequestsHeldForStart(): void {
+  const hold = startHold;
+  startHold = null;
+  hold?.release();
+}
+
+/** While a start is pending and has not published the launch's credentials, a
+ *  promise that resolves once it publishes them or ends without them. Null
+ *  otherwise. */
+export function untilServerStartSettles(): Promise<void> | null {
+  return startHold?.released ?? null;
+}
+
 /**
  * Whether the running sidecar is serving the account root this session resolves
  * to. False when nothing is running, so callers pair it with isServerRunning.
@@ -284,9 +319,6 @@ export async function ensureSidecarOnCurrentAccountRoot(): Promise<boolean> {
   diagnostic("main.server-process", "INFO", "server_running_on_another_account_data_root_restarting", '[server] running on another account data root — restarting');
   try {
     await stopServer();
-    // The bearer token lives in the account's own dotenv, so a cached one from
-    // the previous root would be sent to the new server and refused.
-    resetServerAuthTokenCache();
     const result = await startServer();
     return result.ok && sidecarIsOnCurrentStores();
   } catch (err) {
@@ -555,7 +587,9 @@ function sleep(ms: number): Promise<void> {
 // capabilities. HTTP health alone is not compatibility: an older published
 // sidecar can answer this endpoint while returning 404 for every Code Mode
 // route. Requiring the capability here prevents declaring an incompatible
-// freshly-spawned binary ready.
+// freshly-spawned binary ready. A server must also report the launch hand-off
+// protocol (HANDOFF_PROTOCOL): one without it never read this launch's
+// bearer token, so every authenticated request to it would be refused.
 type HealthProbe = {
   state: 'unreachable' | 'compatible' | 'incompatible';
   owner: string | null;
@@ -595,7 +629,8 @@ function probeHealthOnce(port: number, timeoutMs: number, challenge?: string): P
             appSecretProof = payload?.app_secret_proof;
             customMcp = payload?.custom_mcp;
           } catch { /* non-JSON */ }
-          resolve({ state: supportsCoding ? 'compatible' : 'incompatible', owner, clearsPendingCredentials, appSecretProtocol, appSecretProof, customMcp });
+          const compatible = supportsCoding && appSecretProtocol === HANDOFF_PROTOCOL;
+          resolve({ state: compatible ? 'compatible' : 'incompatible', owner, clearsPendingCredentials, appSecretProtocol, appSecretProof, customMcp });
         });
       },
     );
@@ -682,16 +717,6 @@ export async function resolveServerPort(): Promise<number> {
   return serverPort;
 }
 
-// An unreadable marker counts as set, so a keychain failure cannot open the
-// legacy path to a server that does not prove the secret.
-async function accessModesMigrated(storeRoot: string): Promise<boolean> {
-  try {
-    return await isMcpAccessModeMigrated(storeRoot);
-  } catch {
-    return true;
-  }
-}
-
 const UNTRUSTED_SERVER_ERROR = 'The backend did not prove it was started by this app, so it was stopped.';
 
 export interface StartServerResult {
@@ -720,7 +745,14 @@ export function setServerStartedHook(hook: (() => Promise<unknown>) | null): voi
 }
 
 export async function startServer(opts: { port?: number; readyTimeoutMs?: number } = {}): Promise<StartServerResult> {
-  const result = await withServerLifecycle(() => startServerUnlocked(opts));
+  const result = await withServerLifecycle(async () => {
+    try {
+      return await startServerUnlocked(opts);
+    } finally {
+      // However the start ended, a throw included, the held requests go now.
+      releaseRequestsHeldForStart();
+    }
+  });
   /* Awaited, not fired off. Callers read `/health` as soon as this resolves, so
    * a push still in flight at that point reads as an unconfigured install.
    *
@@ -747,6 +779,9 @@ export async function startServer(opts: { port?: number; readyTimeoutMs?: number
 }
 
 async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: number }): Promise<StartServerResult> {
+  /* Outlasts the start's own cap on the wait for /health, the time before
+     the spawn included. */
+  const holdLimitMs = (opts.readyTimeoutMs ?? SERVER_START_CAP_MS) + 60_000;
   if (serverStarted) {
     // A server whose launcher handed off and exited has no ChildProcess handle
     // whose exit event can invalidate our state. Re-probe it when the renderer
@@ -758,15 +793,19 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     const challenge = newAppChallenge();
     const probe = await probeHealthOnce(serverPort, 700, challenge);
     if (probe.state === 'compatible' && probe.owner === serverOwnerToken(currentAccountRoot(), currentOrgSegment())
-      && judgeServer(probe, challenge, await accessModesMigrated(_runningOrgStoreRoot ?? currentOrgStoreRoot())) === serverTrust()) {
+      && judgeServer(probe, challenge) === serverTrust()) {
       return { ok: true, port: serverPort };
     }
     diagnostic("main.server-process", "WARNING", "server_adopted_instance_on_port_is_no_longer_healthy_starting_a_replacement", `[server] adopted instance on port ${serverPort} is no longer healthy; starting a replacement`);
+    // The stop clears the port, and the replacement's start follows.
+    holdRequestsForStart(holdLimitMs);
     await stopServerUnlocked();
   }
   // If a start is already in progress (e.g. from app boot), reuse it
   // instead of spawning a second python that would clash on the port.
   if (pendingStart) return pendingStart;
+  // Before the port lookups and before the reap below clears the port.
+  holdRequestsForStart(holdLimitMs);
 
   // Resolve the port unless a caller pins one. resolveServerPort picks a
   // per-OS-user port and, when a server is already running there, records
@@ -780,10 +819,10 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
 
   // Our own server still running from an earlier app process (an orphan that
   // was not reaped on quit) is replaced, never adopted. This process can only
-  // know the app secret of a server it spawned, and adopting one without a
-  // secret would let whatever answers with our owner token (readable on disk)
-  // receive MCP access tokens in legacy mode. A foreign server was already
-  // routed around in resolveServerPort.
+  // know the launch values (app secret, bearer token, window proof) of a
+  // server it spawned, so it could neither authenticate to one it did not,
+  // nor tell it from whatever answers with our owner token (readable on
+  // disk). A foreign server was already routed around in resolveServerPort.
   let refusedAdoption: 'credential-clear' | 'not-spawned' | null = null;
   if (_adoptPlanned || opts.port) {
     const probe = await probeHealthOnce(serverPort, 700);
@@ -916,8 +955,12 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
         (accountEnv.COWORK_HOME ? ` → account root ${accountEnv.COWORK_HOME}` : '') +
         (orgEnv.DATABASE_URI ? ` → organization stores ${orgStoreRootAtSpawn}` : ''),
     );
+    /* The bearer token reaches the server in the stdin line below and nowhere
+       else, so a COWORK_AUTH_TOKEN this app inherited stays out of the
+       server's environment, which cell code inherits. */
+    const { COWORK_AUTH_TOKEN: _inheritedToken, ...inheritedEnv } = process.env;
     const env = {
-      ...process.env,
+      ...inheritedEnv,
       ...(await loadBundledServerCredentials()),
       // An unpackaged checkout may use the developer-owned GitHub and Linear
       // OAuth clients in ~/.cowork-dev/.env. Pass only its fixed location to
@@ -938,6 +981,14 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // PYTHONIOENCODING (a bare value downgrades stdio to strict). Respect an
       // explicit operator override if one is already set.
       PYTHONUTF8: process.env.PYTHONUTF8 || '1',
+      /* A release build's nodeOptions fuse makes Electron remove
+         NODE_EXTRA_CA_CERTS from this process's environment before any app
+         code runs, so Node programs the server starts (npx-based tools) can't
+         take a corporate root from it. This sends them to the operating
+         system's trust store instead, where a corporate root is installed and
+         where nothing can add one without the user's or an admin's consent.
+         A Node version without system-store support ignores it. */
+      NODE_USE_SYSTEM_CA: '1',
       COWORK_SERVER_PORT: String(serverPort),
       COWORK_LISTEN_PORT: String(serverPort),
       COWORK_SERVER_HOST: SERVER_HOST,
@@ -961,9 +1012,9 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // COWORK_HOME is set at all.
       ...accountEnv,
       ...orgEnv,
-      // The app secret itself goes over stdin below: cell code inherits this
+      // The hand-off itself goes over stdin below: cell code inherits this
       // environment, so only the flag may appear here.
-      [APP_SECRET_STDIN_ENV]: '1',
+      [STDIN_FLAG]: String(HANDOFF_PROTOCOL),
       // Stamp the server we spawn with our owner token so a future
       // launch (ours) can tell this server is ours and replace it, while another
       // OS user's app sees a mismatch and never touches it. Bound to the account
@@ -1000,7 +1051,11 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
     // the grandchild python survives, holding the port.
     openLogStream();
 
-    const appSecret = newAppSecret();
+    /* The bearer token and the window proof stay local to this start until
+       the server proves the app secret, and are published just before the
+       start reports ready. */
+    const launch = newServerCredentials();
+    const handoff: LaunchHandoff = { appSecret: newAppSecret(), ...launch };
     const child = spawn(spawnCmd, spawnArgs, {
       cwd: spawnCwd,
       env,
@@ -1008,11 +1063,11 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       detached: process.platform !== 'win32',
     });
     // One line, then EOF, so processes the server starts inherit a closed stdin
-    // rather than a pipe that could still carry the secret.
+    // rather than a pipe that could still carry the hand-off.
     child.stdin?.on('error', (err) => {
       diagnostic("main.server-process", "WARNING", "server_app_secret_stdin_write_failed", err);
     });
-    child.stdin?.end(appSecretStdinLine(appSecret));
+    child.stdin?.end(launchStdinLine(handoff));
 
     child.stdout.on('data', (d) => {
       const text = d.toString();
@@ -1065,9 +1120,14 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       lastStopIntentional = _stopRequested;
       _stopRequested = false;
       // Until a new server proves the secret, whatever takes the port must get
-      // no tokens. A launcher that hands off exits before trust is set, so
-      // this changes nothing for it.
-      if (wasCurrent && !lastStopIntentional) setServerTrust('none');
+      // no access tokens, and the window's requests must carry no bearer token
+      // or window proof. A launcher that hands off exits before trust is set
+      // and before the start publishes the credentials, so this changes
+      // nothing for it.
+      if (wasCurrent && !lastStopIntentional) {
+        setServerTrust('none');
+        clearServerCredentials();
+      }
       if (!lastStopIntentional && code !== 0) {
         // A signal death has no numeric exit code. Keep its terminal evidence
         // even when the backend could not write a diagnostic before it died.
@@ -1104,8 +1164,11 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
          the start ready. Anything else on the port (no owner, or another one)
          may be some other process that took it while the child was still
          importing; the child then loses the bind and exits, and the start
-         fails. Reading it as ready would run the started hook, which hands the
-         listener the credentials and the in-app browser's key. */
+         fails. A ready start goes on to the secret check below. Only a server
+         that passes it gets the bearer token and the window proof, which the
+         start publishes to the request listener and authHeader() just before
+         the started hook runs. That hook hands over the MindsHub credential
+         and the in-app browser's key. */
       const ours = probe.owner === ownerAtSpawn;
       /* A server too old to echo an owner also predates the coding capability.
          Failing the start runs no hook, so such an answer fails at once as too
@@ -1121,11 +1184,11 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       });
     }
 
-    // The answer that made the start ready must prove the secret, or once
-    // access modes have left the vault file it gets nothing and is stopped.
+    /* The answer that made the start ready must prove the secret, or it gets
+       nothing and is stopped. */
     let untrusted = false;
     if (step.action !== 'fail' && lastProbe) {
-      const verdict = judgeServer(lastProbe, lastChallenge, await accessModesMigrated(orgStoreRootAtSpawn));
+      const verdict = judgeServer(lastProbe, lastChallenge);
       setServerTrust(verdict, lastProbe);
       untrusted = verdict === 'untrusted';
     }
@@ -1144,6 +1207,8 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
           exitCode: childExitCode,
           spawnError,
           elapsedMs,
+          // A refused launch hand-off, for one, ends with a line naming the problem.
+          refusal: serverStartRefusal(recentStderr),
         });
       } else {
         lastStartErrorKind = null;
@@ -1180,31 +1245,24 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
       // "a stale process" might be involved.
       lastPortHolderPid = (await findPortHolders(serverPort))[0] ?? null;
       if (serverProcess === child) serverProcess = null;
+      // Whatever holds the port now gets no bearer token or window proof.
+      clearServerCredentials();
       return {
         ok: false,
         reason: lastStartError,
         port: serverPort,
       };
     }
+    /* The server proved the secret. From here the request listener and
+       authHeader() send this launch's values, before the started hook runs,
+       and the requests held during the start go out with them. */
+    publishServerCredentials(launch);
+    releaseRequestsHeldForStart();
     serverStarted = true;
     _runningAccountRoot = account;
     _runningAccountDataRoot = accountDataRootAtSpawn;
     _runningOrgStoreRoot = orgStoreRootAtSpawn;
     noteServerClearsPendingCredentials(clearsPendingCredentials);
-    // A server that is up may have generated its own COWORK_AUTH_TOKEN, and it
-    // has certainly written its dotenv by the time it answers /health. Drop the
-    // cache HERE, where "a server is now running" is the fact, rather than only
-    // where one is deliberately restarted.
-    //
-    // The restart sites cover the window between a stop and a start. What they
-    // could not cover is a FIRST start, and there are two of those. A fresh
-    // install reads a dotenv that does not exist yet, latches "no token", and
-    // then sends every request unauthenticated for the life of the process —
-    // which is every request refused, now that the server requires auth by
-    // default. And a sign-in whose sidecar is not running starts one on the new
-    // account's root, whose dotenv holds a different token, while the cache
-    // still holds the previous account's.
-    resetServerAuthTokenCache();
     // /health answered from a server whose launcher has already exited — the
     // process handed off and there is no child left to supervise. Track it
     // with _adoptedExternal, so isServerRunning() doesn't call a healthy
@@ -1278,6 +1336,7 @@ async function stopServerUnlocked(): Promise<void> {
   const proc = serverProcess;
   if (!proc) {
     if (_adoptedExternal) await prepareCodingTasksForShutdown();
+    clearServerCredentials();
     serverStarted = false;
     lastStopIntentional = true;
     // A handed-off server has no child handle, so kill
@@ -1299,7 +1358,10 @@ async function stopServerUnlocked(): Promise<void> {
   // Mark not-running immediately so the renderer's `isServerRunning`
   // check reflects intent. We keep `serverProcess` non-null until we
   // actually verify exit so a racing startServer can't double-spawn.
+  // The checkpoint request authenticates, so the bearer token and the window
+  // proof are dropped only after it.
   await prepareCodingTasksForShutdown();
+  clearServerCredentials();
   serverStarted = false;
   _runningAccountRoot = undefined;
   _runningAccountDataRoot = undefined;

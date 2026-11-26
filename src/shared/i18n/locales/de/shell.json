@@ -190,17 +190,47 @@
     }
   },
   "comingSoon": {
-    "cloudTitle": "Bald in der Cloud verfügbar",
+    "cloudTitle": "Das läuft in der Desktop-App",
+    "cloudTitleNamed": "{feature} läuft in der Desktop-App",
     "unavailableTitle": "Funktion nicht verfügbar",
-    "cloudBodyNamed": "{feature} ist in der Cloud noch nicht verfügbar. Bis dahin können Sie die Funktion in der Desktop-App nutzen.",
-    "cloudBody": "Diese Funktion ist in der Cloud noch nicht verfügbar. Bis dahin können Sie sie in der Desktop-App nutzen.",
-    "cloudBodyCustom": "{feature} ist in der Cloud noch nicht verfügbar. Sie können es jetzt als benutzerdefinierten Connector verbinden.",
+    "cloudBodyNamed": "{feature} läuft heute in der Desktop-App. Laden Sie sie herunter, um {feature} dort zu verbinden.",
+    "cloudBody": "Das läuft heute in der Desktop-App. Laden Sie sie herunter, um es dort zu nutzen.",
+    "mobileBodyNamed": "{feature} läuft in der Desktop-App auf einem Computer.",
+    "mobileBody": "Das läuft in der Desktop-App auf einem Computer.",
+    "cloudBodyCustom": "{feature} läuft heute in der Desktop-App. Hier können Sie es jetzt als benutzerdefinierten Connector verbinden.",
     "unavailableBodyNamed": "{feature} ist in dieser Bereitstellung nicht verfügbar.",
     "unavailableBody": "Diese Funktion ist in dieser Bereitstellung nicht verfügbar.",
     "notNow": "Nicht jetzt",
-    "download": "App herunterladen",
+    "download": "Desktop-App herunterladen",
     "connectCustom": "Ihren benutzerdefinierten {feature}-Connector verbinden",
     "buildCustom": "Benutzerdefinierten Connector erstellen"
+  },
+  "desktopOffer": {
+    "tag": "Desktop",
+    "notNow": "Nicht jetzt",
+    "download": "Desktop-App herunterladen",
+    "platforms": "Für Mac, Windows und Linux.",
+    "code": {
+      "title": "Der Code-Modus läuft in der Desktop-App",
+      "body": "Der Code-Modus arbeitet mit dem Code auf Ihrem Computer und braucht daher die Desktop-App. Dort kann Cowork:",
+      "points": {
+        "files": "Code in Ihren eigenen Ordnern und Repositorys lesen und ändern",
+        "commands": "Befehle und Tests auf Ihrem Rechner ausführen",
+        "agents": "Eine Aufgabe an Claude Code oder Codex übergeben"
+      }
+    },
+    "folder": {
+      "projectTitle": "Einen Ordner auf Ihrem Computer in der Desktop-App nutzen",
+      "chatTitle": "Arbeitsordner gibt es in der Desktop-App",
+      "projectBody": "Der Browser kann nicht auf die Dateien auf Ihrem Computer zugreifen. Die Desktop-App kann ein Projekt in einem vorhandenen Ordner starten, und Cowork arbeitet mit den Dateien darin.",
+      "chatBody": "Der Browser kann nicht auf die Dateien auf Ihrem Computer zugreifen. In der Desktop-App können Sie einem Chat Ordner von Ihrem Computer hinzufügen, und Cowork arbeitet darin.",
+      "points": {
+        "inPlace": "Kein Hochladen: Die Dateien bleiben, wo sie sind",
+        "saved": "Was Cowork erstellt, wird auf Ihrem Computer gespeichert",
+        "kept": "Wenn Sie den Ordner aus Cowork entfernen, bleiben Ihre Dateien erhalten"
+      },
+      "note": "Für Mac, Windows und Linux. Hier im Browser können Sie weiterhin Dateien hochladen."
+    }
   },
   "loadStatus": {
     "retry": "Erneut versuchen",
@@ -210,10 +240,6 @@
   "upToDate": "Auf dem neuesten Stand",
   "upToDateSaving": "Wird gespeichert…",
   "upToDateSaved": "Gespeichert",
-  "usageBar": {
-    "hideAllowance": "Kontingent ausblenden",
-    "hide": "Ausblenden"
-  },
   "diagnostics": {
     "copy": "Diagnosedaten kopieren",
     "copied": "Kopiert",
@@ -438,7 +464,8 @@
       "fromDesktop": "Ihr Konto ist bereit. Sie können direkt hier loslegen oder zur {product}-App zurückkehren und sich anmelden.",
       "dismiss": "Schließen"
     },
-    "ownWorkHeading": "Woran soll {product} arbeiten?"
+    "ownWorkHeading": "Woran soll {product} arbeiten?",
+    "galleryHint": "Aus dem Beispiel {title}. Ändere, was du willst, und drücke dann Senden."
   },
   "logout": {
     "title": "Von {product} abmelden?",
@@ -462,5 +489,42 @@
   },
   "shortcuts": {
     "showBrowser": "Browser anzeigen"
+  },
+  "gallery": {
+    "open": "Anwendungsgalerie",
+    "title": "Anwendungsgalerie",
+    "welcomeTitle": "Willkommen bei {product}",
+    "welcomeIntro": "Du weißt nicht, wo du anfangen sollst? Das hat {product} aus einer einzigen Nachricht gemacht. Öffne ein Beispiel, sieh dir das Ergebnis an und starte davon aus.",
+    "intro": "Dir gehen die Ideen aus? Das hat {product} aus einer einzigen Nachricht gemacht. Öffne ein Beispiel, sieh dir das Ergebnis an und starte davon aus.",
+    "hide": "Galerie ausblenden",
+    "searchLabel": "Beispiele suchen",
+    "searchPlaceholder": "Suchen: Folien, Tabelle, Lernen…",
+    "tabsLabel": "Kategorien",
+    "all": "Alle",
+    "startHere": "Hier anfangen",
+    "allExamples": "Alle Beispiele",
+    "results": "{count, plural, one {# Beispiel passt} other {# Beispiele passen}}",
+    "noResults": "Nichts passt. Beschreibe im Feld, was du brauchst, und {product} fängt dort an.",
+    "loading": "Beispiele werden geladen…",
+    "unavailable": "Die Beispiele können gerade nicht geladen werden.",
+    "retry": "Erneut versuchen",
+    "minutes": "{count, plural, one {Etwa # Minute} other {Etwa # Minuten}}",
+    "builtWith": "Erstellt mit {model}",
+    "needs": "Benötigt: {needs}",
+    "backToAll": "Alle Beispiele",
+    "backToResults": "Ergebnisse für „{query}“",
+    "position": "{current} von {total}",
+    "previous": "Vorheriges Beispiel",
+    "next": "Nächstes Beispiel",
+    "breadcrumb": "Brotkrumen",
+    "whatItMade": "Was {product} gemacht hat",
+    "download": "Herunterladen",
+    "sampleInput": "Das Beispiel, das wir ihm gegeben haben",
+    "playInBrowser": "Im Browser öffnen",
+    "start": "Mit diesem Beispiel starten",
+    "tryIt": "Dieses Beispiel ausprobieren",
+    "startNote": "Setzt die Nachricht ins Feld. Nichts läuft, bis du auf Senden drückst.",
+    "tryItNote": "Führt es jetzt mit Beispieldaten als neue Aufgabe aus.",
+    "ownFile": "Eigene Datei verwenden"
   }
 }

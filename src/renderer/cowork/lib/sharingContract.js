@@ -97,6 +97,10 @@ export const INVALID_ID_CODE = 'invalid_id';
     name. */
 export const SHARE_ORG_REQUIRED_CODE = 'share_org_required';
 
+// A publish that approves connections, refused on the desktop because this
+// Electron shell predates the bridge that sends the app secret.
+export const PUBLISH_SHELL_TOO_OLD_CODE = 'publish_shell_too_old';
+
 /** `GET /hub/people/`'s two lookups. `param` is the query parameter, and the
     field of a 400 `invalidCode` body that lists the values cowork-server
     refused before asking MindsHub; `batchSize` is how many one call asks. */

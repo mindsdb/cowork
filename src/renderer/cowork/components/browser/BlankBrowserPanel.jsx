@@ -126,10 +126,11 @@ export function BlankStartOver({ taskKey = '', agentLabel = 'Anton', onSend, onO
 /**
  * @param {{ taskKey?: string, agentLabel?: string, browserOn?: boolean,
  *   onSend?: (text: string) => void, onOpenUrl?: (url: string) => Promise<void>,
- *   onClose: () => void, floating?: boolean, extraActions?: import('react').ReactNode }} props
+ *   onClose: () => void, floating?: boolean, extraActions?: import('react').ReactNode,
+ *   footer?: import('react').ReactNode }} props
  */
 export default function BlankBrowserPanel({
-  taskKey = '', agentLabel = 'Anton', browserOn = true, onSend, onOpenUrl, onClose, floating = false, extraActions = null, dock = null,
+  taskKey = '', agentLabel = 'Anton', browserOn = true, onSend, onOpenUrl, onClose, floating = false, extraActions = null, dock = null, footer = null,
 }) {
   const { t } = useTranslation('chat');
   const [address, setAddress] = useState('');
@@ -158,7 +159,7 @@ export default function BlankBrowserPanel({
   );
 
   return (
-    <BrowserFrame hint={busy || t('browser.blank.nothingOpen')} below={addressBar} onClose={onClose} floating={floating} extraActions={extraActions} dock={dock}>
+    <BrowserFrame hint={busy || t('browser.blank.nothingOpen')} below={addressBar} onClose={onClose} floating={floating} extraActions={extraActions} dock={dock} footer={footer}>
       <BlankStart taskKey={taskKey} agentLabel={agentLabel} browserOn={browserOn} state={state} />
     </BrowserFrame>
   );

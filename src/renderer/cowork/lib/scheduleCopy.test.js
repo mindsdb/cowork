@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { missedOnceTitle, missedRunLabel, missedRunText } from './scheduleCopy';
+import { lateRunText, missedOnceTitle, missedRunLabel, missedRunText, ranLate } from './scheduleCopy';
 
 describe('missedRunText', () => {
   it('gives a one-off the hour cutoff', () => {
@@ -24,5 +24,23 @@ describe('missedRunText', () => {
     expect(missedRunLabel(true)).toBe('If the server is down at this time');
     expect(missedOnceTitle(false)).toMatch(/while MindsHub was closed$/);
     expect(missedOnceTitle(true)).toMatch(/while the server was down$/);
+  });
+});
+
+describe('ranLate', () => {
+  const slotAt = '2026-11-20T22:00:00Z';
+
+  it('marks a run that started over two minutes after its slot', () => {
+    expect(ranLate({ slotAt, startedAt: '2026-11-20T22:03:00Z' })).toBe(true);
+    expect(ranLate({ slotAt, startedAt: '2026-11-20T22:00:45Z' })).toBe(false);
+  });
+
+  it('leaves a run with no slot alone, as a manual run has none', () => {
+    expect(ranLate({ startedAt: '2026-11-20T22:03:00Z' })).toBe(false);
+  });
+
+  it('names the due time and the likely cause per host', () => {
+    expect(lateRunText('10:00 PM', false)).toBe('Due 10:00 PM. MindsHub was closed or your computer was asleep.');
+    expect(lateRunText('10:00 PM', true)).toBe('Due 10:00 PM. The server was down or busy.');
   });
 });

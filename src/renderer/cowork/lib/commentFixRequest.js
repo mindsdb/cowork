@@ -12,14 +12,17 @@ export const MAX_REQUEST_CHARS = 4000;
 
 const tr = (key, vars) => i18n.t(`quickEdit.comment.${key}`, { ns: 'artifacts', ...vars });
 
-// The selector is a CSS path for a comment on an element, a JSON text range
-// for one on selected text, or empty for one on the whole artifact.
+// The selector is a CSS path for a comment on an element, a JSON anchor (a
+// text range, a doc's blocks) for one on a place, quoting the words picked
+// there, or empty for one on the whole artifact.
 function anchorLine(selector) {
   if (!selector) return tr('onArtifact');
   try {
-    const range = JSON.parse(selector);
-    if (range && range.type === 'text-range' && range.quote) {
-      return tr('onText', { quote: String(range.quote).replace(/\s+/g, ' ').slice(0, 300) });
+    const anchor = JSON.parse(selector);
+    if (anchor && typeof anchor === 'object') {
+      return anchor.quote
+        ? tr('onText', { quote: String(anchor.quote).replace(/\s+/g, ' ').slice(0, 300) })
+        : tr('onArtifact');
     }
   } catch { /* a CSS path */ }
   return tr('onElement', { selector: String(selector).slice(0, 300) });

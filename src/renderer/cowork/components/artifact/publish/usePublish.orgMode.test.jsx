@@ -542,7 +542,7 @@ describe('usePublish on desktop is unchanged', () => {
     const { result } = renderHook(() => usePublish(artifact, { enabled: false }));
     await act(async () => { await result.current.publish({ mode: 'public' }); });
 
-    expect(apiMock.publishArtifact).toHaveBeenCalledWith('/tmp/a/index.html', { mode: 'public' });
+    expect(apiMock.publishArtifact).toHaveBeenCalledWith('/tmp/a/index.html', { mode: 'public' }, { approvedDatasources: [] });
     expect(wsMock.setArtifactAccess).not.toHaveBeenCalled();
     expect(result.current.orgMode).toBe(false);
   });

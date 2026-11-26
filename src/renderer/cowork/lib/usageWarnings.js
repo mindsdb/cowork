@@ -40,6 +40,15 @@ export const FREE_TOKENS_LOW_FRACTION = 0.2;
    mark like the others: entering the band is the first thing worth saying. */
 const FREE_DISMISS_STEPS_FRACTION = [FREE_TOKENS_LOW_FRACTION, 0.1, 0.05];
 
+/* The bar above the composer speaks only when the next task is likely to stop
+   (ENG-4719): every source that can pay for the picked model is nearly gone.
+   "Nearly gone" for an allowance is this fraction left or less, for a plan
+   window the matching share used. Above it the user has room and nothing to
+   do, so the bar stays empty; the figures live in Settings → Usage, which
+   keeps its own 20% / 80% colouring. */
+export const ALLOWANCE_NEARLY_GONE_FRACTION = 0.1;
+export const PLAN_WINDOW_NEARLY_GONE_PERCENT = 90;
+
 export const USAGE_ACTIONS = Object.freeze({
   viewUsage: { key: 'viewUsage', get label() { return tr('actions.viewUsage'); } },
   addFunds: { key: 'addFunds', get label() { return tr('actions.addFunds'); } },
@@ -91,21 +100,20 @@ export function balanceDismissStep(usd) {
   return dismissStep(usd, BALANCE_DISMISS_STEPS_USD);
 }
 
-/* Below this balance the wallet is worth a word to someone who did not pick a
-   paid model, that is the router or Air running on the wallet once the free
-   allowance is used up (ENG-4188). Above it they just keep working: the
-   allowance running out changes nothing they need to act on, and saying so
-   every five hours trains them to ignore the bar. An explicit paid pick still
-   hears from auth's own low line ($20), since every turn it sends is billed. */
-export const AIR_ON_BALANCE_WARN_USD = 5;
+/* Below this balance the wallet is worth a word, and only then (ENG-4188,
+   ENG-4719). Above it the next task is paid for: the allowance running out,
+   or a paid pick billing the wallet, changes nothing the user needs to act on,
+   and saying so trains them to ignore the bar. Auth's own $20 "low" line still
+   drives its emails and the console; the composer waits for this one. */
+export const BALANCE_WARN_USD = 5;
 
-/** Whether the wallet comfortably carries MindsHub Air once the allowance is
- *  gone: AIR_ON_BALANCE_WARN_USD or more, or an auto top up that is working
- *  and will refill it. Nothing to tell such an account (ENG-4188). */
-export function balanceCarriesAir(balance, autoTopUp) {
+/** Whether the wallet comfortably pays for the next task: BALANCE_WARN_USD
+ *  or more, or an auto top up that is working and will refill it. Nothing to
+ *  tell such an account (ENG-4188, ENG-4719). */
+export function balanceCarriesNextTask(balance, autoTopUp) {
   if (!balance || isBalanceEmpty(balance)) return false;
   if (autoTopUp?.enabled && autoTopUp.status === 'ok') return true;
-  return Number(balance.usd) >= AIR_ON_BALANCE_WARN_USD;
+  return Number(balance.usd) >= BALANCE_WARN_USD;
 }
 
 /** How far down the allowance has stepped, from the fraction still left: 40%
@@ -309,15 +317,6 @@ export function budgetExceededCopy({ usage = null, budgetScope = null, budgetMod
     : tr('budgetExceeded.raise', { scope, ...model });
 }
 
-/** Whether a bar descriptor is something to WARN about, as opposed to the
- *  standing figure. The one place that rule is written: a resting figure can
- *  sit on screen for a whole window, so counting it as a warning would mean a
- *  dismissal is never forgotten again and a bar closed in one window would
- *  still be closed in the next. */
-export function countsAsWarning(descriptor) {
-  return !!descriptor && !descriptor.resting;
-}
-
 /** The picked model id: an id string, a catalog option ({ id }), or null. */
 function pickedModelId(modelIn) {
   return typeof modelIn === 'string' ? modelIn : modelIn?.id ?? null;
@@ -334,33 +333,11 @@ function withResetTime(free, key, vars, translate = tr) {
   return time ? translate(`${key}WithTime`, { ...vars, time }) : translate(key, vars);
 }
 
-/* The standing allowance figure: what the bar says when nothing is wrong, to
-   someone the allowance running out would actually stop. Built here because
-   two branches need the same object. The terminal branch below returns it, and
-   `free_low` carries it as the state a dismissal falls back to, so closing the
-   warning drops to the number rather than to nothing. It closes too
-   (ENG-2749), on its own flag rather than a dismissal key: see
-   useStandingFigureHidden for how long that holds. */
-function restingFigure(free, f, { balanceEmpty = false } = {}) {
-  const resets = formatResetTime(free.resetsAt);
-  let body = resets ? tr('resting.resetsAt', { time: resets }) : tr('resting.noReset');
-  const actions = [USAGE_ACTIONS.viewUsage];
-  // An empty wallet is true and actionable from the moment it empties, so it
-  // is said here rather than appearing as a surprise clause on the warning
-  // once the grant crosses 20%. The tone stays neutral: while the grant can
-  // still pay, nothing is blocked and this is not a stop sign.
-  if (balanceEmpty) {
-    body += ` ${tr('balanceEmptySentence')}`;
-    actions.push(USAGE_ACTIONS.addFunds);
-  }
-  return {
-    kind: 'free_at_rest',
-    tone: 'resting',
-    resting: true,
-    title: tr('percentLeft', { percent: formatPercentShort(f.fractionLeft) }),
-    body,
-    actions,
-  };
+/* Whether a capped allowance is nearly gone: used up, or at or under
+   ALLOWANCE_NEARLY_GONE_FRACTION left. An uncapped grant never is. */
+function allowanceNearlyGone(f) {
+  if (f.out) return true;
+  return f.fractionLeft !== null && f.fractionLeft <= ALLOWANCE_NEARLY_GONE_FRACTION;
 }
 
 export function deriveComposerWarning(usage, options = {}) {
@@ -373,23 +350,24 @@ export function deriveComposerWarning(usage, options = {}) {
   const plan = planOf(usage);
   if (isPaidPlan(plan)) {
     if (!tierCovers(plan.tier, coveredByTier)) return null;
-    return planWindowWarning(plan, { balanceUsable: isBalanceUsable(usage.balance) });
+    return planWindowWarning(plan, {
+      balanceUsable: isBalanceUsable(usage.balance),
+      balanceCarries: balanceCarriesNextTask(usage.balance, usage.autoTopUp),
+    });
   }
   if (isExplicitPaidModel(pickedModelId(model))) return null;
   const free = usage.freeTokens;
   const f = freeState(free);
-  if (f.fractionLeft === null) return null;
-  const figure = restingFigure(free, f);
-  if (!f.out && !f.low) return figure;
+  // Nothing at rest (ENG-4719): an allowance with room says nothing.
+  if (f.fractionLeft === null || !allowanceNearlyGone(f)) return null;
   const time = formatResetTime(free.resetsAt);
   return {
     kind: f.out ? 'free_used' : 'free_low',
-    title: f.out ? tr('freeUsed.title') : figure.title,
-    body: time ? tr('resting.resetsAt', { time }) : '',
+    title: f.out ? tr('freeUsed.title') : tr('percentLeft', { percent: formatPercentShort(f.fractionLeft) }),
+    body: time ? tr('resetsAt', { time }) : '',
     tone: f.out ? 'info' : 'warning',
     dismissKey: f.out ? 'free_used' : `free_low:${freeDismissStep(f.fractionLeft)}`,
     actions: [],
-    whenDismissed: figure,
   };
 }
 
@@ -416,20 +394,17 @@ export function deriveUsageWarning(usage, {
   // tokens until they are gone; an explicit paid model only ever bills the
   // balance; the router (and no pick, which resolves to the router on
   // MindsHub) can land on either, so both resources matter for it.
-  const isAir = model === MINDSHUB_AIR_MODEL_ID;
   const isPaidModel = isExplicitPaidModel(model);
   const f = freeState(free);
   const balanceEmpty = isBalanceEmpty(balance);
-  const balanceLow = !!balance && !balanceEmpty && balance.alert === 'low';
-  // A wallet the next task falls through to once the allowance is gone. Air
-  // running out never stops someone who has one, so the standing figure has
-  // nothing to tell them (ENG-2749). The warnings still do: falling through to
-  // paid changes what they spend, and that is worth hearing.
-  // Rounds toward showing the figure: a wallet auth has not flagged but that
-  // holds nothing is not one the next task can fall through to.
+  // A wallet the next task falls through to once the allowance is gone.
   const balanceUsable = isBalanceUsable(balance);
+  // The bar speaks only when the next task is likely to stop (ENG-4719): the
+  // wallet can't carry it (under BALANCE_WARN_USD, no working auto top
+  // up) AND no allowance can either. An explicit paid pick has only the wallet.
+  const balanceCarries = balanceCarriesNextTask(balance, auto);
+  const balanceShort = !!balance && !balanceEmpty && !balanceCarries;
   const freeInUse = !isPaidModel;
-  const paidInUse = !isAir || f.out || !free;
   // An empty balance only stops the next task when nothing else can pay for
   // it. The router (and no pick) resolves to the account's configured model,
   // and cowork-server swaps a wallet-locked model for Air while the free
@@ -454,7 +429,7 @@ export function deriveUsageWarning(usage, {
   // surface reads exactly as before plans existed.
   const plan = planOf(usage);
   if (isPaidPlan(plan) && tierCovers(plan.tier, coveredByTier)) {
-    return planWindowWarning(plan, { balanceUsable });
+    return planWindowWarning(plan, { balanceUsable, balanceCarries });
   }
 
   if (balanceEmptyStopsNextTask) {
@@ -472,20 +447,16 @@ export function deriveUsageWarning(usage, {
     };
   }
 
-  // Only an explicit paid pick hears about the balance from auth's $20 line;
-  // the router and Air wait until it is actually short (ENG-4188).
-  if (balanceLow && paidInUse && (isPaidModel || !balanceCarriesAir(balance, auto))) {
+  // A short wallet is news only when it is the one thing paying for the next
+  // task: an explicit paid pick, or no allowance left to draw on (ENG-4719).
+  // While some allowance remains, the router and Air run on it and cowork-server
+  // swaps a wallet-locked pick for Air, so a nearly-gone allowance is said by
+  // `free_low` below, which names the short wallet too. A working auto top up
+  // counts as carrying, so it never reaches here.
+  if (balanceShort && (isPaidModel || !f.available)) {
     const title = tr('balanceLow.title');
     // Closing the bar hides this step only; the next step down asks again.
     const dismissKey = `balance_low:${balanceDismissStep(balance.usd)}`;
-    if (auto?.enabled && auto.status === 'ok') {
-      const target = auto.rechargeToUsd != null ? formatUsd(auto.rechargeToUsd) : null;
-      const floor = auto.thresholdUsd != null ? formatUsd(auto.thresholdUsd) : null;
-      const body = target && floor
-        ? tr('balanceLow.autoRefills', { usd, target, floor })
-        : tr('balanceLow.autoCovers', { usd });
-      return { kind: 'balance_low', dismissKey, tone: 'warning', title, body, actions: [] };
-    }
     if (auto?.enabled && auto.status === 'pending_action') {
       return {
         kind: 'balance_low',
@@ -517,7 +488,7 @@ export function deriveUsageWarning(usage, {
   }
 
   // A healthy wallet just carries Air until the refill: no bar (ENG-4188).
-  if (freeInUse && f.out && balanceCarriesAir(balance, auto)) return null;
+  if (freeInUse && f.out && balanceCarries) return null;
 
   if (freeInUse && f.out) {
     return {
@@ -529,12 +500,9 @@ export function deriveUsageWarning(usage, {
     };
   }
 
-  // The allowance running low is not news to someone whose balance carries
-  // Air past it: that is what the balance is for (ENG-4208, as ENG-4188 did
-  // for the allowance running out).
-  if (freeInUse && f.low && balanceCarriesAir(balance, auto)) return null;
-
-  if (freeInUse && f.low) {
+  // The allowance running low is news only once it is nearly gone and the
+  // wallet can't carry Air past it (ENG-4208, ENG-4719).
+  if (freeInUse && !f.out && allowanceNearlyGone(f) && !balanceCarries) {
     let body = withResetTime(free, 'freeLow.body');
     const actions = [USAGE_ACTIONS.viewUsage];
     if (balanceEmpty) {
@@ -549,33 +517,18 @@ export function deriveUsageWarning(usage, {
     return {
       kind: 'free_low',
       tone: 'warning',
-      // Stepped like the balance: closing this at 20% left asks again at 10%,
-      // which is also where the console escalates its own usage alert.
+      // Stepped like the balance: closing this at 10% left asks again at 5%.
       dismissKey: `free_low:${freeDismissStep(f.fractionLeft)}`,
-      // For someone the allowance can stop, closing this steps down to the
-      // standing figure, never to nothing: 20% left is where the figure matters
-      // most. With a balance to fall through to there is no figure to step
-      // down to, so the close hides the bar until the next step asks again.
-      ...(balanceUsable ? {} : { whenDismissed: restingFigure(free, f, { balanceEmpty }) }),
       title: tr('percentLeft', { percent: formatPercentShort(f.fractionLeft) }),
       body,
       actions,
     };
   }
 
-  // Nothing is wrong, so say where the allowance stands rather than nothing at
-  // all, but only to someone it can stop. A free user with no wallet meets the
-  // 20% warning with nothing to plan around unless the number was already in
-  // view, and Settings is somewhere they have to think to go, so the figure
-  // shows at any level, as it always has. Someone with a balance keeps working
-  // when the allowance runs out, so for them the number has nothing to inform
-  // and the bar stays empty (ENG-2749). `resting` marks this as a figure and
-  // not a warning: it does not count as something to warn about (see
-  // `countsAsWarning`), and closing it holds.
-  if (freeInUse && f.available && f.fractionLeft !== null && !balanceUsable) {
-    return restingFigure(free, f, { balanceEmpty });
-  }
-
+  // Nothing is wrong, so the bar says nothing (ENG-4719). The standing
+  // allowance figure is gone for everyone, including a free user with an
+  // empty wallet: with room left they keep working, and Settings → Usage
+  // still shows where the allowance stands.
   return null;
 }
 
@@ -583,25 +536,29 @@ export function deriveUsageWarning(usage, {
 const windowName = (w) => (w === '7d' ? '7d' : '5h');
 
 /* The bar for a paid plan: a used-up window first (work on the plan has
-   stopped), then a window at 80% or more. Nothing at rest: the meters live
-   in Settings → Usage. No dollar or token figure, ever: only the share of
-   the window and when it frees up. Inside the mobile app the bar still says
+   stopped), then a window at PLAN_WINDOW_NEARLY_GONE_PERCENT or more. Silent
+   whenever the wallet carries the next task (ENG-4719): the plan running out
+   then changes nothing the subscriber must act on. Nothing at rest: the
+   meters live in Settings → Usage. No dollar or token figure, ever: only the
+   share of the window and when it frees up. Inside the mobile app the bar still says
    how full a window is and when it resets, but it names no wallet and offers
    no action (see billingLinks). */
-function planWindowWarning(plan, { balanceUsable }) {
-  const { exhausted, warning } = windowState(plan);
+function planWindowWarning(plan, { balanceUsable, balanceCarries = false }) {
+  if (balanceCarries) return null;
+  const { exhausted, warning: warm } = windowState(plan);
+  const warning = warm && warm.percentUsed >= PLAN_WINDOW_NEARLY_GONE_PERCENT ? warm : null;
   const sells = offersBilling();
   const upgradeTier = nextUpgradeTier(plan.tier);
   const upgrade = upgradeTier ? [upgradeAction(upgradeTier)] : [];
   const offer = (actions) => (sells ? actions : []);
-  const resets = (time) => (time ? tr('resting.resetsAt', { time }) : '');
+  const resets = (time) => (time ? tr('resetsAt', { time }) : '');
   if (exhausted) {
     const time = formatResetTime(exhausted.resetsAt);
     const vars = { window: windowName(exhausted.window), time: time || '' };
     if (balanceUsable) {
       return {
         kind: 'window_on_wallet',
-        tone: 'info',
+        tone: 'warning',
         dismissKey: `window_on_wallet:${exhausted.window}`,
         title: tr('window.usedUpTitle', vars),
         body: sells
@@ -666,38 +623,37 @@ export function usageTransitions(prev, next, {
   const after = freeState(next.freeTokens);
   const spendsFree = !isExplicitPaidModel(pickedModelId(modelIn));
   // A task on a healthy wallet keeps going on it; that is not news (ENG-4188).
-  if (!before.out && after.out && spendsFree && !balanceCarriesAir(next.balance, next.autoTopUp)) {
+  if (!before.out && after.out && spendsFree && !balanceCarriesNextTask(next.balance, next.autoTopUp)) {
     out.push({ kind: 'free_used', resetsAt: next.freeTokens?.resetsAt || null });
   }
-  // A long task can cross the low band and empty it without the composer bar
-  // ever being looked at, so the crossing is this task's news too. Stepped on
-  // the same scale as the bar's dismissal, so a task that runs from 40% left to
-  // 8% left reports on each step rather than on each poll. Both reads have to be a
-  // capped grant, or a grant arriving mid-task would read as one draining, and
-  // `free_used` above owns the last step so reaching zero says the allowance is
-  // gone rather than that it is low.
-  // The first four terms are belt and braces, not load-bearing: `after.low`
-  // already implies a capped grant with allowance left, and `freeDismissStep`
-  // reads a null fraction as the deepest step, which no later step can exceed.
-  // They stay because the step comparison carrying all of that alone does not
-  // read as the rule it enforces.
-  if (!before.out && !after.out && after.low && spendsFree
-      && !balanceCarriesAir(next.balance, next.autoTopUp)
-      && before.fractionLeft !== null && after.fractionLeft !== null
-      && freeDismissStep(after.fractionLeft) > freeDismissStep(before.fractionLeft)) {
+  // A long task can drain the allowance without the composer bar ever being
+  // looked at, so the bar's rule is this task's rule too (ENG-4719): speak once
+  // the allowance is nearly gone and the wallet can't carry Air past it, then
+  // again at each deeper step. Both reads have to be a capped grant, or a grant
+  // arriving mid-task would read as one draining, and `free_used` above owns
+  // the last step so reaching zero says the allowance is gone, not low.
+  const nearlyGoneNow = !after.out && after.fractionLeft !== null && allowanceNearlyGone(after);
+  // A read with no fraction (no grant, uncapped) neither crosses in nor steps
+  // down: `freeDismissStep` reads it as the deepest step already.
+  const crossedIn = before.fractionLeft !== null && !allowanceNearlyGone(before);
+  const steppedDown = freeDismissStep(after.fractionLeft) > freeDismissStep(before.fractionLeft);
+  if (nearlyGoneNow && (crossedIn || steppedDown)
+      && spendsFree && !balanceCarriesNextTask(next.balance, next.autoTopUp)) {
     out.push({
       kind: 'free_low',
       fractionLeft: after.fractionLeft,
       resetsAt: next.freeTokens?.resetsAt || null,
     });
   }
-  // Plus and Pro (ENG-4186): a window crossing a warning step, or filling up,
-  // during this task. Both reads must carry the paid plan, or a plan arriving
-  // mid-task would read as a window filling. The plan must cover the task's
-  // model, or the task was on the wallet all along.
+  // Plus and Pro (ENG-4186): a window nearly gone, or filling up, during this
+  // task. Both reads must carry the paid plan, or a plan arriving mid-task
+  // would read as a window filling. The plan must cover the task's model, or
+  // the task was on the wallet all along. Like the bar, silent while the wallet
+  // carries the next task (ENG-4719).
   const planBefore = planOf(prev);
   const planAfter = planOf(next);
-  if (isPaidPlan(planBefore) && isPaidPlan(planAfter) && tierCovers(planAfter.tier, coveredByTier)) {
+  if (isPaidPlan(planBefore) && isPaidPlan(planAfter) && tierCovers(planAfter.tier, coveredByTier)
+      && !balanceCarriesNextTask(next.balance, next.autoTopUp)) {
     const prior = new Map(planBefore.windows.map((w) => [w.window, w]));
     for (const w of planAfter.windows) {
       const was = prior.get(w.window);
@@ -709,7 +665,8 @@ export function usageTransitions(prev, next, {
           resetsAt: w.resetsAt,
           onWallet: isBalanceUsable(next.balance),
         });
-      } else if (w.percentUsed < 100 && windowWarnStep(w.percentUsed) > windowWarnStep(was.percentUsed)) {
+      } else if (w.percentUsed < 100 && w.percentUsed >= PLAN_WINDOW_NEARLY_GONE_PERCENT
+          && (was.percentUsed < PLAN_WINDOW_NEARLY_GONE_PERCENT || windowWarnStep(w.percentUsed) > windowWarnStep(was.percentUsed))) {
         out.push({ kind: 'window_low', window: w.window, percentUsed: w.percentUsed, resetsAt: w.resetsAt });
       }
     }

@@ -187,6 +187,14 @@ describe('isArtifactDeleted', () => {
     expect(decide(chatCard())).toBe(true);
   });
 
+  it('does not report a widget the index leaves out, which the server lists on purpose without it (ENG-4684)', () => {
+    expect(decide(chatCard({ display: 'widget' }))).toBe(false);
+    expect(decide(chatCard({ metadata: { display: 'widget' } }))).toBe(false);
+    // Deleted through the app, it still is.
+    const tombstones = buildArtifactIndex([serverCard()]);
+    expect(decide(chatCard({ display: 'widget' }), { tombstones })).toBe(true);
+  });
+
   it('does not report a card the index mentions', () => {
     expect(decide(chatCard(), { index: buildArtifactIndex([serverCard()]) })).toBe(false);
   });

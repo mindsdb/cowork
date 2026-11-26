@@ -131,3 +131,73 @@ describe('endViewSession', () => {
     expect(warn).toHaveBeenCalledWith('Could not end the artifact viewer session (TimeoutError).');
   });
 });
+
+describe('viewSessionFrameUrl', () => {
+  const PAGE = 'https://view.staging.mindshub.ai/view/8620653c9/b527cf6e?v=1.0';
+  const token = async () => 'kc-token';
+
+  function onStaging(answer: Response | (() => never)) {
+    vi.stubEnv('VITE_MINDS_API_URL', '');
+    setUrl('https://cowork.staging.mindshub.ai/');
+    const fetchMock = vi.fn(async () => (typeof answer === 'function' ? answer() : answer));
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  it("frames the view host's bootstrap with a ticket, the token only in the POST body", async () => {
+    const fetchMock = onStaging(new Response('{"ticket":"tk.1"}', { status: 200 }));
+    const { viewSessionFrameUrl } = await importViewSession();
+
+    const url = await viewSessionFrameUrl(PAGE, token);
+
+    expect(url).toBe(
+      'https://view.staging.mindshub.ai/_session?ticket=tk.1&return=%2Fview%2F8620653c9%2Fb527cf6e%3Fv%3D1.0',
+    );
+    const [ticketUrl, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(ticketUrl).toBe('https://view.staging.mindshub.ai/_session/ticket');
+    expect(init).toMatchObject({ method: 'POST', credentials: 'omit', redirect: 'error' });
+    expect(JSON.parse(String(init.body))).toEqual({ token: 'kc-token' });
+    expect(url).not.toContain('kc-token');
+  });
+
+  it("never sends the token to a page off this environment's view host", async () => {
+    const fetchMock = onStaging(new Response('{"ticket":"tk.1"}', { status: 200 }));
+    const { viewSessionFrameUrl } = await importViewSession();
+
+    for (const other of [
+      'https://view.mindshub.ai/view/a/b',
+      'https://view.staging.mindshub.ai.evil.example/view/a/b',
+      'http://view.staging.mindshub.ai/view/a/b',
+      'not a url',
+    ]) {
+      expect(await viewSessionFrameUrl(other, token)).toBe(other);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('frames the page itself when there is no token, or the view host refuses or fails', async () => {
+    for (const answer of [
+      new Response('{"error":"Forbidden"}', { status: 403 }),
+      new Response('{}', { status: 200 }),
+      () => { throw new TypeError('network'); },
+    ]) {
+      onStaging(answer as Response);
+      const { viewSessionFrameUrl } = await importViewSession();
+      expect(await viewSessionFrameUrl(PAGE, token)).toBe(PAGE);
+    }
+    const fetchMock = onStaging(new Response('{"ticket":"tk.1"}', { status: 200 }));
+    const { viewSessionFrameUrl } = await importViewSession();
+    expect(await viewSessionFrameUrl(PAGE, async () => null)).toBe(PAGE);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('asks nothing from a plain http origin such as local vite dev', async () => {
+    setUrl('http://localhost:3000/');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const { viewSessionFrameUrl } = await importViewSession();
+
+    expect(await viewSessionFrameUrl(PAGE, token)).toBe(PAGE);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

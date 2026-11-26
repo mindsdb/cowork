@@ -77,7 +77,9 @@ export function ToggleGroup({
   const [settled, setSettled] = useState(false);
 
   // Measured, not computed: option widths change when labels hide at narrow
-  // widths, so the pill follows the group's size as well as the selection.
+  // widths, and content-sized options change width on their own (a label
+  // translated live), so the pill follows the group's and each option's size
+  // as well as the selection.
   useLayoutEffect(() => {
     const group = groupRef.current;
     const measure = () => {
@@ -89,6 +91,7 @@ export function ToggleGroup({
     if (!group || typeof ResizeObserver === 'undefined') return undefined;
     const observer = new ResizeObserver(measure);
     observer.observe(group);
+    items.current.forEach((el) => observer.observe(el));
     return () => observer.disconnect();
   }, [value, options.length]);
   useLayoutEffect(() => {

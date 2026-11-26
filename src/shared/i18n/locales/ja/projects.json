@@ -24,10 +24,6 @@
         "untilMobile": "無料のMindsHub Airは、{until}まで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。",
         "dailyResetMobile": "無料のMindsHub Airは、1日の予算がリセットされるまで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。"
       },
-      "resting": {
-        "resetsAt": "{time}にリセットされます。",
-        "noReset": "Airは無料トークンを使い切るまで利用できます。"
-      },
       "balanceEmptySentence": "残高がありません。",
       "percentLeft": "無料枠の残り：{percent}",
       "autoTopUpFailed": {
@@ -46,8 +42,6 @@
       },
       "balanceLow": {
         "title": "残高が少なくなっています",
-        "autoRefills": "残り{usd}です。{floor}を下回ると、自動チャージで{target}まで補充されます。",
-        "autoCovers": "残り{usd}です。自動チャージで補充されます。",
         "autoPending": "残り{usd}です。自動チャージは銀行の処理を待っています。",
         "autoCapReached": "残り{usd}です。月間上限を超えないよう、自動チャージは一時停止しています。続けるには残高を追加してください。",
         "body": "残り{usd}です。残高を追加するか、自動チャージをオンにしてください。",
@@ -83,7 +77,8 @@
         "lowThenWalletWithTime": "その後は、{time}にリセットされるまで残高からAPI料金で支払います。",
         "lowThenPause": "その後は、リセットされるまでタスクが一時停止します。",
         "lowThenPauseWithTime": "その後は、{time}までタスクが一時停止します。"
-      }
+      },
+      "resetsAt": "{time}にリセットされます。"
     },
     "scheduleWhen": {
       "timeZone": "{city}時間",
@@ -105,7 +100,9 @@
       "missedLabelServer": "この時刻にサーバーが停止している場合",
       "missedLabelApp": "この時刻にMindsHubが閉じている場合",
       "missedOnceTitleServer": "サーバーの停止中に、この1回限りのタスクの実行時刻が過ぎました",
-      "missedOnceTitleApp": "MindsHubが閉じている間に、この1回限りのタスクの実行時刻が過ぎました"
+      "missedOnceTitleApp": "MindsHubが閉じている間に、この1回限りのタスクの実行時刻が過ぎました",
+      "lateRunApp": "予定: {when}。MindsHub が閉じていたか、コンピューターがスリープ中でした。",
+      "lateRunServer": "予定: {when}。サーバーが停止中か混雑していました。"
     },
     "stopScheduleRun": {
       "unreachable": "実行を停止するためにサーバーに接続できませんでした。もう一度お試しください。",
@@ -319,6 +316,7 @@
       "sections": {
         "mine": "自分のもの",
         "sharedWithMe": "自分と共有",
+        "sharedByOthers": "他のユーザーが共有",
         "team": "自分のチーム",
         "builtin": "組み込み"
       },
@@ -588,6 +586,7 @@
     "lastFailed": "前回失敗",
     "lastRunFailed": "前回の実行に失敗",
     "stoppedAtLimit": "上限で停止",
+    "writesRefused": "承認が必要",
     "done": "完了",
     "active": "有効"
   },
@@ -619,6 +618,7 @@
     "partialNote": "一部の操作は完了している可能性があります。再実行する前に実行内容を確認してください。",
     "limitTitle": "前回の実行は上限に達して停止しました",
     "limitNote": "作業の一部は完了している可能性があります。再実行する前に実行内容を確認してください。",
+    "approvalTitle": "前回の実行の変更は承認されませんでした",
     "failedTitle": "前回の実行に失敗しました",
     "resume": "再開",
     "runNow": "今すぐ実行",
@@ -723,7 +723,8 @@
       "success": "成功",
       "failed": "失敗",
       "cancelled": "停止",
-      "stoppedAtLimit": "上限で停止"
+      "stoppedAtLimit": "上限で停止",
+      "writesRefused": "未承認"
     },
     "sentence": "{when}（{zone}）",
     "runningNow": "現在実行中",
@@ -740,6 +741,7 @@
     "scheduleAriaLabel": "スケジュール",
     "accountDefaultModel": "アカウントのデフォルトモデル",
     "ranOnDefaultModel": "デフォルトモデル",
+    "ranLate": "遅延",
     "modelUnavailable": "{model}は利用できないため、この実行ではデフォルトモデルを使用しました。",
     "succeededCount": "{total, plural, other {#回中{succeeded}回成功}}",
     "promptAriaLabel": "プロンプト",
