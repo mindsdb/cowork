@@ -100,6 +100,7 @@ export function ArtifactViewerBody({
     draftUrl: draftPreviewUrl,
     contentVersion,
     document: documentPreview,
+    revisionDocument,
     error: err,
     setError: setErr,
     isText,
@@ -153,7 +154,7 @@ export function ArtifactViewerBody({
     || /\.html?$/i.test(sourcePath)
   );
   const editorKey = htmlSource ? `${workspace.source.artifactId || ''}:${sourcePath}` : '';
-  const showEditor = (layers ? layers.source : workspace.mode === 'edit') && !!workspace.source;
+  const showEditor = (layers ? layers.source : workspace.mode === 'edit') && !!workspace.source && !workspace.source.binary;
   const [retainedEditorKey, setRetainedEditorKey] = useState('');
   // The one side panel (ViewerSidePanel) holds whichever of Live edit, the
   // comments inbox and Stats is open; the viewer keeps them exclusive.
@@ -190,7 +191,7 @@ export function ArtifactViewerBody({
     return () => window.clearTimeout(handle);
   }, [editorKey, iframeReady, retainedEditorKey, showEditor]);
 
-  const sourceEditor = workspace.source ? (
+  const sourceEditor = workspace.source && !workspace.source.binary ? (
     <ArtifactSourceEditor
       source={workspace.source}
       value={workspace.draft}
@@ -407,6 +408,7 @@ export function ArtifactViewerBody({
           busy={repairBusy || workspace.status === 'saving'}
           contentType={workspace.source?.contentType}
           baseUrl={draftPreviewUrl}
+          documentFor={revisionDocument}
           onClose={() => workspace.setComparison(null)}
           onRestore={workspace.restoreRevision}
           publishReview={publishReview}

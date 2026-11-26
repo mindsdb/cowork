@@ -56,7 +56,7 @@ import { trackArtifactStatsOpened } from '../../lib/analytics';
 import { UNKNOWN_SHARE_SNAPSHOT, reportWithdrawal, shareSnapshot } from '../../lib/artifactShareAnalytics';
 import { diagnostic } from '../../../../shared/diagnostics';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
-import { isFilePageArtifact, isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
+import { isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
 import { useBlobImageSrc } from '../AttachmentThumbnail';
 import { Modal } from '../ui/Modal';
 import { ConfirmModal } from '../ConfirmModal';
@@ -1263,18 +1263,11 @@ export function ArtifactViewer({
   const [barEffort, setBarEffort] = useState(null);
 
   // Quick edits (ENG-4227): offered in Preview to whoever can edit, when the
-  // server turned them on. A document the viewer previews (a PDF, Word, Excel
-  // or PowerPoint file) gets the bar only when it shares as a page of its own
-  // (ENG-4687), and then every message goes to the chat: the agent changes the
-  // file there, since its text can't be edited in place.
-  // Such a document loads no workspace (previewOnly), so its bar asks only
-  // that the person may change it and that there is a chat to send to.
-  const chatOnlyEdits = Boolean(documentType) && isFilePageArtifact(artifact);
-  const canQuickEdit = chatOnlyEdits
-    ? canManage && Boolean(onAddressWithAgent)
-    : workspace.capabilities?.canQuickEdit === true
-      && workspace.capabilities?.canEdit !== false
-      && !documentType;
+  // server turned them on. A document (a PDF, Word, Excel or PowerPoint file)
+  // is no exception (ENG-4687): its workspace says whether its edits run in
+  // place (`quickEditDirect`) or go to the chat, as for a web page.
+  const canQuickEdit = workspace.capabilities?.canQuickEdit === true
+    && workspace.capabilities?.canEdit !== false;
   // The chat the artifact belongs to, chosen the way a comment repair chooses
   // it: this chat, else the one that made the artifact.
   const resolveArtifactConversation = async () => conversationId
@@ -1286,8 +1279,7 @@ export function ArtifactViewer({
     enabled: open && canQuickEdit,
     // Without a decisions model every message goes to the chat. An older
     // server that sends no flag edits directly, as it did before the flag.
-    // A previewed document always goes to the chat (chatOnlyEdits).
-    direct: workspace.capabilities?.quickEditDirect !== false && !chatOnlyEdits,
+    direct: workspace.capabilities?.quickEditDirect !== false,
     headRevisionId: workspace.currentRevision?.id || null,
     resolveConversation: async () => (await resolveArtifactConversation()) || null,
     // Same send the comment repair uses, with a fresh chat as the last resort.
@@ -1417,9 +1409,7 @@ export function ArtifactViewer({
   // workspace load names (`publishedRevision`).
   const unsharedFrom = workspace.publishedRevision?.id || null;
   const unsharedTo = workspace.currentRevision?.id || null;
-  // A file shared as a page of its own (a PDF, a spreadsheet: ENG-4687) has no
-  // page text to compare, so its changes go live from Share's Update instead.
-  const canReviewUnshared = open && canManage && publishable && !isFilePageArtifact(artifact)
+  const canReviewUnshared = open && canManage && publishable
     && !!pub.publishedUrl && !!pub.modified
     && !!unsharedFrom && !!unsharedTo && unsharedFrom !== unsharedTo;
   const reviewUnshared = useCallback(() => {
@@ -1443,7 +1433,10 @@ export function ArtifactViewer({
 
   // Live edit (`source`): the code editor, in the preview's place at any
   // width. Turning it off with unsaved text asks first.
-  const canSource = !!workspace.source && workspace.capabilities?.canEdit !== false;
+  // A document (ENG-4687) has no text to edit: its source is binary, and a
+  // text file an older server sends beside it isn't the document.
+  const canSource = !!workspace.source && !workspace.source.binary && !documentType
+    && workspace.capabilities?.canEdit !== false;
   const sourceOn = layers.source && canSource;
   sourceOnRef.current = sourceOn;
   // Leaving Live edit for Comments, Stats or the plain preview (ENG-4455):
@@ -1836,10 +1829,22 @@ export function ArtifactViewer({
     openInDefaultApp: onOpenOS,
     onLoadError: (loadError) => setErr(draftPreviewErrorMessage(loadError, t('viewer.loadFileFailed'))),
   } : null;
+  // One revision of a document, for the comparison's two sides (ENG-4687):
+  // the same preview, fed the revision's own bytes (`contentUrl`).
+  const revisionDocument = documentPreview
+    ? (revision) => (revision?.contentUrl ? {
+      ...documentPreview,
+      source: {
+        ...documentPreview.source,
+        url: isAbsoluteArtifactPreviewUrl(revision.contentUrl) ? revision.contentUrl : `${host.getApiOrigin()}${revision.contentUrl}`,
+      },
+    } : null)
+    : null;
   const previewModel = {
     draftUrl: draftPreviewUrl,
     contentVersion,
     document: documentPreview,
+    revisionDocument,
     error: err,
     setError: setErr,
     isText,

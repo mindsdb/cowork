@@ -76,12 +76,17 @@ export const PREVIEW_ONLY = "Preview only: Cowork can't edit this file type.";
 export const previewOnlyReason = () => tr('previewOnly', { product: productName('Cowork') });
 
 /*
- * `previewOnly` marks a file the viewer shows read-only, such as an .xlsx,
- * .docx, .pptx or .pdf file in the document preview. The hook then loads no
- * editable source, whatever the server would send for it, and names
- * PREVIEW_ONLY as the reason Edit and Review are unavailable. It returns
- * `previewOnly` too: an older card with a short id is also not `supported`,
- * and the header needs the flag to name PREVIEW_ONLY instead of a refresh.
+ * `previewOnly` marks a file the viewer shows in the document preview, such
+ * as an .xlsx, .docx, .pptx or .pdf file. Its workspace loads like any
+ * artifact's (ENG-4687): its capabilities, its revisions and which one is
+ * shared, so versions, the "Unshared changes" review and a reload on a new
+ * revision work as they do for a web page. Its source is binary
+ * (`source.binary`, no `content`), so Live edit, a save and comments stay
+ * off. A server that keeps no workspace for it (one from before documents
+ * had revisions) answers 404/422, and the hook names PREVIEW_ONLY as the
+ * reason. It returns `previewOnly` too: an older card with a short id is
+ * also not `supported`, and the header needs the flag to name PREVIEW_ONLY
+ * instead of a refresh.
  */
 export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = false } = {}) {
   const supported = canUseArtifactWorkspace(artifact);
@@ -105,7 +110,8 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
   const [comparison, setComparison] = useState(null);
   const [repair, setRepair] = useState(null);
 
-  const dirty = !!source && draft !== source.content;
+  // A binary source (a document) has no text to edit, so it is never dirty.
+  const dirty = !!source && !source.binary && draft !== source.content;
   const currentRevision = source?.revision || reviewRevision;
   // Derived, not read off the record: agent_repair_detail returns the stored
   // repair without the server's computed flag, so trusting the field alone
@@ -138,7 +144,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
   }, [artifact, source?.path, supported]);
 
   const load = useCallback(async () => {
-    if (!supported || previewOnly) return;
+    if (!supported) return;
     const generation = workspaceGeneration.current + 1;
     workspaceGeneration.current = generation;
     const isCurrent = () => workspaceGeneration.current === generation;
@@ -188,8 +194,12 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
       if (!isCurrent()) return;
       nextCapabilities = review?.capabilities || null;
       setReviewRevision(review?.currentRevision || null);
-      const canProvision = draftCommentsNeedProvision(review);
-      if (canProvision) {
+      // A document has no comments (the preview draws no comment layer), so
+      // nothing is provisioned for one.
+      const canProvision = !previewOnly && draftCommentsNeedProvision(review);
+      if (previewOnly) {
+        setCommentsReady(false);
+      } else if (canProvision) {
         try {
           const access = await enableDraftComments(artifact);
           if (!isCurrent()) return;
@@ -213,8 +223,9 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
       }
     } else {
       // Desktop uses the local atomic comment journal keyed by the same stable
-      // artifact id, so drafts can be reviewed before they are published.
-      setCommentsReady(true);
+      // artifact id, so drafts can be reviewed before they are published. A
+      // document has no comments.
+      setCommentsReady(!previewOnly);
     }
 
     if (nextCapabilities && !nextCapabilities.canEdit) {
@@ -231,7 +242,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
       const loaded = sourceResult.value;
       if (!isCurrent()) return;
       setSource(loaded);
-      setDraft(loaded.content);
+      setDraft(loaded.content ?? '');
       setCapabilities(loaded.capabilities || nextCapabilities || OWNER_CAPABILITIES);
       setRepair(loaded.repair || null);
       const bundledRevisions = Array.isArray(loaded.revisions) ? loaded.revisions : null;
@@ -284,9 +295,10 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
         setCapabilities(nextCapabilities || REVIEWER_FALLBACK_CAPABILITIES);
         setStatus('ready');
       } else if (loadError?.status === 404 || loadError?.status === 422) {
-        // Unsupported artifacts can still preview, publish and review.
+        // Unsupported artifacts can still preview, publish and review. A
+        // document on a server that keeps no workspace for it says so.
         setCapabilities(nextCapabilities);
-        setUnsupportedReason(NO_WORKSPACE());
+        setUnsupportedReason(previewOnly ? previewOnlyReason() : NO_WORKSPACE());
         setStatus('unsupported');
       } else {
         setError(loadError.message || tr('loadSourceFailed'));
@@ -313,10 +325,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
     setConflict(null);
     setComparison(null);
     setRepair(null);
-    if (open && previewOnly) {
-      setUnsupportedReason(previewOnlyReason());
-      setStatus('unsupported');
-    } else if (open && supported) {
+    if (open && supported) {
       load();
     } else if (open) {
       // A legacy/incomplete artifact record has no full identity, so there
@@ -335,7 +344,8 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
 
   const save = useCallback(async (summary = 'Edited artifact', contentOverride = null) => {
     const content = contentOverride ?? draft;
-    if (!source || content === source.content || status === 'saving') return source;
+    // A binary source (a document) is never saved as text.
+    if (!source || source.binary || content === source.content || status === 'saving') return source;
     setStatus('saving');
     setError('');
     setConflict(null);
@@ -389,9 +399,14 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
     setStatus('loading-compare');
     const generation = workspaceGeneration.current;
     try {
-      const before = await loadArtifactRevision(artifact, revisionId);
+      // A document's head carries no content: read it by id too, for the
+      // URL its preview loads (`contentUrl`).
+      const [before, head] = await Promise.all([
+        loadArtifactRevision(artifact, revisionId),
+        source.binary ? loadArtifactRevision(artifact, source.revision.id) : null,
+      ]);
       if (workspaceGeneration.current !== generation) return;
-      setComparison({ kind: 'revision', before, after: source.revision, afterContent: source.content });
+      setComparison({ kind: 'revision', before, after: head || source.revision, afterContent: source.content });
       setStatus('ready');
     } catch (compareError) {
       if (workspaceGeneration.current !== generation) return;
@@ -436,7 +451,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
       if (workspaceGeneration.current !== generation) return null;
       const next = { ...source, ...restored };
       setSource(next);
-      setDraft(restored.content);
+      setDraft(restored.content ?? '');
       setComparison(null);
       await refreshHistory(restored.path, generation);
       if (workspaceGeneration.current !== generation) return null;

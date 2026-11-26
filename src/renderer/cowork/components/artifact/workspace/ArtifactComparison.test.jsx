@@ -370,3 +370,41 @@ describe('ArtifactComparison publish review', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Update failed: offline');
   });
 });
+
+// ENG-4687: a document's two versions show whole, side by side, each in the
+// viewer's own document preview fed that revision's bytes.
+vi.mock('../../../preview/DocumentPreview', () => ({
+  DocumentPreview: ({ source }) => <div data-testid="document-side">{source.url}</div>,
+}));
+
+describe('ArtifactComparison of a document', () => {
+  const documentFor = (revision) => (revision?.contentUrl
+    ? { source: { url: revision.contentUrl, previewType: 'docx', filename: 'report' } }
+    : null);
+  const comparison = {
+    kind: 'revision',
+    before: { id: 'rev-1', number: 1, path: 'report.docx', binary: true, contentUrl: '/content/rev-1' },
+    after: { id: 'rev-2', number: 2, path: 'report.docx', binary: true, contentUrl: '/content/rev-2' },
+  };
+
+  it('shows both versions in the document preview, with no text diff and no change count', () => {
+    render(<ArtifactComparison comparison={comparison} documentFor={documentFor} onClose={vi.fn()} onRestore={vi.fn()} />);
+
+    const sides = screen.getAllByTestId('document-side');
+    expect(sides.map((side) => side.textContent)).toEqual(['/content/rev-1', '/content/rev-2']);
+    expect(document.querySelector('.artifact-compare-grid pre')).toBeNull();
+    expect(screen.queryByText(/changed line/)).toBeNull();
+    // The same footer as any revision comparison.
+    expect(screen.getByRole('button', { name: 'Restore as new revision' })).toBeInTheDocument();
+  });
+
+  it('keeps the text comparison where a side has no document to show', () => {
+    render(<ArtifactComparison
+      comparison={{ kind: 'revision', before: { id: 'r1', number: 1, content: 'a' }, after: { id: 'r2', number: 2, content: 'b' } }}
+      documentFor={documentFor}
+      onClose={vi.fn()}
+    />);
+    expect(screen.queryByTestId('document-side')).toBeNull();
+    expect(document.querySelector('.artifact-compare-grid pre')).not.toBeNull();
+  });
+});
