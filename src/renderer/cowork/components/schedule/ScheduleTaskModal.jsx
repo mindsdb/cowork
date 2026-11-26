@@ -171,11 +171,11 @@ export default function ScheduleTaskModal({
       setError(t('scheduleTaskModal.errorNoPrompt', { agent: displayName }));
       return;
     }
-    // A preview can outlive its next occurrence while the dialog stays open.
     if (form.cadence === 'weekly' && !(form.days || []).length) {
       setError(t('scheduleTaskModal.errorPickDays'));
       return;
     }
+    // A preview can outlive its next occurrence while the dialog stays open.
     const first = formRuns(form, task, new Date())[0];
     if (!first) {
       setError(form.cadence === 'once' ? t('scheduleTaskModal.errorPickFutureTime') : t('scheduleTaskModal.errorPickTime'));
@@ -441,9 +441,7 @@ function formRuns(form, task, now) {
     const saved = whenFromDate(original, task.cadence || 'daily', task.timezone, task.recurrence);
     const unchanged = form.timezone === usableZone(task.timezone)
       && form.cadence === saved.cadence && form.time === saved.time
-      && JSON.stringify(recurrenceFromWhen(form)) === JSON.stringify(recurrenceFromWhen(
-        whenFromDate(original, task.cadence || 'daily', task.timezone, task.recurrence),
-      ))
+      && JSON.stringify(recurrenceFromWhen(form)) === JSON.stringify(recurrenceFromWhen(saved))
       && (form.cadence !== 'once' || form.date === saved.date);
     if (unchanged) return [original, ...nextRuns(form, original, 2, form.timezone)];
   }
