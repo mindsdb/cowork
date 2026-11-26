@@ -1,7 +1,7 @@
 // DocPane's version history against a mocked docs API: the clock lists the
 // versions, one is looked at read-only in place of the doc with what differs
 // now marked, and it is restored after a confirmation, with Undo after.
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -9,6 +9,14 @@ vi.mock('./docApi');
 
 import DocPane from './DocPane';
 import * as api from './docApi';
+
+// A fixed noon (UTC, as tests run), so "30 and 60 minutes ago" stay under
+// Today. On the real clock, a run between 00:00 and about 00:30 UTC put them
+// under Yesterday and these tests failed. Only Date is faked: userEvent and
+// the pane keep real timers.
+vi.useFakeTimers({ toFake: ['Date'] });
+vi.setSystemTime(new Date('2026-11-18T12:00:00Z'));
+afterAll(() => { vi.useRealTimers(); });
 
 const minutesAgo = (n) => new Date(Date.now() - n * 60_000).toISOString();
 
