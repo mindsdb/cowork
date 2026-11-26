@@ -23,8 +23,11 @@ import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { build } from 'vite';
 
+import { verifyGeneratedBundles } from './preview-bundles.mjs';
+
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PREVIEW_DIR = path.join(REPO_ROOT, 'src/renderer/cowork/preview');
+const GENERATED_DIR = path.join(PREVIEW_DIR, 'generated');
 const ENTRY = path.join(PREVIEW_DIR, 'share/entry.ts');
 export const VIEWER_TYPES = Object.freeze(['docx', 'pptx', 'xlsx']);
 export const VIEWER_DIR = 'document-viewer/v1';
@@ -40,10 +43,9 @@ function viewerBundle(type) {
     },
     load(id) {
       if (id !== RESOLVED_BUNDLE_ID) return null;
-      const generated = path.join(PREVIEW_DIR, 'generated');
-      const scriptText = readFileSync(path.join(generated, `${type}.iife.txt`), 'utf8');
-      const hashes = JSON.parse(readFileSync(path.join(generated, 'preview-hashes.gen.json'), 'utf8'));
-      if (!hashes[type]) throw new Error(`document viewer ${type}: no generated bundle hash; run scripts/preview-bundles.mjs first`);
+      // buildDocumentViewers checked these against their hashes first.
+      const scriptText = readFileSync(path.join(GENERATED_DIR, `${type}.iife.txt`), 'utf8');
+      const hashes = JSON.parse(readFileSync(path.join(GENERATED_DIR, 'preview-hashes.gen.json'), 'utf8'));
       return `export default ${JSON.stringify({ type, scriptText, scriptSha256: hashes[type], assets: null })};`;
     },
   };
@@ -74,6 +76,11 @@ export async function buildDocumentViewer(type, outDir) {
 }
 
 export async function buildDocumentViewers(outDir = path.join(REPO_ROOT, 'dist/renderer-web', VIEWER_DIR)) {
+  // The app's own check: each generated bundle matches the hash its frame
+  // policy names, so the viewer runs exactly the script the app would.
+  const generated = verifyGeneratedBundles(GENERATED_DIR);
+  const missing = VIEWER_TYPES.filter((type) => !generated.includes(type));
+  if (missing.length) throw new Error(`document viewer: no generated bundle for ${missing.join(', ')}; run scripts/preview-bundles.mjs first`);
   for (const type of VIEWER_TYPES) await buildDocumentViewer(type, outDir);
   return outDir;
 }

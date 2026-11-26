@@ -29715,40 +29715,6 @@
       "text": "878363589f71"
     }
   },
-  "artifacts:status.couldNotShare": {
-    "de": {
-      "from": "a233b5efb768",
-      "text": "6b038b38bbd5"
-    },
-    "es": {
-      "from": "a233b5efb768",
-      "text": "e531f11eb5de"
-    },
-    "fr": {
-      "from": "a233b5efb768",
-      "text": "8da0ab17b617"
-    },
-    "it": {
-      "from": "a233b5efb768",
-      "text": "ae9e4fcb2747"
-    },
-    "ja": {
-      "from": "a233b5efb768",
-      "text": "3d6e5e3840fe"
-    },
-    "ko": {
-      "from": "a233b5efb768",
-      "text": "a82476615478"
-    },
-    "pt-BR": {
-      "from": "a233b5efb768",
-      "text": "734f9b3c9319"
-    },
-    "zh-CN": {
-      "from": "a233b5efb768",
-      "text": "1b8ed5955409"
-    }
-  },
   "artifacts:status.deleting": {
     "de": {
       "from": "43b5894c3e4e",
@@ -30121,74 +30087,6 @@
     "zh-CN": {
       "from": "f8a76298d2e8",
       "text": "edbca05e4574"
-    }
-  },
-  "artifacts:status.sharing": {
-    "de": {
-      "from": "2e913af44d22",
-      "text": "f92f2bc6fb77"
-    },
-    "es": {
-      "from": "2e913af44d22",
-      "text": "34ea08f74231"
-    },
-    "fr": {
-      "from": "2e913af44d22",
-      "text": "a5b10906df86"
-    },
-    "it": {
-      "from": "2e913af44d22",
-      "text": "6cc4d83f3cb1"
-    },
-    "ja": {
-      "from": "2e913af44d22",
-      "text": "0e9871e1367e"
-    },
-    "ko": {
-      "from": "2e913af44d22",
-      "text": "d520b8ec5ae3"
-    },
-    "pt-BR": {
-      "from": "2e913af44d22",
-      "text": "69e25355161e"
-    },
-    "zh-CN": {
-      "from": "2e913af44d22",
-      "text": "7cf35d4c00c6"
-    }
-  },
-  "artifacts:status.sharingFailed": {
-    "de": {
-      "from": "4f7838fe742a",
-      "text": "ff015d8361da"
-    },
-    "es": {
-      "from": "4f7838fe742a",
-      "text": "9011edd6ab94"
-    },
-    "fr": {
-      "from": "4f7838fe742a",
-      "text": "f425634b5ae2"
-    },
-    "it": {
-      "from": "4f7838fe742a",
-      "text": "28587ca48c82"
-    },
-    "ja": {
-      "from": "4f7838fe742a",
-      "text": "7a445021813a"
-    },
-    "ko": {
-      "from": "4f7838fe742a",
-      "text": "ce95d2d1846f"
-    },
-    "pt-BR": {
-      "from": "4f7838fe742a",
-      "text": "14d33ac4dbcd"
-    },
-    "zh-CN": {
-      "from": "4f7838fe742a",
-      "text": "9063bb4e785a"
     }
   },
   "artifacts:status.stoppingSharing": {

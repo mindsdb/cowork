@@ -64,10 +64,7 @@
       "sharedWith": "{names}와(과) 공유됨",
       "sharedWithMore": "{names} 외 {count}명과 공유됨"
     },
-    "sharingFailed": "공유 실패",
-    "couldNotShare": "공유하지 못했습니다.",
     "tryAgain": "다시 시도",
-    "sharing": "공유하는 중…",
     "updating": "업데이트하는 중…",
     "stoppingSharing": "공유를 중지하는 중…",
     "deleting": "삭제하는 중…",

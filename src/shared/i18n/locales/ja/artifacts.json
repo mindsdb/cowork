@@ -64,10 +64,7 @@
       "sharedWith": "{names} と共有",
       "sharedWithMore": "{names} ほか {count} 件と共有"
     },
-    "sharingFailed": "共有できませんでした",
-    "couldNotShare": "共有できませんでした。",
     "tryAgain": "再試行",
-    "sharing": "共有中…",
     "updating": "更新中…",
     "stoppingSharing": "共有を停止中…",
     "deleting": "削除中…",

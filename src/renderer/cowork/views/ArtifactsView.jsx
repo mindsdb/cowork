@@ -287,7 +287,7 @@ function OpenCommentsCounter({ count, onOpen }) {
   );
 }
 
-function ArtifactBubble({ artifact, projects = [], onOpenViewer, onOpenComments, openComments = null, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject, liveLines = null, liveAppCard = false, liveAppAddress = '' }) {
+function ArtifactBubble({ artifact, projects = [], onOpenViewer, onOpenComments, openComments = null, onMenuOpen, isMenuOpen, phase, onOpenProject, liveLines = null, liveAppCard = false, liveAppAddress = '' }) {
   /* Same open rules as the list row: the body opens the best destination, and
      ↗ opens the artifact outside the app. */
   const { target, openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer, { liveAppCard, liveAppAddress });
@@ -399,7 +399,6 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onOpenComments,
             artifact={artifact}
             phase={phase}
             publishable={publishable}
-            onRetry={onRetry}
             authorship={authorship}
             orgMode={orgMode}
             // A live app has no page link to report; its state line says what matters.
@@ -575,7 +574,7 @@ function ArtifactProject({ artifact, projects, onOpenProject }) {
 
 // Status badges carry tooltips and a Try again link, so they sit above the
 // stretched open button.
-function ArtifactStatusSlot({ artifact, phase, onRetry, inlineChanges = false, pageBadge = true }) {
+function ArtifactStatusSlot({ artifact, phase, inlineChanges = false, pageBadge = true }) {
   const orgMode = useOrgMode();
   const authorship = useArtifactAuthorship(artifact.capabilities);
   return (
@@ -588,7 +587,6 @@ function ArtifactStatusSlot({ artifact, phase, onRetry, inlineChanges = false, p
         // (isPublishableArtifact, the same predicate the Share action and the
         // backend use); the badge's hover says whether an unshared one can be.
         publishable={isPublishableArtifact(artifact)}
-        onRetry={onRetry}
         inlineChanges={inlineChanges}
         pageBadge={pageBadge}
         // The owner's name, "Another member" or "Unknown owner" (ENG-2979,
@@ -729,7 +727,7 @@ function rowMenuItems({ artifact, orgMode, liveApps = false, onOpen, onOpenShare
     }));
 }
 
-function ArtifactRow({ artifact, projects, onOpenViewer, onOpenComments, openComments = null, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onShareLiveApp: doShareLiveApp, onLaunchLiveApp: doLaunchLiveApp, onDelete: doDelete, onOpenProject, phase, onRetry, isMacPlatform, liveLines = null, liveAppCard = false, liveAppAddress = '' }) {
+function ArtifactRow({ artifact, projects, onOpenViewer, onOpenComments, openComments = null, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onShareLiveApp: doShareLiveApp, onLaunchLiveApp: doLaunchLiveApp, onDelete: doDelete, onOpenProject, phase, isMacPlatform, liveLines = null, liveAppCard = false, liveAppAddress = '' }) {
   const { orgMode, toastManager, published, target, openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer, { liveAppCard, liveAppAddress });
   const liveApps = useLiveApps();
   const menuItems = rowMenuItems({
@@ -771,7 +769,6 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onOpenComments, openCom
           <ArtifactStatusSlot
             artifact={artifact}
             phase={phase}
-            onRetry={onRetry}
             inlineChanges
             pageBadge={!liveAppCard}
           />
@@ -912,10 +909,10 @@ export default function ArtifactsView({
     });
   };
 
-  // Per-path transient status the status pills read: 'publishing' |
-  // 'updating' | 'unpublishing' | 'failed'. Cleared (idle) when the action
-  // settles successfully; 'failed' sticks until the user retries. Pure map
-  // → the pill is whatever's here, so the status can't get stuck.
+  // Per-path transient status the status pills read: 'updating' |
+  // 'unpublishing' | 'deleting', cleared (idle) when the action settles. Pure
+  // map → the pill is whatever's here, so the status can't get stuck. Sharing
+  // happens in the viewer's Share menu, which shows its own progress.
   const [statusByPath, setStatusByPath] = useState({});
   const setPhase = (path, phase) => setStatusByPath((prev) => {
     if (!phase) {
@@ -1187,7 +1184,6 @@ export default function ArtifactsView({
       )}
       isMenuOpen={menuFor?.artifact?.path === a.path}
       phase={statusByPath[a.path]}
-      onRetry={() => handlePublish(a)}
       onOpenProject={onOpenProject}
       liveLines={linesOf(a)}
       liveAppCard={isLiveAppCard(a, liveApps)}
@@ -1210,7 +1206,6 @@ export default function ArtifactsView({
       onDelete={handleTrash}
       onOpenProject={onOpenProject}
       phase={statusByPath[a.path]}
-      onRetry={() => handlePublish(a)}
       isMacPlatform={isMacPlatform}
       liveLines={linesOf(a)}
       liveAppCard={isLiveAppCard(a, liveApps)}
@@ -1432,7 +1427,7 @@ export default function ArtifactsView({
             // A live app shares through "Share with…": cowork-server refuses it as a page.
             items.push({
               id: 'publish',
-              label: busyA ? t('status.sharing') : t('publish.share'),
+              label: t('publish.share'),
               icon: Ico.power(14),
               onClick: () => handlePublish(a),
             });

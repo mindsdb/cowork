@@ -64,10 +64,7 @@
       "sharedWith": "Condiviso con {names}",
       "sharedWithMore": "Condiviso con {names} e altri {count}"
     },
-    "sharingFailed": "Condivisione non riuscita",
-    "couldNotShare": "Impossibile condividere.",
     "tryAgain": "Riprova",
-    "sharing": "Condivisione…",
     "updating": "Aggiornamento…",
     "stoppingSharing": "Interruzione della condivisione…",
     "deleting": "Eliminazione…",

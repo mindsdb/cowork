@@ -62,11 +62,13 @@ export async function mountDocumentViewer(element: HTMLElement, { bundle, fetchF
   }
   setState(doc, VIEWER_STATE.loading);
   let bytes: ArrayBuffer;
+  // Nothing cancels a page's one load; the fetch and the capped read share it.
+  const { signal } = new AbortController();
   try {
     const url = new URL(encodeURIComponent(file), doc.baseURI).href;
-    const response = await fetchFile(url, new AbortController().signal);
+    const response = await fetchFile(url, signal);
     if (!response.ok) throw new Error(`The file answered ${response.status}`);
-    bytes = await readPreviewBytes(response, PREVIEW_PARENT_LIMITS.maxBytes, new AbortController().signal);
+    bytes = await readPreviewBytes(response, PREVIEW_PARENT_LIMITS.maxBytes, signal);
   } catch {
     setState(doc, VIEWER_STATE.failed);
     return;

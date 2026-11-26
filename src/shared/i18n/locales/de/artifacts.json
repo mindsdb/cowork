@@ -64,10 +64,7 @@
       "sharedWith": "Geteilt mit {names}",
       "sharedWithMore": "Geteilt mit {names} und {count} weiteren"
     },
-    "sharingFailed": "Teilen fehlgeschlagen",
-    "couldNotShare": "Teilen nicht möglich.",
     "tryAgain": "Erneut versuchen",
-    "sharing": "Wird geteilt…",
     "updating": "Wird aktualisiert…",
     "stoppingSharing": "Teilen wird beendet…",
     "deleting": "Wird gelöscht…",

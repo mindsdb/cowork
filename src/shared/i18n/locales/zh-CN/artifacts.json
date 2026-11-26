@@ -64,10 +64,7 @@
       "sharedWith": "已与 {names} 共享",
       "sharedWithMore": "已与 {names} 及另外 {count} 个对象共享"
     },
-    "sharingFailed": "分享失败",
-    "couldNotShare": "无法分享。",
     "tryAgain": "重试",
-    "sharing": "正在分享…",
     "updating": "正在更新…",
     "stoppingSharing": "正在停止分享…",
     "deleting": "正在删除…",
