@@ -1038,7 +1038,11 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false, i
        * The viewer reads the draft URL in org mode and the local bytes on
        * desktop, so it opens on either without a canonical path of its own.
        */
-      onOpen(artifact);
+      // A live inline page hands over where the user is in it (its tab or
+      // slide, scroll, hash), for the viewer to open on the same place.
+      const view = liveInline ? liveInlineViewRef.current : null;
+      if (view) onOpen(artifact, { view });
+      else onOpen(artifact);
       return;
     }
     if (openTarget === 'published') {
@@ -1222,6 +1226,8 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false, i
   const liveInline = showInline && !superseded;
   const [versionOpen, setVersionOpen] = useState(false);
   const framed = liveInline || (superseded && versionOpen);
+  // The live frame's latest view report (usePreviewView), read by handleOpen.
+  const liveInlineViewRef = useRef(null);
   const primaryDisabled = needsLocalPath && !canAct;
   const primaryReason = primaryDisabled ? (disabledReason || t('chatView.artifactCard.noFilePath')) : '';
   const openAction = superseded
@@ -1348,6 +1354,7 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false, i
             title={artifact.title || ''}
             revisionId={superseded ? cardRevisionId(artifact) : undefined}
             onSubmit={onInlineSubmit ? (submission) => onInlineSubmit(artifact, submission) : null}
+            onView={liveInline ? (view) => { liveInlineViewRef.current = view; } : null}
           />
         </div>
       )}
@@ -2512,14 +2519,19 @@ export default function ChatView({
   const [previewArt, setPreviewArt] = useState(null);
   // A new object per Share click, so the viewer opens its panel once per click.
   const [previewShare, setPreviewShare] = useState(null);
-  const handleArtifactOpen = (artifact) => {
+  // Where a live inline page was when its Preview was clicked (a new object
+  // per click), for the viewer to open on the same place.
+  const [previewViewRequest, setPreviewViewRequest] = useState(null);
+  const handleArtifactOpen = (artifact, { view = null } = {}) => {
     // The card already filters: it only calls onOpen for previewable
     // types (HTML / md / txt / csv). Dispatch straight to the viewer.
     setPreviewShare(null);
+    setPreviewViewRequest(view ? { view } : null);
     setPreviewArt(artifact);
   };
   const handleArtifactShare = (artifact) => {
     setPreviewShare({});
+    setPreviewViewRequest(null);
     setPreviewArt(artifact);
   };
   // Task settings menu (kebab in header).
@@ -4670,7 +4682,8 @@ export default function ChatView({
         artifact={previewArt}
         shareRequest={previewShare}
         shareEntry={previewShare ? 'chat_card' : 'viewer'}
-        onClose={() => { setPreviewArt(null); setPreviewShare(null); }}
+        viewRequest={previewViewRequest}
+        onClose={() => { setPreviewArt(null); setPreviewShare(null); setPreviewViewRequest(null); }}
         onChange={(updated) => setPreviewArt(updated)}
         conversationId={task?.id || null}
         onAddressWithAgent={({ prompt }) => onSend?.(prompt)}

@@ -54,7 +54,7 @@ import { trackArtifactStatsOpened } from '../../lib/analytics';
 import { UNKNOWN_SHARE_SNAPSHOT, reportWithdrawal, shareSnapshot } from '../../lib/artifactShareAnalytics';
 import { diagnostic } from '../../../../shared/diagnostics';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
-import { isPublishableArtifact, isImageArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
+import { isPublishableArtifact, isImageArtifact, isInlineArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
 import { useBlobImageSrc } from '../AttachmentThumbnail';
 import { Modal } from '../ui/Modal';
 import { ConfirmModal } from '../ConfirmModal';
@@ -72,6 +72,7 @@ import { ArtifactViewerHeader } from './ArtifactViewerHeader';
 import { ArtifactViewerBody } from './ArtifactViewerBody';
 import { usePreviewDiagnostics } from './usePreviewDiagnostics';
 import { normalizePreviewView, usePreviewView } from './usePreviewView';
+import { useInlineArtifactState } from './useInlineArtifactState';
 import { usePreviewFit } from './usePreviewFit';
 import { loadHtmlPreview, usesDraftLink, withdrawDraftLinks } from './htmlPreviewSource';
 import { usePreviewCheckTarget } from './usePreviewCheckTarget';
@@ -151,6 +152,10 @@ export function ArtifactViewer({
   // click, ENG-4560): the viewer opens on its Comments panel this time, and
   // later opens keep the layers this device remembers.
   commentsRequest = null,
+  // Where a live inline copy of the artifact was when its Preview was clicked
+  // (`{ view }`, a new object per click, ENG-4684): the preview opens on the
+  // same place, through the restore a reload keeps its place with.
+  viewRequest = null,
 }) {
   const { t } = useTranslation('artifacts');
   const orgMode = useOrgMode();
@@ -409,6 +414,13 @@ export function ArtifactViewer({
     enabled: open && !!(previewUrl || previewDoc),
     resetKey: previewUrl || previewDoc,
     scopeKey: open ? `${artifact?.id || ''}:${artifact?.path || ''}` : '',
+  });
+  // An inline artifact's state (`window.anton.setState`) is shared with its
+  // chat card's frame: the viewer opens on the picks made there, and what is
+  // picked here is saved and shown back in the card. Same gate as the
+  // diagnostics above. No Submit here: the viewer is not the chat.
+  useInlineArtifactState(iframeRef, artifact, {
+    enabled: open && !!(previewUrl || previewDoc) && isInlineArtifact(artifact),
   });
   // A page cut off in the frame with nothing to scroll is fitted to it.
   const previewFit = usePreviewFit(iframeRef, {
@@ -1002,6 +1014,15 @@ export function ArtifactViewer({
     forgetPlace();
     reloadPreview();
   }, [forgetPlace, reloadPreview]);
+  // Opened from a live inline card: its first document restores the place
+  // the card was at. Once per request; another artifact forgets it (the
+  // view's scopeKey).
+  const appliedViewRequestRef = useRef(null);
+  useEffect(() => {
+    if (!open || !viewRequest?.view || appliedViewRequestRef.current === viewRequest) return;
+    appliedViewRequestRef.current = viewRequest;
+    keepPlace(viewRequest.view);
+  }, [open, viewRequest, keepPlace]);
   // Content that changed elsewhere (the host reports a new mtime) reloads
   // the preview through its new version: that keeps the place too.
   const mtimeRef = useRef({ key: '', mtime: null });

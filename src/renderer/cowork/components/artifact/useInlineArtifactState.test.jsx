@@ -18,6 +18,8 @@ vi.mock('../../lib/artifactWorkspaceApi', () => ({
 import {
   INLINE_STATE_DEBOUNCE_MS,
   INLINE_STATE_MAX_BYTES,
+  clearInlineStateCache,
+  latestInlineState,
   saveInlineState,
   serializeInlineState,
   useInlineArtifactState,
@@ -39,6 +41,7 @@ const conflict = (id) => Object.assign(new Error('stale'), { status: 409, detail
 
 beforeEach(() => {
   vi.useFakeTimers();
+  clearInlineStateCache();
   api.loadArtifactSource.mockReset();
   api.saveArtifactSource.mockReset();
   api.saveArtifactSource.mockImplementation(async (_a, body) => ({ revision: { id: `after-${body.expectedRevisionId}` } }));
@@ -150,5 +153,86 @@ describe('useInlineArtifactState', () => {
     render(<Harness onSubmit={onSubmit} enabled={false} />);
     fromWindow(frameWindow(), { type: 'submit', state: {} });
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
+
+// The chat card's frame and the viewer's, side by side on one artifact.
+function TwoFrames({ second = true, onSubmit }) {
+  const a = useRef(null);
+  const b = useRef(null);
+  useInlineArtifactState(a, artifact, { enabled: true, onSubmit });
+  useInlineArtifactState(b, artifact, { enabled: second });
+  return (
+    <>
+      <iframe ref={a} title="inline" srcDoc="<p></p>" />
+      {second && <iframe ref={b} title="viewer" srcDoc="<p></p>" />}
+    </>
+  );
+}
+const frames = () => [...document.querySelectorAll('iframe')].map((f) => f.contentWindow);
+const stateMessage = (state) => ({ source: 'anton-preview-parent', type: 'state', state });
+
+describe('useInlineArtifactState: shared between frames', () => {
+  it('hands a change still in its quiet spell to another frame that starts, over an older state.json', async () => {
+    let read;
+    api.loadArtifactSource.mockReturnValue(new Promise((resolve) => { read = resolve; }));
+    render(<TwoFrames />);
+    const [inline, viewer] = frames();
+    fromWindow(inline, { type: 'state', state: { picked: ['a', 'b'] } });
+    expect(latestInlineState(artifact)).toEqual({ picked: ['a', 'b'] });
+    expect(api.saveArtifactSource).not.toHaveBeenCalled();
+
+    const post = vi.spyOn(viewer, 'postMessage');
+    fromWindow(viewer, { type: 'document-start' });
+    expect(post).toHaveBeenCalledWith(stateMessage({ picked: ['a', 'b'] }), '*');
+
+    // The read comes back with what the server had before: it is not newer.
+    await act(async () => { read({ content: '{"picked":[]}', revision: { id: 'r1' } }); });
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(latestInlineState(artifact)).toEqual({ picked: ['a', 'b'] });
+  });
+
+  it('shows a change made in one frame in the other one already open, once', async () => {
+    api.loadArtifactSource.mockRejectedValue(Object.assign(new Error('missing'), { status: 404 }));
+    render(<TwoFrames />);
+    const [inline, viewer] = frames();
+    const toInline = vi.spyOn(inline, 'postMessage');
+    const toViewer = vi.spyOn(viewer, 'postMessage');
+    fromWindow(viewer, { type: 'state', state: { tab: 2 } });
+    expect(toInline).toHaveBeenCalledWith(stateMessage({ tab: 2 }), '*');
+    expect(toViewer).not.toHaveBeenCalled();
+    // The inline page echoes it: nothing goes round again, nothing saves twice.
+    fromWindow(inline, { type: 'state', state: { tab: 2 } });
+    expect(toViewer).not.toHaveBeenCalled();
+    await act(async () => { vi.advanceTimersByTime(INLINE_STATE_DEBOUNCE_MS); });
+    expect(api.saveArtifactSource).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes the read state.json when no frame changed anything', async () => {
+    api.loadArtifactSource.mockResolvedValue({ content: '{"n":7}', revision: { id: 'r1' } });
+    render(<TwoFrames second={false} />);
+    fromWindow(frames()[0], { type: 'document-start' });
+    await act(async () => {});
+    expect(latestInlineState(artifact)).toEqual({ n: 7 });
+  });
+
+  it('hands the state again after a kept place was replayed, from its own frame only', async () => {
+    api.loadArtifactSource.mockRejectedValue(Object.assign(new Error('missing'), { status: 404 }));
+    render(<TwoFrames />);
+    const [inline, viewer] = frames();
+    fromWindow(inline, { type: 'state', state: { checked: [1] } });
+    const post = vi.spyOn(viewer, 'postMessage');
+    fromWindow(window, { type: 'view-restored', status: 'ok' });
+    expect(post).not.toHaveBeenCalled();
+    fromWindow(viewer, { type: 'view-restored', status: 'ok' });
+    expect(post).toHaveBeenCalledWith(stateMessage({ checked: [1] }), '*');
+  });
+
+  it('saves a submit from a frame with no chat to send it to, and does not throw', async () => {
+    render(<TwoFrames />);
+    const [, viewer] = frames();
+    expect(() => fromWindow(viewer, { type: 'submit', state: { ok: true } })).not.toThrow();
+    await act(async () => {});
+    expect(api.saveArtifactSource).toHaveBeenCalledTimes(1);
   });
 });
