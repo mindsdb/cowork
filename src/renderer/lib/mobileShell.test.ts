@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   MIN_SHELL_VERSION,
   applyMobileShellDocument,
@@ -7,6 +7,7 @@ import {
   mobileShell,
   parseMobileShellUserAgent,
   shellNeedsUpdate,
+  visualViewportStyle,
   withViewportFitCover,
 } from './mobileShell';
 
@@ -97,6 +98,8 @@ describe('withViewportFitCover', () => {
 describe('applyMobileShellDocument', () => {
   afterEach(() => {
     delete document.documentElement.dataset.shell;
+    delete document.documentElement.dataset.keyboard;
+    document.documentElement.removeAttribute('style');
     document.head.querySelectorAll('meta[name="viewport"]').forEach((meta) => meta.remove());
   });
 
@@ -115,5 +118,57 @@ describe('applyMobileShellDocument', () => {
   it('still marks <html> on a page without a viewport meta', () => {
     applyMobileShellDocument({ platform: 'ios', version: '1.0.0' });
     expect(document.documentElement.dataset.shell).toBe('ios');
+  });
+});
+
+describe('visualViewportStyle', () => {
+  it('fills the screen with no keyboard', () => {
+    expect(visualViewportStyle({ height: 874, offsetTop: 0 }, 874)).toEqual({ height: '874px', top: '0px', keyboard: false });
+  });
+
+  it('shrinks to the visible box and follows the pan when the keyboard opens', () => {
+    expect(visualViewportStyle({ height: 470.4, offsetTop: 120.6 }, 874)).toEqual({ height: '470px', top: '121px', keyboard: true });
+  });
+
+  it('ignores small height changes', () => {
+    expect(visualViewportStyle({ height: 830, offsetTop: 0 }, 874).keyboard).toBe(false);
+  });
+});
+
+describe('applyMobileShellDocument visual viewport', () => {
+  afterEach(() => {
+    delete document.documentElement.dataset.shell;
+    delete document.documentElement.dataset.keyboard;
+    document.documentElement.removeAttribute('style');
+    delete (window as { visualViewport?: unknown }).visualViewport;
+    delete (document.documentElement as { clientHeight?: number }).clientHeight;
+    vi.restoreAllMocks();
+  });
+
+  it('keeps the shell variables in step with the keyboard', () => {
+    const viewport = Object.assign(new EventTarget(), { height: 874, offsetTop: 0 });
+    Object.defineProperty(window, 'visualViewport', { configurable: true, value: viewport });
+    Object.defineProperty(document.documentElement, 'clientHeight', { configurable: true, value: 874 });
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    const root = document.documentElement;
+
+    applyMobileShellDocument({ platform: 'ios', version: '1.0.0' });
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(root.style.getPropertyValue('--shell-viewport-height')).toBe('874px');
+    expect(root.dataset.keyboard).toBeUndefined();
+
+    viewport.height = 470;
+    viewport.offsetTop = 120;
+    viewport.dispatchEvent(new Event('resize'));
+    expect(root.style.getPropertyValue('--shell-viewport-height')).toBe('470px');
+    expect(root.style.getPropertyValue('--shell-viewport-top')).toBe('120px');
+    expect(root.dataset.keyboard).toBe('open');
+    // The page is panned back so nothing shows past its end.
+    expect(scrollTo).toHaveBeenCalledWith(0, 0);
+
+    viewport.height = 874;
+    viewport.offsetTop = 0;
+    viewport.dispatchEvent(new Event('scroll'));
+    expect(root.dataset.keyboard).toBeUndefined();
   });
 });

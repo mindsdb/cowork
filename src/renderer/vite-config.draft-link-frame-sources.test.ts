@@ -6,6 +6,7 @@ import { createServer, type ViteDevServer } from 'vite';
 
 import { DRAFT_LINK_ORIGINS, withDraftLinkFrameSources } from '../shared/draft-link-origins';
 import { withOrgBrandImageSources } from '../shared/org-brand-image-origins';
+import { withGalleryImageSources } from '../shared/gallery-image-origins';
 
 // Loads the real renderer config as a dev server for each kind of build and
 // checks which of them put the draft hosts in the web page's CSP.
@@ -60,8 +61,8 @@ describe('draft hosts in the web page CSP', () => {
     expect(pluginNames(dev)).toContain(PLUGIN);
 
     const html = await dev.transformIndexHtml('/index-web.html', page('index-web.html'));
-    // The hosted build also widens img-src for org brand images.
-    expect(cspOf(html)).toBe(cspOf(withOrgBrandImageSources(withDraftLinkFrameSources(page('index-web.html')))));
+    // The hosted build also widens img-src for org brand images and gallery pictures.
+    expect(cspOf(html)).toBe(cspOf(withGalleryImageSources(withOrgBrandImageSources(withDraftLinkFrameSources(page('index-web.html'))))));
   }, 30_000);
 
   it('give a production build only the production auth host for org brand images', async () => {

@@ -93,6 +93,7 @@ export const IPC = {
   // The chat's Notion page picker: main calls the server with the app secret.
   NOTION_SEARCH_PAGES: 'notion:search-pages',
   NOTION_FETCH_PAGE: 'notion:fetch-page',
+  PUBLISH_WITH_APPROVAL: 'publish:with-approval',
   // Fired by the background token-refresh loop when consecutive failures hit
   // threshold (transient) or a 401 makes the refresh token permanently invalid.
   OAUTH_REFRESH_ERROR: 'oauth:refresh-error',

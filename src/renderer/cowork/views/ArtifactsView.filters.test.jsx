@@ -67,15 +67,16 @@ vi.mock('../hooks/useOrgSharing', async (importOriginal) => ({
 import ArtifactsView from './ArtifactsView';
 import { setOrgMode } from '../../lib/orgMode';
 
-// The Artifacts page filters by Type, Status and Owner from the Filter menu,
-// each facet only where it would narrow the list, with one Clear (ENG-4560).
+// The Artifacts page filters by Type, Status, Access and Owner from the Filter
+// menu, each facet only where it would narrow the list, with one Clear
+// (ENG-4560, ENG-4647).
 const art = (id, title, extra = {}) => ({
   id, path: `/proj/.anton/artifacts/${id}/index.html`, title, type: 'html-app', mtime: 2000,
   draftUrl: `/api/v1/artifacts/drafts/project/${id}/index.html`, publishedUrl: '',
   capabilities: { role: 'owner', canEdit: true }, ...extra,
 });
 const ARTIFACTS = [
-  art('a1', 'Sales deck', { kind: 'html', publishedUrl: 'https://view.example/r/1' }),
+  art('a1', 'Sales deck', { kind: 'html', publishedUrl: 'https://view.example/r/1', accessMode: 'public' }),
   art('a2', 'Board notes', { kind: 'md', path: '/proj/.anton/artifacts/a2/notes.md' }),
   art('a3', 'Their report', { kind: 'html', capabilities: { role: 'reviewer', ownerUserId: 'u-bo' } }),
   art('a4', 'Model', { kind: 'zip', path: '/proj/.anton/artifacts/a4/model.zip', ext: '.zip' }),
@@ -97,6 +98,23 @@ describe('ArtifactsView filters', () => {
     const user = userEvent.setup({ pointerEventsCheck: 0 });
     render(<ArtifactsView artifacts={ARTIFACTS} />);
     await pickFilter(user, 'Status', 'Shared');
+    expect(shownTitles()).toEqual(['Sales deck']);
+  });
+
+  it('narrows by status, a file that can\'t become a link counting as not shared', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(<ArtifactsView artifacts={ARTIFACTS} />);
+    await pickFilter(user, 'Status', 'Not shared');
+    expect(shownTitles()).toEqual(['Board notes', 'Their report', 'Model']);
+  });
+
+  // ENG-4647: who can open it, in the words its badge uses.
+  it('narrows by access level', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(<ArtifactsView artifacts={ARTIFACTS} />);
+    await pickFilter(user, 'Access', 'Only you');
+    expect(shownTitles()).toEqual(['Board notes', 'Model']);
+    await pickFilter(user, 'Access', 'Public');
     expect(shownTitles()).toEqual(['Sales deck']);
   });
 

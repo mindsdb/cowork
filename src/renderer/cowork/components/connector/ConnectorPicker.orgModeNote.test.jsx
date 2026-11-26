@@ -15,6 +15,7 @@ const hostState = vi.hoisted(() => ({ isMobileShell: false }));
 vi.mock('../../../platform/host', () => ({
   host: {
     openExternal: (...args) => openExternal(...args),
+    isWeb: true,
     get isMobileShell() { return hostState.isMobileShell; },
   },
 }));
@@ -55,7 +56,7 @@ describe('ConnectorPicker org-mode desktop note', () => {
 
     expect(await screen.findByText(NOTE_TEXT)).toBeInTheDocument();
     fireEvent.click(screen.getByText('Cowork Desktop App'));
-    expect(openExternal).toHaveBeenCalledWith('https://mindshub.ai/download');
+    expect(openExternal).toHaveBeenCalledWith('https://mindshub.ai/download?os=auto&from=cowork-web-connector');
   });
 
   it('does not render the note when org mode is off', async () => {

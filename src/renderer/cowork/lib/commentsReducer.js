@@ -59,6 +59,14 @@ export function viewerCanEdit(entry, viewer) {
 export function isEdited(entry) {
   return !!(entry && entry.edited_at);
 }
+// Still to review: resolved and dismissed threads are done with.
+export function isOpenThread(t) {
+  return t.status !== 'resolved' && t.status !== 'dismissed';
+}
+// What a new thread from this viewer is: a reviewer reports issues.
+export function commentKindFor(viewer) {
+  return viewer?.role === 'reviewer' ? 'issue' : 'review';
+}
 
 // ISO8601 (inference) -> epoch seconds; numbers pass through. The on-artifact
 // layer renders relative times off epoch seconds.

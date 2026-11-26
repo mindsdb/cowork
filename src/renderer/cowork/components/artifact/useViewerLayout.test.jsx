@@ -32,11 +32,22 @@ describe('useViewerLayout', () => {
     expect(result.current.layout).toEqual(DEFAULT_LAYOUT);
   });
 
+  it('keeps every mounted viewer on the same choice', () => {
+    const first = renderHook(() => useViewerLayout());
+    const second = renderHook(() => useViewerLayout());
+    act(() => first.result.current.toggle('maximized'));
+    expect(second.result.current.layout.maximized).toBe(false);
+    act(() => second.result.current.toggle('maximized'));
+    expect(first.result.current.layout.maximized).toBe(true);
+  });
+
   it('still toggles when storage is unavailable', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
-    const { result } = renderHook(() => useViewerLayout());
+    const { result } = renderHook(() => useViewerLayout('blocked'));
+    const other = renderHook(() => useViewerLayout('blocked'));
     act(() => result.current.toggle('maximized'));
     expect(result.current.layout.maximized).toBe(false);
+    expect(other.result.current.layout.maximized).toBe(false);
   });
 });

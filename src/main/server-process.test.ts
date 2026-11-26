@@ -16,6 +16,7 @@ import * as http from 'http';
 import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
+import type { BeforeSendResponse } from 'electron';
 
 vi.mock('electron', () => ({
   app: { isPackaged: true, getPath: () => '/tmp/cowork-test-logs' },
@@ -76,11 +77,6 @@ vi.mock('./uv-paths', () => ({
 vi.mock('./credential-provisioning', () => ({
   loadBundledServerCredentials: vi.fn().mockResolvedValue({}),
 }));
-/** The store roots whose one-time access-mode migration has run. */
-const keychainState = vi.hoisted(() => ({ migratedRoots: new Set<string>() }));
-vi.mock('./keychain-service', () => ({
-  isMcpAccessModeMigrated: async (root: string) => keychainState.migratedRoots.has(root),
-}));
 vi.mock('fs');
 vi.mock('child_process');
 vi.mock('http');
@@ -102,10 +98,14 @@ import {
   activeAccountDataRoot,
   isServerStarting,
   runningServerPort,
+  forceReapServer,
+  untilServerStartSettles,
 } from './server-process';
 import { NON_PROD_POSTHOG_KEY } from './analytics-env';
-import { getServerAuthToken, resetServerAuthTokenCache } from './server-auth';
+import { authHeader, getServerAuthToken, getWindowProof } from './server-auth';
+import { holdWhileServerStarts, serverTokenListener } from './server-token-listener';
 import { APP_SECRET_HEADER, appSecretHeader, isAppSecretProtected, isCustomMcpAvailable, serverMayReceiveTokens } from './app-secret';
+import { HANDOFF_PROTOCOL, WINDOW_PROOF_HEADER } from '../shared/server-launch';
 import * as crypto from 'crypto';
 
 const PORT = 27903;
@@ -145,6 +145,13 @@ function makeStdin(): FakeStdin {
   return stdin;
 }
 
+/** The hand-off a spawned child read on stdin: the last line written, since a
+ *  test that hands the same fake child to two spawns sees both lines. */
+interface WrittenHandoff { app_secret: string; auth_token: string; window_proof: string }
+function handoffOf(child: { stdin: { written: string } }): WrittenHandoff {
+  return JSON.parse(child.stdin.written.trimEnd().split('\n').at(-1) ?? '') as WrittenHandoff;
+}
+
 /** A stand-in for the on-disk log WriteStream. An EventEmitter so the code
  *  under test can attach the 'error' listener that ENG-1187 turns on. */
 function makeLogStream(): EventEmitter & { write: () => boolean; end: () => void } {
@@ -163,8 +170,10 @@ let healthOwner: string | typeof NO_OWNER_FIELD | null = null;
 /** Capabilities advertised by /health. Code Mode must not adopt a sidecar
  *  merely because it is healthy when the coding routes are absent. */
 let healthCapabilities: string[] = ['coding'];
-/** Extra /health fields, e.g. `app_secret_protocol`. */
-let healthExtra: Record<string, unknown> = {};
+/** Extra /health fields. The default is what a server this build pairs with
+ *  reports: the launch hand-off protocol. */
+const PAIRED_HEALTH: Record<string, unknown> = { app_secret_protocol: HANDOFF_PROTOCOL };
+let healthExtra: Record<string, unknown> = PAIRED_HEALTH;
 /** What /health sends as `app_secret_proof` for a challenge: the HMAC under
  *  the secret the latest spawn was handed, a wrong value, or nothing. */
 let healthProof: 'valid' | 'wrong' | 'none' = 'valid';
@@ -175,7 +184,7 @@ function proofFor(challenge: string): string | undefined {
   if (healthProof === 'none') return undefined;
   if (healthProof === 'wrong') return 'ab'.repeat(32);
   const child = vi.mocked(cp.spawn).mock.results.at(-1)?.value as { stdin?: { written: string } } | undefined;
-  const secret = child?.stdin?.written ? JSON.parse(child.stdin.written).app_secret : 'none';
+  const secret = child?.stdin?.written ? handoffOf({ stdin: child.stdin }).app_secret : 'none';
   return crypto.createHmac('sha256', secret).update(challenge).digest('hex');
 }
 
@@ -199,7 +208,6 @@ beforeEach(() => {
   accountState.dataRoot = '/tmp/cowork-test-home';
   accountState.orgStoreRoot = null;
   accountState.orgEnv = {};
-  resetServerAuthTokenCache();
   execCalls = [];
   execHandler = () => ({ err: new Error('nothing found'), stdout: '' });
   uvState.resolveUv = '/usr/bin/uv';
@@ -249,15 +257,14 @@ beforeEach(() => {
   // starts. A test opts into a healthy backend by flipping `healthOwner`.
   healthOwner = null;
   healthCapabilities = ['coding'];
-  healthExtra = {};
+  healthExtra = PAIRED_HEALTH;
   healthProof = 'valid';
   challengesSeen = [];
-  keychainState.migratedRoots.clear();
   vi.mocked(http.get).mockImplementation(((opts: { headers?: Record<string, string> }, cb: unknown) => {
     const owner = healthOwner;
     const challenge = opts?.headers?.['X-Cowork-App-Challenge'];
     if (challenge) challengesSeen.push(challenge);
-    const proof = challenge && healthExtra.app_secret_protocol === 1 ? proofFor(challenge) : undefined;
+    const proof = challenge && healthExtra.app_secret_protocol === HANDOFF_PROTOCOL ? proofFor(challenge) : undefined;
     const extra = { ...healthExtra, ...(proof ? { app_secret_proof: proof } : {}) };
     if (owner !== null && typeof cb === 'function') {
       const res = new EventEmitter() as EventEmitter & { statusCode: number; resume: () => void };
@@ -955,6 +962,28 @@ describe('an answer from a listener this start did not stamp', () => {
     expect(runningServerPort()).toBeNull();
   });
 
+  /* The production shape: a listener this start did not spawn never received
+   * the launch's app secret, so it answers without a proof of it. */
+  it.each<[string, string | typeof NO_OWNER_FIELD]>([
+    ['no owner field', NO_OWNER_FIELD],
+    ['an empty owner', ''],
+    ['another owner', 'someone-elses-token'],
+    ['the stamped owner', 'owner-token'],
+  ])('fails the start and runs no hook when a listener with %s cannot prove the secret', async (_label, owner) => {
+    healthProof = 'none';
+    const hook = vi.fn();
+    setServerStartedHook(hook);
+    spawnLosingTo(owner);
+
+    const result = await startServer({ port: PORT, readyTimeoutMs: 60_000 });
+
+    expect(result.ok).toBe(false);
+    expect(hook).not.toHaveBeenCalled();
+    expect(isServerRunning()).toBe(false);
+    expect(runningServerPort()).toBeNull();
+    expect(authHeader()).toEqual({});
+  });
+
   it.each([
     ['another owner', 'someone-elses-token'],
     ['an empty owner', ''],
@@ -1051,76 +1080,72 @@ describe('the sidecar account root', () => {
   });
 
   /** Spawn a child that comes up healthy, the way a real start does. */
-  function spawnHealthy(): void {
+  function spawnHealthy(): ReturnType<typeof makeChild> {
     const child = makeChild();
     vi.mocked(cp.spawn).mockImplementation((() => {
       setTimeout(() => { healthOwner = spawnedOwner(); child.exitCode = 0; child.emit('exit', 0); }, 0);
       return child as never;
     }) as never);
+    return child;
   }
 
-  it('drops the cached bearer token when it moves the sidecar to another root', async () => {
-    // The token lives in the account's own dotenv, so a root change changes
-    // which token is valid. Nothing else clears this cache: it is main-process
-    // module state, so the renderer reload that follows a root change does not
-    // touch it, and every request would carry a token the new sidecar refuses.
+  it('hands a sidecar it moves to another root a new bearer token, and sends that one from then on', async () => {
+    /* The token is main-process module state, so the renderer reload that
+       follows a root change does not touch it. The move is a new launch, and
+       every request after it must carry the token that launch was handed. */
     accountState.root = null;
-    envState.authToken = 'token-for-the-shared-root';
-    spawnHealthy();
+    const first = spawnHealthy();
     await startServer({ port: PORT, readyTimeoutMs: 60_000 });
-    expect(getServerAuthToken()).toBe('token-for-the-shared-root');
+    expect(getServerAuthToken()).toBe(handoffOf(first).auth_token);
 
     accountState.root = 'accounts/second-account';
-    envState.authToken = 'token-for-the-second-root';
-    spawnHealthy();
+    const moved = spawnHealthy();
     await ensureSidecarOnCurrentAccountRoot();
 
-    expect(getServerAuthToken()).toBe('token-for-the-second-root');
+    expect(getServerAuthToken()).toBe(handoffOf(moved).auth_token);
+    expect(getServerAuthToken()).not.toBe(handoffOf(first).auth_token);
     expect(sidecarIsOnCurrentStores()).toBe(true);
   });
 
-  it('picks up a token the FIRST start generated, with no restart to hang it on', async () => {
-    // The fresh-install shape, and the one the restart sites cannot reach. The
-    // dotenv does not exist when the app first reads it, so the cache latches
-    // "no token" — and with the server requiring auth by default that is every
-    // authenticated request refused for the life of the process, with only
-    // /health answering.
+  it('sends the token the first start handed over, and never one from the dotenv', async () => {
+    /* The fresh-install shape. Nothing is sent before a start, and the
+       dotenv's COWORK_AUTH_TOKEN, which earlier servers wrote, is never read. */
     accountState.root = null;
-    envState.authToken = null;
+    envState.authToken = 'ab'.repeat(32);
     expect(getServerAuthToken()).toBeNull();
 
-    // The server generates one during startup and writes it to the dotenv it
-    // has certainly written by the time it answers /health.
-    envState.authToken = 'token-the-server-generated';
-    spawnHealthy();
+    const child = spawnHealthy();
     await startServer({ port: PORT, readyTimeoutMs: 60_000 });
 
-    expect(getServerAuthToken()).toBe('token-the-server-generated');
+    expect(getServerAuthToken()).toBe(handoffOf(child).auth_token);
+    expect(getServerAuthToken()).not.toBe('ab'.repeat(32));
   });
 
-  it('picks up the new root token when a sign-in STARTS a sidecar rather than moving one', async () => {
-    // Sign-in only resets around a sidecar it restarts. When none is running it
-    // starts one instead, on the new account's root — whose dotenv holds a
-    // different token — and that path reaches no reset site at all.
+  it('sends no token between a stop and the next start, and the new launch\'s after it', async () => {
+    /* A sign-in whose sidecar is not running starts one on the new account's
+       root rather than moving one. */
     accountState.root = null;
-    envState.authToken = 'token-for-the-shared-root';
-    spawnHealthy();
+    const first = spawnHealthy();
     await startServer({ port: PORT, readyTimeoutMs: 60_000 });
-    expect(getServerAuthToken()).toBe('token-for-the-shared-root');
 
     await stopServer();
+    expect(getServerAuthToken()).toBeNull();
+    expect(getWindowProof()).toBeNull();
+    expect(authHeader()).toEqual({});
+
     accountState.root = 'accounts/second-account';
-    envState.authToken = 'token-for-the-second-root';
-    spawnHealthy();
+    const second = spawnHealthy();
     await startServer({ port: PORT, readyTimeoutMs: 60_000 });
 
-    expect(getServerAuthToken()).toBe('token-for-the-second-root');
+    expect(getServerAuthToken()).toBe(handoffOf(second).auth_token);
+    expect(getWindowProof()).toBe(handoffOf(second).window_proof);
+    expect(handoffOf(second).auth_token).not.toBe(handoffOf(first).auth_token);
+    expect(handoffOf(second).window_proof).not.toBe(handoffOf(first).window_proof);
   });
 
-  it('leaves a running sidecar and its cached token alone when the root has not moved', async () => {
+  it('leaves a running sidecar and its token alone when the root has not moved', async () => {
     accountState.root = 'accounts/second-account';
-    envState.authToken = 'token-for-the-second-root';
-    spawnHealthy();
+    const child = spawnHealthy();
     await startServer({ port: PORT, readyTimeoutMs: 60_000 });
 
     // A restart here would kill a live turn for nothing.
@@ -1129,7 +1154,7 @@ describe('the sidecar account root', () => {
     }) as never);
 
     await expect(ensureSidecarOnCurrentAccountRoot()).resolves.toBe(true);
-    expect(getServerAuthToken()).toBe('token-for-the-second-root');
+    expect(getServerAuthToken()).toBe(handoffOf(child).auth_token);
   });
 
   it('names the account data root a sidecar starts and runs on until it stops, even after the record moves', async () => {
@@ -1613,8 +1638,8 @@ describe('app secret handoff', () => {
     return child;
   }
 
-  it('writes one JSON line with the secret to stdin, closes it, and keeps the secret out of the env', async () => {
-    const child = spawnAnswering({ app_secret_protocol: 1 });
+  it('writes one JSON line with the three values to stdin, closes it, and keeps them out of the env', async () => {
+    const child = spawnAnswering({ app_secret_protocol: HANDOFF_PROTOCOL });
 
     expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
 
@@ -1624,15 +1649,19 @@ describe('app secret handoff', () => {
     const lines = child.stdin.written.split('\n');
     expect(lines).toHaveLength(2);
     expect(lines[1]).toBe('');
-    const secret = JSON.parse(lines[0]).app_secret as string;
-    expect(secret).toMatch(/^[0-9a-f]{64}$/);
-    expect(opts.env?.COWORK_APP_SECRET_STDIN).toBe('1');
-    expect(Object.values(opts.env ?? {}).some((v) => String(v).includes(secret))).toBe(false);
-    expect(appSecretHeader()).toEqual({ [APP_SECRET_HEADER]: secret });
+    const handoff = JSON.parse(lines[0]) as Record<string, unknown>;
+    expect(Object.keys(handoff).sort()).toEqual(['app_secret', 'auth_token', 'window_proof']);
+    const values = Object.values(handoff).map(String);
+    for (const value of values) expect(value).toMatch(/^[0-9a-f]{64}$/);
+    expect(new Set(values).size).toBe(3);
+    expect(opts.env?.COWORK_APP_SECRET_STDIN).toBe('2');
+    expect(Object.values(opts.env ?? {}).some((v) => values.some((value) => String(v).includes(value)))).toBe(false);
+    expect(appSecretHeader()).toEqual({ [APP_SECRET_HEADER]: handoff.app_secret });
+    expect(authHeader()).toEqual({ Authorization: `Bearer ${handoff.auth_token}`, [WINDOW_PROOF_HEADER]: handoff.window_proof });
   });
 
   it('points Node programs the server starts at the system trust store', async () => {
-    spawnAnswering({ app_secret_protocol: 1 });
+    spawnAnswering({ app_secret_protocol: HANDOFF_PROTOCOL });
 
     expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
 
@@ -1640,33 +1669,119 @@ describe('app secret handoff', () => {
     expect(opts.env?.NODE_USE_SYSTEM_CA).toBe('1');
   });
 
-  it('generates a new secret for every spawn', async () => {
-    const first = spawnAnswering({ app_secret_protocol: 1 });
+  it("puts the server's refusal line in the start error when it exits over a bad hand-off", async () => {
+    /* The line cowork-server prints for a hand-off without window_proof: the
+       refusal prefix from cowork/cli.py, then the message of the
+       LaunchHandoffError from cowork/app_secret.py. */
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => {
+        child.stderr.emit('data', Buffer.from('cowork-server: the launch hand-off on stdin has no window_proof\n'));
+        child.exitCode = 1;
+        child.emit('exit', 1, null);
+      }, 0);
+      return child as never;
+    }) as never);
+    const output = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(false);
+    } finally {
+      output.mockRestore();
+    }
+
+    const diagnostics = getServerDiagnostics();
+    expect(diagnostics.lastErrorKind).toBe('exited');
+    expect(diagnostics.lastError).toMatch(/^The backend exited while starting up \(code 1\) after [0-9.]+s\. cowork-server: the launch hand-off on stdin has no window_proof$/);
+    expect(authHeader()).toEqual({});
+  });
+
+  it('keeps an inherited COWORK_AUTH_TOKEN out of the server environment', async () => {
+    vi.stubEnv('COWORK_AUTH_TOKEN', 'cd'.repeat(32));
+    try {
+      spawnAnswering({ app_secret_protocol: HANDOFF_PROTOCOL });
+
+      expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+
+      const opts = vi.mocked(cp.spawn).mock.calls[0][2] as cp.SpawnOptions;
+      expect(opts.env).not.toHaveProperty('COWORK_AUTH_TOKEN');
+      expect(getServerAuthToken()).not.toBe('cd'.repeat(32));
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it.each([
+    ['a server whose launcher handed off', true],
+    ['a server it still supervises', false],
+  ])("sends the stop's shutdown checkpoint to %s with the launch's token and proof, and drops both after it", async (_label, handsOff) => {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => {
+        healthOwner = spawnedOwner();
+        if (handsOff) { child.exitCode = 0; child.emit('exit', 0); }
+      }, 0);
+      return child as never;
+    }) as never);
+    vi.mocked(process.kill).mockImplementation(((pid: number, signal?: string) => {
+      signals.push([pid, String(signal)]);
+      child.exitCode = 0;
+      setTimeout(() => child.emit('exit', 0), 0);
+      return true;
+    }) as never);
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    const launched = handoffOf(child);
+
+    await stopServer();
+
+    const checkpoint = vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith('/api/v1/coding/runtime/prepare-shutdown'));
+    expect(checkpoint?.[1]?.headers).toEqual({ Authorization: `Bearer ${launched.auth_token}`, [WINDOW_PROOF_HEADER]: launched.window_proof });
+    expect(authHeader()).toEqual({});
+  });
+
+  it('generates new values for every spawn', async () => {
+    const first = spawnAnswering({ app_secret_protocol: HANDOFF_PROTOCOL });
     await startServer({ port: PORT, readyTimeoutMs: 5_000 });
     await stopServer();
     healthOwner = null;
-    const second = spawnAnswering({ app_secret_protocol: 1 });
+    const second = spawnAnswering({ app_secret_protocol: HANDOFF_PROTOCOL });
     await startServer({ port: PORT, readyTimeoutMs: 5_000 });
 
-    expect(first.stdin.written).not.toBe(second.stdin.written);
-    expect(appSecretHeader()[APP_SECRET_HEADER]).toBe(JSON.parse(second.stdin.written).app_secret);
+    for (const key of ['app_secret', 'auth_token', 'window_proof'] as const) {
+      expect(handoffOf(second)[key]).not.toBe(handoffOf(first)[key]);
+    }
+    expect(appSecretHeader()[APP_SECRET_HEADER]).toBe(handoffOf(second).app_secret);
+    expect(getServerAuthToken()).toBe(handoffOf(second).auth_token);
+    expect(getWindowProof()).toBe(handoffOf(second).window_proof);
   });
 
   it.each([
     ['absent', {}],
-    ['a string', { app_secret_protocol: '1' }],
-    ['another version', { app_secret_protocol: 2 }],
-  ])('stays in legacy mode when app_secret_protocol is %s', async (_label, extra) => {
-    spawnAnswering(extra);
+    ['a string', { app_secret_protocol: String(HANDOFF_PROTOCOL) }],
+    ['the previous version', { app_secret_protocol: 1 }],
+    ['a later version', { app_secret_protocol: HANDOFF_PROTOCOL + 1 }],
+  ])('refuses the start as incompatible when app_secret_protocol is %s', async (_label, extra) => {
+    const hook = vi.fn(async () => {});
+    setServerStartedHook(hook);
+    try {
+      spawnAnswering({ ...extra, custom_mcp: 1 });
 
-    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+      expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(false);
 
-    expect(isAppSecretProtected()).toBe(false);
-    expect(appSecretHeader()).toEqual({});
+      expect(getServerDiagnostics().lastErrorKind).toBe('incompatible');
+      expect(hook).not.toHaveBeenCalled();
+      expect(isAppSecretProtected()).toBe(false);
+      expect(serverMayReceiveTokens()).toBe(false);
+      expect(isCustomMcpAvailable()).toBe(false);
+      expect(appSecretHeader()).toEqual({});
+      // Nothing is sent to whatever kept the port after the refused start.
+      expect(authHeader()).toEqual({});
+    } finally {
+      setServerStartedHook(null);
+    }
   });
 
   it('drops protected mode when the server stops', async () => {
-    spawnAnswering({ app_secret_protocol: 1 });
+    spawnAnswering({ app_secret_protocol: HANDOFF_PROTOCOL });
     await startServer({ port: PORT, readyTimeoutMs: 5_000 });
     expect(isAppSecretProtected()).toBe(true);
 
@@ -1676,10 +1791,9 @@ describe('app secret handoff', () => {
   });
 
   it.each([
-    ['a protected server that reports it', { app_secret_protocol: 1, custom_mcp: 1 }, true],
-    ['a protected server that does not', { app_secret_protocol: 1 }, false],
-    ['a protected server that reports another value', { app_secret_protocol: 1, custom_mcp: '1' }, false],
-    ['a legacy server that claims it', { custom_mcp: 1 }, false],
+    ['a protected server that reports it', { app_secret_protocol: HANDOFF_PROTOCOL, custom_mcp: 1 }, true],
+    ['a protected server that does not', { app_secret_protocol: HANDOFF_PROTOCOL }, false],
+    ['a protected server that reports another value', { app_secret_protocol: HANDOFF_PROTOCOL, custom_mcp: '1' }, false],
   ])('makes custom MCP available only for %s', async (_label, extra, available) => {
     spawnAnswering(extra);
 
@@ -1689,7 +1803,7 @@ describe('app secret handoff', () => {
   });
 
   it('drops custom MCP when the server stops', async () => {
-    spawnAnswering({ app_secret_protocol: 1, custom_mcp: 1 });
+    spawnAnswering({ app_secret_protocol: HANDOFF_PROTOCOL, custom_mcp: 1 });
     await startServer({ port: PORT, readyTimeoutMs: 5_000 });
     expect(isCustomMcpAvailable()).toBe(true);
 
@@ -1699,13 +1813,13 @@ describe('app secret handoff', () => {
   });
 
   it('replaces a running server of its own that holds a secret from an earlier process', async () => {
-    spawnAnswering({ app_secret_protocol: 1 });
+    spawnAnswering({ app_secret_protocol: HANDOFF_PROTOCOL });
     await startServer({ port: PORT, readyTimeoutMs: 5_000 });
     await stopServer();
     // The orphan still answers /health as ours, with a secret this run cannot know.
-    healthExtra = { app_secret_protocol: 1 };
+    healthExtra = { app_secret_protocol: HANDOFF_PROTOCOL };
     await resolveServerPort();
-    const fresh = spawnAnswering({ app_secret_protocol: 1 });
+    const fresh = spawnAnswering({ app_secret_protocol: HANDOFF_PROTOCOL });
 
     expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
 
@@ -1714,11 +1828,13 @@ describe('app secret handoff', () => {
   });
 
   it('replaces a running server of its own without app_secret_protocol instead of adopting it', async () => {
-    spawnAnswering({});
+    spawnAnswering({ app_secret_protocol: HANDOFF_PROTOCOL });
     await startServer({ port: PORT, readyTimeoutMs: 5_000 });
     await stopServer();
-    // The orphan still answers /health as ours, in legacy mode.
-    const fresh = spawnAnswering({ app_secret_protocol: 1 });
+    /* The orphan still answers /health as ours, without the protocol, as a
+       server from before the launch hand-off does. */
+    healthExtra = {};
+    const fresh = spawnAnswering({ app_secret_protocol: HANDOFF_PROTOCOL });
 
     expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
 
@@ -1728,7 +1844,7 @@ describe('app secret handoff', () => {
   });
 
   it('fails the start rather than trusting the old server when it cannot be stopped', async () => {
-    spawnAnswering({});
+    spawnAnswering({ app_secret_protocol: HANDOFF_PROTOCOL });
     await startServer({ port: PORT, readyTimeoutMs: 5_000 });
     await stopServer();
     execHandler = (cmd) => (cmd === 'lsof' ? { err: null, stdout: '9999\n' } : { err: new Error('nothing'), stdout: '' });
@@ -1740,9 +1856,6 @@ describe('app secret handoff', () => {
     expect(cp.spawn).toHaveBeenCalledTimes(1);
   });
 });
-
-/** The store root a session on the default account and organization uses. */
-const DEFAULT_STORE = '/tmp/cowork-test-home';
 
 describe('health proof', () => {
   afterEach(async () => {
@@ -1764,7 +1877,7 @@ describe('health proof', () => {
   }
 
   it('is protected only with a proof of the secret over a fresh challenge', async () => {
-    spawnAnswering({ app_secret_protocol: 1 });
+    spawnAnswering({ app_secret_protocol: HANDOFF_PROTOCOL });
 
     expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
 
@@ -1775,13 +1888,11 @@ describe('health proof', () => {
   });
 
   it.each([
-    ['a wrong proof', 'wrong' as const, false],
-    ['no proof', 'none' as const, false],
-    ['a wrong proof, after the migration', 'wrong' as const, true],
-  ])('refuses a server claiming the protocol with %s', async (_label, proof, migrated) => {
-    if (migrated) keychainState.migratedRoots.add(DEFAULT_STORE);
+    ['a wrong proof', 'wrong' as const],
+    ['no proof', 'none' as const],
+  ])('refuses a server claiming the protocol with %s', async (_label, proof) => {
     healthProof = proof;
-    const child = spawnAnswering({ app_secret_protocol: 1 }, false);
+    const child = spawnAnswering({ app_secret_protocol: HANDOFF_PROTOCOL }, false);
     const hook = vi.fn(async () => {});
     setServerStartedHook(hook);
     vi.mocked(process.kill).mockImplementation(((pid: number, signal?: string) => {
@@ -1801,30 +1912,25 @@ describe('health proof', () => {
     expect(hook).not.toHaveBeenCalled();
     expect(appSecretHeader()).toEqual({});
     expect(serverMayReceiveTokens()).toBe(false);
+    expect(authHeader()).toEqual({});
   });
 
-  it('accepts a server without the protocol in legacy mode before the migration', async () => {
-    spawnAnswering({});
-
-    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
-
-    expect(isAppSecretProtected()).toBe(false);
-    expect(serverMayReceiveTokens()).toBe(true);
-  });
-
-  it('refuses a server without the protocol once the migration has run', async () => {
-    keychainState.migratedRoots.add(DEFAULT_STORE);
+  it.each([
+    ["the default organization's store", null],
+    ["another organization's store", '/tmp/cowork-test-home/orgs/org-b'],
+  ])('refuses a server without the protocol on %s as incompatible, with no legacy fallback', async (_label, orgStoreRoot) => {
+    accountState.orgStoreRoot = orgStoreRoot;
     spawnAnswering({});
 
     const result = await startServer({ port: PORT, readyTimeoutMs: 5_000 });
 
     expect(result.ok).toBe(false);
-    expect(getServerDiagnostics().lastError).toBe('The backend did not prove it was started by this app, so it was stopped.');
+    expect(getServerDiagnostics().lastErrorKind).toBe('incompatible');
     expect(serverMayReceiveTokens()).toBe(false);
   });
 
   it('re-verifies a handed-off server and replaces one that no longer proves the secret', async () => {
-    spawnAnswering({ app_secret_protocol: 1 });
+    spawnAnswering({ app_secret_protocol: HANDOFF_PROTOCOL });
     expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
     expect(isAppSecretProtected()).toBe(true);
 
@@ -1848,25 +1954,10 @@ describe('health proof per store, and after a crash', () => {
     if (isServerRunning()) await stopServer();
   });
 
-  it('judges a server by the migration marker of the store it was started on', async () => {
-    keychainState.migratedRoots.add(DEFAULT_STORE);
-    accountState.orgStoreRoot = '/tmp/cowork-test-home/orgs/org-b';
-    const child = makeChild();
-    vi.mocked(cp.spawn).mockImplementation((() => {
-      setTimeout(() => { healthExtra = {}; healthOwner = spawnedOwner(); child.exitCode = 0; child.emit('exit', 0); }, 0);
-      return child as never;
-    }) as never);
-
-    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
-
-    expect(serverMayReceiveTokens()).toBe(true);
-    expect(isAppSecretProtected()).toBe(false);
-  });
-
   it('sends no tokens after the server crashes, until a new one proves the secret', async () => {
     const crashed = makeChild();
     vi.mocked(cp.spawn).mockImplementation((() => {
-      setTimeout(() => { healthExtra = { app_secret_protocol: 1 }; healthOwner = spawnedOwner(); }, 0);
+      setTimeout(() => { healthExtra = { app_secret_protocol: HANDOFF_PROTOCOL }; healthOwner = spawnedOwner(); }, 0);
       return crashed as never;
     }) as never);
     expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
@@ -1886,5 +1977,168 @@ describe('health proof per store, and after a crash', () => {
     expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
     expect(isAppSecretProtected()).toBe(true);
     expect(appSecretHeader()[APP_SECRET_HEADER]).toBe(JSON.parse(fresh.stdin.written).app_secret);
+  });
+});
+
+/*
+ * What the main window's fetches to the server carry while a start runs and
+ * after the server exits on its own. A process can take the port between the
+ * reap and the child's bind and answer the window's requests in that time, so
+ * the window's requests wait for the start instead of reaching the port, and
+ * neither value goes out before the server proves the app secret.
+ */
+describe("the window's requests to the server across a start and an exit", () => {
+  afterEach(async () => {
+    setServerStartedHook(null);
+    if (isServerRunning()) await stopServer();
+  });
+
+  /** A fetch from the main window's top-level frame to the server, through
+   *  the listener and the start hold as app.ts wires them. `sent` resolves
+   *  with what the listener hands Electron once it lets the fetch go. */
+  function windowFetch(): { sent: Promise<BeforeSendResponse>; isSent: () => boolean } {
+    const listener = serverTokenListener({
+      guard: { mayCarryServerToken: () => true },
+      serverPort: () => PORT,
+      token: getServerAuthToken,
+      windowProof: getWindowProof,
+      mainWindow: () => ({ id: 1, mainFrame: { frameTreeNodeId: 7 } }),
+      viteDevPort: null,
+      gate: holdWhileServerStarts(() => PORT, untilServerStartSettles),
+    });
+    let isSent = false;
+    const sent = new Promise<BeforeSendResponse>((resolve) => {
+      listener(
+        {
+          url: `http://127.0.0.1:${PORT}/api/v1/conversations`,
+          method: 'GET',
+          frame: { frameTreeNodeId: 7, name: '', url: 'file:///index.html', parent: null },
+          resourceType: 'xhr',
+          webContentsId: 1,
+          requestHeaders: {},
+        },
+        (response) => { isSent = true; resolve(response); },
+      );
+    });
+    return { sent, isSent: () => isSent };
+  }
+
+  /** What a fetch goes out with when it carries the launch's two values. */
+  const withBothOf = (child: { stdin: { written: string } }): BeforeSendResponse => ({
+    requestHeaders: {
+      Authorization: `Bearer ${handoffOf(child).auth_token}`,
+      [WINDOW_PROOF_HEADER]: handoffOf(child).window_proof,
+    },
+  });
+  const withNeither: BeforeSendResponse = { requestHeaders: {} };
+
+  /** A stop's signal makes the child exit, as a real one does. */
+  function exitOnSignal(child: ReturnType<typeof makeChild>): void {
+    vi.mocked(process.kill).mockImplementation(((pid: number, signal?: string) => {
+      signals.push([pid, String(signal)]);
+      child.exitCode = 0;
+      setTimeout(() => child.emit('exit', 0), 0);
+      return true;
+    }) as never);
+  }
+
+  it('holds a fetch sent mid-start and sends it with both values once the server proves the secret', async () => {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => child) as never);
+    exitOnSignal(child);
+    let inHook: BeforeSendResponse | null = null;
+    setServerStartedHook(async () => {
+      const request = windowFetch();
+      inHook = request.isSent() ? await request.sent : null;
+    });
+
+    const start = startServer({ port: PORT, readyTimeoutMs: 5_000 });
+    /* Spawned and handed its values, while nothing on the port answers
+       /health yet. Read now and checked once the start settles, so a failure
+       leaves no start running into the next test. */
+    await vi.waitFor(() => expect(child.stdin.ended).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const held = windowFetch();
+    const before = { held: !held.isSent(), main: authHeader() };
+
+    healthOwner = spawnedOwner();
+    expect((await start).ok).toBe(true);
+
+    expect(before).toEqual({ held: true, main: {} });
+    expect(await held.sent).toEqual(withBothOf(child));
+    expect(inHook).toEqual(withBothOf(child));
+  });
+
+  it('sends a fetch held through a failed start with neither value, rather than canceling it', async () => {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { child.exitCode = 1; child.emit('exit', 1); }, 400);
+      return child as never;
+    }) as never);
+
+    const start = startServer({ port: PORT, readyTimeoutMs: 5_000 });
+    await vi.waitFor(() => expect(child.stdin.ended).toBe(true));
+    const held = windowFetch();
+    const heldDuringStart = !held.isSent();
+
+    expect((await start).ok).toBe(false);
+
+    expect(heldDuringStart).toBe(true);
+    expect(await held.sent).toEqual(withNeither);
+    expect(untilServerStartSettles()).toBeNull();
+  });
+
+  it("holds nothing after the server exits on its own, and sends the next launch's values once it proves the secret", async () => {
+    const crashed = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { healthOwner = spawnedOwner(); }, 0);
+      return crashed as never;
+    }) as never);
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+    const live = windowFetch();
+    expect(live.isSent()).toBe(true);
+    expect(await live.sent).toEqual(withBothOf(crashed));
+
+    crashed.exitCode = 1;
+    crashed.emit('exit', 1, null);
+
+    const afterExit = windowFetch();
+    expect(untilServerStartSettles()).toBeNull();
+    expect(afterExit.isSent()).toBe(true);
+    expect(await afterExit.sent).toEqual(withNeither);
+    expect(authHeader()).toEqual({});
+
+    const fresh = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => {
+      setTimeout(() => { fresh.exitCode = 0; fresh.emit('exit', 0); }, 0);
+      return fresh as never;
+    }) as never);
+    expect((await startServer({ port: PORT, readyTimeoutMs: 5_000 })).ok).toBe(true);
+
+    const next = windowFetch();
+    expect(next.isSent()).toBe(true);
+    expect(await next.sent).toEqual(withBothOf(fresh));
+    expect(handoffOf(fresh).window_proof).not.toBe(handoffOf(crashed).window_proof);
+    expect(handoffOf(fresh).auth_token).not.toBe(handoffOf(crashed).auth_token);
+  });
+
+  /* stopServer queues behind a start on the lifecycle lock, so the stop that
+     lands mid-start is the quit path's forced reap. */
+  it('sends a fetch held when a stop ends the start with neither value', async () => {
+    const child = makeChild();
+    vi.mocked(cp.spawn).mockImplementation((() => child) as never);
+    exitOnSignal(child);
+
+    const start = startServer({ port: PORT, readyTimeoutMs: 5_000 });
+    await vi.waitFor(() => expect(child.stdin.ended).toBe(true));
+    const held = windowFetch();
+    const heldDuringStart = !held.isSent();
+
+    await forceReapServer();
+
+    expect((await start).ok).toBe(false);
+    expect(heldDuringStart).toBe(true);
+    expect(await held.sent).toEqual(withNeither);
+    expect(untilServerStartSettles()).toBeNull();
   });
 });

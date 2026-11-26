@@ -1,6 +1,7 @@
 /*
  * Helpers for e2e/document-preview-electron.spec.ts: a loopback server that
- * records whether each request carried the token, the isolated Electron host
+ * records whether each request carried the token and the window proof, the
+ * isolated Electron host
  * (document-preview-electron-app.cjs), and frame mounting in its window.
  */
 import { _electron as electron, type ElectronApplication, type Frame, type Page } from '@playwright/test';
@@ -18,14 +19,16 @@ const PIXEL_PNG = Buffer.from(
   'base64',
 );
 
-/* One request the loopback server received: its path and whether it carried the token. */
-export interface RecordedRequest { path: string; authorized: boolean }
+/* One request the loopback server received: its path, whether it carried the
+   token, and whether it carried the window proof. */
+export interface RecordedRequest { path: string; authorized: boolean; proved: boolean }
 
 export interface TokenServer {
   port: number;
   /* The server's origin, http://127.0.0.1:<port>. */
   origin: string;
   token: string;
+  windowProof: string;
   requests: RecordedRequest[];
   close(): Promise<void>;
 }
@@ -43,11 +46,13 @@ export function requestingDocument(prefix: string): string {
  */
 export async function startTokenServer(): Promise<TokenServer> {
   const token = randomBytes(16).toString('hex');
+  const windowProof = randomBytes(32).toString('hex');
   const requests: RecordedRequest[] = [];
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     const authorized = req.headers.authorization === `Bearer ${token}`;
-    requests.push({ path: url.pathname, authorized });
+    const proved = req.headers['x-cowork-window-proof'] === windowProof;
+    requests.push({ path: url.pathname, authorized, proved });
     const file = path.posix.basename(url.pathname);
     if (file === 'image.png') {
       res.writeHead(authorized ? 200 : 401, { 'content-type': 'image/png' }).end(authorized ? PIXEL_PNG : undefined);
@@ -67,6 +72,7 @@ export async function startTokenServer(): Promise<TokenServer> {
     port,
     origin: `http://127.0.0.1:${port}`,
     token,
+    windowProof,
     requests,
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
@@ -110,6 +116,7 @@ export async function launchPreviewHost(server: TokenServer): Promise<PreviewHos
       PREVIEW_HOST_PROFILE: profile,
       PREVIEW_HOST_SERVER_PORT: String(server.port),
       PREVIEW_HOST_TOKEN: server.token,
+      PREVIEW_HOST_WINDOW_PROOF: server.windowProof,
     },
   });
   const page = await app.firstWindow();

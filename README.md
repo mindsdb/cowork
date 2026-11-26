@@ -251,16 +251,21 @@ npm run dev:web
 
 Web development defaults to MindsHub UI off. In this build, Settings hides LLM Providers and Model Router, the composer hides model and reasoning-effort controls, and questions send `model: null` without a `reasoning_effort` override. The server uses its configured models and role-specific efforts. To configure providers and models in the development UI, run `VITE_PLATFORM_UI=true npm run dev:web`.
 
-This boots both processes:
+This boots both servers:
 
-1. The cowork-server FastAPI backend on `127.0.0.1:26866` (via `uv run cowork-server` from the sibling source directory).
-2. Vite dev server on `localhost:5173`, with `BUILD_TARGET=web`.
+1. The cowork-server FastAPI backend on `127.0.0.1:26866` (via `uv run cowork-server` from the sibling source directory). `scripts/start-server.mjs` hands it a fresh bearer token, window proof and app secret on stdin, as desktop main does (see [Loopback authentication](#loopback-authentication)). It takes the server as ready only when its `/api/v1/health/` answer reports `app_secret_protocol: 2` and proves it holds that app secret. Any other answer means something else holds the port, or the checkout predates the launch hand-off, and `dev:web` stops with an error that says so. It also stops as soon as the server it started exits.
+2. Vite dev server on `localhost:5173`, with `BUILD_TARGET=web`, in the `dev:web` process itself. `scripts/dev-web-vite.mjs` hands Vite's config the bearer token and the window proof as an argument to Vite's `createServer`, so neither value enters an environment variable or the client bundle.
 
 The dev server opens at `http://localhost:5173/` (a small Vite
 middleware rewrites `/` → `/index-web.html` so the bare URL is
 canonical). API calls hit the FastAPI sidecar via Vite's
-`/api` proxy. Press `Ctrl-C` once for a clean
+`/api` proxy, which adds the bearer token and the window proof to a request
+whose `Origin` (or, without one, whose `Host` and `Referer`) is Vite's own
+page, and removes a window proof from any other request
+(`src/renderer/dev-api-proxy.ts`). Press `Ctrl-C` once for a clean
 shutdown — vite quiesces first, then the python child.
+
+`dev:web` gives up the window proof's protection. Vite's proxy trusts a request's `Origin`, `Host` and `Referer` headers, and only a browser sets those honestly. Any local process, including an agent's, can send `Origin: http://localhost:5173` and get both values added. Test that an agent can't answer for the person in `npm run dev` or a packaged build.
 
 ### Build a production bundle
 
@@ -408,6 +413,18 @@ assets/
 - **Minds integration**: The GUI replicates the `/connect` flow — lists minds via REST API, handles datasource selection (normalizes string/object refs), and writes non-credential config to `~/.cowork/.env`. The MindsHub credential itself is never written there; see [MindsHub credentials](#mindshub-credentials).
 
 - **OTA updates**: The React UI and the Python backend update over-the-air (coupled, auto-applied at boot) without a new installer; the Electron shell auto-updates on stable/prod via `electron-updater`, installing on relaunch. See [Over-the-Air Updates](#over-the-air-updates).
+
+### Loopback authentication
+
+Desktop main makes three values fresh for every launch of the sidecar, each 32 random bytes in hex: the bearer token, the window proof and the app secret. It sets `COWORK_APP_SECRET_STDIN=2` in the sidecar's environment and writes the three as one JSON line to its stdin, `{"app_secret": …, "auth_token": …, "window_proof": …}`, then closes stdin. The values live only in desktop main's memory (`src/main/server-auth.ts`, `src/main/app-secret.ts`) and in the sidecar's: nothing writes them to disk or into a process environment, which the agent's code would inherit. cowork-server takes its bearer token from this line alone and removes any `COWORK_AUTH_TOKEN` line from `~/.cowork/.env`. A sidecar whose `/api/v1/health/` does not report `app_secret_protocol: 2` is incompatible, and the start fails, with no legacy fallback. A sidecar that refuses the hand-off exits with one line, `cowork-server: <problem>`, which the start error in the backend help panel repeats. A sidecar left running by an earlier app process is replaced, never adopted, since this process never handed it its token. `src/shared/server-launch.ts` holds the flag, the protocol number and the header name, which cowork-server's `cowork/app_secret.py` mirrors.
+
+- **Bearer token**: the session's one `onBeforeSendHeaders` listener (`src/main/server-token-listener.ts`) adds it to every renderer request to the sidecar, except from the document preview frame, a frame inside it, or a request with no frame.
+- **Window proof** (`X-Cowork-Window-Proof`): the same listener adds it only to a fetch or XMLHttpRequest from the main window's own top-level frame, and removes it from every other request to the sidecar. A frame inside the window, an image, a navigation, a download, another window and a request with no frame go without it. Desktop main's own requests carry both values through `authHeader()`.
+- **App secret** (`X-Cowork-App-Secret`): only desktop main's requests on the routes that hold MCP access tokens carry it, once the sidecar has proved over `/health` that it holds the secret.
+
+The listener and `authHeader()` get the bearer token and the window proof only once the sidecar has proved over `/health` that it holds the app secret, and lose both when it stops or exits on its own. While a start is pending, the listener holds every renderer request to `127.0.0.1:<port>` and lets it go when the start publishes both values, or ends without them (`untilServerStartSettles` in `src/main/server-process.ts`). So no renderer request reaches whatever holds the port during a start, and one the sidecar would refuse for want of a token waits for the token instead. Desktop main's own requests are not held.
+
+The Claude Code terminal runs with this app's environment minus `COWORK_*`, `MINDSHUB_*`, `CLAUDE_CODE_*`, `CLAUDECODE` and `ANTHROPIC_*`. The git calls in a task's repository run with it minus `COWORK_*` and `MINDSHUB_*` only. Desktop main sets no `OPENAI_*` or `ANTHROPIC_*` variable, so the user's own `OPENAI_*` values reach both, and their `ANTHROPIC_*` values reach the git calls. On Windows, where variable names ignore case, these names match in any case (`src/main/agent-env.ts`).
 
 ---
 

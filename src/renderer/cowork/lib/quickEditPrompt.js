@@ -9,8 +9,17 @@
 // The agent reads that text as sent. The transcript shows the message with the
 // suffix turned into a pill naming the artifact (parseQuickEditPrompt), and
 // the bar finds the agent's reply to it (chatReplyFor).
+//
+// An inline artifact's Submit (ENG-4684, `window.anton.submit` in the chat's
+// live frame) sends the same turn with the page's state after the suffix, as
+// a fenced JSON block the agent reads and the transcript folds away:
+//
+//   <message>\n\n(About the artifact `<slug>`.)\n\n```json\n<state>\n```
 
-const SUFFIX = /\n\n\(About the artifact `([^`\n]+)`\.\)$/;
+const SUFFIX = /\n\n\(About the artifact `([^`\n]+)`\.\)(?:\n\n```json\n([\s\S]*)\n```)?$/;
+
+// What a Submit with no message of its own says. Agent-facing, like the suffix.
+export const INLINE_SUBMIT_DEFAULT_MESSAGE = 'Submitted from the inline artifact.';
 
 /** Agent-facing, so not translated (like launchLiveAppPrompt). */
 export function quickEditChatPrompt(artifact, message) {
@@ -19,8 +28,21 @@ export function quickEditChatPrompt(artifact, message) {
 }
 
 /**
+ * The chat turn an inline artifact's Submit sends: the bar's prompt for
+ * `message` (or the default), then the page's state as a JSON block.
+ */
+export function inlineSubmitChatPrompt(artifact, message, state) {
+  const text = typeof message === 'string' && message.trim() ? message.trim() : INLINE_SUBMIT_DEFAULT_MESSAGE;
+  let json;
+  try { json = JSON.stringify(state ?? null, null, 2); } catch { json = 'null'; }
+  return `${quickEditChatPrompt(artifact, text)}\n\n\`\`\`json\n${json ?? 'null'}\n\`\`\``;
+}
+
+/**
  * `{ text, slug }` for a message that ends in exactly the bar's suffix, else
  * null. Only that shape, only at the end: any other text is the user's own.
+ * A Submit's turn also carries `json`, the state block's text as sent (valid
+ * JSON, or the message is read as the user's own).
  */
 export function parseQuickEditPrompt(content) {
   if (typeof content !== 'string') return null;
@@ -28,7 +50,9 @@ export function parseQuickEditPrompt(content) {
   if (!match) return null;
   const text = content.slice(0, match.index);
   if (!text.trim()) return null;
-  return { text, slug: match[1] };
+  if (match[2] === undefined) return { text, slug: match[1] };
+  try { JSON.parse(match[2]); } catch { return null; }
+  return { text, slug: match[1], json: match[2] };
 }
 
 const textOf = (message) => (typeof message?.content === 'string' ? message.content : '');

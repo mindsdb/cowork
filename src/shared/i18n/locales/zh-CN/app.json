@@ -266,10 +266,10 @@
     "stayQueued": "{agent} 现在无法接收。它仍在队列中。"
   },
   "voiceCall": {
-    "backToCall": "返回与 {agent} 的通话",
-    "onCall": "正在与 {agent} 通话",
+    "backToCall": "返回语音模式",
+    "onCall": "语音模式已开启",
     "callBackPending": "完成后 {agent} 会回电给你",
-    "call": "呼叫 {agent}",
+    "call": "语音模式",
     "anotherCall": "另一个通话正在进行"
   },
   "notion": {

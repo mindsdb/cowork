@@ -1,5 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { AUDIENCE_CHOICE } from '../../../lib/orgSharing';
+import { setOrgMode } from '../../../../lib/orgMode';
 import {
   AccessChooser,
   accessDraftFromArtifact,
@@ -155,27 +157,30 @@ describe('owner-only as its own selection', () => {
 
   it('reads an owner-only artifact back as the owner-only mode', () => {
     expect(accessDraftFromArtifact({
-      accessMode: 'restricted', accessEmails: [], orgAllowed: false, ownerOnly: true,
+      accessMode: 'restricted', accessEmails: [], orgAllowed: false, ownerOnly: true, publishedUrl: 'https://share/abc',
     }).mode).toBe('private');
   });
 
   it('reads a shared artifact back as Specific people', () => {
     const draft = accessDraftFromArtifact({
       accessMode: 'restricted', accessEmails: ['a@x.com'], orgAllowed: false, ownerOnly: false,
+      publishedUrl: 'https://share/abc',
     });
     expect(draft.mode).toBe('specific');
     expect(draft.emailsText).toBe('a@x.com');
   });
 
   it('falls back to deriving owner-only for a record written before the flag', () => {
-    const mode = (artifact) => accessDraftFromArtifact({ accessMode: 'restricted', ...artifact }).mode;
+    const mode = (artifact) => accessDraftFromArtifact({ accessMode: 'restricted', publishedUrl: 'https://share/abc', ...artifact }).mode;
     expect(mode({ accessEmails: [], orgAllowed: false })).toBe('private');
     expect(mode({ accessEmails: ['a@x.com'], orgAllowed: false })).toBe('specific');
     expect(mode({ accessEmails: [], orgAllowed: true })).toBe('specific');
   });
 
   it('prefers the server flag over the derivation when both are present', () => {
-    expect(accessDraftFromArtifact({ accessMode: 'restricted', ownerOnly: false, accessEmails: [], orgAllowed: false }).mode)
+    expect(accessDraftFromArtifact({
+      accessMode: 'restricted', ownerOnly: false, accessEmails: [], orgAllowed: false, publishedUrl: 'https://share/abc',
+    }).mode)
       .toBe('specific');
   });
 
@@ -225,10 +230,27 @@ describe('an artifact that does not know who it reaches', () => {
   });
 });
 
+describe('accessDraftFromArtifact in MindsHub mode', () => {
+  afterEach(() => setOrgMode(false));
+
+  it('reads the access of an artifact without a published link', () => {
+    setOrgMode(true);
+    const draft = accessDraftFromArtifact({ accessMode: 'password', accessPassword: 'pw' });
+    expect(draft.mode).toBe('password');
+    expect(draft.password).toBe('pw');
+  });
+});
+
 describe('a first share with the platform UI on', () => {
-  it('starts on Public', () => {
-    expect(newAccessDraft().mode).toBe('public');
-    expect(accessDraftFromArtifact({ publishedUrl: '' }).mode).toBe('public');
+  it('starts on Only me', () => {
+    expect(newAccessDraft().mode).toBe(AUDIENCE_CHOICE.PRIVATE);
+    expect(newAccessDraft({ preselect: false }).mode).toBe('');
+    expect(accessDraftFromArtifact({ publishedUrl: '' }).mode).toBe(AUDIENCE_CHOICE.PRIVATE);
+  });
+
+  it('starts an unpublished desktop artifact from Only me, not from its old access', () => {
+    expect(accessDraftFromArtifact({ path: '/p/a.html', publishedUrl: '', accessMode: 'public' }).mode)
+      .toBe(AUDIENCE_CHOICE.PRIVATE);
   });
 
   it('describes Public and Password as reaching the internet', () => {

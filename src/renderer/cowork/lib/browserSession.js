@@ -269,3 +269,11 @@ export function offTaskBrowserId(allocate, account = '', storage = globalThis.lo
   }
   return id;
 }
+
+/**
+ * The page open beside Home that a new task carries, or '' when the send
+ * asks to leave it (a gallery example sent at once runs on its sample alone).
+ */
+export function carriedPageFor(meta, carriedPage) {
+  return meta?.leaveBrowserPage ? '' : carriedPage();
+}
