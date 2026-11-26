@@ -308,8 +308,11 @@ describe('migrateLegacyHomeInto (legacy ~/.anton seeding is PROD-ONLY)', () => {
     fs.chmodSync(path.join(legacyHome, '.env'), 0o644);
     fs.chmodSync(path.join(legacyHome, 'cowork', 'state.json'), 0o644);
 
+    fs.mkdirSync(home, { mode: 0o755 });
+    fs.chmodSync(home, 0o755);
     migrateLegacyHomeInto('prod', home, legacyHome, { platform: 'linux' });
 
+    expect(modeOf(home)).toBe(0o700);
     expect(modeOf(path.join(home, '.env'))).toBe(0o600);
     expect(modeOf(path.join(home, 'state.json'))).toBe(0o600);
     expect(modeOf(legacyHome)).toBe(0o700);
@@ -339,7 +342,19 @@ describe('migrateLegacyHomeInto (legacy ~/.anton seeding is PROD-ONLY)', () => {
     expect(modeOf(home)).toBe(0o700);
   });
 
-  it('dev, preview and stable never touch the legacy home', () => {
+  it.each(['dev', 'stable', 'preview'] as const)('packaged %s repairs the source without importing it', (kind) => {
+    seedLegacy();
+    fs.chmodSync(legacyHome, 0o755);
+    fs.chmodSync(path.join(legacyHome, '.env'), 0o644);
+
+    migrateLegacyHomeInto(kind, home, legacyHome, { platform: 'linux', packaged: true });
+
+    expect(modeOf(legacyHome)).toBe(0o700);
+    expect(modeOf(path.join(legacyHome, '.env'))).toBe(0o600);
+    expect(fs.readdirSync(home)).toEqual([]);
+  });
+
+  it('unpackaged development leaves the legacy home alone', () => {
     seedLegacy();
     fs.chmodSync(legacyHome, 0o755);
 

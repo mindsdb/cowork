@@ -1627,6 +1627,7 @@ describe('app secret handoff', () => {
     const secret = JSON.parse(lines[0]).app_secret as string;
     expect(secret).toMatch(/^[0-9a-f]{64}$/);
     expect(opts.env?.COWORK_APP_SECRET_STDIN).toBe('1');
+    expect(opts.env?.COWORK_PRIVATE_PROJECT_DIRS).toBe('true');
     expect(Object.values(opts.env ?? {}).some((v) => String(v).includes(secret))).toBe(false);
     expect(appSecretHeader()).toEqual({ [APP_SECRET_HEADER]: secret });
   });

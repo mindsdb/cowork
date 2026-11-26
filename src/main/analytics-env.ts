@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import type { BuildKind } from './channels';
-import { writeEnvFileAtomic } from './private-files';
+import { updateEnvFile } from './dotenv-update';
 import { NON_PROD_POSTHOG_KEY, posthogKeyForBuildKind } from '../shared/analytics-project';
 
 export { NON_PROD_POSTHOG_KEY };
@@ -34,10 +34,11 @@ export function usageEventsOn(accountVars: Record<string, string>): boolean {
  *  The sidecar reads it at its next start. Rejects when the file cannot be
  *  written. */
 export async function writeUsageEventsPref(envPath: string, enabled: boolean): Promise<void> {
-  const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
-  const lines = existing.split('\n').filter((l) => l.length > 0 && !l.startsWith(`${USAGE_EVENTS_PREF}=`));
-  if (!enabled) lines.push(`${USAGE_EVENTS_PREF}=false`);
-  await writeEnvFileAtomic(envPath, lines.join('\n') + '\n');
+  await updateEnvFile(envPath, (existing) => {
+    const lines = (existing ?? '').split('\n').filter((line) => line.length > 0 && !line.startsWith(`${USAGE_EVENTS_PREF}=`));
+    if (!enabled) lines.push(`${USAGE_EVENTS_PREF}=false`);
+    return lines.join('\n') + '\n';
+  });
 }
 
 /** Only prod builds count as real users' turns: every other kind sends to the

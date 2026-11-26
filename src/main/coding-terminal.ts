@@ -18,7 +18,7 @@ import type { UtilityProcess, WebContents } from 'electron';
 import { IPC } from '../shared/ipc-channels';
 import { mindsApiRoot } from '../shared/minds-endpoint';
 import { detectClaudeCode, revealMindsApiKey, revealMindsBaseUrl } from './coding-mode';
-import { ensureTaskWorktree, removeTaskWorktree } from './coding-workspace';
+import { PrivateWorkspaceError, ensureTaskWorktree, removeTaskWorktree } from './coding-workspace';
 import { getEnvPath } from './uv-paths';
 
 // Last-resort fallback only — real requests use revealMindsBaseUrl(), the
@@ -171,6 +171,7 @@ export async function startCodingTerminal(
     cwd = worktree.path;
     isNewSession = worktree.isNew;
   } catch (err: any) {
+    if (err instanceof PrivateWorkspaceError) return { ok: false, reason: err.message };
     // eslint-disable-next-line no-console
     diagnostic("main.coding-terminal", "ERROR", "coding_terminal_failed_to_set_up_task_worktree_falling_back_to_project_dir", '[coding-terminal] failed to set up task worktree, falling back to project dir', err?.message || err);
   }

@@ -10,7 +10,7 @@ import { getInstallationId } from './installation-id';
 import { authHeader } from './server-auth';
 import { hasUserSuppliedMindsCredential, isMindsCredentialSidecarReachable, syncMindsCredential, syncMindsCredentialSelection, syncUsableMindsCredential } from './minds-credential';
 import { beginMindsResumeCredentialGate, settleMindsResumeCredentialGate } from './minds-resume-gate';
-import { writeEnvFileAtomic } from './private-files';
+import { updateEnvFile } from './dotenv-update';
 import { isMindsBaseUrl } from '../shared/minds-endpoint';
 import { describeFetchError } from './fetch-error';
 import {
@@ -1397,19 +1397,18 @@ export async function commitMindsSignIn(): Promise<{ dataRootChanged: boolean }>
   // file beside the target, so writing first would ENOENT and drop the value.
   ensureAccountDataRoot();
   const envPath = coworkEnvPath();
-  const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
-  // Decided from the .env as it was BEFORE this sign-in rewrote it, so the
-  // provider decision and the settings write agree.
-  const keepProvider = runsOwnEndpoint(existing, MINDS_API_HOST);
+  // Decide from the same contents that the queued write updates.
+  let keepProvider: boolean | undefined;
   // Atomic + lock-tolerant write that wedged onboarding on Windows (ENG-1209).
   let envWriteError: unknown = null;
   try {
-    await writeEnvFileAtomic(envPath, buildMindsEnvContent(existing, MINDS_API_HOST));
-    // The file no longer holds a MindsHub credential, but it still holds the
-    // user's other provider keys, so it stays owner-only. Best-effort, and a
-    // no-op on Windows.
-    try { fs.chmodSync(envPath, 0o600); } catch { /* best-effort */ }
+    await updateEnvFile(envPath, (content) => {
+      const existing = content ?? '';
+      keepProvider = runsOwnEndpoint(existing, MINDS_API_HOST);
+      return buildMindsEnvContent(existing, MINDS_API_HOST);
+    });
   } catch (err) {
+    if (keepProvider === undefined) throw err;
     envWriteError = err;
     diagnostic("main.minds-auth", "WARNING", "minds_auth_env_write_failed", '[minds-auth] .env write failed', err);
   }

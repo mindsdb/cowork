@@ -27,7 +27,6 @@ const LOGGER = 'main.private-files';
 const PRIVATE_DIR_MODE = 0o700;
 const GROUP_AND_OTHER = 0o077;
 const GROUP_AND_OTHER_WRITE = 0o022;
-const PERMISSION_BITS = 0o777;
 const MODE_BITS = 0o7777;
 
 /** The platform the chmod decisions follow. A parameter so tests can run the
@@ -65,40 +64,119 @@ function chmodOwnEntry(entry: string, flags: number, wanted: (seen: fs.Stats) =>
     const seen = fs.fstatSync(fd);
     if (seen.uid !== currentUid()) return false;
     const mode = wanted(seen);
-    if (mode !== null && mode !== (seen.mode & MODE_BITS)) fs.fchmodSync(fd, mode);
+    if (mode !== null && mode !== (seen.mode & MODE_BITS)) {
+      fs.fchmodSync(fd, mode);
+      if ((fs.fstatSync(fd).mode & MODE_BITS) !== mode) throw new Error('The filesystem did not apply the private permissions');
+    }
     return true;
   } finally {
     fs.closeSync(fd);
   }
 }
 
-/**
- * Create `dir` at 0700, or set an existing folder to 0700.
- *
- * mkdir's mode is masked by the umask and ignored for a folder that is already
- * there, which is why this sets the mode on the folder itself. When `dir` is a
- * link, the folder it resolves to is pinned, and only when this user owns it:
- * a folder another account owns is left as it is, with a warning.
- *
- * Throws when the folder cannot be created or its mode cannot be set; callers
- * decide whether that blocks them.
- */
-export function pinPrivateDir(dir: string, { platform = process.platform }: PlatformOption = {}): void {
+/** Pin a home, including a home intentionally relocated by a link. Project
+ * directories use the no-follow leaf policy instead. */
+export function pinPrivateDir(
+  dir: string,
+  { platform = process.platform, allowHomeLink = true }: PlatformOption & { allowHomeLink?: boolean } = {},
+): void {
   fs.mkdirSync(dir, { recursive: true, mode: PRIVATE_DIR_MODE });
-  if (platform === 'win32') return;
-  const owned = chmodOwnEntry(fs.realpathSync(dir), fs.constants.O_DIRECTORY, (seen) =>
-    ((seen.mode & PERMISSION_BITS) === PRIVATE_DIR_MODE ? null : PRIVATE_DIR_MODE),
-  );
-  if (!owned) {
-    diagnostic(LOGGER, 'WARNING', 'private_files_another_account_owns_the_folder_its_mode_is_unchanged', '[private-files] another account owns the folder; its mode is unchanged');
+  if (platform === 'win32') {
+    if (!allowHomeLink && !fs.lstatSync(dir).isDirectory()) throw new Error('Expected a real project directory');
+    return;
+  }
+  const target = allowHomeLink ? fs.realpathSync(dir) : dir;
+  if (!chmodOwnEntry(target, fs.constants.O_DIRECTORY, () => PRIVATE_DIR_MODE)) {
+    throw new Error('Another account owns the directory');
   }
 }
 
-/** Set a file Cowork just wrote, such as a copied dotenv, to 0600. Node
- *  applies a write's `mode` only when it creates the file. */
-export function pinPrivateFile(file: string, { platform = process.platform }: PlatformOption = {}): void {
+/* Node has no openat. Keep the directory descriptor open while resolving its
+ * children through procfs (Linux) or the volume's file ID (Darwin QA1113).
+ * A volume that cannot resolve its file IDs fails this pass and gets retried. */
+function openDirectoryPath(fd: number): string {
+  if (process.platform === 'linux') return `/proc/self/fd/${fd}`;
+  const stat = fs.fstatSync(fd, { bigint: true });
+  const dir = `/.vol/${stat.dev}/${stat.ino}`;
+  const named = fs.statSync(dir, { bigint: true });
+  if (named.dev !== stat.dev || named.ino !== stat.ino) throw new Error('The open directory changed identity');
+  return dir;
+}
+
+function mkdirIfMissing(dir: string): void {
+  try {
+    fs.mkdirSync(dir, { mode: PRIVATE_DIR_MODE });
+  } catch (err) {
+    if (errorCode(err) !== 'EEXIST') throw err;
+  }
+}
+
+/* Both the boot scan and the active-account writer must validate the container.
+ * A directory entry under a linked or mounted accounts container can look like
+ * a normal account folder while referring to an unrelated volume or tree. */
+function withAccountContainer(home: string, create: boolean, visit: (dir: string, device: number) => void): void {
+  const root = fs.openSync(fs.realpathSync(home), openNoFollowFlags(fs.constants.O_DIRECTORY));
+  try {
+    const homeStat = fs.fstatSync(root);
+    if (homeStat.uid !== currentUid()) throw new Error('Another account owns the home');
+    const container = path.join(openDirectoryPath(root), ACCOUNTS_DIR);
+    if (create) mkdirIfMissing(container);
+    let accounts: number;
+    try {
+      accounts = fs.openSync(container, openNoFollowFlags(fs.constants.O_DIRECTORY));
+    } catch (err) {
+      if (!create && errorCode(err) === 'ENOENT') return;
+      throw err;
+    }
+    try {
+      const seen = fs.fstatSync(accounts);
+      if (seen.dev !== homeStat.dev || seen.uid !== homeStat.uid) throw new Error('Unexpected accounts directory');
+      visit(openDirectoryPath(accounts), seen.dev);
+    } finally {
+      fs.closeSync(accounts);
+    }
+  } finally {
+    fs.closeSync(root);
+  }
+}
+
+function pinAccountRoot(dir: string, device: number): void {
+  const owned = chmodOwnEntry(dir, fs.constants.O_DIRECTORY, (seen) => {
+    if (seen.dev !== device) throw new Error('Account root is on another device');
+    return PRIVATE_DIR_MODE;
+  });
+  if (!owned) throw new Error('Another account owns the account root');
+}
+
+export function pinAccountRoots(home: string, { platform = process.platform }: PlatformOption = {}): void {
   if (platform === 'win32') return;
-  fs.chmodSync(file, 0o600);
+  withAccountContainer(home, false, (dir, device) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      try {
+        pinAccountRoot(path.join(dir, entry.name), device);
+      } catch (err) {
+        diagnostic(LOGGER, 'WARNING', 'private_files_could_not_pin_account_root', '[private-files] could not pin an account root', err);
+      }
+    }
+  });
+}
+
+export function createPrivateAccountRoot(home: string, name: string): void {
+  if (process.platform === 'win32') {
+    const accounts = path.join(home, ACCOUNTS_DIR);
+    mkdirIfMissing(accounts);
+    if (!fs.lstatSync(accounts).isDirectory()) throw new Error('Expected a real accounts directory');
+    const root = path.join(accounts, name);
+    mkdirIfMissing(root);
+    if (!fs.lstatSync(root).isDirectory()) throw new Error('Expected a real account root');
+    return;
+  }
+  withAccountContainer(home, true, (dir, device) => {
+    const root = path.join(dir, name);
+    mkdirIfMissing(root);
+    pinAccountRoot(root, device);
+  });
 }
 
 /**
@@ -132,11 +210,14 @@ export const PRIVATE_MODES_MARKER = '.private-modes';
  * store root: the home, an account root, or an organization root. */
 const CODING_DIR = 'coding';
 
-type FolderRole = 'store-root' | 'store-container' | 'plain';
+type FolderRole = 'store-root' | 'store-container' | 'projects' | 'project' | 'mindshub' | 'plain';
 
 function childRole(parent: FolderRole, name: string): FolderRole {
   if (parent === 'store-root' && (name === ACCOUNTS_DIR || name === ORGS_DIR)) return 'store-container';
   if (parent === 'store-container') return 'store-root';
+  if (parent === 'store-root' && name === 'projects') return 'projects';
+  if (parent === 'projects') return 'project';
+  if (parent === 'project' && name === '.claude-mindshub') return 'mindshub';
   return 'plain';
 }
 
@@ -145,8 +226,7 @@ function childRole(parent: FolderRole, name: string): FolderRole {
  * is still the inode lstat saw, so an entry swapped for a link in between is
  * refused rather than followed. A socket, a FIFO or a device cannot be opened
  * safely, and an entry without its owner's read bit cannot be opened at all;
- * those take a path chmod. Their folder belongs to this user and has already
- * lost its group and other bits, so no other account can swap them.
+ * those use a volume file ID on macOS or a metadata-only descriptor on Linux.
  *
  * Returns false, and changes nothing, when the name no longer holds the entry
  * lstat saw: a different inode, a link (ELOOP) or a file where a folder was
@@ -154,7 +234,7 @@ function childRole(parent: FolderRole, name: string): FolderRole {
  * runs. The replacement was made inside a folder that is already private (the
  * pass tightens a folder before it reads it, and the boot pin covers the home),
  * so it needs no mode of its own, like any file created after the pass. */
-async function chmodSeenEntry(entry: string, seen: fs.Stats, mode: number): Promise<boolean> {
+async function chmodSeenEntry(entry: string, seen: fs.BigIntStats, mode: number): Promise<boolean> {
   if (seen.isFile() || seen.isDirectory()) {
     let handle: fs.promises.FileHandle | undefined;
     try {
@@ -166,8 +246,8 @@ async function chmodSeenEntry(entry: string, seen: fs.Stats, mode: number): Prom
     }
     if (handle) {
       try {
-        const opened = await handle.stat();
-        if (opened.dev !== seen.dev || opened.ino !== seen.ino) return false;
+        const opened = await handle.stat({ bigint: true });
+        if (opened.dev !== seen.dev || opened.ino !== seen.ino || opened.uid !== seen.uid) return false;
         await handle.chmod(mode);
       } finally {
         await handle.close();
@@ -175,8 +255,24 @@ async function chmodSeenEntry(entry: string, seen: fs.Stats, mode: number): Prom
       return true;
     }
   }
-  await fs.promises.chmod(entry, mode);
-  return true;
+  if (process.platform === 'darwin') {
+    // Volume file IDs address the inode itself without opening a FIFO or device.
+    await fs.promises.chmod(`/.vol/${seen.dev}/${seen.ino}`, mode);
+    return true;
+  }
+  // Linux O_PATH opens special and unreadable entries without opening their
+  // contents. Node does not expose the flag by name. Keep the inode alive and
+  // change its permissions through the descriptor after checking its identity.
+  const O_PATH = 0o10000000;
+  const reference = await fs.promises.open(entry, O_PATH | fs.constants.O_NOFOLLOW);
+  try {
+    const opened = await reference.stat({ bigint: true });
+    if (opened.dev !== seen.dev || opened.ino !== seen.ino || opened.uid !== seen.uid) return false;
+    await fs.promises.chmod(`/proc/self/fd/${reference.fd}`, mode);
+    return true;
+  } finally {
+    await reference.close();
+  }
 }
 
 /* Linux's fs.protected_hardlinks, on by default on Ubuntu, Debian and Fedora,
@@ -202,8 +298,8 @@ async function hardLinksAreProtected(): Promise<boolean> {
  * its other names keep their mode. Anywhere else another account may have
  * planted the link before the upgrade to keep reading the file, so the pass
  * tightens it like any other entry. */
-function isOwnHardLink(seen: fs.Stats, hardLinksProtected: boolean): boolean {
-  return hardLinksProtected && seen.isFile() && seen.nlink > 1 && (seen.mode & GROUP_AND_OTHER_WRITE) === 0;
+function isOwnHardLink(seen: fs.BigIntStats, hardLinksProtected: boolean): boolean {
+  return hardLinksProtected && seen.isFile() && seen.nlink > 1n && (Number(seen.mode) & GROUP_AND_OTHER_WRITE) === 0;
 }
 
 export type HomeTightening =
@@ -247,92 +343,78 @@ export async function tightenHomeOnce(home: string, { platform = process.platfor
     return { kind: 'incomplete', changed, failures };
   };
 
-  let root: string;
-  let rootStat: fs.Stats;
+  let rootHandle: fs.promises.FileHandle | undefined;
   try {
-    root = await fs.promises.realpath(home);
-    rootStat = await fs.promises.lstat(root);
-  } catch (err) {
-    failures = 1;
-    firstFailure = err;
-    return incomplete();
-  }
-  const uid = currentUid();
-  if (rootStat.uid !== uid) return { kind: 'skipped', reason: 'another-owner' };
-  const marker = path.join(root, PRIVATE_MODES_MARKER);
-  if (await isFile(marker)) return { kind: 'already-tightened' };
-  const hardLinksProtected = await hardLinksAreProtected();
+    const root = await fs.promises.realpath(home);
+    rootHandle = await fs.promises.open(root, openNoFollowFlags(fs.constants.O_DIRECTORY));
+    const rootStat = await rootHandle.stat({ bigint: true });
+    const uid = BigInt(currentUid());
+    if (rootStat.uid !== uid) return { kind: 'skipped', reason: 'another-owner' };
+    const marker = path.join(openDirectoryPath(rootHandle.fd), PRIVATE_MODES_MARKER);
+    if (await isFile(marker)) return { kind: 'already-tightened' };
+    const hardLinksProtected = await hardLinksAreProtected();
+    const folders: { dir: string; role: FolderRole; seen: fs.BigIntStats }[] = [{ dir: root, role: 'store-root', seen: rootStat }];
 
-  const folders: { dir: string; role: FolderRole }[] = [{ dir: root, role: 'store-root' }];
-  while (folders.length) {
-    const { dir, role } = folders.pop()!;
-    let names: string[];
-    try {
-      names = await fs.promises.readdir(dir);
-    } catch (err) {
-      fail(err);
-      continue;
-    }
-    for (const name of names) {
-      const entry = path.join(dir, name);
+    while (folders.length) {
+      const { dir, role, seen: expected } = folders.pop()!;
+      let handle: fs.promises.FileHandle | undefined;
       try {
-        const seen = await fs.promises.lstat(entry);
-        if (seen.isSymbolicLink() || seen.dev !== rootStat.dev || seen.uid !== uid) continue;
-        if (isOwnHardLink(seen, hardLinksProtected)) continue;
-        const isCoding = role === 'store-root' && name === CODING_DIR && seen.isDirectory();
-        const current = seen.mode & MODE_BITS;
-        const wanted = isCoding ? PRIVATE_DIR_MODE : stripGroupAndOther(current);
-        const needsChange = isCoding ? (current & PERMISSION_BITS) !== PRIVATE_DIR_MODE : wanted !== current;
-        if (needsChange) {
-          if (!(await chmodSeenEntry(entry, seen, wanted))) continue;
-          changed += 1;
+        handle = await fs.promises.open(dir, openNoFollowFlags(fs.constants.O_DIRECTORY));
+        const opened = await handle.stat({ bigint: true });
+        if (opened.dev !== expected.dev || opened.ino !== expected.ino || opened.uid !== uid) {
+          throw new Error('A directory changed during its permission upgrade');
         }
-        if (seen.isDirectory() && !isCoding) folders.push({ dir: entry, role: childRole(role, name) });
+        const anchor = openDirectoryPath(handle.fd);
+        const names = await fs.promises.readdir(anchor);
+        for (const name of names) {
+          const entry = path.join(anchor, name);
+          try {
+            const seen = await fs.promises.lstat(entry, { bigint: true });
+            if (seen.isSymbolicLink() || seen.dev !== rootStat.dev || seen.uid !== uid) continue;
+            if (isOwnHardLink(seen, hardLinksProtected)) continue;
+            const containsCheckouts = seen.isDirectory() && (
+              (role === 'store-root' && name === CODING_DIR) || (role === 'mindshub' && name === 'tasks')
+            );
+            const current = Number(seen.mode) & MODE_BITS;
+            const wanted = containsCheckouts ? PRIVATE_DIR_MODE : stripGroupAndOther(current);
+            if (wanted !== current) {
+              if (!(await chmodSeenEntry(entry, seen, wanted))) continue;
+              changed += 1;
+            }
+            if (seen.isDirectory() && !containsCheckouts) {
+              folders.push({ dir: path.join(dir, name), role: childRole(role, name), seen });
+            }
+          } catch (err) {
+            fail(err);
+          }
+        }
       } catch (err) {
         fail(err);
+      } finally {
+        await handle?.close();
       }
     }
-  }
 
-  if (failures > 0) return incomplete();
-  try {
-    await fs.promises.writeFile(marker, `${JSON.stringify({ tightenedAt: new Date().toISOString() })}\n`, { mode: 0o600, flag: 'wx' });
-  } catch (err) {
-    // A second launch that finished the same pass first already wrote it.
-    if (errorCode(err) !== 'EEXIST') {
-      fail(err);
-      return incomplete();
+    if (failures > 0) return incomplete();
+    try {
+      await fs.promises.writeFile(marker, `${JSON.stringify({ tightenedAt: new Date().toISOString() })}\n`, { mode: 0o600, flag: 'wx' });
+    } catch (err) {
+      if (errorCode(err) !== 'EEXIST' || !await isFile(marker)) throw err;
     }
+    return { kind: 'tightened', changed };
+  } catch (err) {
+    failures += 1;
+    firstFailure ??= err;
+    return incomplete();
+  } finally {
+    await rootHandle?.close();
   }
-  return { kind: 'tightened', changed };
 }
 
 async function isFile(file: string): Promise<boolean> {
   try {
     return (await fs.promises.lstat(file)).isFile();
   } catch {
-    return false;
-  }
-}
-
-/** The file inside a folder that says its access list is already owner-only.
- *  It holds the folder's volume serial number and file index, which a copy of
- *  the folder does not share, so a copy that carries the marker gets the list
- *  again. anton's project `.anton` marker works the same way. */
-export const OWNER_ONLY_ACCESS_MARKER = '.owner-only-access';
-
-/* bigint, because Windows file indexes are 64-bit and a number loses the low
- * bits of a large one. */
-function folderIdentity(dir: string): string {
-  const seen = fs.statSync(dir, { bigint: true });
-  return `${seen.dev}:${seen.ino}`;
-}
-
-function markerNames(marker: string, identity: string): boolean {
-  try {
-    return fs.readFileSync(marker, 'utf8').trim() === identity;
-  } catch {
-    // Missing or unreadable: applying the list again is safe.
     return false;
   }
 }
@@ -348,35 +430,14 @@ const OWNER_ONLY_ICACLS_ARGS = [
   '*S-1-3-4:(OI)(CI)F',
 ];
 
-/**
- * Give `dir` an owner-only access list on Windows, once.
- *
- * A folder Cowork creates inside a repository inherits the repository's access
- * list, and a repository outside the profile, such as `C:\src\app`, grants
- * every local account read access. The marker is written only after icacls
- * succeeds, so a failure retries the next time, and a marker that names
- * another folder, as in a copy of the repository, counts as missing. A failure
- * logs a warning and never stops the caller; the returned promise never
- * rejects. Nothing on other platforms.
- *
- * icacls runs as a child process the caller awaits, not a synchronous one: on
- * a folder that already holds task checkouts, Windows applies the new
- * inherited rules to every entry below, which takes a while on a large tree
- * and would otherwise freeze the app's main thread.
- */
+/** Apply the repository directory's policy on every use. Inheritance can be
+ * restored on the same directory between tasks. icacls preserves unrelated
+ * explicit administrator grants. Its asynchronous completion gates checkout. */
 export async function restrictToOwnerOnWindows(dir: string, { platform = process.platform }: PlatformOption = {}): Promise<void> {
   if (platform !== 'win32') return;
-  const marker = path.join(dir, OWNER_ONLY_ACCESS_MARKER);
-  try {
-    const identity = folderIdentity(dir);
-    if (markerNames(marker, identity)) return;
-    await new Promise<void>((resolve, reject) => {
-      execFile('icacls', [dir, ...OWNER_ONLY_ICACLS_ARGS], { windowsHide: true }, (err) => (err ? reject(err) : resolve()));
-    });
-    fs.writeFileSync(marker, `${identity}\n`);
-  } catch (err) {
-    diagnostic(LOGGER, 'WARNING', 'private_files_could_not_restrict_a_folder_to_its_owner', '[private-files] could not restrict a folder to its owner', err);
-  }
+  await new Promise<void>((resolve, reject) => {
+    execFile('icacls', [dir, ...OWNER_ONLY_ICACLS_ARGS, '/L'], { windowsHide: true }, (err) => (err ? reject(err) : resolve()));
+  });
 }
 
 /* Durable `.env` write for Windows: at sign-in finalize this runs while the old

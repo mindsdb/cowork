@@ -119,6 +119,23 @@ jobs:
             "Restored $($_.BaseName)"
           }
 
+  windows-project-privacy:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: ./.github/actions/retry
+        with:
+          command: npm ci
+      - name: Verify real project and checkout permissions
+        run: npm exec -- vitest run --project main src/main/coding-workspace.windows.test.ts
+
   nginx-logging:
     runs-on: ubuntu-latest
     timeout-minutes: 5

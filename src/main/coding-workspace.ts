@@ -134,38 +134,25 @@ export interface TaskWorktree {
   isNew: boolean;
 }
 
-/* `<repo>/.claude-mindshub` holds Claude Code's transcripts and the task
- * worktrees, inside a repository other accounts may be able to read. It is
- * made owner-only before anything is created in it, so each checkout starts
- * out private: 0700 on macOS and Linux, and on Windows, where modes do
- * nothing, an owner-only access list that every entry below inherits. A
- * folder from an older build is pinned the same way. A failure logs and never
- * stops the task.
- *
- * A link at the name is left as it is. A repository can commit one, such as
- * `.claude-mindshub -> ..`, and following it would change the mode or access
- * list of a folder Cowork does not own, such as the folder above the
- * repository. The link's target belongs to whoever made the link. */
-function isLink(entry: string): boolean {
-  try {
-    return fs.lstatSync(entry).isSymbolicLink();
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false;
-    throw err;
-  }
-}
+/** A Git failure permits running in the project. A privacy failure must
+ * reach the terminal before it seeds config or launches Claude there. */
+export class PrivateWorkspaceError extends Error {}
 
 async function ensurePrivateMindshubDir(repoPath: string, options: PlatformOption): Promise<void> {
   const dir = path.join(repoPath, MINDSHUB_DIRNAME);
   try {
-    if (isLink(dir)) {
-      diagnostic("main.coding-workspace", "WARNING", "coding_workspace_left_a_linked_mindshub_folder_as_it_is", '[coding-workspace] .claude-mindshub is a link; its target keeps its mode and access list');
-      return;
+    pinPrivateDir(dir, { ...options, allowHomeLink: false });
+    if ((options.platform ?? process.platform) === 'win32') {
+      const before = fs.lstatSync(dir, { bigint: true });
+      await restrictToOwnerOnWindows(dir, options);
+      const after = fs.lstatSync(dir, { bigint: true });
+      if (!after.isDirectory() || before.dev !== after.dev || before.ino !== after.ino) {
+        throw new Error('The project directory changed during ACL setup');
+      }
     }
-    pinPrivateDir(dir, options);
-    await restrictToOwnerOnWindows(dir, options);
   } catch (err) {
     diagnostic("main.coding-workspace", "WARNING", "coding_workspace_could_not_make_the_mindshub_folder_private", '[coding-workspace] could not make the .claude-mindshub folder private', err);
+    throw new PrivateWorkspaceError('Could not secure the project’s .claude-mindshub directory.');
   }
 }
 

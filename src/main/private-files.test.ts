@@ -25,6 +25,9 @@ vi.mock('child_process', async (importOriginal) => ({
  * fails them. */
 const control = vi.hoisted(() => ({
   failChmodFor: null as string | null,
+  changedDirectoryIdentity: null as string | null,
+  refusedDirectoryFlags: null as number | null,
+  refuseContainer: false,
   ownedByAnotherAccount: new Set<string>(),
   onAnotherDevice: new Set<string>(),
   lstatCalls: [] as string[],
@@ -36,9 +39,12 @@ const control = vi.hoisted(() => ({
 }));
 vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs')>();
+  const directoryPaths = new Map<string, string>();
+  const logicalPath = (entry: string) =>
+    path.join(directoryPaths.get(path.dirname(entry)) ?? path.dirname(entry), path.basename(entry));
   const open = async (...args: Parameters<typeof actual.promises.open>) => {
     const replace = control.replaceBeforeOpen;
-    if (replace !== null && String(args[0]) === replace.entry) {
+    if (replace !== null && logicalPath(String(args[0])) === replace.entry) {
       control.replaceBeforeOpen = null;
       const replacement = `${replace.entry}.replacement`;
       if (replace.by === 'file') {
@@ -50,18 +56,33 @@ vi.mock('fs', async (importOriginal) => {
       actual.renameSync(replacement, replace.entry);
     }
     const handle = await actual.promises.open(...args);
-    if (control.failChmodFor !== null && String(args[0]) === control.failChmodFor) {
+    const stat = await handle.stat({ bigint: true });
+    if (stat.isDirectory()) {
+      const anchor = process.platform === 'darwin' ? `/.vol/${stat.dev}/${stat.ino}` : `/proc/self/fd/${handle.fd}`;
+      directoryPaths.set(anchor, logicalPath(String(args[0])));
+    }
+    if (control.failChmodFor !== null && logicalPath(String(args[0])) === control.failChmodFor) {
       handle.chmod = async () => {
         throw Object.assign(new Error('EPERM: operation not permitted, fchmod'), { code: 'EPERM' });
       };
     }
+    if (control.changedDirectoryIdentity === String(args[0])) {
+      const original = handle.stat.bind(handle);
+      handle.stat = (async () => {
+        const reported = await original({ bigint: true });
+        reported.ino += 1n;
+        return reported;
+      }) as typeof handle.stat;
+    }
     return handle;
   };
-  const lstat = async (entry: string) => {
-    control.lstatCalls.push(entry);
-    const seen = await actual.promises.lstat(entry);
-    if (control.ownedByAnotherAccount.has(entry)) seen.uid += 1;
-    if (control.onAnotherDevice.has(entry)) seen.dev += 1;
+  const lstat = async (entry: string, options?: { bigint?: boolean }) => {
+    const logical = logicalPath(entry);
+    control.lstatCalls.push(logical);
+    if (!options?.bigint) return actual.promises.lstat(entry);
+    const seen = await actual.promises.lstat(entry, { bigint: true });
+    if (control.ownedByAnotherAccount.has(logical)) seen.uid += 1n;
+    if (control.onAnotherDevice.has(logical)) seen.dev += 1n;
     return seen;
   };
   const readFile = async (...args: Parameters<typeof actual.promises.readFile>) => {
@@ -81,14 +102,22 @@ vi.mock('fs', async (importOriginal) => {
     return actual.renameSync(...args);
   };
   const promises = { ...actual.promises, open, lstat, readFile };
-  const mocked = { ...actual, promises, writeFileSync, renameSync };
+  const openSync = (...args: Parameters<typeof actual.openSync>) => {
+    if (control.refuseContainer && path.basename(String(args[0])) === 'accounts') {
+      control.refusedDirectoryFlags = Number(args[1]);
+      throw Object.assign(new Error('Directory lookup refused'), { code: 'ELOOP' });
+    }
+    return actual.openSync(...args);
+  };
+  const mocked = { ...actual, promises, openSync, writeFileSync, renameSync };
   return { ...mocked, default: mocked };
 });
 
 import {
-  OWNER_ONLY_ACCESS_MARKER,
   PRIVATE_MODES_MARKER,
   pinPrivateDir,
+  pinAccountRoots,
+  createPrivateAccountRoot,
   restrictToOwnerOnWindows,
   tightenHomeOnce,
   tightenLegacyHome,
@@ -106,6 +135,9 @@ beforeEach(() => {
   execFile.mockReset().mockImplementation((_cmd: string, _args: string[], _opts: unknown, cb: (err: Error | null) => void) => cb(null));
   Object.assign(control, {
     failChmodFor: null,
+    changedDirectoryIdentity: null,
+    refusedDirectoryFlags: null,
+    refuseContainer: false,
     ownedByAnotherAccount: new Set<string>(),
     onAnotherDevice: new Set<string>(),
     lstatCalls: [],
@@ -172,15 +204,13 @@ describe('pinPrivateDir', () => {
     expect(fs.lstatSync(home).isSymbolicLink()).toBe(true);
   });
 
-  it('leaves a folder another account owns as it is, with a warning', () => {
+  it('rejects a folder another account owns and leaves it unchanged', () => {
     const real = folder(path.join(root, 'someone-elses'), 0o755);
     fs.symlinkSync(real, home);
     vi.spyOn(process, 'getuid').mockReturnValue(fs.statSync(real).uid + 1);
 
-    pinPrivateDir(home, LINUX);
-
+    expect(() => pinPrivateDir(home, LINUX)).toThrow(/Another account/);
     expect(modeOf(real)).toBe(0o755);
-    expect(warnings('private_files_another_account_owns_the_folder_its_mode_is_unchanged')).toHaveLength(1);
   });
 
   it('only creates the folder on win32, where chmod would only toggle read-only', () => {
@@ -198,6 +228,29 @@ describe('pinPrivateDir', () => {
 describe('tightenHomeOnce', () => {
   beforeEach(() => {
     folder(home, 0o700);
+  });
+
+  it('opens the account container without following links on boot and when selecting a root', () => {
+    control.refuseContainer = true;
+    expect(() => pinAccountRoots(home, LINUX)).toThrow(/refused/);
+    expect(control.refusedDirectoryFlags! & fs.constants.O_NOFOLLOW).toBe(fs.constants.O_NOFOLLOW);
+    control.refusedDirectoryFlags = null;
+    expect(() => createPrivateAccountRoot(home, 'personal')).toThrow(/refused/);
+    expect(control.refusedDirectoryFlags! & fs.constants.O_NOFOLLOW).toBe(fs.constants.O_NOFOLLOW);
+  });
+
+  it('leaves a queued directory with a changed identity for the next launch', async () => {
+    const child = folder(path.join(home, 'files'), 0o700);
+    const file = write(path.join(child, 'sample.txt'), 0o644);
+    control.changedDirectoryIdentity = child;
+
+    expect(await tightenHomeOnce(home, LINUX)).toMatchObject({ kind: 'incomplete' });
+    expect(modeOf(file)).toBe(0o644);
+    expect(fs.existsSync(path.join(home, PRIVATE_MODES_MARKER))).toBe(false);
+
+    control.changedDirectoryIdentity = null;
+    expect((await tightenHomeOnce(home, LINUX)).kind).toBe('tightened');
+    expect(modeOf(file)).toBe(0o600);
   });
 
   it('turns 644 into 600, 755 into 700 and 666 into 600, folders included', async () => {
@@ -303,6 +356,19 @@ describe('tightenHomeOnce', () => {
     }
   });
 
+  it('preserves checkouts under a managed project, while protecting their container and sibling config', async () => {
+    const mindshub = path.join(home, 'projects', 'example', '.claude-mindshub');
+    const tasks = folder(path.join(mindshub, 'tasks'), 0o755);
+    const tool = write(path.join(tasks, 'task', 'build.sh'), 0o755);
+    const readme = write(path.join(tasks, 'task', 'README'), 0o644);
+    const config = write(path.join(mindshub, 'config', 'settings.json'), 0o644);
+
+    expect((await tightenHomeOnce(home, LINUX)).kind).toBe('tightened');
+
+    expect(modeOf(tasks)).toBe(0o700);
+    expect([modeOf(tool), modeOf(readme), modeOf(config)]).toEqual([0o755, 0o644, 0o600]);
+  });
+
   it('enters a folder named coding that is not under a store root', async () => {
     const nested = write(path.join(home, 'projects', 'p', 'coding', 'notes.md'), 0o644);
     await tightenHomeOnce(home, LINUX);
@@ -368,13 +434,12 @@ describe('tightenHomeOnce', () => {
     const mount = folder(path.join(home, 'mounted'), 0o755);
     const below = write(path.join(mount, 'notes.md'), 0o644);
     const db = write(path.join(home, 'cowork.db'), 0o644);
-    // The home itself reads as on another device than every entry in it.
-    control.onAnotherDevice = new Set([home]);
+    control.onAnotherDevice = new Set([mount]);
 
-    expect(await tightenHomeOnce(home, LINUX)).toEqual({ kind: 'tightened', changed: 0 });
+    expect(await tightenHomeOnce(home, LINUX)).toEqual({ kind: 'tightened', changed: 1 });
 
     expect(modeOf(mount)).toBe(0o755);
-    expect(modeOf(db)).toBe(0o644);
+    expect(modeOf(db)).toBe(0o600);
     expect(control.lstatCalls).not.toContain(below);
   });
 
@@ -465,44 +530,24 @@ describe('tightenLegacyHome', () => {
 });
 
 describe('restrictToOwnerOnWindows', () => {
-  const ICACLS_ARGS = ['/inheritance:r', '/grant:r', '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', '*S-1-3-4:(OI)(CI)F'];
-
-  it('runs icacls once, without blocking, and then writes the marker', async () => {
+  it('reapplies the policy on every visit without reading or writing a marker', async () => {
     const dir = folder(path.join(root, 'repo', '.claude-mindshub'), 0o755);
+    const marker = write(path.join(dir, '.owner-only-access'), 0o600, 'previous version');
 
     await restrictToOwnerOnWindows(dir, WINDOWS);
     await restrictToOwnerOnWindows(dir, WINDOWS);
 
-    expect(execFile).toHaveBeenCalledTimes(1);
-    expect(execFile).toHaveBeenCalledWith('icacls', [dir, ...ICACLS_ARGS], expect.anything(), expect.any(Function));
-    expect(fs.existsSync(path.join(dir, OWNER_ONLY_ACCESS_MARKER))).toBe(true);
+    expect(execFile).toHaveBeenCalledTimes(2);
+    expect(fs.readFileSync(marker, 'utf8')).toBe('previous version');
   });
 
-  it('writes no marker when icacls fails, so the next call tries again', async () => {
+  it('rejects an ACL failure so the caller can stop private writes', async () => {
     const dir = folder(path.join(root, 'repo', '.claude-mindshub'), 0o755);
     execFile.mockImplementationOnce((_cmd: string, _args: string[], _opts: unknown, cb: (err: Error | null) => void) =>
       cb(new Error('icacls failed')),
     );
-
-    await expect(restrictToOwnerOnWindows(dir, WINDOWS)).resolves.toBeUndefined();
-    expect(fs.existsSync(path.join(dir, OWNER_ONLY_ACCESS_MARKER))).toBe(false);
-    expect(warnings('private_files_could_not_restrict_a_folder_to_its_owner')).toHaveLength(1);
-
-    await restrictToOwnerOnWindows(dir, WINDOWS);
-    expect(execFile).toHaveBeenCalledTimes(2);
-  });
-
-  it('gives a copy that carries the marker the list again', async () => {
-    const dir = folder(path.join(root, 'repo', '.claude-mindshub'), 0o755);
-    await restrictToOwnerOnWindows(dir, WINDOWS);
-    const copy = folder(path.join(root, 'copy-of-repo', '.claude-mindshub'), 0o755);
-    fs.copyFileSync(path.join(dir, OWNER_ONLY_ACCESS_MARKER), path.join(copy, OWNER_ONLY_ACCESS_MARKER));
-
-    await restrictToOwnerOnWindows(copy, WINDOWS);
-    await restrictToOwnerOnWindows(copy, WINDOWS);
-
-    expect(execFile).toHaveBeenCalledTimes(2);
-    expect(execFile).toHaveBeenLastCalledWith('icacls', [copy, ...ICACLS_ARGS], expect.anything(), expect.any(Function));
+    await expect(restrictToOwnerOnWindows(dir, WINDOWS)).rejects.toThrow('icacls failed');
+    expect(fs.readdirSync(dir)).toEqual([]);
   });
 
   it('never runs on linux', async () => {

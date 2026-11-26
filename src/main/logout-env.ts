@@ -1,9 +1,8 @@
 // Sign-out credential scrub for the shared .env (see AUTH_LOGOUT in index.ts).
 // Extracted so the permanent-write-failure path is unit-testable.
 
-import * as fs from 'fs';
 import { CREDENTIAL_ENV_KEYS } from './credential-env-keys';
-import { writeEnvFileAtomic } from './private-files';
+import { updateEnvFile } from './dotenv-update';
 
 // Keys stripped from the .env on sign-out — for the standalone anton CLI and
 // the next-boot migration. Preserving a model on sign-in but deleting it on
@@ -30,11 +29,10 @@ export const LOGOUT_ENV_KEYS = CREDENTIAL_ENV_KEYS;
 //     failing an otherwise-complete sign-out.
 export async function scrubEnvCredentials(envPath: string, keys: string[] = LOGOUT_ENV_KEYS): Promise<void> {
   try {
-    if (fs.existsSync(envPath)) {
-      const lines = fs.readFileSync(envPath, 'utf-8').split('\n')
-        .filter((l) => !keys.some((k) => l.startsWith(k + '=')));
-      await writeEnvFileAtomic(envPath, lines.join('\n'));
-    }
+    await updateEnvFile(envPath, (existing) => {
+      if (existing === null) return null;
+      return existing.split('\n').filter((line) => !keys.some((key) => line.startsWith(key + '='))).join('\n');
+    });
   } finally {
     for (const key of keys) {
       delete process.env[key];

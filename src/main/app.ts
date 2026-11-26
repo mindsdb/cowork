@@ -79,7 +79,7 @@ import {
   sweepStaleQuarantineRoots,
 } from './account-data';
 import { accountDataRoot, carryTermsConsentToFreshRoot, coworkHome, coworkEnvPath, coworkEnvPathIn, coworkStatePathIn, ensureAccountDataRoot, migrateLegacyHome, pinPrivateHomes, readEnvFile, buildKind, buildKindStrict, tightenPrivateHomes } from './cowork-home';
-import { writeEnvFileAtomic } from './private-files';
+import { updateEnvFile } from './dotenv-update';
 import { usageEventsOn, writeUsageEventsPref } from './analytics-env';
 import { checkChannelConsistency } from './channels';
 import { loadDesktopBrandImages, loadOrgIconDataUris } from './org-branding';
@@ -1452,8 +1452,9 @@ function setupIPC() {
       // terms screen — the same account being asked again, minutes after
       // answering, in a way that reads as having been signed out rather than as
       // having started fresh.
-      carryTermsConsentToFreshRoot(home);
+      const carryingConsent = carryTermsConsentToFreshRoot(home);
       settleOwnership(home);
+      await carryingConsent;
       await ensureSidecarOnCurrentAccountRoot();
       return { ok: true, keptExisting: false };
     }
@@ -1506,21 +1507,15 @@ function setupIPC() {
   });
 
   ipcMain.handle(IPC.SETTINGS_SAVE, async (_event, content: string) => {
-    const homeDir = coworkHome();
     ensureAccountDataRoot();
-    const envPath = coworkEnvPath();
-    const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
-    const merged = new Map<string, string>();
-    for (const line of existing.split('\n')) {
-      const eq = line.indexOf('=');
-      if (eq > 0) merged.set(line.slice(0, eq), line.slice(eq + 1));
-    }
-    for (const line of content.split('\n')) {
-      const eq = line.indexOf('=');
-      if (eq > 0) merged.set(line.slice(0, eq), line.slice(eq + 1));
-    }
-    const out = [...merged.entries()].map(([k, v]) => `${k}=${v}`).join('\n') + '\n';
-    await writeEnvFileAtomic(envPath, out);
+    await updateEnvFile(coworkEnvPath(), (existing) => {
+      const merged = new Map<string, string>();
+      for (const line of [...(existing ?? '').split('\n'), ...content.split('\n')]) {
+        const eq = line.indexOf('=');
+        if (eq > 0) merged.set(line.slice(0, eq), line.slice(eq + 1));
+      }
+      return [...merged.entries()].map(([key, value]) => `${key}=${value}`).join('\n') + '\n';
+    });
 
     // Analytics — fire-and-forget, never blocks
     if (content.includes('ANTON_TERMS_CONSENT=true')) {
@@ -1570,12 +1565,11 @@ function setupIPC() {
         ensureAccountDataRoot();
       }
       const envPath = coworkEnvPath();
-      const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
-      const lines = existing.split('\n').filter((l) => !l.startsWith('COWORK_KEYCHAIN='));
-      // Only write the key when disabling; absence means "enabled" (the default).
-      if (!enabled) lines.push('COWORK_KEYCHAIN=false');
-      const out = lines.filter((l) => l.length > 0).join('\n') + '\n';
-      await writeEnvFileAtomic(envPath, out);
+      await updateEnvFile(envPath, (existing) => {
+        const lines = (existing ?? '').split('\n').filter((line) => line && !line.startsWith('COWORK_KEYCHAIN='));
+        if (!enabled) lines.push('COWORK_KEYCHAIN=false');
+        return lines.join('\n') + '\n';
+      });
 
       // Move any existing token into the newly-chosen store.
       migrateRefreshTokenStore(enabled);
@@ -2013,11 +2007,12 @@ app.whenReady().then(async () => {
         // checkConfigured() returns false and the renderer routes
         // back to onboarding.
         const envPath = getAntonEnvPath();
-        if (fs.existsSync(envPath)) {
-          const lines = fs.readFileSync(envPath, 'utf-8').split('\n')
-            .filter(l => !l.startsWith('ANTON_OPENAI_API_KEY=') && !l.startsWith('ANTON_MINDS_API_KEY='));
-          await writeEnvFileAtomic(envPath, lines.join('\n'));
-        }
+        await updateEnvFile(envPath, (existing) => {
+          if (existing === null) return null;
+          return existing.split('\n')
+            .filter(line => !line.startsWith('ANTON_OPENAI_API_KEY=') && !line.startsWith('ANTON_MINDS_API_KEY='))
+            .join('\n');
+        });
       } else if (outcome.status === 'transient') {
         diagnostic("main.app", "WARNING", "auth_boot_token_refresh_failed_transiently_keeping_session_retry_scheduled", '[auth] boot token refresh failed transiently — keeping session, retry scheduled');
       } else if (outcome.status === 'handoff_pending') {

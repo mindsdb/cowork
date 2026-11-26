@@ -12,9 +12,10 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { app } from 'electron';
-import { ACCOUNTS_DIR, accountDataHome, knownAccountRoots, readActiveAccount } from './account-data';
+import { updateEnvFile } from './dotenv-update';
+import { accountDataHome, readActiveAccount } from './account-data';
 import { BUILD_KINDS, CHANNELS, normalizeBuildKind, type BuildKind } from './channels';
-import { pinPrivateDir, pinPrivateFile, tightenHomeOnce, tightenLegacyHome, type PlatformOption } from './private-files';
+import { createPrivateAccountRoot, pinAccountRoots, pinPrivateDir, tightenHomeOnce, tightenLegacyHome, type PlatformOption } from './private-files';
 
 const LEGACY_HOME = path.join(os.homedir(), '.anton');
 
@@ -183,12 +184,10 @@ export function pinPrivateHomes(options: PlatformOption = {}): string[] {
       continue;
     }
     pinned.push(home);
-    for (const name of knownAccountRoots(home)) {
-      try {
-        pinPrivateDir(path.join(home, ACCOUNTS_DIR, name), options);
-      } catch (err) {
-        diagnostic("main.cowork-home", "WARNING", "cowork_home_could_not_pin_an_account_root_to_its_owner", '[cowork-home] could not pin an account root to its owner', err);
-      }
+    try {
+      pinAccountRoots(home, options);
+    } catch (err) {
+      diagnostic("main.cowork-home", "WARNING", "cowork_home_could_not_list_private_account_roots", '[cowork-home] could not pin account roots', err);
     }
   }
   return pinned;
@@ -237,22 +236,10 @@ export function accountDataRoot(): string {
  * directory, so writing first would fail with ENOENT and lose the value.
  */
 export function ensureAccountDataRoot(): string {
+  const home = coworkHome();
   const root = accountDataRoot();
-  fs.mkdirSync(root, { recursive: true, mode: 0o700 });
-  /* Owner-only, and pinned past the umask. An account root holds that
-   * account's database, files, connector vault and dotenv, so another OS user
-   * on the machine should not be able to read it. Leaf-level is enough: the
-   * ancestors only need to be traversable, and it is entering THIS directory
-   * that reading its contents requires. The default root, which is
-   * coworkHome() itself, is pinned like every other. */
-  try {
-    pinPrivateDir(root);
-  } catch (err) {
-    /* Best-effort: a root that cannot be tightened is still the right root,
-     * and failing the session over file modes would be worse than the
-     * exposure it guards against. */
-    diagnostic("main.cowork-home", "WARNING", "cowork_home_could_not_restrict_the_account_data_root", '[cowork-home] could not restrict the account data root', err);
-  }
+  pinPrivateDir(home);
+  if (root !== home) createPrivateAccountRoot(home, path.basename(root));
   return root;
 }
 
@@ -293,9 +280,12 @@ export function readEnvFile(): Record<string, string> {
 }
 
 export function readEnvFileAt(envPath: string): Record<string, string> {
+  if (!fs.existsSync(envPath)) return {};
+  return parseEnv(fs.readFileSync(envPath, 'utf-8'));
+}
+
+function parseEnv(content: string): Record<string, string> {
   const vars: Record<string, string> = {};
-  if (!fs.existsSync(envPath)) return vars;
-  const content = fs.readFileSync(envPath, 'utf-8');
   for (const line of content.split('\n')) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#')) continue;
@@ -332,20 +322,16 @@ export function termsConsentToCarry(
  * cannot be copied costs one extra screen, where failing the decision would
  * cost the person the answer they just gave.
  */
-export function carryTermsConsentToFreshRoot(disclaimedHome: string): void {
+export async function carryTermsConsentToFreshRoot(disclaimedHome: string): Promise<void> {
   try {
     const envPath = path.join(ensureAccountDataRoot(), '.env');
-    const carry = termsConsentToCarry(
-      readEnvFileAt(path.join(disclaimedHome, '.env')),
-      readEnvFileAt(envPath),
-    );
-    const entries = Object.entries(carry);
-    if (!entries.length) return;
-    const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
-    const prefix = existing && !existing.endsWith('\n') ? '\n' : '';
-    fs.appendFileSync(envPath, prefix + entries.map(([k, v]) => `${k}=${v}`).join('\n') + '\n', {
-      encoding: 'utf-8',
-      mode: 0o600,
+    const source = readEnvFileAt(path.join(disclaimedHome, '.env'));
+    await updateEnvFile(envPath, (content) => {
+      const existing = content ?? '';
+      const entries = Object.entries(termsConsentToCarry(source, parseEnv(existing)));
+      if (!entries.length) return null;
+      const prefix = existing && !existing.endsWith('\n') ? '\n' : '';
+      return existing + prefix + entries.map(([key, value]) => `${key}=${value}`).join('\n') + '\n';
     });
   } catch (err) {
     diagnostic("main.cowork-home", "WARNING", "cowork_home_could_not_carry_the_terms_answer_onto_the_fresh_root", '[cowork-home] could not carry the terms answer onto the fresh root', err);
@@ -358,48 +344,53 @@ export function carryTermsConsentToFreshRoot(disclaimedHome: string): void {
 // block startup on it.
 export function migrateLegacyHome(): void {
   try {
-    migrateLegacyHomeInto(buildKind(), coworkHome(), LEGACY_HOME);
+    const home = coworkHome();
+    if (developmentHomeOverride() !== null) {
+      pinPrivateDir(home);
+      return;
+    }
+    migrateLegacyHomeInto(buildKind(), home, LEGACY_HOME, { packaged: app?.isPackaged });
   } catch {
     // best-effort migration; a failure here must not stop the app.
   }
 }
 
-/* The testable body of migrateLegacyHome (explicit kind + paths, so it's
- * unit-testable without Electron). Ensures the home dir exists for every kind,
- * created owner-only before anything is copied into it, but seeds legacy files
- * into the PROD home only: ~/.anton predates the channel split, so its .env
- * carries prod-minted credentials and a prod ANTON_MINDS_URL; seeding a
- * non-prod home with it would leak prod URLs/credentials across envs.
- *
- * copyFileSync keeps the source's mode, so the legacy folder and its .env are
- * tightened first and each copy is set to 0600 after it lands. */
+/** Publish a private, complete copy only if the destination is still absent. */
+function copyLegacyFile(source: string, target: string): void {
+  if (fs.existsSync(target) || !fs.existsSync(source)) return;
+  const contents = fs.readFileSync(source);
+  const staging = fs.mkdtempSync(path.join(path.dirname(target), '.legacy-copy-'));
+  try {
+    const file = path.join(staging, 'copy');
+    fs.writeFileSync(file, contents, { mode: 0o600, flag: 'wx' });
+    try {
+      fs.linkSync(file, target);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+    }
+  } finally {
+    fs.rmSync(staging, { recursive: true, force: true });
+  }
+}
+
+/** Packaged channels repair the legacy permissions. Only production imports
+ * the old credentials and provider state into its private destination. */
 export function migrateLegacyHomeInto(
   kind: BuildKind,
   home: string,
   legacyHome: string,
-  options: PlatformOption = {},
+  options: PlatformOption & { packaged?: boolean } = {},
 ): void {
-  if (!fs.existsSync(home)) fs.mkdirSync(home, { recursive: true, mode: 0o700 });
-  if (kind !== 'prod') return;
-  try {
-    tightenLegacyHome(legacyHome, options);
-  } catch (err) {
-    /* The copies below still land at 0600, so a legacy folder that cannot be
-     * tightened must not cost the user the credentials it holds. */
-    diagnostic("main.cowork-home", "WARNING", "cowork_home_could_not_tighten_the_legacy_home", '[cowork-home] could not tighten the legacy home', err);
+  if (options.packaged || kind === 'prod') {
+    try {
+      tightenLegacyHome(legacyHome, options);
+    } catch (err) {
+      diagnostic("main.cowork-home", "WARNING", "cowork_home_could_not_tighten_the_legacy_home", '[cowork-home] could not tighten the legacy home', err);
+    }
   }
-
-  const newEnv = path.join(home, '.env');
-  const oldEnv = path.join(legacyHome, '.env');
-  if (!fs.existsSync(newEnv) && fs.existsSync(oldEnv)) {
-    fs.copyFileSync(oldEnv, newEnv);
-    pinPrivateFile(newEnv, options);
-  }
-
-  const newState = path.join(home, 'state.json');
-  const oldState = path.join(legacyHome, 'cowork', 'state.json');
-  if (!fs.existsSync(newState) && fs.existsSync(oldState)) {
-    fs.copyFileSync(oldState, newState);
-    pinPrivateFile(newState, options);
+  pinPrivateDir(home, options);
+  if (kind === 'prod') {
+    copyLegacyFile(path.join(legacyHome, '.env'), path.join(home, '.env'));
+    copyLegacyFile(path.join(legacyHome, 'cowork', 'state.json'), path.join(home, 'state.json'));
   }
 }

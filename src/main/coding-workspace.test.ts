@@ -25,6 +25,7 @@ vi.mock('fs', () => ({
   },
   rmSync: vi.fn(),
   lstatSync: (p: string) => {
+    if (p.endsWith('/.claude-mindshub')) return { isDirectory: () => true, ino: 1n, dev: 1n };
     if (!lstatPaths.has(p)) {
       const err: any = new Error('ENOENT');
       err.code = 'ENOENT';
