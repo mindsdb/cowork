@@ -163,7 +163,7 @@ jobs:
           owner: mindsdb
           repositories: argocd-state
           permission-contents: write
-      - uses: mindsdb/github-actions/argocd-pr-env-deploy@ci/pr-envs-state
+      - uses: mindsdb/github-actions/argocd-pr-env-deploy@main
         with:
           state-token: ${{ steps.release-train.outputs.token }}
           gh-token: ${{ secrets.GH_PULL_REQUEST_READ_TOKEN }}
