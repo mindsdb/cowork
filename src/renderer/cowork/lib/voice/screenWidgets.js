@@ -10,10 +10,14 @@
 // anything. The state is the shared one every frame of the artifact sees
 // (useInlineArtifactState's latestInlineState), and a state the operator sets
 // goes the way a frame's own change goes (setInlineArtifactState).
+//
+// A page that keeps no state (a slider plot) still shows what was picked: its
+// excerpt starts with the form controls its frame last reported
+// (latestInlineSnapshot), "Exponent p (range) = 0.47; …", then its text.
 
 import { isWidgetArtifact } from '../artifactKinds';
 import { inlineArtifactKey } from '../inlineArtifactCards';
-import { latestInlineState, setInlineArtifactState } from '../../components/artifact/useInlineArtifactState';
+import { latestInlineSnapshot, latestInlineState, setInlineArtifactState } from '../../components/artifact/useInlineArtifactState';
 import { artifactExcerpt, htmlText } from './screenArtifacts';
 
 export const MAX_WIDGETS = 3;
@@ -32,6 +36,34 @@ function stateForSnapshot(state) {
   if (typeof json !== 'string') return null;
   const bytes = typeof TextEncoder === 'function' ? new TextEncoder().encode(json).length : json.length;
   return bytes <= MAX_WIDGET_STATE_BYTES ? state : null;
+}
+
+const controlValue = (value) => {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  try { return JSON.stringify(value) ?? ''; } catch { return ''; }
+};
+
+/* "Exponent p (range) = 0.47; Color (select) = red", from a frame's
+   snapshot of its form controls; '' with none. */
+export function controlsLine(snapshot) {
+  const controls = Array.isArray(snapshot?.controls) ? snapshot.controls : [];
+  return controls.map((control) => {
+    const name = String(control?.label || control?.name || '').trim() || 'Control';
+    const type = control?.type ? ` (${control.type})` : '';
+    return `${name}${type} = ${controlValue(control?.value)}`;
+  }).join('; ');
+}
+
+/* What the operator reads of a widget: with no state, the controls the page
+   last reported and its live text; else (or with no snapshot) the text of
+   the page HTML. */
+function widgetExcerpt(artifact, html, state) {
+  const snapshot = state == null ? latestInlineSnapshot(artifact) : undefined;
+  if (!snapshot || typeof snapshot !== 'object') return artifactExcerpt(htmlText(html || ''), MAX_WIDGET_EXCERPT_CHARS);
+  const controls = controlsLine(snapshot);
+  const text = typeof snapshot.text === 'string' && snapshot.text.trim() ? snapshot.text : htmlText(html || '');
+  return artifactExcerpt([controls && `${controls}.`, text].filter(Boolean).join(' '), MAX_WIDGET_EXCERPT_CHARS);
 }
 
 const readers = new Map();
@@ -78,14 +110,17 @@ function liveFrames() {
  * @returns {Array<{ key: string, title: string, display: 'widget' | 'inline', state: unknown, excerpt: string, submittable: boolean }>}
  */
 export function widgetsOnScreen() {
-  return liveFrames().filter(({ key }) => key.length <= MAX_WIDGET_KEY_CHARS).slice(0, MAX_WIDGETS).map(({ key, artifact, html, onSubmit }) => ({
-    key,
-    title: (artifact.title || '').slice(0, MAX_WIDGET_TITLE_CHARS),
-    display: isWidgetArtifact(artifact) ? 'widget' : 'inline',
-    state: stateForSnapshot(latestInlineState(artifact)),
-    excerpt: artifactExcerpt(htmlText(html || ''), MAX_WIDGET_EXCERPT_CHARS),
-    submittable: typeof onSubmit === 'function',
-  }));
+  return liveFrames().filter(({ key }) => key.length <= MAX_WIDGET_KEY_CHARS).slice(0, MAX_WIDGETS).map(({ key, artifact, html, onSubmit }) => {
+    const state = stateForSnapshot(latestInlineState(artifact));
+    return {
+      key,
+      title: (artifact.title || '').slice(0, MAX_WIDGET_TITLE_CHARS),
+      display: isWidgetArtifact(artifact) ? 'widget' : 'inline',
+      state,
+      excerpt: widgetExcerpt(artifact, html, state),
+      submittable: typeof onSubmit === 'function',
+    };
+  });
 }
 
 const isPlainObject = (value) => !!value && typeof value === 'object' && !Array.isArray(value);

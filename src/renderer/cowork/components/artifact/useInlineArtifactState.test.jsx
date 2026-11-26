@@ -16,9 +16,11 @@ vi.mock('../../lib/artifactWorkspaceApi', () => ({
 }));
 
 import {
+  INLINE_SNAPSHOT_DEBOUNCE_MS,
   INLINE_STATE_DEBOUNCE_MS,
   INLINE_STATE_MAX_BYTES,
   clearInlineStateCache,
+  latestInlineSnapshot,
   latestInlineState,
   saveInlineState,
   serializeInlineState,
@@ -344,5 +346,140 @@ describe('setInlineArtifactState', () => {
     const loop = {}; loop.self = loop;
     expect(setInlineArtifactState(artifact, loop)).toBe(false);
     expect(latestInlineState(artifact)).toBeUndefined();
+  });
+});
+
+// ENG-4684: a page that never calls setState (a slider plot) still says what
+// the user picked: the shim reports its form controls, saved as snapshot.json.
+const slider = (value) => ({ controls: [{ label: 'Exponent p', name: 'p', type: 'range', value }], text: `p = ${value}` });
+const snapshotMessage = (snapshot) => ({ source: 'anton-preview-parent', type: 'snapshot', snapshot });
+const missing = () => Object.assign(new Error('missing'), { status: 404 });
+
+describe('useInlineArtifactState: the controls snapshot', () => {
+  it('saves snapshot.json through saveInlineState with its own path and summary', async () => {
+    await expect(saveInlineState(artifact, '{}', null, 'snapshot.json')).resolves.toBe('after-null');
+    expect(api.saveArtifactSource).toHaveBeenCalledWith(artifact, {
+      path: 'snapshot.json', content: '{}', expectedRevisionId: null, summary: 'Inline snapshot',
+    });
+  });
+
+  it('keeps the latest snapshot and saves a burst once, after its own quiet spell', async () => {
+    render(<Harness />);
+    fromWindow(frameWindow(), { type: 'snapshot', snapshot: slider('0.2') });
+    fromWindow(frameWindow(), { type: 'snapshot', snapshot: slider('0.47') });
+    expect(latestInlineSnapshot(artifact)).toEqual(slider('0.47'));
+    // Past the state's quiet spell, still within the snapshot's.
+    await act(async () => { vi.advanceTimersByTime(INLINE_SNAPSHOT_DEBOUNCE_MS - 1); });
+    expect(api.saveArtifactSource).not.toHaveBeenCalled();
+    await act(async () => { vi.advanceTimersByTime(1); });
+    expect(api.saveArtifactSource).toHaveBeenCalledTimes(1);
+    expect(api.saveArtifactSource.mock.calls[0][1]).toEqual({
+      path: 'snapshot.json', content: JSON.stringify(slider('0.47')), expectedRevisionId: null, summary: 'Inline snapshot',
+    });
+    // The next save goes from the revision this one left.
+    fromWindow(frameWindow(), { type: 'snapshot', snapshot: slider('0.9') });
+    await act(async () => { vi.advanceTimersByTime(INLINE_SNAPSHOT_DEBOUNCE_MS); });
+    expect(api.saveArtifactSource.mock.calls[1][1].expectedRevisionId).toBe('after-null');
+  });
+
+  it('takes the current revision from a 409 and saves the snapshot once more', async () => {
+    api.saveArtifactSource.mockRejectedValueOnce(conflict('s4'));
+    render(<Harness />);
+    fromWindow(frameWindow(), { type: 'snapshot', snapshot: slider('0.3') });
+    await act(async () => { vi.advanceTimersByTime(INLINE_SNAPSHOT_DEBOUNCE_MS); });
+    expect(api.saveArtifactSource).toHaveBeenCalledTimes(2);
+    expect(api.saveArtifactSource.mock.calls[1][1]).toMatchObject({ path: 'snapshot.json', expectedRevisionId: 's4' });
+  });
+
+  it('ignores a snapshot that is not one, is over 32 KB, or comes from another window', async () => {
+    render(<Harness />);
+    fromWindow(window, { type: 'snapshot', snapshot: slider('1') });
+    fromWindow(frameWindow(), { type: 'snapshot', snapshot: [1] });
+    fromWindow(frameWindow(), { type: 'snapshot', snapshot: { other: 1 } });
+    fromWindow(frameWindow(), { type: 'snapshot', snapshot: { controls: [], text: 'x'.repeat(INLINE_STATE_MAX_BYTES) } });
+    await act(async () => { vi.advanceTimersByTime(INLINE_SNAPSHOT_DEBOUNCE_MS * 2); });
+    expect(latestInlineSnapshot(artifact)).toBeUndefined();
+    expect(api.saveArtifactSource).not.toHaveBeenCalled();
+  });
+
+  it('saves a snapshot still waiting when the frame goes', async () => {
+    const { unmount } = render(<Harness />);
+    fromWindow(frameWindow(), { type: 'snapshot', snapshot: slider('0.6') });
+    unmount();
+    await act(async () => {});
+    expect(api.saveArtifactSource.mock.calls[0][1].path).toBe('snapshot.json');
+  });
+
+  it('hands a new document its snapshot.json after its state', async () => {
+    api.loadArtifactSource.mockImplementation(async (_a, path) => (path === 'state.json'
+      ? { content: '{"n":1}', revision: { id: 'r1' } }
+      : { content: JSON.stringify(slider('0.47')), revision: { id: 's1' } }));
+    render(<Harness />);
+    const post = vi.spyOn(frameWindow(), 'postMessage');
+    fromWindow(frameWindow(), { type: 'document-start' });
+    await act(async () => {});
+    expect(api.loadArtifactSource.mock.calls.map(([, path]) => path)).toEqual(['state.json', 'snapshot.json']);
+    expect(post.mock.calls.map(([data]) => data)).toEqual([stateMessage({ n: 1 }), snapshotMessage(slider('0.47'))]);
+    expect(latestInlineSnapshot(artifact)).toEqual(slider('0.47'));
+
+    // The next save of it goes from the revision read.
+    fromWindow(frameWindow(), { type: 'snapshot', snapshot: slider('0.5') });
+    await act(async () => { vi.advanceTimersByTime(INLINE_SNAPSHOT_DEBOUNCE_MS); });
+    expect(api.saveArtifactSource.mock.calls[0][1]).toMatchObject({ path: 'snapshot.json', expectedRevisionId: 's1' });
+  });
+
+  it('hands a new document the snapshot another frame reported, without reading snapshot.json', async () => {
+    api.loadArtifactSource.mockRejectedValue(missing());
+    render(<TwoFrames />);
+    const [inline, viewer] = frames();
+    const toInline = vi.spyOn(inline, 'postMessage');
+    fromWindow(inline, { type: 'snapshot', snapshot: slider('0.8') });
+    // Not handed between frames already open: each reports its own.
+    const toViewer = vi.spyOn(viewer, 'postMessage');
+    expect(toViewer).not.toHaveBeenCalled();
+    fromWindow(viewer, { type: 'document-start' });
+    await act(async () => {});
+    expect(toViewer).toHaveBeenCalledWith(snapshotMessage(slider('0.8')), '*');
+    expect(toInline).not.toHaveBeenCalled();
+    expect(api.loadArtifactSource.mock.calls.map(([, path]) => path)).toEqual(['state.json']);
+  });
+
+  it('posts no snapshot when there is none, and none for a snapshot.json that is not one', async () => {
+    api.loadArtifactSource.mockImplementation(async (_a, path) => {
+      if (path === 'state.json') throw missing();
+      return { content: '{"picked":[]}', revision: { id: 's1' } };
+    });
+    render(<Harness />);
+    const post = vi.spyOn(frameWindow(), 'postMessage');
+    fromWindow(frameWindow(), { type: 'document-start' });
+    await act(async () => {});
+    expect(post).not.toHaveBeenCalled();
+    expect(latestInlineSnapshot(artifact)).toBeUndefined();
+  });
+
+  it('leaves the state alone: no state saved, shared or handed, and the handed-false default still waits', async () => {
+    let read;
+    api.loadArtifactSource.mockImplementation((_a, path) => (path === 'state.json'
+      ? new Promise((resolve) => { read = resolve; })
+      : Promise.reject(missing())));
+    render(<TwoFrames />);
+    const [inline, viewer] = frames();
+    const toInline = vi.spyOn(inline, 'postMessage');
+    fromWindow(viewer, { type: 'document-start' });
+    fromWindow(viewer, { type: 'state', state: { picked: ['all'] }, handed: false });
+    fromWindow(viewer, { type: 'snapshot', snapshot: slider('0.1') });
+    expect(latestInlineState(artifact)).toBeUndefined();
+    expect(toInline).not.toHaveBeenCalled();
+    await act(async () => { read({ content: '{"picked":["li"]}', revision: { id: 'r1' } }); });
+    expect(latestInlineState(artifact)).toEqual({ picked: ['li'] });
+    await act(async () => { vi.advanceTimersByTime(INLINE_SNAPSHOT_DEBOUNCE_MS); });
+    expect(api.saveArtifactSource.mock.calls.map(([, body]) => body.path)).toEqual(['snapshot.json']);
+
+    // A state the page was handed, echoed after a snapshot, is still an echo.
+    fromWindow(viewer, { type: 'snapshot', snapshot: slider('0.2') });
+    fromWindow(viewer, { type: 'state', state: { picked: ['li'] } });
+    await act(async () => { vi.advanceTimersByTime(INLINE_SNAPSHOT_DEBOUNCE_MS); });
+    expect(api.saveArtifactSource.mock.calls.map(([, body]) => body.path)).toEqual(['snapshot.json', 'snapshot.json']);
+    expect(toInline).not.toHaveBeenCalled();
   });
 });

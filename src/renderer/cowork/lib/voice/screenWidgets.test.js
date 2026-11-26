@@ -2,9 +2,10 @@
 // operator: the snapshot's `widgets`, set_widget_state and submit_widget.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const inline = vi.hoisted(() => ({ states: new Map(), set: vi.fn() }));
+const inline = vi.hoisted(() => ({ states: new Map(), snapshots: new Map(), set: vi.fn() }));
 vi.mock('../../components/artifact/useInlineArtifactState', () => ({
   latestInlineState: (artifact) => inline.states.get(artifact.slug),
+  latestInlineSnapshot: (artifact) => inline.snapshots.get(artifact.slug),
   setInlineArtifactState: (...args) => inline.set(...args),
 }));
 
@@ -19,6 +20,7 @@ const show = (read) => { const close = showWidgetOnScreen(read); closers.push(cl
 afterEach(() => {
   closers.splice(0).forEach((close) => close());
   inline.states.clear();
+  inline.snapshots.clear();
   inline.set.mockReset();
 });
 
@@ -55,6 +57,42 @@ describe('widgetsOnScreen', () => {
     expect(widgetsOnScreen()[0].excerpt.length).toBe(MAX_WIDGET_EXCERPT_CHARS);
     close();
     expect(widgetsOnScreen()).toEqual([]);
+  });
+});
+
+// ENG-4684: a page that keeps no state (a slider plot) still shows what was
+// picked: the controls its frame last reported lead its excerpt.
+describe('widgetsOnScreen: the controls of a page with no state', () => {
+  const slider = { controls: [
+    { label: 'Exponent p', name: 'p', type: 'range', value: '0.47' },
+    { label: '', name: 'grid', type: 'checkbox', value: true },
+  ], text: 'y = x^0.47' };
+
+  it('starts the excerpt with the controls, then the text the page reported', () => {
+    inline.snapshots.set('plot', slider);
+    show(() => ({ artifact: card('plot', { display: 'inline' }), html: '<p>stale text</p>' }));
+    const [widget] = widgetsOnScreen();
+    expect(widget.state).toBeNull();
+    expect(widget.excerpt).toBe('Exponent p (range) = 0.47; grid (checkbox) = true. y = x^0.47');
+  });
+
+  it('falls back to the page text with no reported text, and leaves a page with state as it was', () => {
+    inline.snapshots.set('plot', { controls: slider.controls });
+    inline.snapshots.set('pick', slider);
+    inline.states.set('pick', { picked: ['a'] });
+    show(() => ({ artifact: card('plot'), html: '<p>Power curve</p>' }));
+    show(() => ({ artifact: card('pick'), html: '<p>Pick some</p>' }));
+    const [pick, plot] = widgetsOnScreen();
+    expect(plot.excerpt).toBe('Exponent p (range) = 0.47; grid (checkbox) = true. Power curve');
+    expect(pick.excerpt).toBe('Pick some');
+  });
+
+  it('keeps it within 1500 characters', () => {
+    inline.snapshots.set('plot', { controls: slider.controls, text: 'word '.repeat(1000) });
+    show(() => ({ artifact: card('plot') }));
+    const [widget] = widgetsOnScreen();
+    expect(widget.excerpt.length).toBe(MAX_WIDGET_EXCERPT_CHARS);
+    expect(widget.excerpt.startsWith('Exponent p (range) = 0.47;')).toBe(true);
   });
 });
 

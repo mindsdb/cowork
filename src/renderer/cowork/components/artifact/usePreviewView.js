@@ -120,6 +120,20 @@ export function postPreviewState(win, state) {
   if (!win || typeof win.postMessage !== 'function') return;
   win.postMessage({ source: PREVIEW_PARENT_SOURCE, type: 'state', state }, '*');
 }
+
+/**
+ * Hands the page in an inline frame the form controls it last reported
+ * (ENG-4684): the shim sets their values again when the page does not keep
+ * its own state. Same channel and tag as the state. A frame with no window
+ * yet is skipped.
+ *
+ * @param {Window | null | undefined} win
+ * @param {{ controls?: Array<{ label?: string, name?: string, type?: string, value?: unknown }>, text?: string }} snapshot
+ */
+export function postPreviewSnapshot(win, snapshot) {
+  if (!win || typeof win.postMessage !== 'function') return;
+  win.postMessage({ source: PREVIEW_PARENT_SOURCE, type: 'snapshot', snapshot }, '*');
+}
 // A place kept for a reload that never produced a new document (the reload
 // failed, the viewer moved on) is not applied to some later one.
 export const KEEP_PLACE_MS = 60000;
