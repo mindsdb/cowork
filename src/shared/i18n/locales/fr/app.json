@@ -266,10 +266,10 @@
     "stayQueued": "{agent} ne peut pas le prendre pour l’instant. Il reste dans la file d’attente."
   },
   "voiceCall": {
-    "backToCall": "Revenir à l’appel avec {agent}",
-    "onCall": "En appel avec {agent}",
+    "backToCall": "Revenir au mode vocal",
+    "onCall": "Mode vocal activé",
     "callBackPending": "{agent} vous rappellera une fois terminé",
-    "call": "Appeler {agent}",
+    "call": "Mode vocal",
     "anotherCall": "Un autre appel est en cours"
   },
   "notion": {

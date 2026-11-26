@@ -37,6 +37,7 @@ let transition = DOCUMENT_ORGANIZATION_TRANSITION;
 let ownedPendingId = null;
 let pendingTimer = null;
 let reloadStarted = false;
+let reloadQueued = false;
 /**
  * This is deliberately document-local. sessionStorage belongs to the tab and
  * can be shared with a bfcached predecessor or copied into a new window, so it
@@ -203,7 +204,7 @@ export function prepareForOrganizationReload({
   transitionId = null,
   clearTenantState = true,
 } = {}) {
-  if (reloadStarted) return;
+  if (reloadStarted) return reloadQueued;
   reloadStarted = true;
   if (transitionId) rememberReload(transitionId);
   if (clearTenantState) {
@@ -213,9 +214,12 @@ export function prepareForOrganizationReload({
   }
   if (!consumeReloadBudget()) {
     diagnostic("renderer.cowork.lib.organizationTransition", "WARNING", "organization_too_many_reloads_in_a_row_staying_put_and_refusing_tokens", '[organization] too many reloads in a row; staying put and refusing tokens');
-    return;
+    return false;
   }
-  globalThis.location?.reload();
+  if (!globalThis.location) return false;
+  globalThis.location.reload();
+  reloadQueued = true;
+  return true;
 }
 
 function publishReload(id, applyLocally) {
@@ -386,6 +390,7 @@ export function __resetOrganizationTransitionForTests() {
   transition = null;
   ownedPendingId = null;
   reloadStarted = false;
+  reloadQueued = false;
   appliedReloadId = organizationEpochForTransition(transition);
   storageUnavailable = false;
   try { globalThis.localStorage?.removeItem(STORAGE_KEY); } catch { /* test cleanup */ }

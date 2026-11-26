@@ -286,11 +286,17 @@
     },
     "dropFiles": "Dateien zum Anhängen hier ablegen",
     "addContext": "Kontext hinzufügen",
+    "docOutput": {
+      "chip": "Dokument",
+      "remove": "Ausgabe: Dokument. Entfernen",
+      "title": "Die Antwort wird als Dokument geschrieben. Zum Entfernen klicken."
+    },
     "menu": {
       "attachFiles": "Dateien oder Fotos anhängen",
       "openingGoogleDrive": "Google Drive wird geöffnet…",
       "addFromGoogleDrive": "Dateien aus Google Drive hinzufügen",
       "addFromSharePoint": "Dateien aus SharePoint hinzufügen",
+      "writeAsDoc": "Als Dokument schreiben",
       "browserTitle": "{agent} kann in dieser Aufgabe den Browsermodus verwenden. Das Ausschalten gilt ab Ihrer nächsten Nachricht.",
       "browser": "Browser",
       "browserOff": "Browser für diese Aufgabe ausschalten",
@@ -309,7 +315,11 @@
       "none": "Kein Projekt"
     },
     "chooseHarness": "Harness wählen",
-    "voiceCall": "Sprachanruf"
+    "voiceCall": "Sprachmodus",
+    "dictation": {
+      "start": "Diktieren",
+      "stop": "Diktieren beenden"
+    }
   },
   "attachmentThumbnail": {
     "open": "Bild öffnen",
@@ -765,7 +775,7 @@
     "talkTo": "Mit {agent} sprechen"
   },
   "voiceCall": {
-    "dialogLabel": "Sprachanruf mit {agent}",
+    "dialogLabel": "Sprachmodus",
     "connecting": "Verbindung wird hergestellt…",
     "ending": "Wird beendet…",
     "working": "In Arbeit…",

@@ -54,7 +54,7 @@ describe('PublishMenu — the access dropdown', () => {
     expect(ctrl.publish).not.toHaveBeenCalled();
 
     await user.click(update());
-    expect(ctrl.publish).toHaveBeenCalledWith(expect.objectContaining({ mode: 'restricted', owner_only: true }));
+    expect(ctrl.publish).toHaveBeenCalledWith(expect.objectContaining({ mode: 'restricted', owner_only: true }), expect.anything());
   });
 
   it('switches again from the access view, and Dismiss drops the draft', async () => {

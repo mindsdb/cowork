@@ -98,4 +98,59 @@ export function applyMobileShellDocument(shell: MobileShell, doc: Document = doc
   doc.documentElement.dataset.shell = shell.platform;
   const meta = doc.querySelector('meta[name="viewport"]');
   if (meta) meta.setAttribute('content', withViewportFitCover(meta.getAttribute('content') ?? ''));
+  trackVisualViewport(doc);
+}
+
+// Below this many px of lost height the visual viewport is treated as the
+// whole screen: toolbar and rounding wobble, not a keyboard.
+const KEYBOARD_MIN_PX = 80;
+
+interface ViewportBox {
+  height: number;
+  offsetTop: number;
+}
+
+/**
+ * The CSS the phone layout needs for the current visual viewport.
+ *
+ * The webview keeps its layout viewport at full height when the keyboard
+ * opens and pans the page just far enough to show the caret. A full-height
+ * `position: fixed` shell then leaves its bottom (the composer's controls)
+ * under the keyboard and pushes its top under the status bar. Sizing the
+ * shell to the visible box and moving it by the pan keeps both edges on
+ * screen. While the keyboard is up it covers the home indicator, so the
+ * bottom safe-area padding is dropped.
+ */
+export function visualViewportStyle(viewport: ViewportBox, layoutHeight: number): {
+  height: string;
+  top: string;
+  keyboard: boolean;
+} {
+  return {
+    height: `${Math.round(viewport.height)}px`,
+    top: `${Math.round(viewport.offsetTop)}px`,
+    keyboard: layoutHeight - viewport.height > KEYBOARD_MIN_PX,
+  };
+}
+
+function trackVisualViewport(doc: Document): void {
+  const win = doc.defaultView;
+  const viewport = win?.visualViewport;
+  if (!win || !viewport) return;
+  const root = doc.documentElement;
+  const update = () => {
+    // Not innerHeight: iOS shrinks that with the keyboard too.
+    const style = visualViewportStyle(viewport, root.clientHeight);
+    root.style.setProperty('--shell-viewport-height', style.height);
+    root.style.setProperty('--shell-viewport-top', style.top);
+    if (style.keyboard) root.dataset.keyboard = 'open';
+    else delete root.dataset.keyboard;
+    // Once the shell fits the visible box there is nothing left to reveal,
+    // so undo the pan. Left panned, the strip behind the keyboard would show
+    // past the end of the page in the webview's own color.
+    if (viewport.offsetTop > 0) win.scrollTo(0, 0);
+  };
+  viewport.addEventListener('resize', update);
+  viewport.addEventListener('scroll', update);
+  update();
 }

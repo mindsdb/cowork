@@ -48,6 +48,7 @@ import { trustedOrgIcon } from './OrgIcon';
 import { useLogout, LOGOUT_CONFIRM_COPY } from '../hooks/useLogout';
 import { useMindsOrgs } from '../hooks/useMindsOrgs';
 import { rememberLastOrg, useOrgLanding } from '../lib/orgLanding';
+import { noteOrgSwitchIntent, useOrgChangeTracking } from '../lib/orgChangeTracking';
 import { organizationLabel, orgDisplayName } from '../../../shared/minds-orgs';
 import { accountInitials } from '../lib/accountUser';
 import { trackBillingOpened, trackMenuApiDocsClicked, trackMenuApiKeysClicked } from '../lib/analytics';
@@ -118,8 +119,25 @@ export function UserMenu({ user, onOpenSettings }) {
   const triggerRef = useRef(null);
   const { loggingOut, waitNote, logout } = useLogout();
   const { orgs, activeOrg, switching, switchOrg } = useMindsOrgs(user);
+  // Observe the source organization before landing can record a new intent.
+  useOrgChangeTracking({ sub: user.sub ?? null, activeOrg });
+  const switchWithCause = async (organizationId, cause) => {
+    const discardIntent = noteOrgSwitchIntent(user.sub ?? null, organizationId, cause);
+    let result;
+    try {
+      result = await switchOrg(organizationId);
+      return result;
+    } finally {
+      if (!result?.ok && !result?.reloadRequired) discardIntent();
+    }
+  };
   // MindsHub UI lands a company member in a company organization.
-  useOrgLanding({ sub: user.sub ?? null, orgs, activeOrg, switchOrg });
+  useOrgLanding({
+    sub: user.sub ?? null,
+    orgs,
+    activeOrg,
+    switchOrg: (organizationId) => switchWithCause(organizationId, 'landing'),
+  });
   const toastManager = useToastManager();
   // Each org's icon: /hub/org-icons first, then the Keycloak attribute.
   const orgIcons = useOrgIcons();
@@ -165,7 +183,7 @@ export function UserMenu({ user, onOpenSettings }) {
     setPendingOrgId(organizationId);
     let result;
     try {
-      result = await switchOrg(organizationId);
+      result = await switchWithCause(organizationId, 'menu');
     } finally {
       // A committed desktop switch replaces the document, so this state is
       // about to stop existing either way; clearing it matters for the

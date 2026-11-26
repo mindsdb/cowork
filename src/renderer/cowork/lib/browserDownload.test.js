@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { downloadBlob, downloadFilename, downloadUrl } from './browserDownload';
+import { contentDispositionFilename, downloadBlob, downloadFilename, downloadUrl } from './browserDownload';
 
 const platform = vi.hoisted(() => ({ isMobileShell: false }));
 vi.mock('../../platform/host', () => ({ host: platform }));
@@ -45,6 +45,39 @@ describe('downloadFilename', () => {
   it.each([[''], [null], [undefined], ['/'], ['\\']])('falls back for %s', (path) => {
     expect(downloadFilename(path)).toBe('download');
     expect(downloadFilename(path, 'artifact')).toBe('artifact');
+  });
+});
+
+describe('contentDispositionFilename', () => {
+  it('prefers the UTF-8 name over the lossy ASCII one', () => {
+    const header = `attachment; filename="-123.md"; filename*=UTF-8''${encodeURIComponent('Привет-123.md')}`;
+    expect(contentDispositionFilename(header, 'doc.md')).toBe('Привет-123.md');
+  });
+
+  it('reads the extended name in any letter case and order', () => {
+    const header = `attachment; FILENAME*=utf-8'en'caf%C3%A9.pdf; filename="cafe.pdf"`;
+    expect(contentDispositionFilename(header)).toBe('café.pdf');
+  });
+
+  it('falls back to the ASCII name when the extended one is malformed', () => {
+    expect(contentDispositionFilename(`attachment; filename="report.md"; filename*=UTF-8''%E0%A4%A`)).toBe('report.md');
+    expect(contentDispositionFilename(`attachment; filename="report.md"; filename*=UTF-8''`)).toBe('report.md');
+    expect(contentDispositionFilename(`attachment; filename="report.md"; filename*=ISO-8859-1''r%E9port.md`)).toBe('report.md');
+  });
+
+  it('unescapes a quoted name and accepts a bare token', () => {
+    expect(contentDispositionFilename('attachment; filename="say \\"hi\\".md"')).toBe('say "hi".md');
+    expect(contentDispositionFilename('attachment; filename=plain.csv')).toBe('plain.csv');
+  });
+
+  it('keeps only the last path segment', () => {
+    expect(contentDispositionFilename(`attachment; filename*=UTF-8''..%2F..%2Fevil.sh`)).toBe('evil.sh');
+  });
+
+  it('uses the fallback when the header names no file', () => {
+    expect(contentDispositionFilename(null, 'doc.docx')).toBe('doc.docx');
+    expect(contentDispositionFilename('attachment', 'doc.docx')).toBe('doc.docx');
+    expect(contentDispositionFilename('')).toBe('download');
   });
 });
 

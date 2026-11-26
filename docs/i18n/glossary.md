@@ -53,6 +53,11 @@ Anton · MindsHub · Cowork · a deployment's brand name · model and provider n
 | Step (of a task) | Paso | Etapa | |
 | Figure (a number in an answer) | Cifra | Número | |
 | Match system | Igual que el sistema | Igual ao sistema | |
+| Doc (a Cowork doc) | Documento | Documento | |
+| Tab / Block (in a doc) | Pestaña / Bloque | Guia / Bloco | |
+| Callout (block) | Destacado | Destaque | |
+| To-do (block) | Pendiente | Afazer | Not *Tarea* / *Tarefa*: that is Task |
+| Version history | Historial de versiones | Histórico de versões | |
 | Plan (Free / Plus / Pro) | Plan | Plano | Subscription tier (ENG-4186). FR *forfait*, DE *Plan*, IT *piano*, JA プラン, KO 플랜, ZH 套餐 |
 | Plan allowance (5-hour / weekly) | Cupo (de 5 horas / semanal) | Cota (de 5 horas / semanal) | A plan's rolling window. Same word as the free allowance in each locale; JA uses 利用枠 here (無料枠 stays for the free one) |
 | Wallet (pay-as-you-go funds) | Saldo | Saldo | Always the locale's word for *balance*, never a separate "wallet" term |
@@ -122,6 +127,8 @@ Anton · MindsHub · Cowork · a deployment's brand name · model and provider n
 | Preview | プレビュー |
 | Compare | 比較 |
 | Update / Restart | アップデート / 再起動 |
+| Doc / Tab / Block (docs) | ドキュメント / タブ / ブロック |
+| Callout / To-do / Version history | コールアウト / ToDo / バージョン履歴 |
 
 ## German (`de`)
 
@@ -164,6 +171,8 @@ Anton · MindsHub · Cowork · a deployment's brand name · model and provider n
 | Repository / Folder / Branch / Pull request | Repository / Ordner / Branch / Pull-Request |
 | Code Mode / Preview / Compare | Code-Modus / Vorschau / Vergleichen |
 | Update / Restart | Update / Neu starten |
+| Doc / Tab / Block (docs) | Dokument / Tab / Block |
+| Callout / To-do / Version history | Hinweisbox / To-do / Versionsverlauf |
 
 ## French (`fr`)
 
@@ -205,6 +214,8 @@ Anton · MindsHub · Cowork · a deployment's brand name · model and provider n
 | Repository / Folder / Branch / Pull request | Dépôt / Dossier / Branche / Pull request |
 | Code Mode / Preview / Compare | Mode code / Aperçu / Comparer |
 | Update / Restart | Mise à jour / Redémarrer |
+| Doc / Tab / Block (docs) | Document / Onglet / Bloc |
+| Callout / To-do / Version history | Encadré / Élément à faire / Historique des versions |
 
 ## Korean (`ko`)
 
@@ -246,6 +257,8 @@ Anton · MindsHub · Cowork · a deployment's brand name · model and provider n
 | Repository / Folder / Branch / Pull request | 저장소 / 폴더 / 브랜치 / 풀 리퀘스트 |
 | Code Mode / Preview / Compare | 코드 모드 / 미리 보기 / 비교 |
 | Update / Restart | 업데이트 / 다시 시작 |
+| Doc / Tab / Block (docs) | 문서 / 탭 / 블록 |
+| Callout / To-do / Version history | 콜아웃 / 할 일 / 버전 기록 |
 
 ## Italian (`it`)
 
@@ -287,6 +300,8 @@ Anton · MindsHub · Cowork · a deployment's brand name · model and provider n
 | Repository / Folder / Branch / Pull request | Repository / Cartella / Branch / Pull request |
 | Code Mode / Preview / Compare | Modalità codice / Anteprima / Confronta |
 | Update / Restart | Aggiornamento / Riavvia |
+| Doc / Tab / Block (docs) | Documento / Scheda / Blocco |
+| Callout / To-do / Version history | Riquadro / Elemento da fare / Cronologia versioni |
 
 ## Simplified Chinese (`zh-CN`)
 
@@ -328,3 +343,5 @@ Anton · MindsHub · Cowork · a deployment's brand name · model and provider n
 | Repository / Folder / Branch / Pull request | 仓库 / 文件夹 / 分支 / 拉取请求 |
 | Code Mode / Preview / Compare | 代码模式 / 预览 / 对比 |
 | Update / Restart | 更新 / 重启 |
+| Doc / Tab / Block (docs) | 文档 / 标签页 / 块 |
+| Callout / To-do / Version history | 标注 / 待办事项 / 版本历史 |

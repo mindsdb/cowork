@@ -32,7 +32,9 @@ vi.mock('../../../platform/host', () => ({
   },
 }));
 vi.mock('../artifact', () => ({ ArtifactViewer: () => null }));
-vi.mock('../../lib/artifactsStore', () => ({ deleteArtifactAndSync: vi.fn(), noteArtifactCreated: vi.fn() }));
+vi.mock('../../lib/artifactsStore', () => ({
+  deleteArtifactAndSync: vi.fn(), noteArtifactCreated: vi.fn(), onArtifactRenamed: () => () => {},
+}));
 vi.mock('../../lib/artifactDownload', () => ({ downloadArtifactFile: vi.fn(async () => true) }));
 const toastAdd = vi.fn();
 vi.mock('../ui/Toast', () => ({ useToastManager: () => ({ add: toastAdd }) }));

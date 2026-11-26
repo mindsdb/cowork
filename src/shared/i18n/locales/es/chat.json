@@ -286,11 +286,17 @@
     },
     "dropFiles": "Suelta archivos para adjuntarlos",
     "addContext": "Agregar contexto",
+    "docOutput": {
+      "chip": "Documento",
+      "remove": "Salida: documento. Quitar",
+      "title": "La respuesta se escribirá como documento. Haz clic para quitar."
+    },
     "menu": {
       "attachFiles": "Adjuntar archivos o fotos",
       "openingGoogleDrive": "Abriendo Google Drive…",
       "addFromGoogleDrive": "Agregar archivos de Google Drive",
       "addFromSharePoint": "Agregar archivos de SharePoint",
+      "writeAsDoc": "Escribirlo como documento",
       "browserTitle": "{agent} puede usar el modo navegador en esta tarea. Desactivarlo se aplica desde tu próximo mensaje.",
       "browser": "Navegador",
       "browserOff": "Desactivar el navegador para esta tarea",
@@ -309,7 +315,11 @@
       "none": "Sin proyecto"
     },
     "chooseHarness": "Elegir entorno de ejecución",
-    "voiceCall": "Llamada de voz"
+    "voiceCall": "Modo de voz",
+    "dictation": {
+      "start": "Dictar",
+      "stop": "Dejar de dictar"
+    }
   },
   "attachmentThumbnail": {
     "open": "Abrir imagen",
@@ -765,7 +775,7 @@
     "talkTo": "Hablar con {agent}"
   },
   "voiceCall": {
-    "dialogLabel": "Llamada de voz con {agent}",
+    "dialogLabel": "Modo de voz",
     "connecting": "Conectando…",
     "ending": "Terminando…",
     "working": "Trabajando en ello…",
