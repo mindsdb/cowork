@@ -48,15 +48,17 @@
   },
   "status": {
     "badge": {
+      "onlyYou": "Só você",
       "public": "Público",
-      "password": "Senha",
+      "publicPassword": "Público · senha",
       "restricted": "Restrito"
     },
     "hint": {
       "notSharedYet": "Ainda não compartilhado. Abra e escolha Compartilhar para obter um link da web.",
-      "notShareable": "Não compartilhado. Só páginas web e documentos Markdown podem ser compartilhados como link.",
+      "notShareable": "Não compartilhado. Páginas web, documentos, planilhas, apresentações, PDFs, CSV e arquivos de texto podem ser compartilhados como link; este tipo de arquivo não.",
       "orgRestricted": "Restrito. Abra Compartilhar para ver quem pode abrir o link.",
       "ownerOnly": "Compartilhado, mas só você pode abrir o link.",
+      "password": "Qualquer pessoa com o link e a senha pode abrir.",
       "chosenPeople": "Compartilhado. Só as pessoas que você escolheu podem abrir o link.",
       "unknown": "Compartilhado. Não foi possível confirmar quem pode abrir o link, então ele é tratado como restrito.",
       "sharedWith": "Compartilhado com {names}",
@@ -70,7 +72,6 @@
     "stoppingSharing": "Parando de compartilhar…",
     "deleting": "Excluindo…",
     "notShared": "Não compartilhado",
-    "draft": "Rascunho",
     "unsharedChanges": "Alterações não compartilhadas"
   },
   "liveAppShare": {
@@ -133,6 +134,8 @@
       "hoursAgo": "{count, plural, one {há # hora} other {há # horas}}",
       "daysAgo": "{count, plural, one {há # dia} other {há # dias}}",
       "replies": "{count, plural, one {# resposta} other {# respostas}}",
+      "replyPlaceholder": "Responder…",
+      "replyAriaLabel": "Responder a este comentário",
       "edited": "(editado)",
       "unattachedTip": "A parte do artefato a que este comentário se referia não está mais disponível.",
       "generalTip": "Comentário geral sobre o artefato inteiro.",
@@ -306,6 +309,12 @@
   },
   "publish": {
     "ownedByOther": "Outro dono publicou este artefato.",
+    "datasources": {
+      "notice": "Publicar envia as credenciais destas conexões: {list}",
+      "review": "Este app envia credenciais de conexões que você não aprovou. Revise-as em Compartilhar e publique novamente.",
+      "updateApp": "Atualize o aplicativo para publicar este app com suas conexões. Você também pode pedir ao agente para publicá-lo pelo chat.",
+      "unapproved": "Publicado sem as credenciais de: {list}"
+    },
     "linkLeftLive": {
       "unrecorded": "Este link foi compartilhado antes de o {product} registrar quem compartilha cada página, então o {product} não pode atualizá-lo nem tirá-lo do ar. Atualizar compartilha um novo link, e parar de compartilhar ou excluir o artefato deixa este aberto para quem o tiver. Peça ao seu administrador para removê-lo.",
       "otherArtifact": "Nada foi tirado do ar: o registro deste artefato apontava para a página de outro artefato, {link}.",
@@ -333,6 +342,8 @@
       "specificDesc": "Só as pessoas que você listar"
     },
     "whoCanAccess": "Quem pode acessar seu app",
+    "whoCanAccessDoc": "Quem pode acessar seu documento",
+    "updatesAsYouEdit": "Atualiza conforme você edita",
     "addPassword": "Adicione uma senha",
     "hide": "Ocultar",
     "show": "Mostrar",
@@ -519,7 +530,7 @@
     "openViewer": "Abrir visualizador",
     "showInExplorer": "Mostrar no Explorador",
     "deleteItem": "Excluir artefato",
-    "onlyHtmlMd": "Só artefatos HTML e Markdown podem ser compartilhados.",
+    "onlyHtmlMd": "Só páginas web, documentos, planilhas, apresentações, PDFs, CSV e arquivos de texto podem ser compartilhados.",
     "sharedToast": "{mode, select, password {Compartilhado (protegido por senha): {url}} restricted {Compartilhado (restrito): {url}} other {Compartilhado: {url}}}",
     "mindsApiKey": "Defina sua chave de API do Minds em Configurações para compartilhar artefatos.",
     "stoppedOnMindsHub": "Compartilhamento interrompido no MindsHub.",
@@ -546,11 +557,9 @@
       "noMatch": "Nenhum artefato corresponde a estes filtros.",
       "clear": "Limpar filtros",
       "status": "Status",
-      "allStatuses": "Todos os status"
-    },
-    "owner": {
-      "you": "Você",
-      "youHint": "Seu, compartilhado com outras pessoas."
+      "allStatuses": "Todos os status",
+      "access": "Acesso",
+      "allAccess": "Todos os níveis de acesso"
     },
     "openComments": "{count, plural, one {# comentário aberto} other {# comentários abertos}}",
     "openCommentsHint": "Abrir a pré-visualização nos comentários"
@@ -923,7 +932,15 @@
     "sourceHint": "Altere o texto e o layout da página",
     "commentsHint": "Deixe e revise feedback",
     "statsHint": "Quem viu e por quanto tempo",
-    "commentsOpen": "Comentários, {count} abertos"
+    "commentsOpen": "Comentários, {count} abertos",
+    "openChat": "Abrir chat",
+    "openChatHint": "Feche a pré-visualização e vá para o chat em que isto foi criado",
+    "openChatUnavailable": {
+      "noOrigin": "Não foi criado em um chat, ou foi criado antes de os chats serem registrados",
+      "deleted": "O chat em que isto foi criado foi excluído",
+      "colleague": "Criado no chat de um colega, que só essa pessoa pode abrir",
+      "unreachable": "Não é possível acessar agora o chat em que isto foi criado"
+    }
   },
   "liveEditPanel": {
     "close": "Fechar o painel de edição ao vivo",

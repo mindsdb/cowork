@@ -26,3 +26,18 @@ export function missedRunLabel(onServer = host.isWeb) {
 export function missedOnceTitle(onServer = host.isWeb) {
   return msg(onServer ? 'missedOnceTitleServer' : 'missedOnceTitleApp');
 }
+
+// A scheduled run that started this long after its slot ran late. The
+// scheduler polls every 30 s, so an on-time run starts within a minute.
+const LATE_AFTER_MS = 2 * 60 * 1000;
+
+// Whether a run started well after the time it was due.
+export function ranLate(run) {
+  if (!run?.slotAt || !run.startedAt) return false;
+  return new Date(run.startedAt) - new Date(run.slotAt) > LATE_AFTER_MS;
+}
+
+// Why a late run was late, naming the time it was due.
+export function lateRunText(when, onServer = host.isWeb) {
+  return i18n.t(`messages.scheduleCopy.${onServer ? 'lateRunServer' : 'lateRunApp'}`, { ns: 'projects', when });
+}

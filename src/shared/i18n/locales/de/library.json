@@ -378,7 +378,8 @@
     "custom": "Benutzerdefiniert",
     "legacy": "Von einer älteren Version gespeichert. Trennen Sie die Verbindung und verbinden Sie sie erneut.",
     "activateLabel": "{title} {action, select, view {anzeigen} reconnect {erneut verbinden} other {verwalten}}: {subtitle}{hint}",
-    "removing": "Wird entfernt…"
+    "removing": "Wird entfernt…",
+    "settingsLabel": "Einstellungen für {title}: {subtitle}"
   },
   "datasource": {
     "failed": "Das hat nicht funktioniert.",

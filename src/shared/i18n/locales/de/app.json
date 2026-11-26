@@ -266,10 +266,10 @@
     "stayQueued": "{agent} kann sie gerade nicht annehmen. Sie bleibt in der Warteschlange."
   },
   "voiceCall": {
-    "backToCall": "Zurück zum Anruf mit {agent}",
-    "onCall": "Im Anruf mit {agent}",
+    "backToCall": "Zurück zum Sprachmodus",
+    "onCall": "Sprachmodus ist aktiv",
     "callBackPending": "{agent} ruft Sie zurück, wenn es erledigt ist",
-    "call": "{agent} anrufen",
+    "call": "Sprachmodus",
     "anotherCall": "Ein anderer Anruf läuft"
   },
   "notion": {

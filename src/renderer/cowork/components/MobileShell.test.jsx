@@ -85,3 +85,13 @@ describe('MobileShell — account footer', () => {
     expect(screen.queryByRole('button', { name: 'Log out' })).toBeNull();
   });
 });
+
+it('opens the schedules page from an empty mobile drawer', async () => {
+  const onNavigate = vi.fn();
+  render(<MobileShell {...baseProps} onNavigate={onNavigate}>content</MobileShell>);
+  await act(async () => { screen.getByRole('button', { name: /open menu/i }).click(); });
+  await act(async () => { screen.getByRole('button', { name: 'Scheduled Tasks' }).click(); });
+  expect(screen.getByText('No scheduled tasks.')).toBeInTheDocument();
+  await act(async () => { screen.getByRole('button', { name: 'All scheduled tasks' }).click(); });
+  expect(onNavigate).toHaveBeenCalledWith('scheduled');
+});

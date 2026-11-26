@@ -82,9 +82,9 @@ describe.each(['grid', 'list'])('%s view', (view) => {
       expect(fetchMyLiveApps).not.toHaveBeenCalled();
     });
 
-    it('keeps the page Share item and its "Not shared" pill on a full-stack app', () => {
+    it('keeps the page Share item and its "Only you" pill on a full-stack app', () => {
       render(<ArtifactsView artifacts={[app]} />);
-      expect(screen.getByText('Not shared')).toBeInTheDocument();
+      expect(screen.getByText('Only you')).toBeInTheDocument();
       openKebab();
       expect(pageShareItem()).toBeInTheDocument();
     });
@@ -127,17 +127,17 @@ describe.each(['grid', 'list'])('%s view', (view) => {
       expect(await screen.findByText('Live at app1.view.localhost:8080')).toBeInTheDocument();
     });
 
-    it('drops the page Share item and the "Not shared" pill, which can only mislead on a live app', () => {
+    it('drops the page Share item and the "Only you" pill, which can only mislead on a live app', () => {
       render(<ArtifactsView artifacts={[app]} />);
-      expect(screen.queryByText('Not shared')).toBeNull();
+      expect(screen.queryByText('Only you')).toBeNull();
       openKebab();
       expect(pageShareItem()).toBeNull();
       expect(screen.getByText('Let others duplicate…')).toBeInTheDocument();
     });
 
-    it('keeps the page Share item and the "Not shared" pill on a static page', () => {
+    it('keeps the page Share item and the "Only you" pill on a static page', () => {
       render(<ArtifactsView artifacts={[page]} />);
-      expect(screen.getByText('Not shared')).toBeInTheDocument();
+      expect(screen.getByText('Only you')).toBeInTheDocument();
       openKebab();
       expect(pageShareItem()).toBeInTheDocument();
     });

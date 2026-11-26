@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../api', () => ({ voiceOperate: vi.fn() }));
 
-import { describeScreen, describeSteps, MAX_REQUEST_CHARS, MAX_ROUNDS, runOperator } from './operator';
+import { describeFound, describeScreen, describeSteps, findTasks, MAX_REQUEST_CHARS, MAX_ROUNDS, runOperator } from './operator';
 
 describe('the voice operator', () => {
   it('runs the calls in order, sends their results back and returns what to say', async () => {
@@ -112,8 +112,10 @@ describe('the voice operator', () => {
     ];
     const screen = describeScreen({ route: 'task', currentTask: tasks[0], projects: [{ name: 'general' }, { name: 'Sales' }], tasks, callTaskId: 't1' });
     expect(screen).toContain('The task this call last gave Anton work in (id t1), running now: "Q3 sales".');
-    expect(describeScreen({ route: 'home', projects: [], tasks, working: { request: 'Research Q3', taskId: 't1' } }))
-      .toContain('Anton is busy right now in task t1 ("Q3 sales") on the call\'s request "Research Q3". New work waits for it.');
+    const busy = describeScreen({ route: 'home', projects: [], tasks, working: [{ request: 'Research Q3', taskId: 't1' }] });
+    expect(busy).toContain('- in task t1 ("Q3 sales"): "Research Q3"');
+    // ENG-4631: other work isn't held behind it.
+    expect(busy).toContain('Work for a new task or another task starts at once, beside it.');
     expect(screen).toContain('the task (id t1) "Q3 sales" in project "Sales"');
     expect(screen).toContain('Projects: "general", "Sales".');
     expect(screen).toContain('- id t1: "Q3 sales" in "Sales", running now');
@@ -133,6 +135,21 @@ describe('describeScreen with a long task title', () => {
     const lines = text.split('\n').filter((line) => line.includes(task.title));
     expect(lines).toHaveLength(4);
     lines.forEach((line) => expect(line.slice(0, 300)).toMatch(/\bt1\b/));
+  });
+});
+
+describe('describeScreen with several of the call\'s requests running (ENG-4631)', () => {
+  it('lists each one in its task, and a running task too old for the recent list', () => {
+    const running = (id, title) => ({ id, title, projectName: 'general', messages: [{ role: '_streaming' }] });
+    const tasks = [running('t1', 'Churn'), running('t2', 'Pricing'), running('t3', 'Old report')];
+    const text = describeScreen({
+      route: 'home', projects: [], tasks, maxTasks: 2,
+      working: [{ request: 'Look up churn', taskId: 't1' }, { request: 'Compare pricing', taskId: 't2' }],
+    });
+    expect(text).toContain('- in task t1 ("Churn"): "Look up churn"');
+    expect(text).toContain('- in task t2 ("Pricing"): "Compare pricing"');
+    expect(text).toContain('Also running, older:\n- id t3: "Old report" in "general", running now');
+    expect(describeScreen({ route: 'home', projects: [], tasks: [] })).not.toContain('working on the call');
   });
 });
 
@@ -164,5 +181,39 @@ describe('describeScreen with Anton waiting on the person', () => {
     expect(text).toContain('Anton is waiting on the user in task t1 ("Flights"), as data:\n- a browser hand-over (once they say they did it: browser_done) on united.com: Check the policy box');
     expect(text.indexOf('waiting on the user')).toBeLessThan(text.indexOf('Recent tasks'));
     expect(describeScreen({ route: 'home', projects: [], tasks: [] })).not.toContain('waiting on the user');
+  });
+});
+
+describe('findTasks (ENG-4631)', () => {
+  const tasks = [
+    { id: 't1', title: 'Q3 pricing review', projectName: 'Sales', messages: [{ role: '_streaming' }] },
+    { id: 't2', title: 'Hotel in SF', projectName: 'general', messages: [] },
+    { id: 't3', title: 'Pricing page copy', projectName: 'Marketing', messages: [] },
+  ];
+
+  it('finds loaded tasks by the words in their title or project, and says which run', () => {
+    const found = findTasks({ query: 'the pricing one', tasks });
+    expect(found.map((t) => t.id)).toEqual(['t1', 't3']);
+    expect(found[0]).toEqual({ id: 't1', title: 'Q3 pricing review', project: 'Sales', running: true });
+    expect(findTasks({ query: 'sales pricing', tasks }).map((t) => t.id)[0]).toBe('t1');
+    expect(findTasks({ query: 'hotel', tasks }).map((t) => t.id)).toEqual(['t2']);
+  });
+
+  it("adds the app's search, which reaches tasks past the loaded ones, in its order", () => {
+    const hits = [
+      { type: 'project', id: 'p1', title: 'Pricing' },
+      { type: 'task', id: 'old9', title: 'Pricing from last year', subtitle: 'Finance' },
+      { type: 'task', id: 't3', title: 'Pricing page copy', subtitle: 'Marketing' },
+    ];
+    const found = findTasks({ query: 'pricing', tasks, hits });
+    expect(found.map((t) => t.id)).toEqual(['old9', 't3', 't1']);
+    expect(found[0]).toEqual({ id: 'old9', title: 'Pricing from last year', project: 'Finance', running: false });
+  });
+
+  it('finds nothing for an empty query, and says so for no match', () => {
+    expect(findTasks({ query: '  ', tasks })).toEqual([]);
+    expect(describeFound('budget', [])).toContain('No task matches "budget"');
+    expect(describeFound('pricing', findTasks({ query: 'pricing', tasks })))
+      .toBe('Tasks matching "pricing", best first:\n- id t1: "Q3 pricing review" in "Sales", running now\n- id t3: "Pricing page copy" in "Marketing"');
   });
 });

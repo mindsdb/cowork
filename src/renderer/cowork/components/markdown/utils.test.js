@@ -72,9 +72,18 @@ describe('looksLikeFunctionSource / dropFunctionStrings', () => {
         scales: { y: { ticks: { color: 'red' } } },
         plugins: { tooltip: { callbacks: {} } },
       },
-      list: ['ok'],
+      list: ['ok', null],
     });
     expect({}.polluted).toBeUndefined();
+  });
+
+  // Removing the item would shift every later label onto the wrong value.
+  it('keeps labels aligned with the data when a label reads like an arrow function', () => {
+    const cleaned = dropFunctionStrings({
+      data: { labels: ['Q1', 'Q1 => Q2', 'Q3'], datasets: [{ data: [1, 2, 3] }] },
+    });
+    expect(cleaned.data.labels).toEqual(['Q1', null, 'Q3']);
+    expect(cleaned.data.labels).toHaveLength(cleaned.data.datasets[0].data.length);
   });
 });
 
@@ -253,6 +262,16 @@ describe('theme', () => {
     });
     expect(themed.options.scales.x.grid.color).toBe('green');
     expect(themed.options.scales.y).toMatchObject({ grid: { color: theme.line }, ticks: { color: theme.ink3 } });
+  });
+
+  it('ignores a devicePixelRatio from the fence so it cannot size a huge canvas', () => {
+    const themed = applyChartTheme({
+      type: 'bar',
+      data: { datasets: [{ data: [1] }] },
+      options: { devicePixelRatio: 1000, color: 'navy' },
+    }, theme);
+    expect(themed.options).not.toHaveProperty('devicePixelRatio');
+    expect(themed.options.color).toBe('navy');
   });
 
   it('colours each slice of a pie and leaves scales out when none were declared', () => {

@@ -33,7 +33,10 @@ export function MessageChart({ config }) {
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
   const themeVersion = useThemeVersion();
-  const [error, setError] = useState(null);
+  // Tied to the config it came from, so a new config gets a fresh draw
+  // instead of the previous one's error.
+  const [failure, setFailure] = useState(null);
+  const error = failure && failure.config === config ? failure.message : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -53,7 +56,7 @@ export function MessageChart({ config }) {
         chartRef.current = new Chart(canvasRef.current, applyChartTheme(config, theme));
       } catch (e) {
         diagnostic('renderer.cowork.components.markdown.MessageChart', 'ERROR', 'messagechart_render_error', '[MessageChart] render error', e);
-        setError(e instanceof Error ? e.message : String(e));
+        if (!cancelled) setFailure({ config, message: e instanceof Error ? e.message : String(e) });
       }
     })();
     return () => {

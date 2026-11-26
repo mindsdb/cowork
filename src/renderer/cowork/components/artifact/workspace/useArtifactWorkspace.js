@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { host } from '../../../../platform/host';
 import i18n from '../../../../lib/i18n';
 import { productName } from '../../../../lib/deploymentBrand';
+import { draftCommentsNeedProvision } from '../../../lib/draftComments';
 import {
   cancelAgentRepair,
   canUseArtifactWorkspace,
@@ -187,10 +188,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
       if (!isCurrent()) return;
       nextCapabilities = review?.capabilities || null;
       setReviewRevision(review?.currentRevision || null);
-      // Absent capabilities mean an older server that only speaks the POST, so
-      // fall through to it: assuming reviewer there would silently drop the
-      // owner's own comments.
-      const canProvision = nextCapabilities ? nextCapabilities.canEdit !== false : true;
+      const canProvision = draftCommentsNeedProvision(review);
       if (canProvision) {
         try {
           const access = await enableDraftComments(artifact);

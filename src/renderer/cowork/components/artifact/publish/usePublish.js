@@ -21,6 +21,7 @@ import {
   fetchArtifactStatus,
   listArtifactVersions,
   activateArtifactVersion,
+  fetchPendingDatasources,
 } from '../../../api';
 import { trackArtifactPublished } from '../../../lib/analytics';
 import { useOrgMode } from '../../../../lib/orgMode';
@@ -30,7 +31,13 @@ import {
   republishArtifact,
   setArtifactAccess,
 } from '../../../lib/artifactWorkspaceApi';
-import { publishFailureReason, publishRefusalMessage } from './publishErrors';
+import {
+  isDatasourceApprovalError,
+  pendingDatasourcesFromError,
+  publishFailureReason,
+  publishRefusalMessage,
+  unapprovedDatasourcesNotice,
+} from './publishErrors';
 import {
   UNKNOWN_SHARE_SNAPSHOT,
   publishedPageId,
@@ -94,6 +101,12 @@ function seededAudience(a) {
   return { ...audience, ownerOnly: audience.ownerOnly === true };
 }
 
+// What a save's answer warns about: a link left live, connections published
+// without credentials.
+function savedNotice(r) {
+  return [republishNotice(r), unapprovedDatasourcesNotice(r)].filter(Boolean).join(' ');
+}
+
 // `entry` is where the person opened sharing from, for the sharing events.
 export function usePublish(artifact, { onChange, enabled = false, entry = 'viewer' } = {}) {
   const orgMode = useOrgMode();
@@ -145,6 +158,11 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
   const [versionsLoading, setVersionsLoading] = useState(false);
 
   const targetPath = publishTargetPath(artifact);
+
+  // Connections whose credentials the next desktop full-stack publish would
+  // send for the first time. Shown in the dialog; its buttons approve them.
+  const [pendingDatasources, setPendingDatasources] = useState([]);
+  const pendingRequestRef = useRef(0);
   // Names the artifact on screen: its path on desktop, project and id in org
   // mode. The ref is written during render so a switch is seen before any
   // refresh() response from the previous artifact lands.
@@ -153,6 +171,24 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
     : targetPath;
   const identityKeyRef = useRef(identityKey);
   identityKeyRef.current = identityKey;
+
+  // Applied only while it is the latest request for the artifact on screen, so
+  // a slow answer for the previous artifact never fills this one's list.
+  const loadPendingDatasources = useCallback(async () => {
+    const request = ++pendingRequestRef.current;
+    const identity = identityKeyRef.current;
+    const isCurrent = () => request === pendingRequestRef.current
+      && identity === identityKeyRef.current;
+    if (orgMode || !targetPath) { setPendingDatasources([]); return; }
+    let list;
+    try {
+      list = await fetchPendingDatasources(targetPath);
+    } catch {
+      // The server still refuses an unapproved publish with the list (409).
+      list = [];
+    }
+    if (isCurrent()) setPendingDatasources(list);
+  }, [orgMode, targetPath]);
 
   const seededIdentityRef = useRef(identityKey);
   // Re-sync when the artifact identity changes (opening a different one
@@ -195,6 +231,7 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
     if (!sameArtifact) {
       setNotice('');
       setLinkOwnerRecorded(artifact?.linkOwnerRecorded ?? null);
+      setPendingDatasources([]);
     }
   }, [identityKey, artifact?.path, artifact?.publishedUrl, artifact?.accessMode, artifact?.accessProtected, artifact?.modified]);
 
@@ -245,7 +282,7 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
   // `access` is the payload `buildAccessPayload` makes, sent as is, so its
   // `notify` (the newly added people to email) reaches the server whichever
   // route carries it.
-  const publish = useCallback(async (access) => {
+  const publish = useCallback(async (access, { approvedDatasources = [] } = {}) => {
     if (phase !== 'idle' || !canAct) return false;
     /* A read already in flight answers with the access from before this save,
        so it must not land after the save's answer and undo it. */
@@ -267,7 +304,7 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
       // addresses the artifact by identity instead of by path.
       const r = orgMode
         ? await setArtifactAccess(artifact, access)
-        : await publishArtifact(targetPath, access);
+        : await publishArtifact(targetPath, access, { approvedDatasources });
       if (!r?.url) throw new Error(tr('noUrl'));
       // Server is authoritative (it degrades an empty restricted/password
       // selection back to public); fall back to the requested access.
@@ -317,7 +354,8 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
       setAccessLoaded(true);  // publish response is authoritative for the list
       setArtifactKey(next.artifactKey);
       setModified(false);
-      setNotice(republishNotice(r));
+      setNotice(savedNotice(r));
+      setPendingDatasources([]);
       // The server records the owner before it answers, so every link a
       // publish answers with is on record as this person's.
       setLinkOwnerRecorded(true);
@@ -326,6 +364,7 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
     } catch (e) {
       reportAccessChangeFailed(artifact, { entry, reason: publishFailureReason(e) });
       if (isCurrent()) {
+        if (!orgMode && isDatasourceApprovalError(e)) setPendingDatasources(pendingDatasourcesFromError(e));
         setError(friendlyPublishError(e));
         // The save dropped the open-time read above; with the access still
         // unread, that read runs again once the phase is idle, so the panel
@@ -343,27 +382,33 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
 
   // Publish changes: the draft goes live at the same link, with the access it
   // has. In MindsHub mode too (ENG-4595), through the workspace route.
-  const update = useCallback(async () => {
+  const update = useCallback(async (opts) => {
+    const approvedDatasources = Array.isArray(opts?.approvedDatasources) ? opts.approvedDatasources : [];
     if (phase !== 'idle' || !canAct) return false;
+    const identity = identityKey;
     setPhase('updating');
     setError('');
     setNotice('');
     try {
-      const r = orgMode ? await republishArtifact(artifact) : await updateArtifact(targetPath);
+      const r = orgMode ? await republishArtifact(artifact) : await updateArtifact(targetPath, { approvedDatasources });
       setModified(false);
-      setNotice(republishNotice(r));
+      setNotice(savedNotice(r));
+      setPendingDatasources([]);
       setLinkOwnerRecorded(true);
       const url = r?.url || publishedUrl;
       if (url) setPublishedUrl(url);
       onChange?.({ ...artifact, modified: false, publishedUrl: url });
       return true;
     } catch (e) {
+      if (!orgMode && identity === identityKeyRef.current && isDatasourceApprovalError(e)) {
+        setPendingDatasources(pendingDatasourcesFromError(e));
+      }
       setError(publishRefusalMessage(e) ?? tr('updateFailed', { message: String(e?.message || e) }));
       return false;
     } finally {
       setPhase('idle');
     }
-  }, [phase, canAct, orgMode, targetPath, publishedUrl, artifact, onChange]);
+  }, [phase, canAct, orgMode, targetPath, identityKey, publishedUrl, artifact, onChange]);
 
   /* Resolves to { ok, notice }: whether the artifact stopped pointing at its
      page, and what to tell the person when the page itself stays live. The
@@ -398,6 +443,7 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
   // no-op when nothing actually changed (no needless parent re-render).
   const refresh = useCallback(async () => {
     if (phase !== 'idle' || !canAct) return;
+    void loadPendingDatasources();
     // A response is applied only if it is still the latest request for the
     // artifact on screen. Without this, A's slow read landing after the viewer
     // moved to B writes A's recipients into B's editable list (ENG-3070).
@@ -525,7 +571,7 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
       allowedTeamIds: nextTeams,
       allowedUserIds: nextUsers,
     });
-  }, [phase, canAct, orgMode, targetPath, identityKey, modified, publishedUrl, accessMode, accessEmails, orgAllowed, ownerOnly, teamIds, userIds, artifact, onChange]);
+  }, [phase, canAct, orgMode, targetPath, identityKey, modified, publishedUrl, accessMode, accessEmails, orgAllowed, ownerOnly, teamIds, userIds, artifact, onChange, loadPendingDatasources]);
 
   // Fetch the publish history for the rollback UI. Lazy: the panel calls this
   // when it opens, not on every render. Any error (404 / older server / not
@@ -622,6 +668,7 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
     allowedTeamIds: teamIds, allowedUserIds: userIds, orgSharing,
     accessLoaded, accessLoadFailed,
     phase, busy, error, setError, notice, linkOwnerRecorded,
+    pendingDatasources,
     versions, versionsLoading,
     orgMode,
     // The artifact this controller acts on, and where sharing was opened

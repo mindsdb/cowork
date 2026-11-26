@@ -21,6 +21,7 @@ vi.mock('../lib/artifactsStore', () => ({
   useArtifactCardBySlug: () => null,
   setArtifactsScope: vi.fn(),
   revalidate: vi.fn(() => Promise.resolve()),
+  onArtifactRenamed: () => () => {},
 }));
 
 vi.mock('../../platform/host', () => ({
@@ -41,6 +42,7 @@ vi.mock('../../platform/host', () => ({
 }));
 
 import ChatView, { ArtifactCard, artifactStepToCard } from './ChatView';
+import { clearInlineStateCache } from '../components/artifact/useInlineArtifactState';
 import { initialStreamState, reduceStream } from '../lib/responseStreamAdapter';
 
 const step = (overrides = {}) => ({
@@ -71,6 +73,8 @@ class InViewObserver {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Each test submits afresh: no state, and no Submit cooldown, left over.
+  clearInlineStateCache();
   vi.stubGlobal('IntersectionObserver', InViewObserver);
   deleted.mockReturnValue(false);
   loadHtmlPreview.mockResolvedValue({ kind: 'static', url: '', doc: '<p>chart</p>', port: null, expiresAt: null });

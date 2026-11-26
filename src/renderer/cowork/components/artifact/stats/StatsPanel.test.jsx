@@ -7,7 +7,8 @@ vi.mock('./StatsChart', () => ({
   StatsChart: ({ daily }) => <div data-testid="stats-chart" data-days={daily.length} />,
 }));
 const host = vi.hoisted(() => ({ openExternal: vi.fn() }));
-vi.mock('../../../../platform/host', () => ({ host }));
+// Console links read the signed-in account (useConsoleLink).
+vi.mock('../../../../platform/host', () => ({ host, getAccessToken: () => Promise.resolve(null) }));
 vi.mock('../../ConfirmModal', () => ({
   ConfirmModal: ({ open, title, confirmLabel, onConfirm, onClose }) => (open ? (
     <div role="dialog" aria-label={title}>

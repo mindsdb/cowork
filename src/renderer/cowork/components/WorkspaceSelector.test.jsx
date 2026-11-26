@@ -7,6 +7,8 @@ const hostMock = vi.hoisted(() => ({
   openExternal: vi.fn(async () => {}),
 }));
 vi.mock('../../platform/host', () => hostMock);
+const accountMock = vi.hoisted(() => ({ user: { orgId: 'org-1', sub: 'u1' } }));
+vi.mock('../hooks/useAccountUser', () => ({ useAccountUser: () => accountMock.user }));
 
 // The hook is stubbed so each case is one fixed server answer. What the hook
 // itself does with a real response is useHubWorkspaces.test.jsx.
@@ -18,7 +20,10 @@ vi.mock('../hooks/useHubWorkspaces', () => hookMock);
 const render = (ui, options) => rtlRender(ui, { wrapper: ToastProvider, ...options });
 
 import WorkspaceSelector from './WorkspaceSelector';
-import { MINDS_WORKSPACES_URL } from '../../lib/mindsUrls';
+import { MINDS_WORKSPACES_URL, consoleUrlFor } from '../../lib/mindsUrls';
+
+// Console links name the session's organization and account (ENG-4333).
+const forOrg = (url) => consoleUrlFor(url, { organizationId: 'org-1', subject: 'u1' });
 
 const user = { sub: 'user-1', name: 'Hazem Ahmed', org: 'MindsDB' };
 
@@ -169,7 +174,7 @@ describe('WorkspaceSelector — the menu', () => {
 
     fireEvent.click(menu().getByText('Manage workspaces'));
 
-    expect(hostMock.openExternal).toHaveBeenCalledWith(MINDS_WORKSPACES_URL);
+    expect(hostMock.openExternal).toHaveBeenCalledWith(forOrg(MINDS_WORKSPACES_URL));
     expect(MINDS_WORKSPACES_URL).toContain('/settings/workspaces');
   });
 

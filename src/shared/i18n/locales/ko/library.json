@@ -378,7 +378,8 @@
     "custom": "사용자 지정",
     "legacy": "이전 버전에서 저장되었습니다. 연결을 해제한 후 다시 연결하세요.",
     "activateLabel": "{title} {action, select, view {보기} reconnect {다시 연결} other {관리}}: {subtitle}{hint}",
-    "removing": "제거 중…"
+    "removing": "제거 중…",
+    "settingsLabel": "{title} 설정: {subtitle}"
   },
   "datasource": {
     "failed": "작업이 실패했습니다.",

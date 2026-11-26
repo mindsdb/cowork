@@ -18,6 +18,9 @@ vi.mock('../../lib/artifactWorkspaceApi', () => ({
 import {
   INLINE_SNAPSHOT_DEBOUNCE_MS,
   INLINE_STATE_DEBOUNCE_MS,
+  INLINE_SUBMIT_COOLDOWN_MS,
+  INLINE_SUBMIT_MAX_MESSAGE_CHARS,
+  INLINE_SUBMIT_REPEAT_MS,
   INLINE_STATE_MAX_BYTES,
   clearInlineStateCache,
   latestInlineSnapshot,
@@ -136,8 +139,64 @@ describe('useInlineArtifactState', () => {
     expect(api.saveArtifactSource).toHaveBeenCalledTimes(1);
     expect(api.saveArtifactSource.mock.calls[0][1].content).toBe('{"budget":5}');
 
+    await act(async () => { vi.advanceTimersByTime(INLINE_SUBMIT_COOLDOWN_MS); });
     fromWindow(frameWindow(), { type: 'submit', state: { budget: 6 } });
     expect(onSubmit).toHaveBeenLastCalledWith({ state: { budget: 6 }, message: '' });
+  });
+
+  it('drops a submit too soon after the last, and the same one again for a while', async () => {
+    const onSubmit = vi.fn();
+    render(<Harness onSubmit={onSubmit} />);
+    fromWindow(frameWindow(), { type: 'submit', state: { n: 1 } });
+    // A page submitting in a loop: the next ones within the cooldown go nowhere.
+    fromWindow(frameWindow(), { type: 'submit', state: { n: 2 } });
+    fromWindow(frameWindow(), { type: 'submit', state: { n: 3 } });
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+
+    // The same submission again (a page that submits as it loads, mounted
+    // again) waits out the longer spell; a different one only the cooldown.
+    await act(async () => { vi.advanceTimersByTime(INLINE_SUBMIT_COOLDOWN_MS); });
+    fromWindow(frameWindow(), { type: 'submit', state: { n: 1 } });
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    fromWindow(frameWindow(), { type: 'submit', state: { n: 4 } });
+    expect(onSubmit).toHaveBeenCalledTimes(2);
+    await act(async () => { vi.advanceTimersByTime(INLINE_SUBMIT_REPEAT_MS); });
+    fromWindow(frameWindow(), { type: 'submit', state: { n: 4 } });
+    expect(onSubmit).toHaveBeenCalledTimes(3);
+  });
+
+  it('caps the message a page submits', async () => {
+    const onSubmit = vi.fn();
+    render(<Harness onSubmit={onSubmit} />);
+    fromWindow(frameWindow(), { type: 'submit', state: {}, message: 'x'.repeat(INLINE_SUBMIT_MAX_MESSAGE_CHARS + 50) });
+    expect(onSubmit.mock.calls[0][0].message).toHaveLength(INLINE_SUBMIT_MAX_MESSAGE_CHARS);
+  });
+
+  it('saves a change still waiting to its own artifact when the frame moves to another', async () => {
+    api.loadArtifactSource.mockResolvedValue({ content: '{"n":0}', revision: { id: 'r1' } });
+    const other = { id: 'fedcba9876543210fedcba9876543210', projectId: 'p1', slug: 'other' };
+    const { rerender } = render(<Harness />);
+    fromWindow(frameWindow(), { type: 'document-start' });
+    await act(async () => {});
+    fromWindow(frameWindow(), { type: 'state', state: { n: 1 } });
+    rerender(<Harness card={other} />);
+    await act(async () => {});
+    expect(api.saveArtifactSource).toHaveBeenCalledTimes(1);
+    expect(api.saveArtifactSource.mock.calls[0][0]).toBe(artifact);
+    expect(api.saveArtifactSource.mock.calls[0][1]).toMatchObject({ content: '{"n":1}', expectedRevisionId: 'r1' });
+
+    // The new artifact starts from nothing of the old one: no state handed
+    // to its page from the old artifact, no revision of the old one.
+    const post = vi.spyOn(frameWindow(), 'postMessage');
+    api.loadArtifactSource.mockRejectedValue(Object.assign(new Error('missing'), { status: 404 }));
+    fromWindow(frameWindow(), { type: 'document-start' });
+    await act(async () => {});
+    expect(post).not.toHaveBeenCalled();
+    fromWindow(frameWindow(), { type: 'state', state: { m: 1 } });
+    await act(async () => { vi.advanceTimersByTime(INLINE_STATE_DEBOUNCE_MS); });
+    expect(api.saveArtifactSource).toHaveBeenCalledTimes(2);
+    expect(api.saveArtifactSource.mock.calls[1][0]).toBe(other);
+    expect(api.saveArtifactSource.mock.calls[1][1]).toMatchObject({ content: '{"m":1}', expectedRevisionId: null });
   });
 
   it('submits without saving for a card with no full identity', async () => {

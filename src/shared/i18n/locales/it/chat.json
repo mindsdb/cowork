@@ -293,11 +293,17 @@
     },
     "dropFiles": "Rilascia i file per allegarli",
     "addContext": "Aggiungi contesto",
+    "docOutput": {
+      "chip": "Documento",
+      "remove": "Output: documento. Rimuovi",
+      "title": "La risposta verrà scritta come documento. Fai clic per rimuovere."
+    },
     "menu": {
       "attachFiles": "Allega file o foto",
       "openingGoogleDrive": "Apertura di Google Drive…",
       "addFromGoogleDrive": "Aggiungi file da Google Drive",
       "addFromSharePoint": "Aggiungi file da SharePoint",
+      "writeAsDoc": "Scrivi come documento",
       "browserTitle": "{agent} può usare la modalità browser in questa attività. La disattivazione vale dal tuo prossimo messaggio.",
       "browser": "Browser",
       "browserOff": "Disattiva il browser per questa attività",
@@ -316,7 +322,11 @@
       "none": "Nessun progetto"
     },
     "chooseHarness": "Scegli ambiente di esecuzione",
-    "voiceCall": "Chiamata vocale"
+    "voiceCall": "Modalità vocale",
+    "dictation": {
+      "start": "Detta",
+      "stop": "Interrompi la dettatura"
+    }
   },
   "attachmentThumbnail": {
     "open": "Apri immagine",
@@ -772,7 +782,7 @@
     "talkTo": "Parla con {agent}"
   },
   "voiceCall": {
-    "dialogLabel": "Chiamata vocale con {agent}",
+    "dialogLabel": "Modalità vocale",
     "connecting": "Connessione…",
     "ending": "Chiusura…",
     "working": "Ci sto lavorando…",

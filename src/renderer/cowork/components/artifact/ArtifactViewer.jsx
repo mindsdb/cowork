@@ -38,10 +38,9 @@ import {
   createDraftLink,
   loadArtifactDraftText,
   loadArtifactRevisions,
-  loadCommentImage,
-  uploadCommentImage,
 } from '../../lib/artifactWorkspaceApi';
-import { composeCommentText, threadImageFiles } from '../../lib/commentImages';
+import { threadImageFiles } from '../../lib/commentImages';
+import { isOpenThread } from '../../lib/commentsReducer';
 import { commentFixMessage } from '../../lib/commentFixRequest';
 import { imageAttachment } from '../../lib/imageAttachments';
 import {
@@ -54,7 +53,7 @@ import { trackArtifactStatsOpened } from '../../lib/analytics';
 import { UNKNOWN_SHARE_SNAPSHOT, reportWithdrawal, shareSnapshot } from '../../lib/artifactShareAnalytics';
 import { diagnostic } from '../../../../shared/diagnostics';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
-import { isPublishableArtifact, isImageArtifact, isInlineArtifact, isWidgetArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
+import { isFilePageArtifact, isPublishableArtifact, isImageArtifact, isInlineArtifact, isWidgetArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
 import { useBlobImageSrc } from '../AttachmentThumbnail';
 import { Modal } from '../ui/Modal';
 import { ConfirmModal } from '../ConfirmModal';
@@ -66,6 +65,9 @@ import { launchLiveAppPrompt, liveAppViewerNotice } from '../../lib/liveAppState
 import { usePublish } from './publish/usePublish';
 import { stopSharingNotice } from './publish/linkLeftLive';
 import { useArtifactComments, useArtifactCommentLayer } from './comments';
+// Imported past the index so a test that mocks './comments' keeps the real
+// posting and image upload, which used to live in this file.
+import { useCommentActions } from './comments/useCommentActions';
 import { ArtifactRevisionBar } from './workspace/ArtifactRevisionBar';
 import { useArtifactWorkspace } from './workspace/useArtifactWorkspace';
 import { ArtifactViewerHeader } from './ArtifactViewerHeader';
@@ -78,8 +80,9 @@ import { loadHtmlPreview, usesDraftLink, withdrawDraftLinks } from './htmlPrevie
 import { usePreviewCheckTarget } from './usePreviewCheckTarget';
 import { usePreviewReloadTransition } from './usePreviewReloadTransition';
 import { useViewerLayers } from './useViewerLayers';
-import { useViewerLayout } from './useViewerLayout';
+import { useViewerModal } from './useViewerLayout';
 import { ViewerModeRail } from './ViewerModeRail';
+import { useOriginChatAction } from './useOriginChatAction';
 import { QuickEditBar } from './quickEdit/QuickEditBar';
 import { useQuickEdit } from './quickEdit/useQuickEdit';
 import { countUserPrompts } from '../../lib/quickEditPrompt';
@@ -316,19 +319,7 @@ export function ArtifactViewer({
     if (!open) restoreLayers();
   }, [open, restoreLayers]);
   const sidePanelId = useId();
-  const { layout, toggle: toggleLayout } = useViewerLayout();
-  // Cmd/Ctrl+Shift+Enter maximizes and restores. Keys typed inside the
-  // artifact's own frame never reach this window, so the page keeps its keys.
-  useEffect(() => {
-    if (!open) return undefined;
-    const onKeyDown = (event) => {
-      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.key !== 'Enter') return;
-      event.preventDefault();
-      toggleLayout('maximized');
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open, toggleLayout]);
+  const { layout, toggle: toggleLayout, modalProps } = useViewerModal(open);
   // The bar takes the caret when the viewer opens (QuickEditBar), once per open.
   const [barFocusRequest, setBarFocusRequest] = useState(0);
   const barFocusUsed = useRef(0);
@@ -423,7 +414,8 @@ export function ArtifactViewer({
   // An inline artifact's state (`window.anton.setState`) is shared with its
   // chat card's frame: the viewer opens on the picks made there, and what is
   // picked here is saved and shown back in the card. Same gate as the
-  // diagnostics above. No Submit here: the viewer is not the chat.
+  // diagnostics above. Its Submit goes to the chat (onInlineSubmit), and
+  // the viewer closes so the reply is in sight.
   const onInlineSubmitRef = useRef(onInlineSubmit);
   onInlineSubmitRef.current = onInlineSubmit;
   const onCloseRef = useRef(onClose);
@@ -469,42 +461,16 @@ export function ArtifactViewer({
     }
     return ok;
   }, [comments, workspace]);
-  // A comment's images (Files, from a composer here or the on-artifact layer)
-  // are stored with the artifact first; the comment's text then names them
-  // (lib/commentImages, ENG-4410). A failed upload posts nothing, so the
-  // draft stays where it was typed.
-  const commentTextWithImages = useCallback(async (text, images) => {
-    const files = Array.isArray(images) ? images.filter(Boolean) : [];
-    if (!files.length) return text;
-    try {
-      const stored = await Promise.all(files.map(async (file) => {
-        const saved = await uploadCommentImage(artifact, file);
-        return { id: saved.id, name: file.name };
-      }));
-      return composeCommentText(text, stored);
-    } catch (uploadError) {
-      setErr(uploadError?.message || t('imageAttachments.uploadFailed'));
-      return null;
-    }
-  }, [artifact, t]);
-  const createArtifactComment = useCallback(async ({ images, ...payload }) => {
-    const text = await commentTextWithImages(payload.text, images);
-    if (text === null) return false;
-    return comments.create({
-      ...payload,
-      text,
-      revisionId: workspace.currentRevision?.id || null,
-    });
-  }, [commentTextWithImages, comments.create, workspace.currentRevision?.id]);
-  const readCommentImage = useCallback(
-    (imageId, options) => loadCommentImage(artifact, imageId, options),
-    [artifact],
-  );
-  const replyToComment = useCallback(async (threadId, text, images) => {
-    const withImages = await commentTextWithImages(text, images);
-    if (withImages === null) return false;
-    return comments.reply(threadId, withImages);
-  }, [commentTextWithImages, comments.reply]);
+  // Comments and replies from a composer here or the on-artifact layer, with
+  // their images (useCommentActions).
+  const {
+    create: createArtifactComment,
+    reply: replyToComment,
+    loadImage: readCommentImage,
+  } = useCommentActions(artifact, comments, {
+    revisionId: workspace.currentRevision?.id || null,
+    onError: setErr,
+  });
   // The injected layer owns the on-artifact UI (pins, hover highlight, thread
   // popovers) and reports mode changes; this hook pushes the thread list down
   // and exposes the imperative controls the toolbar + inbox drive. Marker
@@ -614,7 +580,7 @@ export function ArtifactViewer({
     // while one runs queue up behind it (ENG-4383).
     if (canQuickEdit && thread?.id) {
       if (quickEdit.runningThreadId === thread.id || quickEdit.queuedThreadIds.includes(thread.id)) return;
-      const imageFiles = await threadImageFiles(thread, (id) => loadCommentImage(artifact, id));
+      const imageFiles = await threadImageFiles(thread, readCommentImage);
       // Not awaited: the bar shows the run, and the inbox follows it there.
       void quickEdit.send(commentFixMessage(thread), {
         images: imageFiles.map(imageAttachment),
@@ -645,7 +611,7 @@ export function ArtifactViewer({
       if (requested) {
         // The thread's images go with the prompt, which names them in order
         // (ENG-4410).
-        const imageFiles = await threadImageFiles(thread, (id) => loadCommentImage(artifact, id));
+        const imageFiles = await threadImageFiles(thread, readCommentImage);
         // The repair is reviewed here, so the viewer stays open and follows
         // the turn (ENG-4560).
         const restoreAgentChat = followAgentChat(targetConversationId);
@@ -851,7 +817,12 @@ export function ArtifactViewer({
   // version (ArtifactViewerBody), so Reload fetches them again too.
   const contentVersion = `${artifact?.mtime ?? 0}.${reloadNonce}`;
   const isImage = isImageArtifact(artifact);
-  const imageRawUrl = isImage ? artifactServeUrl(artifact) : '';
+  // Hosted drafts are served by the authenticated drafts API. The serve
+  // route is only available on desktop.
+  const imageRawUrl = isImage && orgMode && draftPreviewUrl
+    && canFetchDraftWithCredentials(draftPreviewUrl, host.getApiOrigin())
+    ? new URL(draftPreviewUrl, host.getApiOrigin()).href
+    : isImage ? artifactServeUrl(artifact) : '';
   const imageUrl = imageRawUrl
     ? withArtifactVersion(imageRawUrl, contentVersion)
     : '';
@@ -1214,10 +1185,18 @@ export function ArtifactViewer({
   const [barEffort, setBarEffort] = useState(null);
 
   // Quick edits (ENG-4227): offered in Preview to whoever can edit, when the
-  // server turned them on. A file the viewer only previews has nothing to edit.
-  const canQuickEdit = workspace.capabilities?.canQuickEdit === true
-    && workspace.capabilities?.canEdit !== false
-    && !documentType;
+  // server turned them on. A document the viewer previews (a PDF, Word, Excel
+  // or PowerPoint file) gets the bar only when it shares as a page of its own
+  // (ENG-4687), and then every message goes to the chat: the agent changes the
+  // file there, since its text can't be edited in place.
+  // Such a document loads no workspace (previewOnly), so its bar asks only
+  // that the person may change it and that there is a chat to send to.
+  const chatOnlyEdits = Boolean(documentType) && isFilePageArtifact(artifact);
+  const canQuickEdit = chatOnlyEdits
+    ? canManage && Boolean(onAddressWithAgent)
+    : workspace.capabilities?.canQuickEdit === true
+      && workspace.capabilities?.canEdit !== false
+      && !documentType;
   // The chat the artifact belongs to, chosen the way a comment repair chooses
   // it: this chat, else the one that made the artifact.
   const resolveArtifactConversation = async () => conversationId
@@ -1229,7 +1208,8 @@ export function ArtifactViewer({
     enabled: open && canQuickEdit,
     // Without a decisions model every message goes to the chat. An older
     // server that sends no flag edits directly, as it did before the flag.
-    direct: workspace.capabilities?.quickEditDirect !== false,
+    // A previewed document always goes to the chat (chatOnlyEdits).
+    direct: workspace.capabilities?.quickEditDirect !== false && !chatOnlyEdits,
     headRevisionId: workspace.currentRevision?.id || null,
     resolveConversation: async () => (await resolveArtifactConversation()) || null,
     // Same send the comment repair uses, with a fresh chat as the last resort.
@@ -1359,7 +1339,10 @@ export function ArtifactViewer({
   // workspace load names (`publishedRevision`).
   const unsharedFrom = workspace.publishedRevision?.id || null;
   const unsharedTo = workspace.currentRevision?.id || null;
-  const canReviewUnshared = open && canManage && publishable && !!pub.publishedUrl && !!pub.modified
+  // A file shared as a page of its own (a PDF, a spreadsheet: ENG-4687) has no
+  // page text to compare, so its changes go live from Share's Update instead.
+  const canReviewUnshared = open && canManage && publishable && !isFilePageArtifact(artifact)
+    && !!pub.publishedUrl && !!pub.modified
     && !!unsharedFrom && !!unsharedTo && unsharedFrom !== unsharedTo;
   const reviewUnshared = useCallback(() => {
     if (!canReviewUnshared || workspace.comparison) return;
@@ -1433,6 +1416,24 @@ export function ArtifactViewer({
     }
   };
   const workspaceView = { ...workspace, mode: viewerMode, setMode: setViewerMode };
+
+  /* Closing resets the workspace, which drops Edit text that was never saved,
+     so the Close button, Esc and the backdrop ask first while there is some.
+     The text stays unsaved until a save's reply arrives, so a close during a
+     save asks too, with the prompt for a save in flight. `then` runs once the
+     viewer has closed (Open chat's way out), so not if the person stays. */
+  const closeThen = (then) => {
+    if (workspace.dirty) {
+      setClosePrompt({ key: workspace.status === 'saving' ? CLOSE_PROMPTS.saving : CLOSE_PROMPTS.unsaved, then });
+      return;
+    }
+    onClose?.();
+    then?.();
+  };
+  // Modal hands its own argument to onClose; a plain close runs nothing after.
+  const requestClose = () => closeThen(null);
+  // The rail's Open chat: the chat this artifact was made in.
+  const openChatAction = useOriginChatAction({ artifact, open, conversationId, close: closeThen });
 
   if (!open || !artifact) return null;
 
@@ -1655,25 +1656,12 @@ export function ArtifactViewer({
     }
   };
 
-  /* Closing resets the workspace, which drops Edit text that was never saved,
-     so the Close button, Esc and the backdrop ask first while there is some.
-     The text stays unsaved until a save's reply arrives, so a close during a
-     save asks too, with the prompt for a save in flight. */
-  const requestClose = () => {
-    if (workspace.dirty) {
-      setClosePrompt(workspace.status === 'saving' ? CLOSE_PROMPTS.saving : CLOSE_PROMPTS.unsaved);
-      return;
-    }
-    onClose?.();
-  };
-
   // The panel rail on the viewer's right edge (ViewerModeRail, ENG-4455): one
   // tab per layer this person may use, each opening its side panel. Clicking
   // the open one closes it; the unsaved Live edit prompt guards both ways out.
   // Comments still to review: open ones, as an inbox counts what is in it.
   // Resolved and dismissed ones are done with.
-  const openCommentCount = (comments.threads || [])
-    .filter((thread) => thread.status !== 'resolved' && thread.status !== 'dismissed').length;
+  const openCommentCount = (comments.threads || []).filter(isOpenThread).length;
   const railTabs = [
     canSource && {
       id: 'source',
@@ -1840,10 +1828,7 @@ export function ArtifactViewer({
     <Modal
       open={open}
       onClose={requestClose}
-      size="lg"
-      width="min(1080px, 94vw)"
-      height="min(820px, 88vh)"
-      fullBleed={layout.maximized}
+      {...modalProps}
       labelledBy="artifact-viewer-title"
     >
       <ArtifactViewerHeader
@@ -2006,7 +1991,12 @@ export function ArtifactViewer({
           publishReview={publishReview}
           sidePanelId={sidePanelId}
         />
-        <ViewerModeRail label={t('rail.ariaLabel')} tabs={railTabs} panelId={sidePanelId} />
+        <ViewerModeRail
+          label={t('rail.ariaLabel')}
+          tabs={railTabs}
+          actions={openChatAction ? [openChatAction] : []}
+          panelId={sidePanelId}
+        />
       </div>
 
       {canQuickEdit && (
@@ -2100,15 +2090,17 @@ export function ArtifactViewer({
 
       <ConfirmModal
         open={!!closePrompt}
-        title={closePrompt ? t(`${closePrompt}.title`) : undefined}
-        message={closePrompt ? t(`${closePrompt}.message`) : undefined}
-        confirmLabel={closePrompt ? t(`${closePrompt}.confirmLabel`) : undefined}
+        title={closePrompt ? t(`${closePrompt.key}.title`) : undefined}
+        message={closePrompt ? t(`${closePrompt.key}.message`) : undefined}
+        confirmLabel={closePrompt ? t(`${closePrompt.key}.confirmLabel`) : undefined}
         cancelLabel={t('viewer.keepEditing')}
         destructive
         onClose={() => setClosePrompt(null)}
         onConfirm={() => {
+          const then = closePrompt?.then;
           setClosePrompt(null);
           onClose?.();
+          then?.();
         }}
       />
 
