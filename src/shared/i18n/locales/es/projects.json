@@ -24,10 +24,6 @@
         "untilMobile": "MindsHub Air gratuito está en pausa para todos hasta {until}. Esto no usa tu cupo.",
         "dailyResetMobile": "MindsHub Air gratuito está en pausa para todos hasta que se reinicie el presupuesto diario. Esto no usa tu cupo."
       },
-      "resting": {
-        "resetsAt": "Se renueva a las {time}.",
-        "noReset": "Air funciona con estos hasta que se agoten."
-      },
       "balanceEmptySentence": "Tu saldo está vacío.",
       "percentLeft": "Te queda {percent} de tu cupo gratuito",
       "autoTopUpFailed": {
@@ -46,8 +42,6 @@
       },
       "balanceLow": {
         "title": "Saldo bajo",
-        "autoRefills": "Quedan {usd}. La recarga automática lo sube a {target} cuando baja de {floor}.",
-        "autoCovers": "Quedan {usd}. La recarga automática lo cubrirá.",
         "autoPending": "Quedan {usd}. La recarga automática está esperando a tu banco.",
         "autoCapReached": "Quedan {usd} y la recarga automática está en pausa para no superar su límite mensual. Agrega fondos para continuar.",
         "body": "Quedan {usd}. Agrega fondos o activa la recarga automática.",
@@ -83,7 +77,8 @@
         "lowThenWalletWithTime": "Después, las tareas usan tu saldo a tarifas de API hasta que se renueve a las {time}.",
         "lowThenPause": "Después, las tareas se pausan hasta que se renueve.",
         "lowThenPauseWithTime": "Después, las tareas se pausan hasta las {time}."
-      }
+      },
+      "resetsAt": "Se renueva a las {time}."
     },
     "scheduleWhen": {
       "timeZone": "hora de {city}",
@@ -112,7 +107,9 @@
       "missedLabelServer": "Si el servidor está caído a esta hora",
       "missedLabelApp": "Si MindsHub está cerrado a esta hora",
       "missedOnceTitleServer": "La hora de esta tarea única pasó mientras el servidor estaba caído",
-      "missedOnceTitleApp": "La hora de esta tarea única pasó mientras MindsHub estaba cerrado"
+      "missedOnceTitleApp": "La hora de esta tarea única pasó mientras MindsHub estaba cerrado",
+      "lateRunApp": "Prevista {when}. MindsHub estaba cerrado o tu ordenador en reposo.",
+      "lateRunServer": "Prevista {when}. El servidor no estaba disponible o estaba ocupado."
     },
     "stopScheduleRun": {
       "unreachable": "No se pudo conectar con el servidor para detener la ejecución. Inténtalo de nuevo.",
@@ -326,6 +323,7 @@
       "sections": {
         "mine": "Tuyas",
         "sharedWithMe": "Compartidas conmigo",
+        "sharedByOthers": "Compartidos por otros",
         "team": "Mis equipos",
         "builtin": "Integradas"
       },
@@ -595,6 +593,7 @@
     "lastFailed": "Última falló",
     "lastRunFailed": "Última ejecución fallida",
     "stoppedAtLimit": "Detenida en un límite",
+    "writesRefused": "Requiere aprobación",
     "done": "Terminada",
     "active": "Activa"
   },
@@ -627,6 +626,7 @@
     "partialNote": "Algunas de sus acciones pueden haberse completado. Revisa la ejecución antes de volver a ejecutarla.",
     "limitTitle": "La última ejecución se detuvo en un límite",
     "limitNote": "Puede que parte del trabajo esté hecho. Revisa la ejecución antes de volver a ejecutarla.",
+    "approvalTitle": "Los cambios de la última ejecución no se aprobaron",
     "failedTitle": "La última ejecución falló",
     "resume": "Reanudar",
     "runNow": "Ejecutar ahora",
@@ -739,7 +739,8 @@
       "success": "Correcta",
       "failed": "Fallida",
       "cancelled": "Detenida",
-      "stoppedAtLimit": "Detenida en un límite"
+      "stoppedAtLimit": "Detenida en un límite",
+      "writesRefused": "No aprobada"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "Ejecutándose ahora",
@@ -756,6 +757,7 @@
     "scheduleAriaLabel": "Programación",
     "accountDefaultModel": "Modelo predeterminado de la cuenta",
     "ranOnDefaultModel": "Modelo predeterminado",
+    "ranLate": "Con retraso",
     "modelUnavailable": "{model} no está disponible, así que esta ejecución usó tu modelo predeterminado.",
     "succeededCount": "{total, plural, one {{succeeded} de # ejecución correcta} other {{succeeded} de # ejecuciones correctas}}",
     "promptAriaLabel": "Instrucción",

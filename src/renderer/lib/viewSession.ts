@@ -43,3 +43,58 @@ export async function endViewSession(): Promise<void> {
     console.warn(`Could not end the artifact viewer session (${(error as Error | null)?.name || 'error'}).`);
   }
 }
+
+// A ticket lives 30 seconds on the view host; asking for one shouldn't hold
+// the preview up for long.
+export const VIEW_TICKET_TIMEOUT_MS = 5_000;
+
+/**
+ * Where to frame a restricted published page so it opens signed in (ENG-4687).
+ *
+ * A restricted page needs a `view_session` on the view host; without one it
+ * redirects to the console's sign-in, which can't be framed. So, as the console
+ * does, this trades the user's Keycloak token for a short ticket (POST
+ * /_session/ticket, the token in the body, never a URL) and returns the view
+ * host's bootstrap, which sets the session and redirects to the page. The view
+ * host allows this environment's Cowork web to ask (mindshub_services).
+ *
+ * The token only ever goes to this environment's own view host
+ * (MINDS_VIEW_URL), from an https Cowork page beside it. Any other page, or
+ * any failure, returns `pageUrl` unchanged: the frame then shows what the page
+ * shows anyone signed out.
+ */
+export async function viewSessionFrameUrl(
+  pageUrl: string,
+  getToken: () => Promise<string | null>,
+): Promise<string> {
+  if (typeof window === 'undefined' || window.location.protocol !== 'https:') return pageUrl;
+  if (!besideViewHost()) return pageUrl;
+  let page: URL;
+  let viewOrigin: string;
+  try {
+    page = new URL(pageUrl);
+    viewOrigin = new URL(MINDS_VIEW_URL).origin;
+  } catch {
+    return pageUrl;
+  }
+  if (page.origin !== viewOrigin) return pageUrl;
+  try {
+    const token = await getToken();
+    if (!token) return pageUrl;
+    const response = await fetch(`${viewOrigin}/_session/ticket`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+      credentials: 'omit',
+      redirect: 'error',
+      signal: AbortSignal.timeout(VIEW_TICKET_TIMEOUT_MS),
+    });
+    if (!response.ok) return pageUrl;
+    const { ticket } = await response.json();
+    if (typeof ticket !== 'string' || !ticket) return pageUrl;
+    const back = `${page.pathname}${page.search}${page.hash}`;
+    return `${viewOrigin}/_session?ticket=${encodeURIComponent(ticket)}&return=${encodeURIComponent(back)}`;
+  } catch {
+    return pageUrl;
+  }
+}

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  carriedPageFor,
   offTaskBrowserId,
   pageOriginForContext,
   BROWSER_BADGE,
@@ -280,5 +281,14 @@ describe('pageOriginForContext', () => {
     expect(pageOriginForContext('about:blank')).toBe('');
     expect(pageOriginForContext('not a url')).toBe('');
     expect(pageOriginForContext(null)).toBe('');
+  });
+});
+
+describe('carriedPageFor', () => {
+  it("carries the page open beside Home unless the send asks to leave it", () => {
+    const carry = () => 'https://example.test/page';
+    expect(carriedPageFor({}, carry)).toBe('https://example.test/page');
+    expect(carriedPageFor(undefined, carry)).toBe('https://example.test/page');
+    expect(carriedPageFor({ leaveBrowserPage: true }, carry)).toBe('');
   });
 });

@@ -30,6 +30,7 @@ import { publishFailureReason } from '../components/artifact/publish/publishErro
 import SharedResourceAttribution from '../components/SharedResourceAttribution';
 import { canUseSharedResource } from '../lib/sharedResourceAccess';
 import { productName } from '../../lib/deploymentBrand';
+import { isWidgetArtifact } from '../lib/artifactKinds';
 import { STOCK_SHORT_NAME } from '../../../shared/product-name';
 import { useConfirm } from '../components/ConfirmModal';
 import i18n, { useTranslation } from '../../lib/i18n';
@@ -695,6 +696,10 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
     setStatus(ok ? t('publish.copied') : t('publish.copyFailed'));
   };
 
+  // A widget (ENG-4684) is input collected in the chat, not a deliverable:
+  // nothing offers to share it, whatever list the server sends.
+  const artifacts = (data.artifacts || []).filter((a) => !isWidgetArtifact(a));
+
   return (
     <div className="p-[28px] flex flex-col gap-[10px]">
       {!data.publishReady && (
@@ -702,7 +707,7 @@ function PublishView({ data, setData, setStatus, onRefreshArtifacts }) {
           {t('publish.notReady')}
         </Alert>
       )}
-      {(data.artifacts || []).length ? (data.artifacts || []).map((artifact) => (
+      {artifacts.length ? artifacts.map((artifact) => (
         <div key={artifact.path} className="flex items-center gap-3 p-3 border border-solid border-[var(--border-01)] rounded-[9px]">
           <span className="text-[var(--primary-700)] inline-flex">{Ico.upload(14)}</span>
           <div className="flex-1 min-w-0">

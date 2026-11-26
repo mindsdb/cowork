@@ -1,11 +1,13 @@
 // The sidebar's Live Artifacts count comes from App's artifact list. Every
 // delete surface goes through deleteArtifactAndSync, so these tests delete
 // through it directly instead of driving a particular view.
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const spies = vi.hoisted(() => ({
+  setNavigator: vi.fn(),
+  fetchSharedArtifactPreview: vi.fn(),
   deleteArtifact: vi.fn(),
   deleteProject: vi.fn(),
   fetchArtifacts: vi.fn(),
@@ -13,8 +15,14 @@ const spies = vi.hoisted(() => ({
   fetchProjects: vi.fn(),
 }));
 
+vi.mock('../lib/mobilePush', async (importOriginal) => ({
+  ...(await importOriginal()),
+  setMobilePushNavigator: (navigate) => spies.setNavigator(navigate),
+}));
+
 vi.mock('./api', async (importOriginal) => ({
   ...(await importOriginal()),
+  fetchSharedArtifactPreview: (...args) => spies.fetchSharedArtifactPreview(...args),
   fetchHealth: vi.fn(async () => ({ status: 'ok', config_ready: true })),
   fetchSessions: vi.fn(async () => []),
   fetchSession: vi.fn(async () => ({ messages: [] })),
@@ -79,8 +87,13 @@ vi.mock('../platform/host', async (importOriginal) => {
   };
 });
 
+vi.mock('./components/artifact/ArtifactViewer', async (importOriginal) => ({
+  ...(await importOriginal()),
+  ArtifactViewer: ({ open, artifact }) => open ? <div role="dialog">{artifact.title}</div> : null,
+}));
+
 import App from './App';
-import { __resetForTests, deleteArtifactAndSync } from './lib/artifactsStore';
+import { __resetForTests, deleteArtifactAndSync, noteArtifactRenamed } from './lib/artifactsStore';
 
 const project = {
   id: 'project-1',
@@ -143,6 +156,19 @@ describe('Live Artifacts sidebar count', () => {
     await expectCount(1);
   });
 
+  it('retitles a doc renamed in its editor in the library', async () => {
+    const user = userEvent.setup();
+    spies.fetchArtifactsStrict.mockResolvedValue([{ ...gamma, title: 'Plan', format: 'doc' }]);
+    render(<App />);
+    await expectCount(1);
+    await user.click(screen.getByRole('button', { name: 'Live Artifacts' }));
+    expect(await screen.findByText('Plan')).toBeInTheDocument();
+
+    act(() => noteArtifactRenamed(gamma.id, 'Hiring plan'));
+    expect(await screen.findByText('Hiring plan')).toBeInTheDocument();
+    expect(screen.queryByText('Plan')).toBeNull();
+  });
+
   it('drops a deleted project\'s artifacts', async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -156,5 +182,53 @@ describe('Live Artifacts sidebar count', () => {
 
     await waitFor(() => expect(spies.deleteProject).toHaveBeenCalledWith(project));
     await expectCount(2);
+  });
+});
+
+describe('shared artifact navigation', () => {
+  let previousUrl;
+  let previousState;
+  beforeEach(() => {
+    previousUrl = location.href;
+    previousState = window.history.state;
+  });
+  afterEach(() => window.history.replaceState(previousState, '', previousUrl));
+
+  const project_id = '11111111-1111-4111-8111-111111111111';
+  const artifact_id = '22222222222242228222222222222222';
+  const sharePath = '/artifacts#' + new URLSearchParams({ shared: '', ref: project_id + '/' + artifact_id });
+
+  it.each([
+    ['a shared image', '.png'],
+    ['an older artifact outside the latest 80', '.md'],
+  ])('opens %s after a cold start without waiting for the listing', async (title, ext) => {
+    window.history.replaceState(null, '', '/');
+    spies.setNavigator.mockImplementationOnce((navigate) => { navigate(sharePath); });
+    spies.fetchArtifactsStrict.mockReturnValue(new Promise(() => {}));
+    spies.fetchSharedArtifactPreview.mockResolvedValue({
+      ...alpha, title, ext, type: 'file', path: '/old/file' + ext, draftUrl: '/api/v1/artifacts/drafts/project/old/file' + ext,
+    });
+    render(<App />);
+    expect(await screen.findByText(title)).toBeInTheDocument();
+    expect(spies.fetchSharedArtifactPreview).toHaveBeenCalledWith({ project_id, artifact_id }, expect.any(AbortSignal));
+    expect((await import('../platform/host')).host.openExternal).not.toHaveBeenCalled();
+  });
+
+  it('keeps a revoked share in the app and reads by stable identity', async () => {
+    spies.setNavigator.mockImplementationOnce((navigate) => navigate(sharePath));
+    spies.fetchSharedArtifactPreview.mockRejectedValue(new Error('Not found'));
+    render(<App />);
+    expect(await screen.findByText('Could not open this artifact for review')).toBeInTheDocument();
+    expect(spies.fetchSharedArtifactPreview).toHaveBeenCalledWith({ project_id, artifact_id }, expect.any(AbortSignal));
+    expect((await import('../platform/host')).host.openExternal).not.toHaveBeenCalled();
+  });
+
+  it('treats an ordinary artifacts link as a collection visit', async () => {
+    const { host } = await import('../platform/host');
+    window.history.replaceState(null, '', sharePath);
+    render(<App />);
+    await expectCount(3);
+    expect(host.openExternal).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });

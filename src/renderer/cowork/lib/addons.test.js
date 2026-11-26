@@ -16,6 +16,7 @@ import {
   isOwnAddon,
   forgetOwnAddons,
   __resetOwnAddonsForTests,
+  needsOwnTurn,
 } from './addons';
 
 const live = { conversationId: 'conv-1', text: 'use the sales DB', attachments: [], liveStream: true };
@@ -381,5 +382,18 @@ describe('queuedReasonKey', () => {
     expect(queuedReasonKey(null)).toBeNull();
     expect(queuedReasonKey('moved')).toBeNull();
     expect(queuedReasonKey('empty')).toBeNull();
+  });
+});
+
+describe('needsOwnTurn', () => {
+  it('holds a doc request or a passage edit for its own turn', () => {
+    expect(needsOwnTurn({ text: 'x', output: 'doc' })).toBe(true);
+    expect(needsOwnTurn({ text: 'x', docContext: { request: 'Make it three' } })).toBe(true);
+    expect(needsOwnTurn({ text: 'x', docContext: { selection: { blockIds: ['b_1'] } } })).toBe(true);
+  });
+
+  it('lets a plain message, or one that only names the doc on screen, join the turn', () => {
+    expect(needsOwnTurn({ text: 'x' })).toBe(false);
+    expect(needsOwnTurn({ text: 'x', docContext: { artifactId: 'a1' } })).toBe(false);
   });
 });

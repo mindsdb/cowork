@@ -25,6 +25,7 @@ import { subscribeOrganizationChanges } from './organizationChanges';
 import { subscribeUsagePlanTier, usagePlanTier } from './usagePlanTier';
 import { ANALYTICS_MERGED_SUB_KEY, isFirstVisit, firstVisitRecorded } from './accountVisit';
 import { posthogKeyForBuildKind } from '../../../shared/analytics-project';
+import { DESKTOP_DOWNLOAD_FROM } from './desktopOffer';
 
 // The single register of product events, so every event and its own properties
 // are visible at a glance. capture() additionally stamps surface, app_version,
@@ -67,8 +68,16 @@ const EVENTS = {
   COMPOSER_READY:           'composer_ready',           // { entry_source, example_id, prefilled, composer_blocked, entry_placement?, first_visit? } — a console handoff reached Home; composer_blocked when the provider panel stood in for the composer
   ONBOARDING_ROW_CLICKED:   'onboarding_row_clicked',   // { step_id } — a checklist row was clicked (a finished row is inert and sends nothing)
   ONBOARDING_STEP_COMPLETED:'onboarding_step_completed',// { step_id, via: 'checklist'|'composer' } — once per step per browser
-  EXAMPLE_PICKED:           'example_picked',           // { example_id, list: 'examples'|<task mode id> } — an example was picked on Home; it fills the composer and sends nothing
-  NEW_TASK_MESSAGE_SENT:    'new_task_message_sent',    // { start_kind: 'own_work'|'example'|'onboarding_step'|'free_text', example_id?, via: 'checklist'|'console_link'|'composer'|'app', attachments, has_link, chars, added_chars?, task_mode?, mode_line?: 'appended'|'replaced_example'|'example', example_placed? } — the first message of a new task; never carries its text
+  EXAMPLE_PICKED:           'example_picked',           // { example_id, list: 'examples'|<task mode id>|'gallery' } — an example was placed in Home's composer; from the gallery, one the list marks start 'send' is then sent at once
+  // The Use Case Gallery column beside Home. Its own names, apart
+  // from the console Gallery's gallery_* events, so neither funnel counts the other.
+  HOME_GALLERY_SHOWN:       'home_gallery_shown',       // { how: 'auto'|'button'|'checklist'|'preview' } — the column opened (not sent when it was already open); 'preview' is a replayed first run (?gallery=first-run, never production)
+  HOME_GALLERY_CLOSED:      'home_gallery_closed',      // { how: 'button'|'escape'|'started'|'own_work'|'own_task' } — it folded away; 'started' = an example was started from it, 'own_work' = Use my own file, 'own_task' = the person started a task of their own while it was open
+  HOME_GALLERY_EXAMPLE_OPENED: 'home_gallery_example_opened', // { example_id, from: 'start_here'|'list'|'search'|'step' }
+  HOME_GALLERY_EXAMPLE_STARTED: 'home_gallery_example_started', // { example_id, sends_at_once } — Try this example (start 'send': sent at once) or Start from this example (composer filled, nothing sent)
+  HOME_GALLERY_SEARCHED:    'home_gallery_searched',    // { query_length, results } — once a typed search settles; never the text
+  HOME_GALLERY_UNAVAILABLE: 'home_gallery_unavailable', // { reason: 'network'|'http'|'invalid'|'empty' } — the console's list did not load
+  NEW_TASK_MESSAGE_SENT:    'new_task_message_sent',    // { start_kind: 'own_work'|'example'|'onboarding_step'|'free_text', example_id?, via: 'checklist'|'console_link'|'composer'|'app'|'gallery', attachments, has_link, chars, added_chars?, task_mode?, mode_line?: 'appended'|'replaced_example'|'example', example_placed? } — the first message of a new task; never carries its text
   FIRST_QUERY:              'first_query',              // {}  once per user (ENG-501)
   FIRST_RESPONSE:           'first_response',           // { outcome: 'success'|'error', reason } once per user (ENG-736)
   // SERIES DISCONTINUITY, read this before trending token_cap_hit. The series
@@ -144,8 +153,9 @@ const EVENTS = {
   // again where a build carrying them meets an org on a plan.
   TOKEN_CAP_HIT:            'token_cap_hit',            // { reason: 'token_limit'|'included_allowance_exhausted'|'model_access_denied'|'window_allowance_exhausted'|'model_not_in_tier' } credit-block impression (ENG-385, widened ENG-1533 + ENG-1537 + ENG-4186)
   UPGRADE_CLICKED:          'upgrade_clicked',          // { surface: 'allowance_card'|'window_card'|'model_card'|'model_picker'|'usage_bar'|'usage_alert'|'usage_settings'|'compare', tier: 'plus'|'pro', from_tier: 'free'|'plus' } a plan upgrade was clicked (ENG-4186). Opens the console billing page but is NOT also a billing_opened: the two series stay disjoint, so the funnels add up
-  BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'window_allowance_exhausted'|'model_not_in_tier'|'free_serving_paused'|'budget_exceeded'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'allowance_used_notice'|'free_air_paused_notice'|'budget_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_at_rest'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav', 'usage_settings', 'budget_exceeded' and 'budget_notice' are NOT upgrade intent (credits do not lift a budget). 'usage_at_rest' IS intent but is the standing allowance figure rather than a warning, so it is kept apart from 'usage_notice' to grade the two surfaces separately
+  BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'window_allowance_exhausted'|'model_not_in_tier'|'free_serving_paused'|'budget_exceeded'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'allowance_used_notice'|'free_air_paused_notice'|'budget_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav', 'usage_settings', 'budget_exceeded' and 'budget_notice' are NOT upgrade intent (credits do not lift a budget).
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
+  ORGANIZATION_CHANGED:     'organization_changed',     // { from_kind: 'personal'|'company', to_kind: 'personal'|'company', cause: 'menu'|'landing'|'outside_app' } this device found the account in a different organization than it last saw. 'outside_app' = nothing in this app instance asked for it: another tab, window, app or the server moved it
   APP_INSTALLED:            'app_installed',            // {}  desktop, once per install
   BOOT_SCREEN_RESOLVED:     'boot_screen_resolved',     // { target, anton_installed, server_deps_ready, build_kind, shell_version, ui_version, server_version } desktop, per launch (ENG-921). One row per layer's running version, so adoption per layer needs no join
   SHELL_UPDATE_PHASE:       'shell_update_phase',       // { phase: 'available'|'ready-to-install'|'installing'|'failed'|'relaunched' (see trackShellUpdatePhase), channel, mode, trigger, install_source, current_version, target_version, error_code, recoverable } desktop shell auto-update, once per milestone per app run
@@ -191,6 +201,16 @@ const EVENTS = {
   // Share is counted by artifact_share_opened with entry 'chat_card'.
   NEXT_STEPS_SHOWN:         'next_steps_shown',         // { result_kind: 'example'|'file'|'artifact'|'table'|'research'|'other', steps: ('own_data'|'another_file'|'make_page'|'schedule')[] } — once per answer per app run
   NEXT_STEP_CLICKED:        'next_step_clicked',        // { step, result_kind, position }
+  // The web build's offers of the desktop app, opened only when the person
+  // picks an entry for something the browser can't do (lib/desktopOffer).
+  // feature: 'code_mode'|'local_folder'|'connector'; entry: 'sidebar_switch'|
+  // 'mobile_drawer'|'new_project'|'chat_context'|'connector_directory'|
+  // 'connector_note'.
+  // connector_id only for connectors. offer says what the dialog's main button
+  // did: 'download', or for a connector a member can stand in for,
+  // 'connect_custom'|'build_custom'.
+  DESKTOP_OFFER_SHOWN:      'desktop_offer_shown',      // { feature, entry, connector_id?, offer }
+  DESKTOP_OFFER_DOWNLOAD_CLICKED: 'desktop_offer_download_clicked', // { feature, entry, connector_id?, from } — from is the download link's from= tag
   // The account menu's developer links (ENG-4288). Sign-in lands in Cowork now,
   // so these are how a developer who came for the API still reaches it; the
   // count is the measure of whether that path is being found.
@@ -965,6 +985,30 @@ export function trackOnboardingStepCompleted(stepId, via) {
   capture(EVENTS.ONBOARDING_STEP_COMPLETED, { step_id: stepId, via });
 }
 
+export function trackGalleryShown(how) {
+  capture(EVENTS.HOME_GALLERY_SHOWN, { how });
+}
+
+export function trackGalleryClosed(how) {
+  capture(EVENTS.HOME_GALLERY_CLOSED, { how });
+}
+
+export function trackGalleryExampleOpened(exampleId, from) {
+  capture(EVENTS.HOME_GALLERY_EXAMPLE_OPENED, { example_id: exampleId, from });
+}
+
+export function trackGalleryExampleStarted(exampleId, sendsAtOnce) {
+  capture(EVENTS.HOME_GALLERY_EXAMPLE_STARTED, { example_id: exampleId, sends_at_once: Boolean(sendsAtOnce) });
+}
+
+export function trackGallerySearched(queryLength, results) {
+  capture(EVENTS.HOME_GALLERY_SEARCHED, { query_length: queryLength, results });
+}
+
+export function trackGalleryUnavailable(reason) {
+  capture(EVENTS.HOME_GALLERY_UNAVAILABLE, { reason });
+}
+
 export function trackExamplePicked(exampleId, list) {
   capture(EVENTS.EXAMPLE_PICKED, { example_id: exampleId, list });
 }
@@ -1320,6 +1364,18 @@ export function trackKeyProvisioningRefused(outcome) {
   capture(EVENTS.KEY_PROVISIONING_REFUSED, { outcome: outcome || 'unknown' });
 }
 
+// The active organization is one value per account, shared by every surface the
+// person is signed in to, so a page can load into one nobody here picked. This
+// counts those loads. Kinds only: the organization itself is already a person
+// property, and the question is how often a session starts in the wrong kind.
+export function trackOrganizationChanged({ fromKind, toKind, cause } = {}) {
+  capture(EVENTS.ORGANIZATION_CHANGED, {
+    from_kind: fromKind,
+    to_kind: toKind,
+    cause: cause || 'outside_app',
+  });
+}
+
 // Once per user (ENG-501). Mark the localStorage flag only after the event is
 // actually delivered (mirrors trackAppInstalled), otherwise an offline first
 // query sets the flag, fails to send, and is lost forever. If localStorage is
@@ -1614,5 +1670,23 @@ export function trackNextStepClicked({ step, resultKind, position } = {}) {
     step: step || 'unknown',
     result_kind: resultKind || 'other',
     position: Number.isInteger(position) ? position : null,
+  });
+}
+
+export function trackDesktopOfferShown({ feature, entry, connectorId = null, offer = 'download' } = {}) {
+  capture(EVENTS.DESKTOP_OFFER_SHOWN, {
+    feature: feature || 'unknown',
+    entry: entry || 'unknown',
+    ...(connectorId ? { connector_id: connectorId } : {}),
+    offer,
+  });
+}
+
+export function trackDesktopOfferDownloadClicked({ feature, entry, connectorId = null } = {}) {
+  capture(EVENTS.DESKTOP_OFFER_DOWNLOAD_CLICKED, {
+    feature: feature || 'unknown',
+    entry: entry || 'unknown',
+    ...(connectorId ? { connector_id: connectorId } : {}),
+    from: DESKTOP_DOWNLOAD_FROM[feature] || 'cowork-web',
   });
 }

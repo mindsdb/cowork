@@ -24,10 +24,6 @@
         "untilMobile": "MindsHub Air gratuito è sospeso per tutti fino alle {until}. La tua quota non viene consumata.",
         "dailyResetMobile": "MindsHub Air gratuito è sospeso per tutti fino al rinnovo del budget giornaliero. La tua quota non viene consumata."
       },
-      "resting": {
-        "resetsAt": "Si rinnova alle {time}.",
-        "noReset": "Air li usa finché non si esauriscono."
-      },
       "balanceEmptySentence": "Il tuo saldo è a zero.",
       "percentLeft": "Ti resta il {percent} della quota gratuita",
       "autoTopUpFailed": {
@@ -46,8 +42,6 @@
       },
       "balanceLow": {
         "title": "Saldo in esaurimento",
-        "autoRefills": "Restano {usd}. Quando il saldo scende sotto {floor}, la ricarica automatica lo riporta a {target}.",
-        "autoCovers": "Restano {usd}. Ci penserà la ricarica automatica.",
         "autoPending": "Restano {usd}. La ricarica automatica è in attesa della tua banca.",
         "autoCapReached": "Restano {usd} e la ricarica automatica è sospesa per non superare il limite mensile. Aggiungi fondi per continuare.",
         "body": "Restano {usd}. Aggiungi fondi o attiva la ricarica automatica.",
@@ -83,7 +77,8 @@
         "lowThenWalletWithTime": "Dopo, le attività usano il tuo saldo a tariffe API fino al rinnovo alle {time}.",
         "lowThenPause": "Dopo, le attività vanno in pausa fino al rinnovo.",
         "lowThenPauseWithTime": "Dopo, le attività vanno in pausa fino alle {time}."
-      }
+      },
+      "resetsAt": "Si rinnova alle {time}."
     },
     "scheduleWhen": {
       "timeZone": "ora di {city}",
@@ -112,7 +107,9 @@
       "missedLabelServer": "Se a quell’ora il server non è attivo",
       "missedLabelApp": "Se a quell’ora MindsHub è chiuso",
       "missedOnceTitleServer": "L’ora di questa attività singola è passata mentre il server non era attivo",
-      "missedOnceTitleApp": "L’ora di questa attività singola è passata mentre MindsHub era chiuso"
+      "missedOnceTitleApp": "L’ora di questa attività singola è passata mentre MindsHub era chiuso",
+      "lateRunApp": "Prevista {when}. MindsHub era chiuso o il computer in stop.",
+      "lateRunServer": "Prevista {when}. Il server non era disponibile o era occupato."
     },
     "stopScheduleRun": {
       "unreachable": "Impossibile raggiungere il server per interrompere l’esecuzione. Riprova.",
@@ -326,6 +323,7 @@
       "sections": {
         "mine": "Tuoi",
         "sharedWithMe": "Condivisi con me",
+        "sharedByOthers": "Condivisi da altri",
         "team": "I miei team",
         "builtin": "Integrati"
       },
@@ -595,6 +593,7 @@
     "lastFailed": "Ultima non riuscita",
     "lastRunFailed": "Ultima esecuzione non riuscita",
     "stoppedAtLimit": "Interrotta a un limite",
+    "writesRefused": "Richiede approvazione",
     "done": "Completata",
     "active": "Attiva"
   },
@@ -627,6 +626,7 @@
     "partialNote": "Alcune delle sue azioni potrebbero essere state completate. Controlla l’esecuzione prima di ripeterla.",
     "limitTitle": "L’ultima esecuzione si è interrotta a un limite",
     "limitNote": "Parte del lavoro potrebbe essere stata completata. Controlla l’esecuzione prima di ripeterla.",
+    "approvalTitle": "Le modifiche dell’ultima esecuzione non sono state approvate",
     "failedTitle": "L’ultima esecuzione non è riuscita",
     "resume": "Riprendi",
     "runNow": "Esegui ora",
@@ -739,7 +739,8 @@
       "success": "Riuscita",
       "failed": "Non riuscita",
       "cancelled": "Interrotta",
-      "stoppedAtLimit": "Interrotta a un limite"
+      "stoppedAtLimit": "Interrotta a un limite",
+      "writesRefused": "Non approvata"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "In esecuzione ora",
@@ -756,6 +757,7 @@
     "scheduleAriaLabel": "Pianificazione",
     "accountDefaultModel": "Modello predefinito dell’account",
     "ranOnDefaultModel": "Modello predefinito",
+    "ranLate": "In ritardo",
     "modelUnavailable": "{model} non è disponibile, quindi questa esecuzione ha usato il tuo modello predefinito.",
     "succeededCount": "{total, plural, one {{succeeded} esecuzione riuscita su #} other {{succeeded} esecuzioni riuscite su #}}",
     "promptAriaLabel": "Prompt",

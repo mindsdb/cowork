@@ -18,6 +18,14 @@
 .browser-panel__loading { display: flex; flex-direction: column; align-items: center; gap: 8px; color: var(--ink-3); font-size: 12px; }
 .browser-panel__heading-text { min-width: 0; }
 
+/* The overlay pane's foot, saying a question is waiting behind it: below the
+   stage, so it takes height rather than floating over the page (the
+   desktop's page is a native view nothing in the app can draw above). Wraps
+   on a narrow panel so the button is never clipped. */
+.browser-panel__wait-strip { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px 10px 15px; border-top: 1px solid var(--line); background: var(--surface); }
+.browser-panel__wait-strip p { margin: 0; flex: 1 1 12rem; min-width: 0; color: var(--ink-2); font-size: 12.5px; line-height: 1.4; }
+body[data-skin="8bit"] .browser-panel__wait-strip { border-top: 2px solid var(--ink); }
+
 /* The desktop pane's status line: the site, the task's tabs and the latest
    download. The page itself is a native view the app places over the stage. */
 .browser-panel__status { display: flex; align-items: center; gap: 8px; min-height: 30px; padding: 4px 12px 4px 15px; border-bottom: 1px solid var(--line); color: var(--ink-3); font-size: 11.5px; overflow: hidden; }

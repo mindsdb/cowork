@@ -1,5 +1,16 @@
 name: Publish UI Bundle
 
+# Three jobs, so the page-update signing key never shares a runner with
+# `npm ci` or any third-party package code:
+#
+#   build    installs dependencies and builds dist/renderer. No signing key,
+#            no RELEASES_TOKEN.
+#   sign     runs only scripts/sign-ui-bundle.mjs from this commit, with
+#            UI_SIGNING_KEY from the `ui-signing` environment. No npm ci, no
+#            dependency cache.
+#   publish  uploads the signed tarball and writes latest.json with
+#            RELEASES_TOKEN. It never rebuilds or re-packs the bundle.
+
 on:
   # Primary path: the auto-release workflow calls this AFTER it creates the
   # canonical CalVer tag, passing the exact release version — so the UI bundle
@@ -13,7 +24,7 @@ on:
         required: true
         type: string
       shell_version:
-        description: 'Installer (shell) CalVer shipping alongside this UI bundle. Emitted into latest.json as shellVersion so clients can offer a reinstall notice (ENG-849). ONLY set on the auto-release path, where a prod installer is actually published — a UI-only re-publish must leave it empty so no phantom reinstall notice appears.'
+        description: 'Installer (shell) CalVer shipping alongside this UI bundle. Emitted into latest.json as shellVersion so clients can offer a reinstall notice. ONLY set on the auto-release path, where a prod installer is actually published — a UI-only re-publish must leave it empty so no phantom reinstall notice appears.'
         required: false
         type: string
     secrets:
@@ -24,6 +35,15 @@ on:
       # workflow_call secret validation, so the build step rejects empty too.
       VITE_POSTHOG_MINDSHUB_MAIN_PROJECT_TOKEN:
         required: true
+      # The value lives only in the `ui-signing` environment, which the sign
+      # job names; the environment's value wins over anything a caller holds.
+      # A caller still has to pass the name, with `secrets: inherit` or
+      # `UI_SIGNING_KEY: ${{ secrets.UI_SIGNING_KEY }}`, or the key reaches the
+      # sign job empty and the signer refuses to run. It is optional because the
+      # signer already refuses an empty key, while a failed `required` check
+      # would reject the whole calling run at startup.
+      UI_SIGNING_KEY:
+        required: false
   # Manual re-publish / backfill. Leave version empty to derive from git describe.
   workflow_dispatch:
     inputs:
@@ -35,17 +55,19 @@ on:
         description: 'Minimum cowork-server CalVer this UI requires (e.g. 2.26.7.6.1) — leave empty for no constraint / to use package.json minServerVersion'
         required: false
         type: string
-  # Explicit UI-only release tag.
-  push:
-    tags:
-      - 'ui-v*'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-and-publish:
+  build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      min_server_version: ${{ steps.min-server-version.outputs.min_server_version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,6 +75,7 @@ jobs:
           # version) can reach the nearest CalVer tag. The normal path receives
           # the exact release version from the auto-release job, so no describe.
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
@@ -74,9 +97,6 @@ jobs:
             # workflow_call (auto-release) or workflow_dispatch override — the
             # canonical release version, identical to the prod app installer.
             VER="$INPUT_VERSION"
-          elif [[ "${GITHUB_REF}" == refs/tags/ui-v* ]]; then
-            # Explicit UI-only tag push.
-            VER="${GITHUB_REF#refs/tags/ui-v}"
           else
             # Edge (manual dispatch with no version): derive the CalVer from git
             # describe, falling back to package.json + short sha.
@@ -90,6 +110,23 @@ jobs:
           echo "version=$VER" >> "$GITHUB_OUTPUT"
           echo "tag=ui-v$VER" >> "$GITHUB_OUTPUT"
           echo "Publishing UI version: $VER"
+
+      # Optional min cowork-server CalVer this UI requires: explicit dispatch
+      # input, else package.json `minServerVersion`, else none. Absence means
+      # "no constraint": latest.json omits min_server_version and both signed
+      # payloads carry null.
+      - name: Determine min server version
+        id: min-server-version
+        env:
+          MIN_SERVER_VERSION_INPUT: ${{ github.event.inputs.min_server_version }}
+        run: |
+          if [ -n "$MIN_SERVER_VERSION_INPUT" ]; then
+            MIN_SERVER_VERSION="$MIN_SERVER_VERSION_INPUT"
+          else
+            MIN_SERVER_VERSION="$(node -p "require('./package.json').minServerVersion || ''" 2>/dev/null || echo '')"
+          fi
+          echo "min_server_version=$MIN_SERVER_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Min server version: ${MIN_SERVER_VERSION:-'(none)'}"
 
       - name: Build renderer
         # Bake the resolved version into __APP_VERSION__ (matches latest.json and
@@ -111,11 +148,80 @@ jobs:
           fi
           npm run build:renderer
 
+      - name: Upload renderer build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-renderer
+          path: dist/renderer
+          # The artifact must carry exactly what the build wrote, dotfiles too.
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
+  sign:
+    needs: build
+    runs-on: ubuntu-latest
+    # The environment holds UI_SIGNING_KEY, and its deployment policy admits
+    # only `main`. Nothing in this job installs or runs package code: the
+    # runner's own Node runs the one script from this commit, and the three
+    # actions it uses are pinned to commit SHAs.
+    environment: ui-signing
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/sign-ui-bundle.mjs
+            src/main/ui-release-public-key.ts
+          sparse-checkout-cone-mode: false
+
+      - name: Download renderer build
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ui-renderer
+          path: renderer
+
+      # The signer refuses to run when the key's public half differs from the
+      # release key in src/main/ui-release-public-key.ts, so a release can't
+      # publish a bundle every client would refuse.
+      - name: Sign renderer bundle
+        env:
+          UI_SIGNING_KEY: ${{ secrets.UI_SIGNING_KEY }}
+          VERSION: ${{ needs.build.outputs.version }}
+          MIN_SERVER_VERSION: ${{ needs.build.outputs.min_server_version }}
+        run: |
+          node scripts/sign-ui-bundle.mjs \
+            --dir renderer \
+            "--version=$VERSION" \
+            "--min-server-version=$MIN_SERVER_VERSION" \
+            --out signed \
+            --check-public-key src/main/ui-release-public-key.ts
+
+      - name: Upload signed bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ui-signed
+          path: |
+            signed/ui-bundle.tar.gz
+            signed/ui-bundle.sha256
+            signed/ui-signature.json
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [build, sign]
+    runs-on: ubuntu-latest
+    # RELEASES_TOKEN does the writing; this repository's token only reads.
+    permissions:
+      contents: read
+    steps:
       - name: Check if version already published
         id: check
         env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
-          TAG: ${{ steps.version.outputs.tag }}
+          TAG: ${{ needs.build.outputs.tag }}
         run: |
           if gh release view "$TAG" --repo mindsdb/antontron-releases &>/dev/null; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -124,21 +230,50 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Package renderer bundle
+      - name: Download signed bundle
         if: steps.check.outputs.skip != 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ui-signed
+          path: signed
+
+      # The tarball, ui-bundle.sha256 and the signed payload must agree before
+      # anything is published; a mismatch would ship a bundle every client
+      # refuses.
+      - name: Check signed bundle
+        if: steps.check.outputs.skip != 'true'
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          MIN_SERVER_VERSION: ${{ needs.build.outputs.min_server_version }}
         run: |
-          cd dist/renderer
-          tar czf ../../ui-bundle.tar.gz .
-          cd ../..
-          sha256sum ui-bundle.tar.gz | awk '{print $1}' > ui-bundle.sha256
+          python3 -c "
+          import base64, hashlib, json, os, sys
+          with open('signed/ui-bundle.tar.gz', 'rb') as f:
+              actual = hashlib.sha256(f.read()).hexdigest()
+          with open('signed/ui-bundle.sha256') as f:
+              listed = f.read().strip()
+          with open('signed/ui-signature.json') as f:
+              payload = json.loads(base64.b64decode(json.load(f)['signed']))
+          expected = {
+              'kind': 'cowork-ui-latest',
+              'schema': 1,
+              'version': os.environ['VERSION'],
+              'sha256': actual,
+              'minServerVersion': os.environ.get('MIN_SERVER_VERSION', '').strip() or None,
+          }
+          if listed != actual or payload != expected:
+              print('::error::The signed bundle does not match: tarball sha256 %s, ui-bundle.sha256 %s, signed payload %s' % (actual, listed, json.dumps(payload)))
+              sys.exit(1)
+          print('Signed bundle checked: %s' % actual)
+          "
 
       - name: Publish to antontron-releases
         if: steps.check.outputs.skip != 'true'
         env:
           RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
-          VERSION: ${{ steps.version.outputs.version }}
-          TAG: ${{ steps.version.outputs.tag }}
-          MIN_SERVER_VERSION_INPUT: ${{ github.event.inputs.min_server_version }}
+          VERSION: ${{ needs.build.outputs.version }}
+          TAG: ${{ needs.build.outputs.tag }}
+          MIN_SERVER_VERSION: ${{ needs.build.outputs.min_server_version }}
           SHELL_VERSION: ${{ inputs.shell_version }}
         run: |
           # -e: halt on first failure (so a bad token fails here, not
@@ -147,18 +282,9 @@ jobs:
           # gh-pages git steps below use `|| fallback` idioms that are
           # fine with unset edge cases.)
           set -eo pipefail
-          SHA256="$(cat ui-bundle.sha256)"
+          SHA256="$(cat signed/ui-bundle.sha256)"
           export SHA256
           export DOWNLOAD_URL="https://github.com/mindsdb/antontron-releases/releases/download/${TAG}/ui-bundle.tar.gz"
-          # Optional min cowork-server CalVer this UI requires: explicit dispatch
-          # input, else package.json `minServerVersion`, else none. Only emitted
-          # into latest.json when set — absence means "no constraint".
-          if [ -n "$MIN_SERVER_VERSION_INPUT" ]; then
-            export MIN_SERVER_VERSION="$MIN_SERVER_VERSION_INPUT"
-          else
-            MIN_SERVER_VERSION="$(node -p "require('./package.json').minServerVersion || ''" 2>/dev/null || echo '')"
-            export MIN_SERVER_VERSION
-          fi
           echo "Min server version: ${MIN_SERVER_VERSION:-'(none)'}"
 
           # Fail loudly if the token secret is missing/empty. Without
@@ -184,13 +310,13 @@ jobs:
           # Clone the public releases repo
           git clone "https://x-access-token:${RELEASES_TOKEN}@github.com/mindsdb/antontron-releases.git" releases-repo
 
-          # Create release with the bundle via gh CLI
+          # Create release with the signed bundle via gh CLI
           cd releases-repo
           gh release create "$TAG" \
             --title "UI $VERSION" \
             --notes "Renderer UI bundle v${VERSION}" \
-            ../ui-bundle.tar.gz \
-            || { echo "Release may already exist, uploading asset..."; gh release upload "$TAG" ../ui-bundle.tar.gz --clobber; }
+            ../signed/ui-bundle.tar.gz \
+            || { echo "Release may already exist, uploading asset..."; gh release upload "$TAG" ../signed/ui-bundle.tar.gz --clobber; }
 
           # Update latest.json on gh-pages
           git fetch origin gh-pages || git checkout --orphan gh-pages
@@ -208,7 +334,7 @@ jobs:
           msv = os.environ.get('MIN_SERVER_VERSION', '').strip()
           if msv:
               data['min_server_version'] = msv
-          # Shell (installer) version (ENG-849). A new installer only ships on
+          # Shell (installer) version. A new installer only ships on
           # the auto-release path, which passes SHELL_VERSION. On a UI-only
           # publish it's empty — carry over the last-published shellVersion
           # rather than dropping it, or users on an older shell would stop
@@ -223,6 +349,12 @@ jobs:
                   sv = ''
           if sv:
               data['shellVersion'] = sv
+          # The signed copy of version, sha256 and minServerVersion, which a
+          # shell that verifies page updates reads instead of the fields above.
+          with open('../signed/ui-signature.json') as f:
+              signature = json.load(f)
+          data['signed'] = signature['signed']
+          data['signature'] = signature['signature']
           with open('latest.json', 'w') as f:
               json.dump(data, f, indent=2)
           print(json.dumps(data, indent=2))

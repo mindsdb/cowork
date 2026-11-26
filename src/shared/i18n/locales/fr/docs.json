@@ -1,0 +1,314 @@
+{
+  "doc": "Document",
+  "pane": {
+    "status": {
+      "agentWriting": "L’agent écrit",
+      "notSaved": "Pas encore enregistré",
+      "saving": "Enregistrement…"
+    },
+    "showTabs": "Afficher les onglets",
+    "showTabsChanged": "Afficher les onglets (un onglet a changé)",
+    "openSharedPage": "Ouvrir la page partagée",
+    "openInBrowser": "Ouvrir dans le navigateur",
+    "shareToOpen": "Partagez le document pour l’ouvrir dans un navigateur",
+    "showChat": "Afficher la discussion",
+    "expand": "Agrandir",
+    "close": "Fermer",
+    "closeDoc": "Fermer le document",
+    "renameDoc": "Renommer le document : {title}",
+    "docName": "Nom du document",
+    "loading": "Chargement du document",
+    "gone": "Ce document n’existe plus.",
+    "openFailed": "Impossible d’ouvrir ce document. {reason}",
+    "offline": "Impossible de joindre le serveur local de Cowork. Vos modifications sont conservées ici et seront enregistrées dès qu’il sera de nouveau disponible.",
+    "dismiss": "Ignorer",
+    "undo": "Annuler"
+  },
+  "export": {
+    "label": "Exporter",
+    "downloadAs": "Télécharger au format",
+    "format": {
+      "docx": "Word (.docx)",
+      "pdf": "PDF",
+      "md": "Markdown",
+      "html": "Page HTML"
+    },
+    "copyMarkdown": "Copier en Markdown",
+    "exporting": "Exportation de {name}…",
+    "failed": "Échec de l’exportation",
+    "failedStatus": "Échec de l’exportation ({status})",
+    "copied": "Copié en Markdown",
+    "copyFailed": "Échec de la copie",
+    "copyDocFailed": "Impossible de copier le document"
+  },
+  "notice": {
+    "deletedTab": "Onglet « {title} » supprimé",
+    "deletedColumn": "Colonne « {name} » supprimée",
+    "deletedRows": "{count, plural, one {Ligne supprimée} other {# lignes supprimées}}",
+    "deletedBlocks": "{count, plural, one {Bloc supprimé} other {# blocs supprimés}}",
+    "cantUndo": "Impossible d’annuler : l’élément a changé depuis.",
+    "cantRedo": "Impossible de rétablir : le document a changé depuis.",
+    "editTooBig": "Cette modification est trop volumineuse pour être enregistrée. Le document affiche ce qui est enregistré.",
+    "editFailed": "Cette modification n’a pas pu être enregistrée. Le document affiche ce qui est enregistré.",
+    "imageFailed": "Impossible d’ajouter cette image",
+    "imageFailedStatus": "Impossible d’ajouter cette image ({status})",
+    "imageTooLarge": "Cette image est trop volumineuse pour un document (10 MB maximum).",
+    "openPageFailed": "Impossible d’ouvrir la page",
+    "openInBrowserFailed": "Impossible d’ouvrir ce document dans un navigateur",
+    "requestFailed": "Échec de la requête du document ({status})",
+    "timeout": "Le serveur a mis trop de temps à répondre."
+  },
+  "card": {
+    "open": "Ouvrir le document : {title}",
+    "deleted": "Document supprimé : {title}",
+    "kindDeleted": "Document · supprimé",
+    "kindOpen": "Document · ouvert à côté de la discussion",
+    "showing": "Affiché",
+    "openButton": "Ouvrir"
+  },
+  "chip": {
+    "me": "Vous"
+  },
+  "column": {
+    "resize": "Redimensionner le document"
+  },
+  "page": {
+    "untitled": "Sans titre",
+    "title": "Titre",
+    "edited": "Modifié {age}",
+    "new": "Nouveau document",
+    "byAgent": "Rédigé avec l’agent"
+  },
+  "tabs": {
+    "label": "Onglets",
+    "add": "Ajouter un onglet",
+    "addHint": "Ajouter un nouvel onglet à ce document",
+    "hide": "Masquer les onglets",
+    "changed": "Modifié",
+    "showChanged": "Afficher l’onglet modifié",
+    "name": "Nom de l’onglet",
+    "menu": "Onglet {title}",
+    "options": "Options de {title}",
+    "rename": "Renommer",
+    "moveUp": "Déplacer vers le haut",
+    "moveDown": "Déplacer vers le bas",
+    "delete": "Supprimer l’onglet"
+  },
+  "block": {
+    "kind": {
+      "paragraph": "Paragraphe",
+      "heading": "Titre {level}",
+      "listItem": "Élément de liste",
+      "task": "Élément à faire",
+      "quote": "Citation",
+      "callout": "Encadré",
+      "table": "Tableau",
+      "chart": "Graphique",
+      "metrics": "Indicateurs",
+      "code": "Code",
+      "image": "Image",
+      "divider": "Séparateur",
+      "pending": "Section à rédiger",
+      "other": "Bloc"
+    },
+    "empty": {
+      "paragraph": "Paragraphe vide",
+      "heading": "Titre {level} vide",
+      "listItem": "Élément de liste vide",
+      "task": "Élément à faire vide",
+      "quote": "Citation vide",
+      "callout": "Encadré vide"
+    },
+    "named": "{kind} « {words} »",
+    "addBelow": "Ajouter un bloc sous {block}",
+    "options": "Options de {block}",
+    "optionsMenu": "Options du bloc",
+    "startWriting": "Commencez à écrire ou tapez / pour les blocs",
+    "typeSlash": "Tapez / pour les blocs",
+    "markDone": "Marquer comme terminé",
+    "markNotDone": "Marquer comme non terminé"
+  },
+  "menu": {
+    "turnInto": "Transformer en",
+    "calloutColor": "Couleur de l’encadré",
+    "editWithAgent": "Modifier avec l’agent…",
+    "duplicate": "Dupliquer",
+    "moveUp": "Déplacer vers le haut",
+    "moveDown": "Déplacer vers le bas",
+    "delete": "Supprimer"
+  },
+  "insert": {
+    "label": "Insérer un bloc",
+    "noMatch": "Aucun bloc ne correspond à « {query} »",
+    "group": {
+      "basic": "Base",
+      "data": "Données",
+      "other": "Autres",
+      "agent": "Agent"
+    },
+    "item": {
+      "paragraph": "Texte",
+      "heading1": "Titre 1",
+      "heading2": "Titre 2",
+      "heading3": "Titre 3",
+      "bullet": "Liste à puces",
+      "numbered": "Liste numérotée",
+      "task": "Liste de choses à faire",
+      "quote": "Citation",
+      "callout": "Encadré",
+      "table": "Tableau",
+      "chart": "Graphique",
+      "metrics": "Indicateurs",
+      "code": "Code",
+      "divider": "Séparateur",
+      "image": "Image",
+      "ask": "Demander à l’agent d’écrire…"
+    }
+  },
+  "tone": {
+    "info": "Info",
+    "success": "Succès",
+    "warning": "Avertissement",
+    "danger": "Danger",
+    "note": "Note"
+  },
+  "format": {
+    "label": "Mise en forme",
+    "bold": "Gras",
+    "italic": "Italique",
+    "strike": "Barré",
+    "code": "Code",
+    "link": "Lien",
+    "addLink": "Ajouter un lien",
+    "linkAddress": "Adresse du lien",
+    "linkPlaceholder": "Collez un lien et appuyez sur Enter"
+  },
+  "ask": {
+    "label": "Modifier avec l’agent",
+    "request": "Demande à l’agent",
+    "placeholderWrite": "Que doit écrire l’agent ici ?",
+    "placeholderChange": "Que faut-il changer ?",
+    "send": "Envoyer"
+  },
+  "comments": {
+    "edit": "Modifier",
+    "editHint": "Écrire dans le document",
+    "commentHint": "Commenter — cliquez sur un bloc ou sélectionnez des mots"
+  },
+  "chart": {
+    "label": "Graphique",
+    "title": "Titre du graphique",
+    "kind": {
+      "bar": "Colonnes",
+      "hbar": "Barres",
+      "stacked": "Empilées",
+      "line": "Courbe",
+      "area": "Aire",
+      "donut": "Anneau"
+    },
+    "inUnit": "En {unit}",
+    "followsTable": "Se met à jour avec son tableau",
+    "showTable": "Afficher le tableau",
+    "makeTable": "Convertir les données en tableau",
+    "tableGone": "Le tableau de ce graphique n’est plus dans cet onglet.",
+    "noColumn": "Le tableau n’a pas de colonne « {column} ».",
+    "noNumbers": "Aucun nombre à représenter pour l’instant.",
+    "drawFrom": "Tracer à partir d’un tableau",
+    "useTable": "Utiliser un tableau…",
+    "tableOption": "Tableau {number} : {columns}",
+    "total": "Total",
+    "totalUnit": "Total ({unit})"
+  },
+  "table": {
+    "kind": {
+      "text": "Texte",
+      "number": "Nombre",
+      "status": "Statut",
+      "date": "Date"
+    },
+    "type": "Type",
+    "sortAsc": "Trier par ordre croissant",
+    "sortDesc": "Trier par ordre décroissant",
+    "insertLeft": "Insérer une colonne à gauche",
+    "insertRight": "Insérer une colonne à droite",
+    "deleteColumn": "Supprimer la colonne",
+    "columnName": "Nom de la colonne",
+    "columnMenu": "Colonne {column}",
+    "columnOptions": "Options de la colonne {column}",
+    "addColumn": "Ajouter une colonne",
+    "rowOptions": "Options de la ligne",
+    "rowOptionsFor": "Options de la ligne {number}",
+    "insertAbove": "Insérer une ligne au-dessus",
+    "insertBelow": "Insérer une ligne en dessous",
+    "deleteRow": "Supprimer la ligne",
+    "newRow": "Nouvelle ligne",
+    "other": "Autre…",
+    "clear": "Effacer",
+    "setValue": "Définir {column}",
+    "newValue": "Nouvelle valeur pour {column}",
+    "cellValue": "{column} : {value}",
+    "cellEmpty": "{column} : vide",
+    "dateValue": "Date : {value}",
+    "dateEmpty": "Date : vide",
+    "cell": "{column}, ligne {number}"
+  },
+  "metrics": {
+    "label": "Libellé",
+    "change": "Variation"
+  },
+  "code": {
+    "label": "Code",
+    "language": "Langage du code",
+    "plainText": "texte brut",
+    "copy": "Copier le code",
+    "copied": "Copié"
+  },
+  "image": {
+    "label": "Image",
+    "caption": "Ajouter une légende"
+  },
+  "pending": {
+    "writing": "Rédaction en cours :",
+    "toWrite": "À rédiger :"
+  },
+  "versions": {
+    "title": "Historique des versions",
+    "saved": "Enregistré automatiquement",
+    "loading": "Chargement des versions…",
+    "loadFailed": "Impossible de charger les versions. Réessayez dans un instant.",
+    "current": "Version actuelle",
+    "none": "Les versions précédentes s’affichent ici à mesure que le document change.",
+    "hint": "Choisissez une version pour la consulter avant de la restaurer.",
+    "viewing": "Affichage : {when}",
+    "changedSince": "Modifié depuis cette version",
+    "older": "Version plus ancienne",
+    "newer": "Version plus récente",
+    "back": "Revenir à la version actuelle",
+    "restoreThis": "Restaurer cette version",
+    "confirmTitle": "Restaurer cette version ?",
+    "confirmLead": "Le document revient à l’état qu’il avait {when}.",
+    "agentWriting": "L’agent écrit encore. Ce qu’il écrira ensuite s’ajoutera à la version que vous restaurez.",
+    "nothingLost": "Rien n’est perdu. La version actuelle reste dans l’historique des versions, vous pouvez donc y revenir.",
+    "sharedUpdates": "La page partagée est également mise à jour.",
+    "cancel": "Annuler",
+    "restore": "Restaurer",
+    "restoring": "Restauration…",
+    "restoredFrom": "Version restaurée : {when}",
+    "undo": "Annuler",
+    "openFailed": "Impossible d’ouvrir cette version",
+    "restoreFailed": "Impossible de restaurer cette version",
+    "undoFailed": "Impossible d’annuler la restauration",
+    "earlier": "Modifications précédentes",
+    "who": {
+      "agent": "Agent",
+      "user": "Vous"
+    },
+    "today": "Aujourd’hui",
+    "yesterday": "Hier",
+    "whenTitle": "{day}, {time}",
+    "whenPhrase": "{day, select, today {aujourd’hui à {time}} yesterday {hier à {time}} other {{date} à {time}}}",
+    "justNow": "à l’instant",
+    "minutesAgo": "{count, plural, other {il y a # min}}",
+    "hoursAgo": "{count, plural, other {il y a # h}}"
+  }
+}

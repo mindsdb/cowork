@@ -1,5 +1,5 @@
-// The mobile app's soft push prompt (ENG-4023). Shown once, right after the
-// user starts their first task, instead of the OS prompt at launch: the OS
+// The mobile app's soft push prompt (ENG-4023). Shown once, when the
+// user begins composing their first task, instead of the OS prompt at launch: the OS
 // asks only once, so it is worth asking when the value is obvious.
 // "Turn on" fires the OS prompt; "Not now" waits 14 days (lib/mobilePush.ts).
 

@@ -7,17 +7,24 @@ import {
   startFixtureServer,
   healthyHtml,
   stallingHtml,
+  writeSignedBundle,
   HANG_PATH,
   bumpYears,
   type FixtureServer,
   type OtaFixture,
 } from './helpers/ota-fixture';
+import { generateTestSigningKey } from '../tests/helpers/uiBundleSigning';
 
 // Live OTA lifecycle (ENG-670). Drives the REAL Electron main process through
-// the paths the checklist calls out — serve gate, freshness/no-downgrade,
-// legacy-cache handling, post-update + boot rollback, quarantine, and the
-// server-compat withhold — against a LOCAL fixture manifest (COWORK_OTA_MANIFEST_URL),
-// so nothing is ever published to the production release channel.
+// the paths the checklist calls out: serve gate, freshness/no-downgrade,
+// unsigned-cache handling, the folder check at relaunch, post-update + boot
+// rollback, quarantine, unsigned manifests, and the server-compat withhold. It
+// runs against a LOCAL fixture manifest (COWORK_OTA_MANIFEST_URL), so nothing is
+// ever published to the production release channel.
+//
+// Page updates are signed. The spec generates a key pair at runtime, signs every
+// bundle it seeds or serves with it, and hands the app its public key through
+// COWORK_OTA_TEST_PUBLIC_KEY, which only an unpackaged run trusts.
 //
 // Why this works unpackaged: OTA is forced on via OTA_UI=on (build-channel gate
 // bypass); the serve gate + boot self-heal run in createWindow regardless of
@@ -42,6 +49,7 @@ const NEWER = /^\d+(\.\d+){4}/.test(BUNDLED) ? bumpYears(BUNDLED, 1) : '';
 const OLDER = /^\d+(\.\d+){4}/.test(BUNDLED) ? bumpYears(BUNDLED, -1) : '';
 
 const CACHE = 'ui-cache';
+const KEY = generateTestSigningKey();
 
 interface Sandbox {
   home: string;
@@ -55,20 +63,21 @@ function makeSandbox(): Sandbox {
   return { home, ud, cacheDir: path.join(ud, CACHE) };
 }
 
-/** Seed a cache slot on disk before launch. `legacy` writes the pre-gate layout
- *  (index.html + a cache-root version.json, NO per-slot .ota-meta.json). */
+/** Seed a cache slot on disk before launch, signed with KEY. `unsigned` writes
+ *  the layout a shell from before signing left behind: index.html and a
+ *  schema-2 .ota-meta.json, with no signed manifest. */
 function seedSlot(
   cacheDir: string,
   slot: 'current' | 'previous',
-  opts: { version: string; minServerVersion?: string; html?: string; legacy?: boolean },
+  opts: { version: string; minServerVersion?: string; html?: string; unsigned?: boolean },
 ) {
   const dir = path.join(cacheDir, slot);
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'index.html'), opts.html ?? healthyHtml(opts.version));
-  if (opts.legacy) {
-    fs.writeFileSync(path.join(cacheDir, 'version.json'), JSON.stringify({ version: opts.version }));
+  if (!opts.unsigned) {
+    writeSignedBundle(dir, opts, KEY);
     return;
   }
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'index.html'), opts.html ?? healthyHtml(opts.version));
   const meta: Record<string, unknown> = { schema: 2, version: opts.version };
   if (opts.minServerVersion) meta.minServerVersion = opts.minServerVersion;
   fs.writeFileSync(path.join(dir, '.ota-meta.json'), JSON.stringify(meta));
@@ -112,6 +121,7 @@ async function launch(sb: Sandbox, manifestUrl?: string): Promise<Page> {
       // this unpackaged lifecycle suite exercises.
       COWORK_BUILD_KIND: 'prod',
       OTA_UI: 'on', // force the build-channel gate on for this unpackaged build
+      COWORK_OTA_TEST_PUBLIC_KEY: KEY.publicKeyBase64, // trusted only because this run is unpackaged
       ...(manifestUrl ? { COWORK_OTA_MANIFEST_URL: manifestUrl } : {}),
       ELECTRON_DISABLE_SECURITY_WARNINGS: '1',
     },
@@ -168,13 +178,35 @@ test.describe('OTA lifecycle (live)', () => {
     await expect(page.locator('#ota-fixture')).toHaveAttribute('data-version', NEWER, { timeout: 20_000 });
   });
 
-  test('ignores a legacy pre-gate cache (no provenance) and serves bundled — item C', async () => {
+  test('deletes an unsigned cache left by a shell from before signing, and serves bundled', async () => {
     sandbox = makeSandbox();
-    // Legacy layout: a version.json far newer than bundled, but no .ota-meta.json.
-    seedSlot(sandbox.cacheDir, 'current', { version: NEWER, legacy: true });
+    // Newer than bundled, with the .ota-meta.json that shell wrote, but no signed manifest.
+    seedSlot(sandbox.cacheDir, 'current', { version: NEWER, unsigned: true });
     const page = await launch(sandbox);
     await page.waitForSelector('#root > *', { state: 'attached', timeout: 30_000 });
-    await expect(page.locator('#ota-fixture')).toHaveCount(0); // bundled, not the stale cache
+    await expect(page.locator('#ota-fixture')).toHaveCount(0); // bundled, not the unsigned cache
+    expect(fs.existsSync(path.join(sandbox.cacheDir, 'current'))).toBe(false);
+  });
+
+  test('refuses at relaunch a cached bundle with one byte changed after quit', async () => {
+    sandbox = makeSandbox();
+    seedSlot(sandbox.cacheDir, 'current', { version: NEWER });
+    const first = await launch(sandbox);
+    await expect(first.locator('#ota-fixture')).toHaveAttribute('data-version', NEWER, { timeout: 20_000 });
+    await app?.close();
+    app = null;
+
+    // Flip one bit of one byte of the served page while the app is not running.
+    const index = path.join(sandbox.cacheDir, 'current', 'index.html');
+    const bytes = fs.readFileSync(index);
+    const at = bytes.indexOf('ota fixture');
+    bytes[at] ^= 0x20; // 'o' becomes 'O': same length, still valid HTML
+    fs.writeFileSync(index, bytes);
+
+    const relaunched = await launch(sandbox);
+    await relaunched.waitForSelector('#root > *', { state: 'attached', timeout: 30_000 });
+    await expect(relaunched.locator('#ota-fixture')).toHaveCount(0); // bundled, not the changed cache
+    expect(fs.existsSync(path.join(sandbox.cacheDir, 'current'))).toBe(false);
   });
 
   test('does not serve a cache older than the bundled renderer (no downgrade)', async () => {
@@ -191,7 +223,7 @@ test.describe('OTA lifecycle (live)', () => {
     test.setTimeout(90_000);
     sandbox = makeSandbox();
     // A server only to host the never-responding /hang the stalling bundle loads.
-    server = await startFixtureServer();
+    server = await startFixtureServer(KEY);
     // Newer than bundled (so it is served) + constrained-free + a main frame
     // that never finishes loading → the 15s boot timeout must roll it back.
     seedSlot(sandbox.cacheDir, 'current', { version: NEWER, html: stallingHtml(`${server.origin}${HANG_PATH}`) });
@@ -210,21 +242,33 @@ test.describe('OTA lifecycle (live)', () => {
   test('applies + serves a healthy bundle from the manifest (post-update success)', async () => {
     test.setTimeout(90_000);
     sandbox = makeSandbox();
-    server = await startFixtureServer({ version: NEWER });
+    server = await startFixtureServer(KEY, { version: NEWER });
     const page = await launch(sandbox, server.manifestUrl);
     await waitForBridge(page);
 
     await fireApply(page); // navigates on the health-checked reload
     await expect(page.locator('#ota-fixture')).toHaveAttribute('data-version', NEWER, { timeout: 30_000 });
-    // Activated on disk with provenance.
-    const meta = JSON.parse(fs.readFileSync(path.join(sandbox.cacheDir, 'current', '.ota-meta.json'), 'utf-8'));
-    expect(meta.version).toBe(NEWER);
+    // Activated on disk with its signed manifest, and nothing the shell wrote itself.
+    const manifest = JSON.parse(fs.readFileSync(path.join(sandbox.cacheDir, 'current', 'ota-manifest.json'), 'utf-8'));
+    expect(manifest.version).toBe(NEWER);
+    expect(fs.existsSync(path.join(sandbox.cacheDir, 'current', '.ota-meta.json'))).toBe(false);
+  });
+
+  test('offers and applies nothing from a latest.json without a signature', async () => {
+    sandbox = makeSandbox();
+    server = await startFixtureServer(KEY, { version: NEWER, unsigned: true });
+    const page = await launch(sandbox, server.manifestUrl);
+    await waitForBridge(page);
+
+    expect((await checkUpdate(page)).uiUpdateAvailable).toBe(false);
+    expect(await applyUpdate(page)).toBe(false);
+    expect(fs.existsSync(path.join(sandbox.cacheDir, 'current'))).toBe(false);
   });
 
   test('rolls back + quarantines a broken bundle after a failed post-update reload', async () => {
     test.setTimeout(90_000);
     sandbox = makeSandbox();
-    server = await startFixtureServer();
+    server = await startFixtureServer(KEY);
     server.setFixture({ version: NEWER, html: stallingHtml(`${server.origin}${HANG_PATH}`) });
     const page = await launch(sandbox, server.manifestUrl);
     await waitForBridge(page);
@@ -243,7 +287,7 @@ test.describe('OTA lifecycle (live)', () => {
     sandbox = makeSandbox();
     // Floor declared, but no server is installed in the sandbox → /health is
     // unreachable → server version unknown → fail closed (withheld).
-    server = await startFixtureServer({ version: NEWER, minServerVersion: NEWER });
+    server = await startFixtureServer(KEY, { version: NEWER, minServerVersion: NEWER });
     const page = await launch(sandbox, server.manifestUrl);
     await waitForBridge(page);
 
@@ -264,7 +308,7 @@ test.describe('OTA lifecycle (live)', () => {
     sandbox = makeSandbox();
     fs.mkdirSync(sandbox.cacheDir, { recursive: true });
     fs.writeFileSync(path.join(sandbox.cacheDir, 'rejected.json'), JSON.stringify({ version: NEWER }));
-    server = await startFixtureServer({ version: NEWER });
+    server = await startFixtureServer(KEY, { version: NEWER });
     const page = await launch(sandbox, server.manifestUrl);
     await waitForBridge(page);
 

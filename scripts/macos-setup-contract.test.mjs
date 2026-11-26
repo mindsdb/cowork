@@ -1,10 +1,16 @@
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, posix, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { assertAppIdentity, assertSetupPassed, channels, failureStep, packageIdentity, validateManifest, STEP_NAMES } from './macos-setup-contract.mjs';
+import { createRequire } from 'node:module';
+import { assertAppIdentity, assertSetupPassed, channels, failureStep, forbiddenEntitlements, inspectableCopy, packageIdentity, validateManifest, FORBIDDEN_ENTITLEMENTS, STEP_NAMES } from './macos-setup-contract.mjs';
+import { checkFuses, enableInspector, fuseMismatches, INSPECTABLE_FUSES, RELEASE_FUSES } from './release-fuses.mjs';
+
+const require = createRequire(import.meta.url);
+const { flipFuses, getCurrentFuseWire, FuseV1Options, FuseVersion } = require('@electron/fuses');
+const { SENTINEL } = require('@electron/fuses/dist/constants.js');
 
 function completed() {
   return {
@@ -129,7 +135,10 @@ test('notification names a failing step, reports missing evidence, and never acc
   assert.match(failed, /failed=true/);
   assert.match(failed, /stable: Verify installation/);
   assert.match(failed, /prod: runner or workflow failure/);
-  const unsafe = summarize({ passed: false, failingStep: '"\n@channel arbitrary log' });
+  for (const step of ['Check release fuses', 'Check entitlements', 'Prepare inspectable copy']) {
+    assert.match(summarize({ passed: false, failingStep: step }), new RegExp(`stable: ${step}`));
+  }
+  const unsafe =summarize({ passed: false, failingStep: '"\n@channel arbitrary log' });
   assert.match(unsafe, /stable: Setup/);
   assert.doesNotMatch(unsafe, /@channel/);
 });
@@ -145,4 +154,100 @@ test('the real smoke command refuses local installation and still writes failure
   assert.equal(result.passed, false);
   assert.equal(result.failingStep, 'Preparation');
   assert.match(result.error, /GitHub-hosted macOS runner/);
+});
+
+/* A stand-in for an Electron binary: @electron/fuses finds the wire after its
+   sentinel, a version byte and a length byte, one character per fuse. Electron
+   45 ships the wire 10110001, which leaves all five release fuses unset. */
+const ELECTRON_DEFAULTS = '10110001';
+const fuseFixtures = mkdtempSync(join(tmpdir(), 'cowork-fuse-fixtures-'));
+after(() => rmSync(fuseFixtures, { recursive: true, force: true }));
+function electronBinary(states, name = 'electron') {
+  const file = join(mkdtempSync(join(fuseFixtures, 'binary-')), name);
+  writeFileSync(file, Buffer.concat([Buffer.from('code before'), Buffer.from(SENTINEL), Buffer.from([1, states.length]), Buffer.from(states), Buffer.from('code after')]));
+  return file;
+}
+
+/** A wire @electron/fuses itself wrote with the release fuses, then `change`, and read back. */
+async function releaseWire(change = {}) {
+  const file = electronBinary(ELECTRON_DEFAULTS);
+  await flipFuses(file, { version: FuseVersion.V1, ...RELEASE_FUSES, ...change });
+  return getCurrentFuseWire(file);
+}
+
+test('a wire flipped to the release fuses passes, and an unfused Electron fails on all five', async () => {
+  assert.deepEqual(fuseMismatches(await releaseWire()), []);
+  assert.deepEqual(fuseMismatches(await getCurrentFuseWire(electronBinary(ELECTRON_DEFAULTS))), [
+    'RunAsNode is on, expected off', 'EnableNodeOptionsEnvironmentVariable is on, expected off', 'EnableNodeCliInspectArguments is on, expected off',
+    'EnableEmbeddedAsarIntegrityValidation is off, expected on', 'OnlyLoadAppFromAsar is off, expected on',
+  ]);
+});
+
+for (const [index, enabled] of Object.entries(RELEASE_FUSES)) {
+  test(`a release wire with only ${FuseV1Options[index]} wrong fails, naming it`, async () => {
+    const [actual, expected] = enabled ? ['off', 'on'] : ['on', 'off'];
+    assert.deepEqual(fuseMismatches(await releaseWire({ [index]: !enabled })), [`${FuseV1Options[index]} is ${actual}, expected ${expected}`]);
+  });
+}
+
+test('a fuse the wire is too short to hold, a removed fuse, and another wire version fail', async () => {
+  const short = electronBinary('1011');
+  await flipFuses(short, { version: FuseVersion.V1, [FuseV1Options.RunAsNode]: false, [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false, [FuseV1Options.EnableNodeCliInspectArguments]: false });
+  assert.deepEqual(fuseMismatches(await getCurrentFuseWire(short)), [
+    'EnableEmbeddedAsarIntegrityValidation is missing, expected on', 'OnlyLoadAppFromAsar is missing, expected on',
+  ]);
+  assert.deepEqual(fuseMismatches(await getCurrentFuseWire(electronBinary('00001r01'))), ['OnlyLoadAppFromAsar is removed, expected on']);
+  assert.deepEqual(fuseMismatches({ ...await releaseWire(), version: '2' }), ['fuse wire version 2 is not 1']);
+});
+
+test('the inspectable copy differs from the release in its inspector fuse alone, read the way the smokes read it', async () => {
+  const file = electronBinary(ELECTRON_DEFAULTS, 'MindsHub Cowork.exe');
+  await flipFuses(file, { version: FuseVersion.V1, ...RELEASE_FUSES });
+  assert.deepEqual((await checkFuses(file)).mismatches, []);
+  await enableInspector(file);
+  const copy = await checkFuses(file, INSPECTABLE_FUSES);
+  assert.deepEqual(copy.mismatches, []);
+  assert.equal(copy.states['MindsHub Cowork.exe'].EnableNodeCliInspectArguments, 'on');
+  assert.equal(copy.states['MindsHub Cowork.exe'].EnableCookieEncryption, 'off');
+  assert.deepEqual((await checkFuses(file)).mismatches, ['MindsHub Cowork.exe: EnableNodeCliInspectArguments is on, expected off']);
+});
+
+/* What `codesign -d --entitlements - --xml` printed for a released app that still
+   held both keys. codesign is macOS-only, and these tests run on Linux. */
+const RELEASED_ENTITLEMENTS = '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>com.apple.security.cs.allow-dyld-environment-variables</key><true/><key>com.apple.security.cs.allow-jit</key><true/><key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/><key>com.apple.security.cs.disable-library-validation</key><true/><key>com.apple.security.device.audio-input</key><true/></dict></plist>';
+const withoutKey = (xml, key) => xml.replace(`<key>${key}</key><true/>`, '');
+
+test('entitlements holding either forbidden key fail, and entitlements without them pass', () => {
+  const [dyld, library] = FORBIDDEN_ENTITLEMENTS;
+  assert.deepEqual(forbiddenEntitlements(RELEASED_ENTITLEMENTS), [dyld, library]);
+  assert.deepEqual(forbiddenEntitlements(withoutKey(RELEASED_ENTITLEMENTS, library)), [dyld]);
+  assert.deepEqual(forbiddenEntitlements(withoutKey(RELEASED_ENTITLEMENTS, dyld)), [library]);
+  assert.deepEqual(forbiddenEntitlements(withoutKey(withoutKey(RELEASED_ENTITLEMENTS, dyld), library)), []);
+  assert.deepEqual(forbiddenEntitlements(RELEASED_ENTITLEMENTS.replace(`<key>${dyld}</key><true/>`, `<key>${dyld}</key><false/>`)), [dyld, library]);
+});
+
+test('code signed without entitlements passes, and a print that is not a plist never passes as empty', () => {
+  assert.deepEqual(forbiddenEntitlements(''), []);
+  assert.deepEqual(forbiddenEntitlements('\n'), []);
+  for (const print of ['[Dict]\n\t[Key] com.apple.security.cs.allow-jit\n\t[Value]\n\t\t[Bool] true\n', 'Executable=/Applications/MindsHub Cowork.app/Contents/MacOS/MindsHub Cowork', '<plist version="1.0"><dict>']) {
+    assert.throws(() => forbiddenEntitlements(print), /did not print an entitlements plist/, print);
+  }
+});
+
+test('the inspectable copy keeps the bundle\'s name in a fresh folder and launches the executable inside it', () => {
+  const bundle = '/Applications/MindsHub Cowork (Staging).app';
+  const copy = inspectableCopy(bundle, `${bundle}/Contents/MacOS/MindsHub Cowork (Staging)`, '/Users/runner/work/_temp/cowork-app-x', posix);
+  assert.deepEqual(copy, {
+    root: '/Users/runner/work/_temp/cowork-app-x/MindsHub Cowork (Staging).app',
+    executable: '/Users/runner/work/_temp/cowork-app-x/MindsHub Cowork (Staging).app/Contents/MacOS/MindsHub Cowork (Staging)',
+  });
+  for (const executable of [bundle, '/Applications/MindsHub Cowork.app/Contents/MacOS/MindsHub Cowork', `${bundle}.old/Contents/MacOS/MindsHub Cowork (Staging)`]) {
+    assert.throws(() => inspectableCopy(bundle, executable, '/Users/runner/work/_temp/cowork-app-x', posix), /not inside the installed app/, executable);
+  }
+});
+
+/* src/main/release-hardening.invariant.test.ts pins electron-builder.yml's
+   electronFuses block to RELEASE_FUSES. */
+test('the entitlements file the build signs with passes the smoke entitlement scan', () => {
+  assert.deepEqual(forbiddenEntitlements(readFileSync(resolve('build/entitlements.mac.plist'), 'utf8')), []);
 });
