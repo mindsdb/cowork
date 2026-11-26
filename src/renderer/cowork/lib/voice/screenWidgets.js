@@ -18,6 +18,21 @@ import { artifactExcerpt, htmlText } from './screenArtifacts';
 
 export const MAX_WIDGETS = 3;
 export const MAX_WIDGET_EXCERPT_CHARS = 1500;
+// The server (cowork-server voice_operator) refuses a whole request with a
+// longer key, title or state, and only shows a state this size or smaller:
+// a larger one goes as null, so the call still works without it.
+export const MAX_WIDGET_STATE_BYTES = 4096;
+const MAX_WIDGET_KEY_CHARS = 200;
+const MAX_WIDGET_TITLE_CHARS = 300;
+
+function stateForSnapshot(state) {
+  if (state == null) return null;
+  let json;
+  try { json = JSON.stringify(state); } catch { return null; }
+  if (typeof json !== 'string') return null;
+  const bytes = typeof TextEncoder === 'function' ? new TextEncoder().encode(json).length : json.length;
+  return bytes <= MAX_WIDGET_STATE_BYTES ? state : null;
+}
 
 const readers = new Map();
 let nextId = 0;
@@ -63,11 +78,11 @@ function liveFrames() {
  * @returns {Array<{ key: string, title: string, display: 'widget' | 'inline', state: unknown, excerpt: string, submittable: boolean }>}
  */
 export function widgetsOnScreen() {
-  return liveFrames().slice(0, MAX_WIDGETS).map(({ key, artifact, html, onSubmit }) => ({
+  return liveFrames().filter(({ key }) => key.length <= MAX_WIDGET_KEY_CHARS).slice(0, MAX_WIDGETS).map(({ key, artifact, html, onSubmit }) => ({
     key,
-    title: artifact.title || '',
+    title: (artifact.title || '').slice(0, MAX_WIDGET_TITLE_CHARS),
     display: isWidgetArtifact(artifact) ? 'widget' : 'inline',
-    state: latestInlineState(artifact) ?? null,
+    state: stateForSnapshot(latestInlineState(artifact)),
     excerpt: artifactExcerpt(htmlText(html || ''), MAX_WIDGET_EXCERPT_CHARS),
     submittable: typeof onSubmit === 'function',
   }));

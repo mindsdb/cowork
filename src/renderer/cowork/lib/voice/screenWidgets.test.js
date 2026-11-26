@@ -58,6 +58,21 @@ describe('widgetsOnScreen', () => {
   });
 });
 
+describe('widgetsOnScreen, within the server limits', () => {
+  it('sends a state too large for the server as null, and cuts a long title', () => {
+    inline.states.set('big', { notes: 'x'.repeat(5000) });
+    show(() => ({ artifact: card('big', { title: 'T'.repeat(400) }) }));
+    const [widget] = widgetsOnScreen();
+    expect(widget.state).toBeNull();
+    expect(widget.title).toHaveLength(300);
+  });
+
+  it('leaves out a frame whose key is longer than the server takes', () => {
+    show(() => ({ artifact: card('k'.repeat(201)) }));
+    expect(widgetsOnScreen()).toEqual([]);
+  });
+});
+
 describe('set_widget_state', () => {
   it("sets the state the way a frame's own change goes, and says so", () => {
     const artifact = card('pick');
