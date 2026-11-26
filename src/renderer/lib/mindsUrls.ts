@@ -164,14 +164,16 @@ export function consoleUrlFor(
 /** The console link that opens the plan's confirm dialog for `tier` (Plus
  *  unless Pro is named), for the organization and account this session runs
  *  in. A `placement` names the card or control that offered the upgrade, and
- *  the link carries it as its start surface (see startSurface.ts). */
+ *  the link carries it as its start surface when coworkStartSurface gives one
+ *  (see startSurface.ts). */
 export function mindsUpgradeUrl(
   tier: string | null | undefined,
   account: { organizationId?: string | null; subject?: string | null } = {},
   placement?: string | null,
 ): string {
   const target = new URL(consoleUrlFor(MINDS_UPGRADE_URL[tier === 'pro' ? 'pro' : 'plus'], account));
-  if (placement) target.searchParams.set(START_SURFACE_PARAM, coworkStartSurface(placement));
+  const startSurface = coworkStartSurface(placement);
+  if (startSurface) target.searchParams.set(START_SURFACE_PARAM, startSurface);
   return target.toString();
 }
 

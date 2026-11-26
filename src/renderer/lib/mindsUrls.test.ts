@@ -326,4 +326,15 @@ describe('mindsUpgradeUrl (ENG-4186)', () => {
       expect(url.searchParams.get('upgrade')).toBe('plus');
     }
   });
+
+  it('names no start surface for a placement outside UPGRADE_PLACEMENTS', async () => {
+    const { mindsUpgradeUrl } = await importUrls();
+    // 'plan-banner' fails START_SURFACE_PATTERN; 'plan_banner' matches it but is not listed.
+    for (const placement of ['plan-banner', 'plan_banner']) {
+      const url = new URL(mindsUpgradeUrl('pro', { organizationId: 'org-1' }, placement));
+      expect(url.searchParams.has('start_surface')).toBe(false);
+      expect(url.searchParams.get('upgrade')).toBe('pro');
+      expect(url.searchParams.get('organization')).toBe('org-1');
+    }
+  });
 });

@@ -153,7 +153,7 @@ const EVENTS = {
   // the plan with an empty wallet (`model_not_in_tier`). The series steps up
   // again where a build carrying them meets an org on a plan.
   TOKEN_CAP_HIT:            'token_cap_hit',            // { reason: 'token_limit'|'included_allowance_exhausted'|'model_access_denied'|'window_allowance_exhausted'|'model_not_in_tier' } credit-block impression (ENG-385, widened ENG-1533 + ENG-1537 + ENG-4186)
-  UPGRADE_CLICKED:          'upgrade_clicked',          // { placement: 'allowance_card'|'window_card'|'model_card'|'model_picker'|'usage_bar'|'usage_settings'|'compare', start_surface: 'cowork_<placement>' (absent with no placement), tier: 'plus'|'pro', from_tier: 'free'|'plus' } a plan upgrade was clicked. `placement` is the card or control that offered it; `surface` stays the client type, as on every event. Opens the console billing page with the same start_surface, but is NOT also a billing_opened: the two series stay disjoint, so the funnels add up
+  UPGRADE_CLICKED:          'upgrade_clicked',          // { placement: 'allowance_card'|'window_card'|'model_card'|'model_picker'|'usage_bar'|'usage_settings'|'compare'|'unknown' (UPGRADE_PLACEMENTS in lib/startSurface.ts, or 'unknown' when the caller named none), start_surface: 'cowork_<placement>' (absent for 'unknown' or a placement outside UPGRADE_PLACEMENTS), tier: 'plus'|'pro', from_tier: 'free'|'plus' } a plan upgrade was clicked. `placement` is the card or control that offered it; `surface` stays the client type, as on every event. Opens the console billing page with the same start_surface, but is NOT also a billing_opened: the two series stay disjoint, so the funnels add up
   BILLING_OPENED:           'billing_opened',           // { trigger: 'token_limit'|'included_allowance_exhausted'|'window_allowance_exhausted'|'model_not_in_tier'|'free_serving_paused'|'budget_exceeded'|'model_access_denied'|'model_disabled'|'key_provisioning_refused'|'connect_provider'|'no_credits_notice'|'allowance_used_notice'|'free_air_paused_notice'|'budget_notice'|'locked_model_hint'|'locked_model_row'|'usage_notice'|'usage_alert'|'usage_settings'|'nav' } every route to the billing page; 'nav', 'usage_settings', 'budget_exceeded' and 'budget_notice' are NOT upgrade intent (credits do not lift a budget).
   KEY_PROVISIONING_REFUSED: 'key_provisioning_refused', // { outcome: 'byok_offered'|'billing_opened'|'unhandled' } (ENG-1533)
   ORGANIZATION_CHANGED:     'organization_changed',     // { from_kind: 'personal'|'company', to_kind: 'personal'|'company', cause: 'menu'|'landing'|'outside_app' } this device found the account in a different organization than it last saw. 'outside_app' = nothing in this app instance asked for it: another tab, window, app or the server moved it
@@ -1175,19 +1175,20 @@ export function trackBillingOpened(trigger, workspaceMode, kind) {
 
 /* A plan upgrade was clicked: "Get Plus", "Upgrade to Pro" or "Upgrade".
    `placement` is the card or control that offered it, so conversion can be
-   graded per placement. It is not `surface`: capture() stamps `surface` with
-   the client type on every event, over anything passed here. `start_surface`
-   is the value the console link carries for the same placement
-   (mindsUpgradeUrl), so a click joins to the subscription it led to. `tier`
-   is the plan offered and `from_tier` the plan the org is on. It opens the
-   console's plan confirm dialog, so it arms the same post-payment
-   availability follow-up as a billing link: a new plan unlocks models just as
-   funds do. */
+   graded per placement; a click with none is sent as 'unknown'. It is not
+   `surface`: capture() stamps `surface` with the client type on every event,
+   over anything passed here. `start_surface` is the value the console link
+   carries for the same placement (mindsUpgradeUrl), so a click joins to the
+   subscription it led to; a placement outside UPGRADE_PLACEMENTS sends none,
+   as its link carries none. `tier` is the plan offered and `from_tier` the
+   plan the org is on. It opens the console's plan confirm dialog, so it arms
+   the same post-payment availability follow-up as a billing link: a new plan
+   unlocks models just as funds do. */
 export function trackUpgradeClicked(placement, tier, fromTier) {
   startCreditsFlow();
   capture(EVENTS.UPGRADE_CLICKED, {
     placement: placement || 'unknown',
-    start_surface: placement ? coworkStartSurface(placement) : undefined,
+    start_surface: coworkStartSurface(placement) ?? undefined,
     tier: tier || undefined,
     from_tier: fromTier || undefined,
   });

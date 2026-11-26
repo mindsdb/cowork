@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { START_SURFACE_PATTERN, coworkStartSurface } from '../../lib/startSurface';
+import { START_SURFACE_PATTERN, UPGRADE_PLACEMENTS, coworkStartSurface } from '../../lib/startSurface';
 
 // analytics.js reads import.meta.env (POSTHOG_KEY), the __APP_VERSION__ global
 // (APP_VERSION) and host.isElectron (SURFACE) into module-level constants at
@@ -1292,11 +1292,35 @@ describe('upgrade_clicked', () => {
     expect(properties.surface).toBe('desktop');
   });
 
-  it('every placement a call site sends is in the EVENTS vocabulary, which names no other, and makes a start surface the subscription keeps', () => {
+  it('keeps a placement outside UPGRADE_PLACEMENTS but names no start surface for it', async () => {
+    // 'plan-banner' fails START_SURFACE_PATTERN; 'plan_banner' matches it but is not listed.
+    for (const placement of ['plan-banner', 'plan_banner']) {
+      const fetchMock = mockFetch();
+      const { trackUpgradeClicked } = await importAnalytics();
+
+      trackUpgradeClicked(placement, 'pro', 'plus');
+
+      const { properties } = await sentEvent(fetchMock, 'upgrade_clicked');
+      expect(properties.placement).toBe(placement);
+      expect(properties).not.toHaveProperty('start_surface');
+      expect(properties.tier).toBe('pro');
+    }
+  });
+
+  it('gives each of UPGRADE_PLACEMENTS a cowork_ start surface the subscription service keeps', () => {
+    expect(Object.isFrozen(UPGRADE_PLACEMENTS)).toBe(true);
+    for (const placement of UPGRADE_PLACEMENTS) {
+      expect(coworkStartSurface(placement)).toBe(`cowork_${placement}`);
+      expect(coworkStartSurface(placement)).toMatch(START_SURFACE_PATTERN);
+    }
+  });
+
+  it('every placement a call site sends is in UPGRADE_PLACEMENTS, which the EVENTS vocabulary lists beside unknown', () => {
     /* The comment on EVENTS.UPGRADE_CLICKED is the list a conversion query
-       is written from, and the console link carries the same placement as
-       `start_surface`, which the subscription service stores only when it
-       matches START_SURFACE_PATTERN. Reads the source, because the call
+       is written from, so it names every one of UPGRADE_PLACEMENTS and the
+       'unknown' a click with no placement sends. A call site whose placement
+       is outside UPGRADE_PLACEMENTS ships a link with no start surface, so the
+       click never joins its subscription. Reads the source, because the call
        sites pass string literals: `upgrade.open(tier, '<placement>')` or
        `openUpgrade(action, '<placement>')`. */
     const here = path.dirname(fileURLToPath(import.meta.url));
@@ -1306,20 +1330,20 @@ describe('upgrade_clicked', () => {
       .find((line) => line.includes('UPGRADE_CLICKED:'));
     const placementList = vocabularyLine.match(/placement: ((?:'[a-z_]+'\|?)+)/)[1];
     const vocabulary = new Set([...placementList.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]));
+    expect([...vocabulary].sort()).toEqual([...UPGRADE_PLACEMENTS, 'unknown'].sort());
 
     const sent = new Set();
     for (const rel of fs.readdirSync(rendererRoot, { recursive: true })) {
       if (!/\.(jsx?|tsx?)$/.test(rel) || /\.test\./.test(rel)) continue;
       const src = fs.readFileSync(path.join(rendererRoot, rel), 'utf8');
-      for (const call of src.matchAll(/(?:\bupgrade\.open|\bopenUpgrade)\([^,()]*,\s*'([a-z_]+)'/g)) sent.add(call[1]);
-      for (const call of src.matchAll(/\btrackUpgradeClicked\(\s*'([a-z_]+)'/g)) sent.add(call[1]);
+      for (const call of src.matchAll(/(?:\bupgrade\.open|\bopenUpgrade)\([^,()]*,\s*['"]([^'"\n]+)['"]/g)) sent.add(call[1]);
+      for (const call of src.matchAll(/\btrackUpgradeClicked\(\s*['"]([^'"\n]+)['"]/g)) sent.add(call[1]);
     }
 
     // Guards the sweep itself: a path or regex that matched nothing would pass.
     expect(sent.has('allowance_card')).toBe(true);
     expect(sent.has('usage_bar')).toBe(true);
-    expect([...sent].sort()).toEqual([...vocabulary].sort());
-    for (const placement of sent) expect(coworkStartSurface(placement)).toMatch(START_SURFACE_PATTERN);
+    for (const placement of sent) expect(UPGRADE_PLACEMENTS).toContain(placement);
   });
 });
 

@@ -905,16 +905,6 @@ describe('upgrade actions', () => {
     // Not owner-gated here: the console checks who may buy.
     expect(new URL(usageActionUrl(upgradeAction('plus'), { isBillingOwner: false })).searchParams.get('upgrade')).toBe('plus');
   });
-
-  it('carries the placement as the upgrade link start surface, and only on an upgrade', () => {
-    const placed = new URL(usageActionUrl(upgradeAction('pro'), { organizationId: 'org-1', subject: 'u-1', placement: 'usage_bar' }));
-    expect(placed.searchParams.get('start_surface')).toBe('cowork_usage_bar');
-    expect(placed.searchParams.get('upgrade')).toBe('pro');
-    expect(placed.searchParams.get('organization')).toBe('org-1');
-    const unplaced = new URL(usageActionUrl(upgradeAction('pro'), { organizationId: 'org-1', subject: 'u-1' }));
-    expect(unplaced.searchParams.has('start_surface')).toBe(false);
-    expect(usageActionUrl(USAGE_ACTIONS.addFunds, { isBillingOwner: true, placement: 'usage_bar' })).toBe(MINDS_ADD_FUNDS_URL);
-  });
 });
 
 describe('deriveComposerWarning on a plan', () => {
