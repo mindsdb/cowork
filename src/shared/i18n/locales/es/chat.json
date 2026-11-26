@@ -506,7 +506,19 @@
       "missingType": "Falta el tipo de gráfico",
       "unsupportedType": "Tipo de gráfico no compatible: \"{type}\". Compatibles: {supported}.",
       "invalidJson": "JSON no válido en la especificación del gráfico",
-      "error": "ERROR: {error}"
+      "error": "ERROR: {error}",
+      "loading": "Dibujando gráfico…",
+      "chartLabel": "Gráfico",
+      "diagramLabel": "Diagrama",
+      "copyImage": "Copiar como imagen",
+      "downloadPng": "Descargar PNG",
+      "showSource": "Ver código",
+      "hideSource": "Ocultar código",
+      "tooLarge": "La especificación supera los {limit} KB",
+      "tooManyDatasets": "Demasiadas series de datos ({count}); el límite es {limit}",
+      "tooManyPoints": "Demasiados puntos de datos ({count}); el límite es {limit}",
+      "tooManyNodes": "Demasiados nodos ({count}); el límite es {limit}",
+      "emptyDiagram": "El diagrama está vacío"
     }
   },
   "taskModes": {

@@ -506,7 +506,19 @@
       "missingType": "차트 유형 누락",
       "unsupportedType": "지원되지 않는 차트 유형: ‘{type}’. 지원되는 유형: {supported}.",
       "invalidJson": "차트 사양의 JSON이 잘못되었습니다",
-      "error": "오류: {error}"
+      "error": "오류: {error}",
+      "loading": "차트를 그리는 중…",
+      "chartLabel": "차트",
+      "diagramLabel": "다이어그램",
+      "copyImage": "이미지로 복사",
+      "downloadPng": "PNG 다운로드",
+      "showSource": "소스 보기",
+      "hideSource": "소스 숨기기",
+      "tooLarge": "사양이 {limit}KB를 초과합니다",
+      "tooManyDatasets": "데이터 세트가 너무 많습니다({count}개). 한도는 {limit}개입니다",
+      "tooManyPoints": "데이터 포인트가 너무 많습니다({count}개). 한도는 {limit}개입니다",
+      "tooManyNodes": "노드가 너무 많습니다({count}개). 한도는 {limit}개입니다",
+      "emptyDiagram": "다이어그램이 비어 있습니다"
     }
   },
   "taskModes": {
