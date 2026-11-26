@@ -1220,17 +1220,23 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false, i
   /*
    * A later card shows this artifact live (latestInlineArtifactByKey), so
    * this one is the plain card: no frame until "Preview this version" opens
-   * the page as this card made it (`revision_id`, else as it is now).
+   * the page as this card made it (its `revisionId`, the revision its turn
+   * captured). A card with no revision (one stored before cards carried it,
+   * or a turn whose capture failed) offers no "Preview this version": the
+   * page as it is now is the live copy below, and showing it here under that
+   * label would claim it is this reply's version. It keeps the ordinary
+   * Preview, which opens the viewer and its history.
    */
   const superseded = showInline && inlineSuperseded;
   const liveInline = showInline && !superseded;
+  const versionRevisionId = superseded ? cardRevisionId(artifact) : '';
   const [versionOpen, setVersionOpen] = useState(false);
-  const framed = liveInline || (superseded && versionOpen);
+  const framed = liveInline || (!!versionRevisionId && versionOpen);
   // The live frame's latest view report (usePreviewView), read by handleOpen.
   const liveInlineViewRef = useRef(null);
   const primaryDisabled = needsLocalPath && !canAct;
   const primaryReason = primaryDisabled ? (disabledReason || t('chatView.artifactCard.noFilePath')) : '';
-  const openAction = superseded
+  const openAction = versionRevisionId
     ? {
       label: versionOpen ? t('chatView.artifactCard.hideVersionPreview') : t('chatView.artifactCard.previewThisVersion'),
       onClick: () => setVersionOpen((v) => !v),
@@ -1352,7 +1358,7 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false, i
           <ArtifactInlinePreview
             artifact={artifact}
             title={artifact.title || ''}
-            revisionId={superseded ? cardRevisionId(artifact) : undefined}
+            revisionId={versionRevisionId || undefined}
             onSubmit={onInlineSubmit ? (submission) => onInlineSubmit(artifact, submission) : null}
             onView={liveInline ? (view) => { liveInlineViewRef.current = view; } : null}
           />

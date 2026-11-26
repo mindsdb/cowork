@@ -41,6 +41,7 @@ vi.mock('../../platform/host', () => ({
 }));
 
 import ChatView, { ArtifactCard, artifactStepToCard } from './ChatView';
+import { initialStreamState, reduceStream } from '../lib/responseStreamAdapter';
 
 const step = (overrides = {}) => ({
   id: 'artifact-revenue',
@@ -154,21 +155,22 @@ describe('ArtifactCard inline mode', () => {
 // ENG-4684: one live copy per artifact. An earlier card the agent updated
 // later folds to a line that opens to the page.
 describe('ArtifactCard superseded inline card', () => {
-  it('renders the plain card, with no frame until "Preview this version" opens it', async () => {
+  it('renders the plain card, with no frame until "Preview this version" opens its revision', async () => {
     const user = userEvent.setup();
-    render(<ArtifactCard artifact={card({ display: 'inline' })} onOpen={vi.fn()} inlineSuperseded />);
+    render(<ArtifactCard artifact={card({ display: 'inline', revisionId: 'rev-3' })} onOpen={vi.fn()} inlineSuperseded />);
     expect(screen.getByRole('button', { name: 'This was updated. See the latest version below.' })).toBeInTheDocument();
     const toggle = screen.getByRole('button', { name: 'Preview this version' });
     expect(screen.queryByTestId('artifact-inline-preview')).toBeNull();
-    expect(loadHtmlPreview).not.toHaveBeenCalled();
+    expect(loadHtmlRevision).not.toHaveBeenCalled();
 
     await user.click(toggle);
     const frame = await screen.findByTitle('Revenue by month');
-    expect(frame.getAttribute('srcdoc')).toBe('<p>chart</p>');
-    expect(loadHtmlRevision).not.toHaveBeenCalled();
+    expect(frame.getAttribute('srcdoc')).toBe('<p>chart then</p>');
+    expect(loadHtmlRevision).toHaveBeenCalledWith(expect.objectContaining({ revisionId: 'rev-3' }));
+    expect(loadHtmlPreview).not.toHaveBeenCalled();
   });
 
-  it('opens to the revision the card was made at, when it carries one', async () => {
+  it('opens to the revision the card was made at, under either key', async () => {
     const user = userEvent.setup();
     render(<ArtifactCard artifact={card({ display: 'inline', revision_id: 'rev-3' })} onOpen={vi.fn()} inlineSuperseded />);
     await user.click(screen.getByRole('button', { name: 'Preview this version' }));
@@ -176,6 +178,38 @@ describe('ArtifactCard superseded inline card', () => {
     expect(frame.getAttribute('srcdoc')).toBe('<p>chart then</p>');
     expect(loadHtmlRevision).toHaveBeenCalledWith(expect.objectContaining({ revisionId: 'rev-3' }));
     expect(loadHtmlPreview).not.toHaveBeenCalled();
+  });
+
+  // The bug: with no revision the button loaded the draft, so an earlier
+  // reply's card showed the latest page under "Preview this version".
+  it('offers no "Preview this version" without a revision, and never frames the latest page', async () => {
+    const user = userEvent.setup();
+    const onOpen = vi.fn();
+    render(<ArtifactCard artifact={card({ display: 'inline' })} onOpen={onOpen} inlineSuperseded />);
+    expect(screen.getByTestId('artifact-inline-superseded')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Preview this version' })).toBeNull();
+    // The ordinary Preview opens the viewer, which says what version it shows.
+    await user.click(screen.getByRole('button', { name: 'Preview' }));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('artifact-inline-preview')).toBeNull();
+    expect(loadHtmlPreview).not.toHaveBeenCalled();
+    expect(loadHtmlRevision).not.toHaveBeenCalled();
+  });
+
+  it("keeps the stream event's revisionId through the step to the version preview", async () => {
+    const user = userEvent.setup();
+    // As the server sends it (camelCase), and as a reload replays it.
+    const first = reduceStream(initialStreamState(), {
+      type: 'response.artifact_created',
+      artifact: {
+        slug: 'revenue', title: 'Revenue by month', type: 'html-app', display: 'inline', revisionId: 'rev-1',
+        path: '/proj/.anton/artifacts/revenue/index.html',
+      },
+    }).steps[0];
+    render(<ArtifactCard artifact={artifactStepToCard(first, '/proj')} onOpen={vi.fn()} inlineSuperseded />);
+    await user.click(screen.getByRole('button', { name: 'Preview this version' }));
+    await screen.findByTitle('Revenue by month');
+    expect(loadHtmlRevision).toHaveBeenCalledWith(expect.objectContaining({ revisionId: 'rev-1' }));
   });
 
   it('keeps the row card for a superseded artifact that is not inline', () => {
