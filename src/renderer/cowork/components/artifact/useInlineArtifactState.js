@@ -68,6 +68,15 @@ export const INLINE_SNAPSHOT_DEBOUNCE_MS = 1000;
 const SAVE_SUMMARIES = { [INLINE_STATE_PATH]: 'Inline state', [INLINE_SNAPSHOT_PATH]: 'Inline snapshot' };
 // Artifacts whose latest state is kept in memory; the oldest goes first.
 const CACHE_LIMIT = 50;
+// A Submit is a chat turn the agent answers, and the page is agent-written:
+// it can post `submit` itself, on load or in a loop, with no click behind it
+// (the parent cannot see the frame's user activation). So a Submit within
+// INLINE_SUBMIT_COOLDOWN_MS of the artifact's last one is dropped, as is the
+// same submission again within INLINE_SUBMIT_REPEAT_MS (a page that submits
+// as it loads, mounted again on scroll). Its message is capped too.
+export const INLINE_SUBMIT_COOLDOWN_MS = 2000;
+export const INLINE_SUBMIT_REPEAT_MS = 30000;
+export const INLINE_SUBMIT_MAX_MESSAGE_CHARS = 2000;
 
 /**
  * The key the state of `artifact` is shared under: its workspace identity,
@@ -95,6 +104,8 @@ const savers = new Map();
 // key -> serialized snapshot: the latest one any frame of that artifact
 // reported, or read from its snapshot.json.
 const snapshots = new Map();
+// key -> { at, sent }: the artifact's last Submit, across its frames.
+const submits = new Map();
 let seq = 0;
 // The `from` of a state set from outside every frame: each frame shows it.
 const FROM_APP = () => {};
@@ -163,6 +174,23 @@ export function latestInlineSnapshot(artifact) {
 export function clearInlineStateCache() {
   latest.clear();
   snapshots.clear();
+  submits.clear();
+}
+
+/**
+ * Whether a Submit of `sent` (its state and message) from a frame of the
+ * artifact under `key` goes to the chat now, and if so notes it. Per
+ * INLINE_SUBMIT_COOLDOWN_MS and INLINE_SUBMIT_REPEAT_MS; a card with no key
+ * is held to the same rule under ''.
+ */
+function takeSubmit(key, sent, now = Date.now()) {
+  const last = submits.get(key);
+  if (last && (now - last.at < INLINE_SUBMIT_COOLDOWN_MS
+    || (last.sent === sent && now - last.at < INLINE_SUBMIT_REPEAT_MS))) return false;
+  submits.delete(key);
+  submits.set(key, { at: now, sent });
+  while (submits.size > CACHE_LIMIT) submits.delete(submits.keys().next().value);
+  return true;
 }
 
 /**
@@ -220,10 +248,33 @@ export function useInlineArtifactState(iframeRef, artifact, { enabled, onSubmit 
   // (the viewer on any other page) never looks at the workspace.
   const persists = !!enabled && canUseArtifactWorkspace(artifact);
   const key = enabled ? inlineStateKey(artifact) : '';
+  // The key the refs above hold the bookkeeping of. Another artifact in the
+  // same frame starts from none: no revision, nothing pending.
+  const refsKeyRef = useRef(null);
 
   useEffect(() => {
     if (!enabled) return undefined;
     let live = true;
+    if (refsKeyRef.current !== key) {
+      refsKeyRef.current = key;
+      revisionRef.current = null;
+      pendingRef.current = null;
+      snapshotRef.current = { revision: null, pending: null, timer: null, saving: snapshotRef.current.saving };
+    }
+    // The artifact this run saves and reads: the current one while it is
+    // still the same artifact, else the one the run started with (a save
+    // still waiting as the frame moves to another artifact goes to its own).
+    const owner = artifactRef.current;
+    const target = () => (inlineStateKey(artifactRef.current) === key ? artifactRef.current : owner);
+    const ownsRefs = () => refsKeyRef.current === key;
+    // This run's state.json revision, kept here as well, so a save still
+    // waiting when another artifact has the refs goes from its own revision.
+    let runRevision = revisionRef.current;
+    const revision = () => (ownsRefs() ? revisionRef.current : runRevision);
+    const setRevision = (id) => {
+      runRevision = id;
+      if (ownsRefs()) revisionRef.current = id;
+    };
     // What this frame was last handed or reported, so the same state is not
     // posted back to it.
     let shown = null;
@@ -247,11 +298,12 @@ export function useInlineArtifactState(iframeRef, artifact, { enabled, onSubmit 
       if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
       const content = pendingRef.current;
       if (content == null || !persists) return savingRef.current;
+      const artifactNow = target();
       // Saves run one after another, each from the revision the last left.
       savingRef.current = savingRef.current.then(async () => {
         try {
-          revisionRef.current = await saveInlineState(artifactRef.current, content, revisionRef.current);
-          if (pendingRef.current === content) pendingRef.current = null;
+          setRevision(await saveInlineState(artifactNow, content, revision()));
+          if (ownsRefs() && pendingRef.current === content) pendingRef.current = null;
           const entry = latest.get(key);
           if (entry?.content === content) entry.unsaved = false;
         } catch (error) {
@@ -267,9 +319,10 @@ export function useInlineArtifactState(iframeRef, artifact, { enabled, onSubmit 
       if (snap.timer) { clearTimeout(snap.timer); snap.timer = null; }
       const content = snap.pending;
       if (content == null || !persists) return snap.saving;
+      const artifactNow = target();
       snap.saving = snap.saving.then(async () => {
         try {
-          snap.revision = await saveInlineState(artifactRef.current, content, snap.revision, INLINE_SNAPSHOT_PATH);
+          snap.revision = await saveInlineState(artifactNow, content, snap.revision, INLINE_SNAPSHOT_PATH);
           if (snap.pending === content) snap.pending = null;
         } catch (error) {
           diagnostic('renderer.cowork.components.artifact.useInlineArtifactState', 'WARNING',
@@ -304,7 +357,7 @@ export function useInlineArtifactState(iframeRef, artifact, { enabled, onSubmit 
       if (!persists) return;
       let loaded;
       try {
-        loaded = await loadArtifactSource(artifactRef.current, INLINE_SNAPSHOT_PATH);
+        loaded = await loadArtifactSource(target(), INLINE_SNAPSHOT_PATH);
       } catch {
         return; // No snapshot.json yet.
       }
@@ -341,12 +394,12 @@ export function useInlineArtifactState(iframeRef, artifact, { enabled, onSubmit 
       const before = latest.get(key)?.seq;
       let loaded;
       try {
-        loaded = await loadArtifactSource(artifactRef.current, INLINE_STATE_PATH);
+        loaded = await loadArtifactSource(target(), INLINE_STATE_PATH);
       } catch {
         return; // No state.json yet (or none this deployment serves).
       }
       if (!live) return;
-      if (loaded?.revision?.id) revisionRef.current = loaded.revision.id;
+      if (loaded?.revision?.id) setRevision(loaded.revision.id);
       const content = typeof loaded?.content === 'string' ? loaded.content : '';
       try { JSON.parse(content); } catch { return; }
       // A frame's change the server may not have yet, or one that came while
@@ -422,15 +475,18 @@ export function useInlineArtifactState(iframeRef, artifact, { enabled, onSubmit 
       if (data.type === 'submit') {
         const content = serializeInlineState(data.state);
         if (content == null) return;
+        const message = typeof data.message === 'string' ? data.message.slice(0, INLINE_SUBMIT_MAX_MESSAGE_CHARS) : '';
+        if (!takeSubmit(key, JSON.stringify([content, message]))) {
+          diagnostic('renderer.cowork.components.artifact.useInlineArtifactState', 'WARNING',
+            'inline_submit_dropped', '[inline-state] submit dropped: too soon after the last one');
+          return;
+        }
         // What was sent is what state.json holds.
         shown = content;
         remember(key, content, { unsaved: persists, from: onFrameState });
         pendingRef.current = content;
         void flush();
-        onSubmitRef.current?.({
-          state: JSON.parse(content),
-          message: typeof data.message === 'string' ? data.message : '',
-        });
+        onSubmitRef.current?.({ state: JSON.parse(content), message });
       }
     };
     // Another frame of this artifact changed its state: this page shows it.

@@ -414,7 +414,8 @@ export function ArtifactViewer({
   // An inline artifact's state (`window.anton.setState`) is shared with its
   // chat card's frame: the viewer opens on the picks made there, and what is
   // picked here is saved and shown back in the card. Same gate as the
-  // diagnostics above. No Submit here: the viewer is not the chat.
+  // diagnostics above. Its Submit goes to the chat (onInlineSubmit), and
+  // the viewer closes so the reply is in sight.
   const onInlineSubmitRef = useRef(onInlineSubmit);
   onInlineSubmitRef.current = onInlineSubmit;
   const onCloseRef = useRef(onClose);
