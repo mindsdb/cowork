@@ -20,7 +20,8 @@
       "deleting": "삭제하는 중…",
       "copyMessage": "메시지 복사",
       "copyResponse": "응답 복사",
-      "agentFallback": "에이전트"
+      "agentFallback": "에이전트",
+      "submittedData": "보낸 데이터"
     },
     "incomplete": {
       "spendCeiling": "조기 중단됨: 이 작업이 토큰 예산에 도달했습니다.",
@@ -74,7 +75,8 @@
       "liveArtifact": "라이브 아티팩트",
       "deletedBadge": "삭제됨",
       "share": "공유",
-      "shareTooltip": "열 수 있는 사람 선택"
+      "shareTooltip": "열 수 있는 사람 선택",
+      "updatedBelow": "{title} · 아래에서 업데이트됨"
     },
     "kinds": {
       "provider": "공급자",

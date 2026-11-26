@@ -3,12 +3,14 @@
 // Every other artifact keeps the row card. The frame itself (sandbox, height,
 // theme, lazy mount) is ArtifactInlinePreview.test.jsx's business.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const loadHtmlPreview = vi.fn();
+const loadHtmlRevision = vi.fn();
 vi.mock('../components/artifact/htmlPreviewSource', () => ({
   loadHtmlPreview: (...a) => loadHtmlPreview(...a),
+  loadHtmlRevision: (...a) => loadHtmlRevision(...a),
   usesDraftLink: () => false,
   withdrawDraftLinks: vi.fn(async () => false),
 }));
@@ -38,7 +40,7 @@ vi.mock('../../platform/host', () => ({
   isWeb: false,
 }));
 
-import { ArtifactCard, artifactStepToCard } from './ChatView';
+import ChatView, { ArtifactCard, artifactStepToCard } from './ChatView';
 
 const step = (overrides = {}) => ({
   id: 'artifact-revenue',
@@ -71,6 +73,7 @@ beforeEach(() => {
   vi.stubGlobal('IntersectionObserver', InViewObserver);
   deleted.mockReturnValue(false);
   loadHtmlPreview.mockResolvedValue({ kind: 'static', url: '', doc: '<p>chart</p>', port: null, expiresAt: null });
+  loadHtmlRevision.mockResolvedValue({ doc: '<p>chart then</p>' });
 });
 
 afterEach(() => { vi.unstubAllGlobals(); });
@@ -120,5 +123,101 @@ describe('ArtifactCard inline mode', () => {
     deleted.mockReturnValue(true);
     render(<ArtifactCard artifact={card({ display: 'inline' })} onOpen={vi.fn()} />);
     expect(screen.queryByTestId('artifact-inline-preview')).toBeNull();
+  });
+});
+
+// ENG-4684: one live copy per artifact. An earlier card the agent updated
+// later folds to a line that opens to the page.
+describe('ArtifactCard superseded inline card', () => {
+  it('folds to "<title> · updated below" with no frame until opened, then shows the latest page', async () => {
+    const user = userEvent.setup();
+    render(<ArtifactCard artifact={card({ display: 'inline' })} onOpen={vi.fn()} inlineSuperseded />);
+    const toggle = screen.getByRole('button', { name: 'Revenue by month · updated below' });
+    expect(screen.queryByTestId('artifact-inline-preview')).toBeNull();
+    expect(loadHtmlPreview).not.toHaveBeenCalled();
+
+    await user.click(toggle);
+    const frame = await screen.findByTitle('Revenue by month');
+    expect(frame.getAttribute('srcdoc')).toBe('<p>chart</p>');
+    expect(loadHtmlRevision).not.toHaveBeenCalled();
+  });
+
+  it('opens to the revision the card was made at, when it carries one', async () => {
+    const user = userEvent.setup();
+    render(<ArtifactCard artifact={card({ display: 'inline', revision_id: 'rev-3' })} onOpen={vi.fn()} inlineSuperseded />);
+    await user.click(screen.getByRole('button', { name: /updated below/ }));
+    const frame = await screen.findByTitle('Revenue by month');
+    expect(frame.getAttribute('srcdoc')).toBe('<p>chart then</p>');
+    expect(loadHtmlRevision).toHaveBeenCalledWith(expect.objectContaining({ revisionId: 'rev-3' }));
+    expect(loadHtmlPreview).not.toHaveBeenCalled();
+  });
+
+  it('keeps the row card for a superseded artifact that is not inline', () => {
+    render(<ArtifactCard artifact={card()} onOpen={vi.fn()} inlineSuperseded />);
+    expect(screen.queryByTestId('artifact-inline-chip')).toBeNull();
+    expect(screen.getByRole('button', { name: /Revenue by month/ })).toBeInTheDocument();
+  });
+});
+
+describe('ArtifactCard inline Submit', () => {
+  it("sends the page's submit to the card's handler with the artifact", async () => {
+    const onInlineSubmit = vi.fn();
+    render(<ArtifactCard artifact={card({ display: 'inline' })} onOpen={vi.fn()} onInlineSubmit={onInlineSubmit} />);
+    const frame = await screen.findByTitle('Revenue by month');
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', {
+        source: frame.contentWindow,
+        data: { source: 'anton-preview', type: 'submit', state: { budget: 3 }, message: 'Go' },
+      }));
+    });
+    expect(onInlineSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ slug: 'revenue' }),
+      { state: { budget: 3 }, message: 'Go' },
+    );
+  });
+});
+
+describe('ChatView inline artifacts across turns', () => {
+  const liveFrames = () => [...document.querySelectorAll('iframe[title="Revenue by month"]')];
+  const answer = (id, text) => ({
+    id, role: 'assistant', content: text, steps: [step({ display: 'inline' })],
+  });
+
+  it('keeps one live frame, at the latest card, and folds the earlier one', async () => {
+    render(<ChatView task={{
+      id: 'conv-inline', title: 'Chat', status: 'idle', messages: [
+        { id: 'u1', role: 'user', content: 'chart revenue' },
+        answer('a1', 'Here it is.'),
+        { id: 'u2', role: 'user', content: 'make it blue' },
+        answer('a2', 'Made it blue.'),
+      ],
+    }} />);
+    await waitFor(() => expect(liveFrames()).toHaveLength(1));
+    expect(screen.getAllByTestId('artifact-inline-preview')).toHaveLength(1);
+    expect(screen.getAllByTestId('artifact-inline-chip')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Revenue by month · updated below' })).toBeInTheDocument();
+  });
+
+  it("sends a Submit as a chat turn: the quick-edit prompt plus the state's JSON", async () => {
+    const onSend = vi.fn();
+    render(<ChatView onSend={onSend} task={{
+      id: 'conv-inline', title: 'Chat', status: 'idle', messages: [
+        { id: 'u1', role: 'user', content: 'chart revenue' },
+        answer('a1', 'Here it is.'),
+      ],
+    }} />);
+    // The step row in the turn's work log carries the same title.
+    await waitFor(() => expect(liveFrames()).toHaveLength(1));
+    act(() => {
+      window.dispatchEvent(new MessageEvent('message', {
+        source: liveFrames()[0].contentWindow,
+        data: { source: 'anton-preview', type: 'submit', state: { budget: 3 } },
+      }));
+    });
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(onSend).toHaveBeenCalledWith(
+      'Submitted from the inline artifact.\n\n(About the artifact `revenue`.)\n\n```json\n{\n  "budget": 3\n}\n```',
+      [],
+    );
   });
 });

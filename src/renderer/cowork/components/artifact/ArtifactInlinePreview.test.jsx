@@ -9,6 +9,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 const loadHtmlPreview = vi.fn();
 vi.mock('./htmlPreviewSource', () => ({
   loadHtmlPreview: (...a) => loadHtmlPreview(...a),
+  loadHtmlRevision: vi.fn(),
   usesDraftLink: () => false,
   withdrawDraftLinks: vi.fn(async () => false),
 }));

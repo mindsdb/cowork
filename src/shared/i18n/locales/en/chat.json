@@ -20,7 +20,8 @@
       "deleting": "Deleting…",
       "copyMessage": "Copy message",
       "copyResponse": "Copy response",
-      "agentFallback": "Agent"
+      "agentFallback": "Agent",
+      "submittedData": "Submitted data"
     },
     "incomplete": {
       "spendCeiling": "Stopped early: this task reached its token budget.",
@@ -74,7 +75,8 @@
       "liveArtifact": "live artifact",
       "deletedBadge": "Deleted",
       "share": "Share",
-      "shareTooltip": "Choose who can open it"
+      "shareTooltip": "Choose who can open it",
+      "updatedBelow": "{title} · updated below"
     },
     "kinds": {
       "provider": "Provider",

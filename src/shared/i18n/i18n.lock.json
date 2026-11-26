@@ -38181,6 +38181,40 @@
       "text": "045411472845"
     }
   },
+  "chat:chatView.artifactCard.updatedBelow": {
+    "de": {
+      "from": "e117f81a359f",
+      "text": "20362313be3f"
+    },
+    "es": {
+      "from": "e117f81a359f",
+      "text": "b6107a7646bf"
+    },
+    "fr": {
+      "from": "e117f81a359f",
+      "text": "e0a63abf2277"
+    },
+    "it": {
+      "from": "e117f81a359f",
+      "text": "b0ec6706c007"
+    },
+    "ja": {
+      "from": "e117f81a359f",
+      "text": "4e3557c6b7fe"
+    },
+    "ko": {
+      "from": "e117f81a359f",
+      "text": "8f0447c46a34"
+    },
+    "pt-BR": {
+      "from": "e117f81a359f",
+      "text": "8e4f2d8bef04"
+    },
+    "zh-CN": {
+      "from": "e117f81a359f",
+      "text": "b8039e4c8e61"
+    }
+  },
   "chat:chatView.attachment.connector": {
     "de": {
       "from": "8f0d706fff25",
@@ -43177,6 +43211,40 @@
     "zh-CN": {
       "from": "5a62be9bacac",
       "text": "ca558fe8a023"
+    }
+  },
+  "chat:chatView.turn.submittedData": {
+    "de": {
+      "from": "503121c23ee5",
+      "text": "c08954355d72"
+    },
+    "es": {
+      "from": "503121c23ee5",
+      "text": "d24beecba4b2"
+    },
+    "fr": {
+      "from": "503121c23ee5",
+      "text": "4f324f86bdec"
+    },
+    "it": {
+      "from": "503121c23ee5",
+      "text": "bf01f17ef3bd"
+    },
+    "ja": {
+      "from": "503121c23ee5",
+      "text": "b1fcff3f693b"
+    },
+    "ko": {
+      "from": "503121c23ee5",
+      "text": "d8e625ee870e"
+    },
+    "pt-BR": {
+      "from": "503121c23ee5",
+      "text": "887ba5a412e6"
+    },
+    "zh-CN": {
+      "from": "503121c23ee5",
+      "text": "e61b2767d3e1"
     }
   },
   "chat:chatView.usageAlert.freeLow": {

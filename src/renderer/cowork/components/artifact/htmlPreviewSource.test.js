@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mountArtifactPreview = vi.fn();
 const createDraftLink = vi.fn();
 const loadArtifactDraftDocument = vi.fn();
+const loadArtifactRevision = vi.fn();
 const inlineHtmlFromApi = vi.fn();
 const hostState = vi.hoisted(() => ({ isWeb: false, isElectron: true, local: true }));
 
@@ -14,6 +15,7 @@ vi.mock('../../lib/artifactWorkspaceApi', () => ({
   artifactRef: (a) => (a?.id && a?.projectId ? { projectRef: a.projectId, artifactId: a.id } : null),
   createDraftLink: (...a) => createDraftLink(...a),
   loadArtifactDraftDocument: (...a) => loadArtifactDraftDocument(...a),
+  loadArtifactRevision: (...a) => loadArtifactRevision(...a),
 }));
 vi.mock('../../lib/inlineHtmlAssets', () => ({ inlineHtmlFromApi: (...a) => inlineHtmlFromApi(...a) }));
 vi.mock('../../lib/draftLinkRules', () => ({
@@ -30,7 +32,7 @@ vi.mock('../../../platform/host', () => ({
   },
 }));
 
-import { HtmlPreviewError, loadHtmlPreview, usesDraftLink } from './htmlPreviewSource';
+import { HtmlPreviewError, loadHtmlPreview, loadHtmlRevision, usesDraftLink } from './htmlPreviewSource';
 
 const base = { actionPath: '/p/.anton/artifacts/chart/index.html', hasActionPath: true, cacheVersion: '7.0' };
 
@@ -116,5 +118,27 @@ describe('loadHtmlPreview', () => {
     const out = await loadHtmlPreview({ ...base, artifact: { type: 'fullstack-stateless-app' } });
     expect(out.kind).toBe('proxy');
     expect(out.port).toBe(5000);
+  });
+});
+
+// ENG-4684: an earlier chat card opened to the page as it was.
+describe('loadHtmlRevision', () => {
+  const artifact = { id: 'a1', projectId: 'p', draftUrl: '/api/v1/artifacts/drafts/p/a1/index.html' };
+
+  it("renders the revision's source with its folder files inlined", async () => {
+    hostState.isWeb = true;
+    loadArtifactRevision.mockResolvedValue({ id: 'r3', content: '<p>then</p>' });
+    inlineHtmlFromApi.mockResolvedValue('<p>then, inlined</p>');
+    const out = await loadHtmlRevision({ artifact, revisionId: 'r3' });
+    expect(loadArtifactRevision).toHaveBeenCalledWith(artifact, 'r3');
+    expect(inlineHtmlFromApi.mock.calls[0][0]).toBe('<p>then</p>');
+    expect(out.doc).toContain('<p>then, inlined</p>');
+  });
+
+  it('fails as a preview error when the revision cannot be read', async () => {
+    loadArtifactRevision.mockRejectedValue(Object.assign(new Error('gone'), { status: 404 }));
+    await expect(loadHtmlRevision({ artifact, revisionId: 'r3' })).rejects.toBeInstanceOf(HtmlPreviewError);
+    loadArtifactRevision.mockResolvedValue({ id: 'r3', content: '' });
+    await expect(loadHtmlRevision({ artifact, revisionId: 'r3' })).rejects.toMatchObject({ stage: 'revision' });
   });
 });

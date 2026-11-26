@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { KEEP_PLACE_MS, PREVIEW_PARENT_SOURCE, normalizePreviewView, postPreviewTheme, usePreviewView } from './usePreviewView';
+import { KEEP_PLACE_MS, PREVIEW_PARENT_SOURCE, normalizePreviewView, postPreviewState, postPreviewTheme, usePreviewView } from './usePreviewView';
 
 let hook = null;
 
@@ -270,5 +270,19 @@ describe('postPreviewTheme', () => {
   it('skips a frame with no window yet', () => {
     expect(() => postPreviewTheme(null, 'dark')).not.toThrow();
     expect(() => postPreviewTheme({}, 'dark')).not.toThrow();
+  });
+});
+
+// ENG-4684: an inline page's saved state goes down the same channel.
+describe('postPreviewState', () => {
+  it('posts the state with the parent tag', () => {
+    const win = { postMessage: vi.fn() };
+    postPreviewState(win, { budget: 1200 });
+    expect(win.postMessage).toHaveBeenCalledWith({ source: PREVIEW_PARENT_SOURCE, type: 'state', state: { budget: 1200 } }, '*');
+  });
+
+  it('skips a frame with no window yet', () => {
+    expect(() => postPreviewState(null, {})).not.toThrow();
+    expect(() => postPreviewState({}, {})).not.toThrow();
   });
 });

@@ -20,7 +20,9 @@ import {
   artifactRef as artifactWorkspaceRef,
   createDraftLink,
   loadArtifactDraftDocument,
+  loadArtifactRevision,
 } from '../../lib/artifactWorkspaceApi';
+import { absoluteDraftUrl, inlineArtifactFrameDocument } from './workspace/inlineArtifactFrame';
 import { draftLinksWithdrawal, draftLinkUrl } from '../../lib/draftLinkRules';
 import { setDraftLinks } from '../../../lib/draftLinks';
 import { inlineHtmlFromApi } from '../../lib/inlineHtmlAssets';
@@ -203,4 +205,25 @@ export async function loadHtmlPreview({
   // The inert comment bridge goes into the first URL whenever asked for, so
   // transport readiness can change without swapping the frame's `src`.
   return result({ url: withFlags(url, cacheVersion, withCommentLayer) });
+}
+
+/**
+ * One saved revision of the page, for a frame that shows the artifact as it
+ * was (an earlier chat card, ENG-4684): the revision's source from the
+ * workspace history, with its folder files inlined as the revision comparison
+ * inlines them. Resolves to `{ doc }`; it never navigates.
+ *
+ * @param {{ artifact: object, revisionId: string, signal?: AbortSignal }} options
+ */
+export async function loadHtmlRevision({ artifact, revisionId, signal }) {
+  let revision;
+  try {
+    revision = await loadArtifactRevision(artifact, revisionId);
+  } catch (e) {
+    throw new HtmlPreviewError(draftPreviewErrorMessage(e, tr('viewer.loadFailed')), { cause: e, stage: 'revision' });
+  }
+  const content = typeof revision?.content === 'string' ? revision.content : '';
+  if (!content) throw new HtmlPreviewError(tr('viewer.loadFailed'), { stage: 'revision' });
+  const html = await inlineArtifactFrameDocument(content, absoluteDraftUrl(artifact?.draftUrl || ''), { signal });
+  return { doc: limitArtifactFrames(html) };
 }

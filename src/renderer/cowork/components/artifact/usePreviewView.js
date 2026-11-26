@@ -107,6 +107,19 @@ export function postPreviewTheme(win, mode) {
   if (!win || typeof win.postMessage !== 'function') return;
   win.postMessage({ source: PREVIEW_PARENT_SOURCE, type: 'theme', mode: mode === 'dark' ? 'dark' : 'light' }, '*');
 }
+
+/**
+ * Hands the page in an inline frame its saved state (ENG-4684), which the
+ * shim gives the page through `window.anton.getState` / `onState`. Same
+ * channel and tag as the theme. A frame with no window yet is skipped.
+ *
+ * @param {Window | null | undefined} win
+ * @param {unknown} state  JSON-safe value, as the page last set it
+ */
+export function postPreviewState(win, state) {
+  if (!win || typeof win.postMessage !== 'function') return;
+  win.postMessage({ source: PREVIEW_PARENT_SOURCE, type: 'state', state }, '*');
+}
 // A place kept for a reload that never produced a new document (the reload
 // failed, the viewer moved on) is not applied to some later one.
 export const KEEP_PLACE_MS = 60000;

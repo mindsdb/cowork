@@ -18,13 +18,14 @@ import { CircleAlert } from 'lucide-react';
 import { Icon } from '../components/ui/Icon';
 import ArtifactRepairCard from '../components/ArtifactRepairCard';
 import { parseArtifactRepairPrompt } from '../lib/artifactRepairPrompt';
-import { parseQuickEditPrompt } from '../lib/quickEditPrompt';
+import { inlineSubmitChatPrompt, parseQuickEditPrompt } from '../lib/quickEditPrompt';
+import { MESSAGE_CARD_SLOT, cardRevisionId, isSupersededInline, latestInlineArtifactByKey } from '../lib/inlineArtifactCards';
 import { planQuickEditCards } from '../lib/quickEditGroup';
 import { QuickEditGroupCard } from '../components/chat/QuickEditGroupCard';
 import { ArtifactRefPill } from '../components/artifacts/ArtifactRefPill';
 import Composer from '../components/Composer';
 import CodingTerminal from '../components/CodingTerminal';
-import { ActionBar, Alert, Badge, Card, Tooltip } from '../components/ui';
+import { ActionBar, Alert, Badge, Card, Collapsible, Tooltip } from '../components/ui';
 import { Modal, ModalBody } from '../components/ui/Modal';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
@@ -395,6 +396,15 @@ function CoworkUserTurn({ content: rawContent, attachments, onDelete, onEdit, is
       <ArtifactRefPill slug={aboutArtifact.slug} onOpen={onOpenArtifact} />
     </div>
   ) : null;
+  // An inline artifact's Submit (ENG-4684) also carries the page's state as
+  // JSON for the agent: folded under the pill, not shown as a wall of it.
+  const submittedState = aboutArtifact?.json != null ? (
+    <div className="user-turn-artifact-state" data-testid="user-turn-artifact-state">
+      <Collapsible variant="compact" title={t('chatView.turn.submittedData')}>
+        <pre className="m-0 max-h-60 overflow-auto rounded-md bg-surface-2 p-2 font-mono text-xs text-ink-2">{aboutArtifact.json}</pre>
+      </Collapsible>
+    </div>
+  ) : null;
   const actions = deleting ? (
     <span
       // Primary ink, not the usual meta grey: the turn around it is at
@@ -421,7 +431,7 @@ function CoworkUserTurn({ content: rawContent, attachments, onDelete, onEdit, is
       turnId={turnId}
       deleting={deleting}
       attachments={attachmentRows}
-      footer={artifactPill}
+      footer={submittedState ? <>{artifactPill}{submittedState}</> : artifactPill}
       actions={shownActions}
     >
       {repair ? <ArtifactRepairCard repair={repair} projectId={projectId} streaming={streaming} /> : null}
@@ -648,7 +658,10 @@ export function artifactStepToCard(step, projectPath) {
 // down to the card because an artifact the agent created THIS turn cannot be in
 // an artifacts index that was loaded before it existed, and judging it against
 // one would mark a brand-new artifact "Deleted".
-function StepArtifacts({ steps, onOpen, onShare, projectPath, live = false }) {
+//
+// `latestInline` and `messageIndex` fold an inline card a later one shows
+// again (latestInlineArtifactByKey): one live frame per artifact.
+function StepArtifacts({ steps, onOpen, onShare, projectPath, live = false, latestInline = null, messageIndex = null, onInlineSubmit = null }) {
   const artifacts = steps?.filter((s) => s.badge === 'Artifact') || [];
   if (artifacts.length === 0) return null;
   return (
@@ -660,9 +673,40 @@ function StepArtifacts({ steps, onOpen, onShare, projectPath, live = false }) {
           onOpen={onOpen}
           onShare={onShare}
           live={live}
+          inlineSuperseded={isSupersededInline(latestInline, s.data, messageIndex, s.id)}
+          onInlineSubmit={onInlineSubmit}
         />
       ))}
     </div>
+  );
+}
+
+// An inline artifact a later card shows again (ENG-4684): one line,
+// "<title> · updated below", that opens to the page as this card made it
+// (its `revision_id`, when the server sends one) or else as it is now. The
+// frame mounts only while open.
+export function ArtifactInlineChip({ artifact, onInlineSubmit = null }) {
+  const { t } = useTranslation('chat');
+  const [open, setOpen] = useState(false);
+  const revisionId = cardRevisionId(artifact);
+  return (
+    <ChatCardShell kind={false} className="gap-0 px-3 py-1" data-testid="artifact-inline-chip">
+      <Collapsible
+        variant="compact"
+        open={open}
+        onOpenChange={setOpen}
+        title={<span className="block truncate">{t('chatView.artifactCard.updatedBelow', { title: artifact.title || '' })}</span>}
+      >
+        {open && (
+          <ArtifactInlinePreview
+            artifact={artifact}
+            title={artifact.title || ''}
+            revisionId={revisionId}
+            onSubmit={onInlineSubmit ? (submission) => onInlineSubmit(artifact, submission) : null}
+          />
+        )}
+      </Collapsible>
+    </ChatCardShell>
   );
 }
 
@@ -878,7 +922,7 @@ function StepConnectorDrafts({ steps, onConnect }) {
   );
 }
 
-export function ArtifactCard({ artifact, onOpen, onShare = null, live = false }) {
+export function ArtifactCard({ artifact, onOpen, onShare = null, live = false, inlineSuperseded = false, onInlineSubmit = null }) {
   // This card is an artifact surface like the panel's rows, so it answers to the
   // same deployment gate. Without it the chat offered a local preview, Export
   // and Show in Finder for content an org deployment does not serve, while the
@@ -1190,6 +1234,10 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
    * instead of opening, mirroring the prior button behaviour. Cursor +
    * hover lift mark the entire surface as interactive at a glance.
    */
+  // A later card shows this artifact live: this one folds to a line.
+  if (showInline && inlineSuperseded) {
+    return <ArtifactInlineChip artifact={artifact} onInlineSubmit={onInlineSubmit} />;
+  }
   return (
     <>
       {/* Outside the Card on purpose: Card renders role="button", and ARIA
@@ -1282,7 +1330,11 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
       </div>
       {showInline && (
         <div className="chat-artifact-card__frame">
-          <ArtifactInlinePreview artifact={artifact} title={artifact.title || ''} />
+          <ArtifactInlinePreview
+            artifact={artifact}
+            title={artifact.title || ''}
+            onSubmit={onInlineSubmit ? (submission) => onInlineSubmit(artifact, submission) : null}
+          />
         </div>
       )}
       {/* The footer is the artifact's location bar: the path at rest, and the
@@ -2983,6 +3035,18 @@ export default function ChatView({
     () => latestSkillCardIndexByKey(streamingMsg ? [...visibleMessages, streamingMsg] : visibleMessages),
     [visibleMessages, streamingMsg],
   );
+  // One live frame per inline artifact (ENG-4684): the latest card showing it
+  // inline keeps the frame, earlier ones fold to a chip. Same order as skills.
+  const latestInlineArtifact = useMemo(
+    () => latestInlineArtifactByKey(streamingMsg ? [...visibleMessages, streamingMsg] : visibleMessages),
+    [visibleMessages, streamingMsg],
+  );
+  // An inline page's Submit is a chat turn, sent the way a question card's
+  // typed answer is: the quick-edit bar's prompt about the artifact, plus the
+  // page's state. [] so it does not take the composer's staged files.
+  const handleInlineSubmit = onSend
+    ? (artifact, { state, message }) => onSend(inlineSubmitChatPrompt(artifact, message, state), [])
+    : null;
 
   const stick = useStickToBottom(scrollRef);
   const { scrollToBottom, follow: followEnd, anchorLastTurn } = stick;
@@ -4176,9 +4240,11 @@ export default function ChatView({
                       artifact={normalizeArtifactRecord(m.artifact, artifactProjectPath)}
                       onOpen={handleArtifactOpen}
                       onShare={handleArtifactShare}
+                      inlineSuperseded={isSupersededInline(latestInlineArtifact, m.artifact, i, MESSAGE_CARD_SLOT)}
+                      onInlineSubmit={handleInlineSubmit}
                     />
                   )}
-                  <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} />
+                  <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} latestInline={latestInlineArtifact} messageIndex={i} onInlineSubmit={handleInlineSubmit} />
                   <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
                   <StepConnectorDrafts steps={m.steps} onConnect={onConnectCustomConnector} />
                   {(() => {
@@ -4288,7 +4354,7 @@ export default function ChatView({
                     <StreamCursor />
                   </div>
                 )}
-                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} live />
+                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} live latestInline={latestInlineArtifact} messageIndex={visibleMessages.length} onInlineSubmit={handleInlineSubmit} />
                 <StepSkills steps={streamingMsg.steps} latestByKey={latestSkillCardByKey} messageIndex={visibleMessages.length} projectName={project?.name} />
                 <StepConnectorDrafts steps={streamingMsg.steps} onConnect={onConnectCustomConnector} />
               </AnswerTurn>
