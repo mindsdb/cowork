@@ -240,10 +240,6 @@
   "upToDate": "Atualizado",
   "upToDateSaving": "Salvando…",
   "upToDateSaved": "Salvo",
-  "usageBar": {
-    "hideAllowance": "Ocultar franquia",
-    "hide": "Ocultar"
-  },
   "diagnostics": {
     "copy": "Copiar diagnóstico",
     "copied": "Copiado",

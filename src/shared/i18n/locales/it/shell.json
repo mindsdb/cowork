@@ -240,10 +240,6 @@
   "upToDate": "Aggiornato",
   "upToDateSaving": "Salvataggio…",
   "upToDateSaved": "Salvato",
-  "usageBar": {
-    "hideAllowance": "Nascondi quota",
-    "hide": "Nascondi"
-  },
   "diagnostics": {
     "copy": "Copia diagnostica",
     "copied": "Copiato",

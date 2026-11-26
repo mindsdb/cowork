@@ -5,7 +5,6 @@ import {
   usageActionUrl,
   balanceDismissStep,
   freeDismissStep,
-  countsAsWarning,
   formatPercentShort,
   formatUsd,
   formatResetDate,
@@ -20,7 +19,7 @@ import {
   NO_FREE_GRANT_SENTENCE,
   FREE_TOKENS_LOW_FRACTION,
   USAGE_ACTIONS,
-  AIR_ON_BALANCE_WARN_USD,
+  BALANCE_WARN_USD,
   upgradeAction,
 } from './usageWarnings';
 import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL } from '../../lib/mindsUrls';
@@ -170,7 +169,6 @@ describe('deriveComposerWarning', () => {
   it('a free warning closes to nothing, with no standing figure behind it', () => {
     const w = deriveComposerWarning(unpaid({ freeTokens: at(8) }));
     expect(w.kind).toBe('free_low');
-    expect(w.resting).toBeUndefined();
     expect(w.whenDismissed).toBeUndefined();
   });
 
@@ -223,7 +221,7 @@ describe('deriveComposerWarning', () => {
     const wallet = (usd, alert = usd < 20 ? 'low' : '') => ({ usd, canConsume: true, hasToppedUp: true, alert });
 
     it('says nothing while the balance carries Air, on the router or on Air', () => {
-      for (const usd of [199.48, 42.1, 12, AIR_ON_BALANCE_WARN_USD]) {
+      for (const usd of [199.48, 42.1, 12, BALANCE_WARN_USD]) {
         for (const model of [null, 'model-router', 'mindshub_air']) {
           expect(deriveComposerWarning(usage({ freeTokens: spent, balance: wallet(usd) }), { model })).toBeNull();
         }
@@ -281,7 +279,7 @@ describe('deriveComposerWarning', () => {
   });
 
   it('a paid pick with $5 or more says nothing, even under auth\'s $20 line (ENG-4719)', () => {
-    for (const usd of [AIR_ON_BALANCE_WARN_USD, 8.42, 19.99]) {
+    for (const usd of [BALANCE_WARN_USD, 8.42, 19.99]) {
       expect(deriveComposerWarning(usage({
         balance: { usd, canConsume: true, hasToppedUp: true, alert: 'low' },
       }), { model: 'claude-sonnet-4' }), `$${usd}`).toBeNull();
@@ -838,25 +836,6 @@ describe('freeDismissStep', () => {
     // Closing at 8% and again at 4% are different keys, which is the whole
     // point: the bar comes back rather than staying shut until it runs out.
     expect(at(8).dismissKey).not.toBe(at(4).dismissKey);
-  });
-});
-
-describe('countsAsWarning', () => {
-  it('nothing at all is nothing to warn about', () => {
-    expect(countsAsWarning(deriveComposerWarning(unpaid()))).toBe(false);
-    expect(countsAsWarning(null)).toBe(false);
-    // A descriptor marked resting is still not a warning.
-    expect(countsAsWarning({ kind: 'x', resting: true })).toBe(false);
-  });
-
-  it('every warning the bar shows counts', () => {
-    expect(countsAsWarning(deriveComposerWarning(unpaid({ freeTokens: at(8) })))).toBe(true);
-    expect(countsAsWarning(deriveComposerWarning(unpaid({
-      freeTokens: { percentRemaining: 0, limit: 100, used: 100, remaining: 0, resetsAt: RESET },
-    })))).toBe(true);
-    expect(countsAsWarning(deriveComposerWarning(usage({
-      autoTopUp: { enabled: true, status: 'payment_failed' },
-    })))).toBe(true);
   });
 });
 

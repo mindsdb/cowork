@@ -24,10 +24,6 @@
         "untilMobile": "MindsHub Air gratuit est suspendu pour tout le monde jusqu’à {until}. Votre quota n’est pas consommé.",
         "dailyResetMobile": "MindsHub Air gratuit est suspendu pour tout le monde jusqu’à la réinitialisation du budget quotidien. Votre quota n’est pas consommé."
       },
-      "resting": {
-        "resetsAt": "Réinitialisation à {time}.",
-        "noReset": "Air les utilise jusqu’à épuisement."
-      },
       "balanceEmptySentence": "Votre solde est épuisé.",
       "percentLeft": "{percent} de votre quota gratuit restant",
       "autoTopUpFailed": {
@@ -46,8 +42,6 @@
       },
       "balanceLow": {
         "title": "Solde bientôt épuisé",
-        "autoRefills": "Il reste {usd}. La recharge auto le remonte à {target} dès qu’il passe sous {floor}.",
-        "autoCovers": "Il reste {usd}. La recharge auto s’en chargera.",
         "autoPending": "Il reste {usd}. La recharge auto attend la réponse de votre banque.",
         "autoCapReached": "Il reste {usd} et la recharge auto est suspendue pour respecter son plafond mensuel. Ajoutez des fonds pour continuer.",
         "body": "Il reste {usd}. Ajoutez des fonds ou activez la recharge auto.",
@@ -83,7 +77,8 @@
         "lowThenWalletWithTime": "Ensuite, les tâches utilisent votre solde aux tarifs API jusqu’à la réinitialisation à {time}.",
         "lowThenPause": "Ensuite, les tâches sont en pause jusqu’à la réinitialisation.",
         "lowThenPauseWithTime": "Ensuite, les tâches sont en pause jusqu’à {time}."
-      }
+      },
+      "resetsAt": "Réinitialisation à {time}."
     },
     "scheduleWhen": {
       "timeZone": "heure de {city}",

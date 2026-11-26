@@ -240,10 +240,6 @@
   "upToDate": "최신 상태",
   "upToDateSaving": "저장 중…",
   "upToDateSaved": "저장됨",
-  "usageBar": {
-    "hideAllowance": "제공량 숨기기",
-    "hide": "숨기기"
-  },
   "diagnostics": {
     "copy": "진단 정보 복사",
     "copied": "복사됨",

@@ -240,10 +240,6 @@
   "upToDate": "Up to date",
   "upToDateSaving": "Saving…",
   "upToDateSaved": "Saved",
-  "usageBar": {
-    "hideAllowance": "Hide allowance",
-    "hide": "Hide"
-  },
   "diagnostics": {
     "copy": "Copy diagnostics",
     "copied": "Copied",

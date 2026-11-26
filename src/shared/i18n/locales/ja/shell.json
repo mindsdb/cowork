@@ -240,10 +240,6 @@
   "upToDate": "最新の状態です",
   "upToDateSaving": "保存中…",
   "upToDateSaved": "保存済み",
-  "usageBar": {
-    "hideAllowance": "無料枠を非表示",
-    "hide": "非表示"
-  },
   "diagnostics": {
     "copy": "診断情報をコピー",
     "copied": "コピーしました",
