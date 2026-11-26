@@ -92,10 +92,14 @@ export function looksLikeFunctionSource(value) {
   return typeof value === 'string' && FUNCTION_STRING_RE.test(value);
 }
 
-/** Deep copy of parsed JSON without function-looking strings or prototype keys. */
+/**
+ * Deep copy of parsed JSON without function-looking strings or prototype
+ * keys. In an array the string becomes null rather than being removed, so
+ * `labels` stays aligned with each dataset's `data`.
+ */
 export function dropFunctionStrings(value) {
   if (Array.isArray(value)) {
-    return value.filter((item) => !looksLikeFunctionSource(item)).map(dropFunctionStrings);
+    return value.map((item) => (looksLikeFunctionSource(item) ? null : dropFunctionStrings(item)));
   }
   if (value && typeof value === 'object') {
     const out = {};
@@ -268,7 +272,9 @@ export function applyChartTheme(config, theme) {
       ...dataset,
     };
   });
-  const options = config.options || {};
+  // devicePixelRatio scales the canvas backing store: a large value from
+  // the fence would allocate a huge canvas. The screen's ratio is used.
+  const { devicePixelRatio: _ignoredRatio, ...options } = config.options || {};
   const scales = Object.fromEntries(Object.entries(options.scales || {}).map(([id, scale]) => [id, {
     ...scale,
     grid: { color: theme.line, ...scale?.grid },

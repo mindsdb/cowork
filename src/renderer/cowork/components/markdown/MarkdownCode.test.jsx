@@ -93,6 +93,16 @@ describe('MarkdownCode — chartjs', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('"nope" is not a registered controller.');
   });
 
+  it('draws a new config after the previous one was rejected', async () => {
+    chartjs.Chart.mockImplementationOnce(function Broken() { throw new Error('"nope" is not a registered controller.'); });
+    const { rerender } = render(fence('chartjs', JSON.stringify({ type: 'nope', data: { datasets: [{ data: [1] }] } })));
+    await screen.findByRole('alert');
+    rerender(fence('chartjs', BAR));
+    await waitFor(() => expect(chartjs.Chart).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(chartjs.Chart.mock.calls[1][1].type).toBe('bar');
+  });
+
   it('holds the loading state at the chart height while the fence streams', () => {
     render(fence('chartjs', '{"type": "bar", "da', { complete: false }));
     const loading = screen.getByTestId('chart-loading');
