@@ -626,35 +626,34 @@ export function usageTransitions(prev, next, {
   if (!before.out && after.out && spendsFree && !balanceCarriesNextTask(next.balance, next.autoTopUp)) {
     out.push({ kind: 'free_used', resetsAt: next.freeTokens?.resetsAt || null });
   }
-  // A long task can cross the low band and empty it without the composer bar
-  // ever being looked at, so the crossing is this task's news too. Stepped on
-  // the same scale as the bar's dismissal, so a task that runs from 40% left to
-  // 8% left reports on each step rather than on each poll. Both reads have to be a
-  // capped grant, or a grant arriving mid-task would read as one draining, and
-  // `free_used` above owns the last step so reaching zero says the allowance is
-  // gone rather than that it is low.
-  // The first four terms are belt and braces, not load-bearing: `after.low`
-  // already implies a capped grant with allowance left, and `freeDismissStep`
-  // reads a null fraction as the deepest step, which no later step can exceed.
-  // They stay because the step comparison carrying all of that alone does not
-  // read as the rule it enforces.
-  if (!before.out && !after.out && after.low && spendsFree
-      && !balanceCarriesNextTask(next.balance, next.autoTopUp)
-      && before.fractionLeft !== null && after.fractionLeft !== null
-      && freeDismissStep(after.fractionLeft) > freeDismissStep(before.fractionLeft)) {
+  // A long task can drain the allowance without the composer bar ever being
+  // looked at, so the bar's rule is this task's rule too (ENG-4719): speak once
+  // the allowance is nearly gone and the wallet can't carry Air past it, then
+  // again at each deeper step. Both reads have to be a capped grant, or a grant
+  // arriving mid-task would read as one draining, and `free_used` above owns
+  // the last step so reaching zero says the allowance is gone, not low.
+  const nearlyGoneNow = !after.out && after.fractionLeft !== null && allowanceNearlyGone(after);
+  // A read with no fraction (no grant, uncapped) neither crosses in nor steps
+  // down: `freeDismissStep` reads it as the deepest step already.
+  const crossedIn = before.fractionLeft !== null && !allowanceNearlyGone(before);
+  const steppedDown = freeDismissStep(after.fractionLeft) > freeDismissStep(before.fractionLeft);
+  if (nearlyGoneNow && (crossedIn || steppedDown)
+      && spendsFree && !balanceCarriesNextTask(next.balance, next.autoTopUp)) {
     out.push({
       kind: 'free_low',
       fractionLeft: after.fractionLeft,
       resetsAt: next.freeTokens?.resetsAt || null,
     });
   }
-  // Plus and Pro (ENG-4186): a window crossing a warning step, or filling up,
-  // during this task. Both reads must carry the paid plan, or a plan arriving
-  // mid-task would read as a window filling. The plan must cover the task's
-  // model, or the task was on the wallet all along.
+  // Plus and Pro (ENG-4186): a window nearly gone, or filling up, during this
+  // task. Both reads must carry the paid plan, or a plan arriving mid-task
+  // would read as a window filling. The plan must cover the task's model, or
+  // the task was on the wallet all along. Like the bar, silent while the wallet
+  // carries the next task (ENG-4719).
   const planBefore = planOf(prev);
   const planAfter = planOf(next);
-  if (isPaidPlan(planBefore) && isPaidPlan(planAfter) && tierCovers(planAfter.tier, coveredByTier)) {
+  if (isPaidPlan(planBefore) && isPaidPlan(planAfter) && tierCovers(planAfter.tier, coveredByTier)
+      && !balanceCarriesNextTask(next.balance, next.autoTopUp)) {
     const prior = new Map(planBefore.windows.map((w) => [w.window, w]));
     for (const w of planAfter.windows) {
       const was = prior.get(w.window);
@@ -666,7 +665,8 @@ export function usageTransitions(prev, next, {
           resetsAt: w.resetsAt,
           onWallet: isBalanceUsable(next.balance),
         });
-      } else if (w.percentUsed < 100 && windowWarnStep(w.percentUsed) > windowWarnStep(was.percentUsed)) {
+      } else if (w.percentUsed < 100 && w.percentUsed >= PLAN_WINDOW_NEARLY_GONE_PERCENT
+          && (was.percentUsed < PLAN_WINDOW_NEARLY_GONE_PERCENT || windowWarnStep(w.percentUsed) > windowWarnStep(was.percentUsed))) {
         out.push({ kind: 'window_low', window: w.window, percentUsed: w.percentUsed, resetsAt: w.resetsAt });
       }
     }

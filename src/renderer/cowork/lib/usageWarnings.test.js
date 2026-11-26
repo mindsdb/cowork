@@ -429,20 +429,28 @@ describe('usageTransitions', () => {
   });
 
   it('keeps quiet about the allowance running low on a balance that carries Air (ENG-4208)', () => {
-    expect(usageTransitions(free(40), free(18))).toEqual([]);
+    expect(usageTransitions(free(40), free(8))).toEqual([]);
   });
 
-  it('tells a running task when it crosses into the low band', () => {
-    expect(usageTransitions(short(40), short(18))).toEqual([
-      { kind: 'free_low', fractionLeft: 0.18, resetsAt: RESET },
+  it('keeps quiet while the allowance has room, even crossing 20% (ENG-4719)', () => {
+    expect(usageTransitions(short(40), short(18))).toEqual([]);
+    expect(usageTransitions(unpaid({ freeTokens: at(25) }), unpaid({ freeTokens: at(12) }))).toEqual([]);
+  });
+
+  it('tells a running task when the allowance becomes nearly gone', () => {
+    expect(usageTransitions(short(18), short(10))).toEqual([
+      { kind: 'free_low', fractionLeft: 0.1, resetsAt: RESET },
+    ]);
+    expect(usageTransitions(short(40), short(8))).toEqual([
+      { kind: 'free_low', fractionLeft: 0.08, resetsAt: RESET },
     ]);
   });
 
   it('reports each step it crosses, not each poll', () => {
     // Draining inside one step is not news the task has not already had.
-    expect(usageTransitions(short(18), short(16))).toEqual([]);
+    expect(usageTransitions(short(9), short(6))).toEqual([]);
     // Crossing into the next one is.
-    expect(usageTransitions(short(18), short(8))).toEqual([
+    expect(usageTransitions(short(10), short(8))).toEqual([
       { kind: 'free_low', fractionLeft: 0.08, resetsAt: RESET },
     ]);
   });
@@ -460,7 +468,7 @@ describe('usageTransitions', () => {
   });
 
   it('stays quiet on the low crossing for a task on an explicit paid model', () => {
-    expect(usageTransitions(free(40), free(18), { model: 'claude-sonnet-4' })).toEqual([]);
+    expect(usageTransitions(short(40), short(8), { model: 'claude-sonnet-4' })).toEqual([]);
   });
 
   it('does not read a grant appearing, or an uncapped one, as running low', () => {
@@ -470,9 +478,9 @@ describe('usageTransitions', () => {
     // would not move this test — the comment there says as much.
     const uncapped = usage({ freeTokens: { limit: -1, used: 30 } });
     const none = usage({ freeTokens: null });
-    expect(usageTransitions(none, free(18))).toEqual([]);
-    expect(usageTransitions(uncapped, free(18))).toEqual([]);
-    expect(usageTransitions(free(18), uncapped)).toEqual([]);
+    expect(usageTransitions(none, short(8))).toEqual([]);
+    expect(usageTransitions(uncapped, short(8))).toEqual([]);
+    expect(usageTransitions(short(8), uncapped)).toEqual([]);
   });
 
   it('reports the deepest crossing too, not just the first two', () => {
@@ -980,18 +988,28 @@ describe('usageTransitions on a plan', () => {
     { window: '7d', percentUsed: 20, resetsAt: IN_2D },
   ], over);
 
-  it('reports a window crossing a warning step, once per step', () => {
-    expect(usageTransitions(plus(70), plus(82))).toEqual([
-      { kind: 'window_low', window: '5h', percentUsed: 82, resetsAt: IN_2H },
+  const SHORT_WALLET = { balance: { usd: 3, canConsume: true, alert: 'low' } };
+
+  it('reports a window once it is nearly gone, then once per step (ENG-4719)', () => {
+    // 80% is not news: the task is not about to stop.
+    expect(usageTransitions(plus(70, EMPTY_WALLET), plus(82, EMPTY_WALLET))).toEqual([]);
+    expect(usageTransitions(plus(82, EMPTY_WALLET), plus(91, EMPTY_WALLET))).toEqual([
+      { kind: 'window_low', window: '5h', percentUsed: 91, resetsAt: IN_2H },
     ]);
-    expect(usageTransitions(plus(82), plus(86))).toEqual([]);
+    expect(usageTransitions(plus(91, EMPTY_WALLET), plus(93, EMPTY_WALLET))).toEqual([]);
+    expect(usageTransitions(plus(93, EMPTY_WALLET), plus(96, EMPTY_WALLET)).map((t) => t.kind)).toEqual(['window_low']);
   });
 
-  it('reports a window filling up, and whether the wallet carries on', () => {
-    expect(usageTransitions(plus(95), plus(100))).toEqual([
+  it('reports a window filling up, and whether a short wallet carries on', () => {
+    expect(usageTransitions(plus(95, SHORT_WALLET), plus(100, SHORT_WALLET))).toEqual([
       { kind: 'window_exhausted', window: '5h', resetsAt: IN_2H, onWallet: true },
     ]);
     expect(usageTransitions(plus(95, EMPTY_WALLET), plus(100, EMPTY_WALLET))[0].onWallet).toBe(false);
+  });
+
+  it('says nothing about the windows while the wallet carries the next task', () => {
+    expect(usageTransitions(plus(82), plus(96))).toEqual([]);
+    expect(usageTransitions(plus(95), plus(100))).toEqual([]);
   });
 
   it('says nothing when a plan arrives mid-task', () => {
@@ -1000,11 +1018,11 @@ describe('usageTransitions on a plan', () => {
 
   it('says nothing about the windows to a task on a model the plan does not cover', () => {
     // The task bills the wallet from the start, so the window is not its news.
-    expect(usageTransitions(plus(70), plus(82), { coveredByTier: 'pro' })).toEqual([]);
-    expect(usageTransitions(plus(95), plus(100), { coveredByTier: 'pro' })).toEqual([]);
+    expect(usageTransitions(plus(82, EMPTY_WALLET), plus(91, EMPTY_WALLET), { coveredByTier: 'pro' })).toEqual([]);
+    expect(usageTransitions(plus(95, EMPTY_WALLET), plus(100, EMPTY_WALLET), { coveredByTier: 'pro' })).toEqual([]);
     // A model the plan covers still hears about it.
-    expect(usageTransitions(plus(70), plus(82), { coveredByTier: 'plus' }).map((t) => t.kind)).toEqual(['window_low']);
-    expect(usageTransitions(plus(95), plus(100), { coveredByTier: 'free' }).map((t) => t.kind)).toEqual(['window_exhausted']);
+    expect(usageTransitions(plus(82, EMPTY_WALLET), plus(91, EMPTY_WALLET), { coveredByTier: 'plus' }).map((t) => t.kind)).toEqual(['window_low']);
+    expect(usageTransitions(plus(95, EMPTY_WALLET), plus(100, EMPTY_WALLET), { coveredByTier: 'free' }).map((t) => t.kind)).toEqual(['window_exhausted']);
   });
 });
 
