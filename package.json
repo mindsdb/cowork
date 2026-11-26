@@ -116,6 +116,7 @@
     "keycloak-js": "^26.2.4",
     "keytar": "^7.9.0",
     "marked": "^17.0.4",
+    "mermaid": "^11.17.2",
     "parse5": "^7.3.0",
     "react": "^19.2.8",
     "react-chartjs-2": "^5.3.1",

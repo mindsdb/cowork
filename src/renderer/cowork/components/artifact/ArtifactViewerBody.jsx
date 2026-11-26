@@ -26,7 +26,7 @@ const FONT_MONO = "var(--font-mono)";
 // Full-bleed "Preview" placeholder shown over the preview region until the
 // iframe has actually painted (or while a text preview is fetching), so the
 // user never sees a flash of empty grey.
-function PreviewPlaceholder() {
+export function PreviewPlaceholder() {
   const { t } = useTranslation('artifacts');
   return (
     <div aria-hidden="true" style={{

@@ -115,7 +115,8 @@ vi.mock('./ArtifactViewerHeader', () => ({
 vi.mock('../ui/Modal', () => ({ Modal: ({ children }) => <div>{children}</div> }));
 vi.mock('../ConfirmModal', () => ({ ConfirmModal: () => null }));
 
-import { ArtifactViewer, publishedAppUrl } from './ArtifactViewer';
+import { ArtifactViewer } from './ArtifactViewer';
+import { publishedAppUrl } from './htmlPreviewSource';
 import { mountArtifactPreview } from '../../api';
 
 // A full-stack app on an org deployment (ENG-4687): the server can't start its

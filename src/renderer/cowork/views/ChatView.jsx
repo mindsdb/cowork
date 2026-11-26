@@ -18,13 +18,15 @@ import { CircleAlert } from 'lucide-react';
 import { Icon } from '../components/ui/Icon';
 import ArtifactRepairCard from '../components/ArtifactRepairCard';
 import { parseArtifactRepairPrompt } from '../lib/artifactRepairPrompt';
-import { parseQuickEditPrompt } from '../lib/quickEditPrompt';
+import { inlineSubmitChatPrompt, parseQuickEditPrompt } from '../lib/quickEditPrompt';
+import { MESSAGE_CARD_SLOT, cardRevisionId, inlineArtifactKey, isSupersededInline, latestInlineArtifactByKey } from '../lib/inlineArtifactCards';
+import { artifactShareState } from '../lib/orgSharing';
 import { planQuickEditCards } from '../lib/quickEditGroup';
 import { QuickEditGroupCard } from '../components/chat/QuickEditGroupCard';
 import { ArtifactRefPill } from '../components/artifacts/ArtifactRefPill';
 import Composer from '../components/Composer';
 import CodingTerminal from '../components/CodingTerminal';
-import { ActionBar, Alert, Badge, Card, Tooltip } from '../components/ui';
+import { ActionBar, Alert, Badge, Card, Collapsible, Tooltip } from '../components/ui';
 import { Modal, ModalBody } from '../components/ui/Modal';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
@@ -39,6 +41,7 @@ import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import ContextFileModal from '../components/project/ContextFileModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
+import { ArtifactInlinePreview } from '../components/artifact/ArtifactInlinePreview';
 import DocCard from '../components/doc/DocCard';
 import DocColumn from '../components/doc/DocColumn';
 import { isDocArtifact } from '../components/doc/docArtifact';
@@ -56,7 +59,7 @@ import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth, provis
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { GeneratedImageCard } from '../components/GeneratedImageCard';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
-import { BACKEND_ARTIFACT_TYPES, canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact, isPublishableArtifact } from '../lib/artifactKinds';
+import { BACKEND_ARTIFACT_TYPES, canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isBackendArtifact, isHtmlArtifact, isImageArtifact, isInlineArtifact, isPublishableArtifact, isWidgetArtifact } from '../lib/artifactKinds';
 import { useLiveApps } from '../../lib/liveApps';
 import { canPreviewDocument } from '../preview/kinds';
 import { downloadArtifactFile } from '../lib/artifactDownload';
@@ -84,6 +87,7 @@ import { host, isWeb } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useIntersection } from '../hooks/useIntersection';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
 import { artifactOpenTarget, noPreviewDownloadedNote } from '../lib/artifactActions';
@@ -399,6 +403,15 @@ function CoworkUserTurn({ content: rawContent, attachments, onDelete, onEdit, is
       <ArtifactRefPill slug={aboutArtifact.slug} onOpen={onOpenArtifact} />
     </div>
   ) : null;
+  // An inline artifact's Submit (ENG-4684) also carries the page's state as
+  // JSON for the agent: folded under the pill, not shown as a wall of it.
+  const submittedState = aboutArtifact?.json != null ? (
+    <div className="user-turn-artifact-state" data-testid="user-turn-artifact-state">
+      <Collapsible variant="compact" title={t('chatView.turn.submittedData')}>
+        <pre className="m-0 max-h-60 overflow-auto rounded-md bg-surface-2 p-2 font-mono text-xs text-ink-2">{aboutArtifact.json}</pre>
+      </Collapsible>
+    </div>
+  ) : null;
   const actions = deleting ? (
     <span
       // Primary ink, not the usual meta grey: the turn around it is at
@@ -425,7 +438,7 @@ function CoworkUserTurn({ content: rawContent, attachments, onDelete, onEdit, is
       turnId={turnId}
       deleting={deleting}
       attachments={attachmentRows}
-      footer={artifactPill}
+      footer={submittedState ? <>{artifactPill}{submittedState}</> : artifactPill}
       actions={shownActions}
     >
       {repair ? <ArtifactRepairCard repair={repair} projectId={projectId} streaming={streaming} /> : null}
@@ -652,7 +665,10 @@ export function artifactStepToCard(step, projectPath) {
 // down to the card because an artifact the agent created THIS turn cannot be in
 // an artifacts index that was loaded before it existed, and judging it against
 // one would mark a brand-new artifact "Deleted".
-function StepArtifacts({ steps, onOpen, onShare, projectPath, live = false, activeDocId = null }) {
+//
+// `latestInline` and `messageIndex` fold an inline card a later one shows
+// again (latestInlineArtifactByKey): one live frame per artifact.
+function StepArtifacts({ steps, onOpen, onShare, projectPath, live = false, activeDocId = null, latestInline = null, messageIndex = null, onInlineSubmit = null }) {
   const artifacts = steps?.filter((s) => s.badge === 'Artifact') || [];
   if (artifacts.length === 0) return null;
   return (
@@ -670,11 +686,27 @@ function StepArtifacts({ steps, onOpen, onShare, projectPath, live = false, acti
             onOpen={onOpen}
             onShare={onShare}
             live={live}
+            inlineSuperseded={isSupersededInline(latestInline, s.data, messageIndex, s.id)}
+            onInlineSubmit={onInlineSubmit}
           />
         );
       })}
     </div>
   );
+}
+
+// An inline artifact a later card shows again (ENG-4684) renders as the plain
+// artifact card: "This was updated. See the latest version below." scrolls to
+// the live copy (the card marked with the same `data-inline-artifact` key),
+// and "Preview this version" opens the page as this card made it.
+export function scrollToLiveInlineArtifact(key) {
+  if (!key || typeof document === 'undefined') return false;
+  const live = [...document.querySelectorAll('[data-inline-artifact]')]
+    .filter((el) => el.getAttribute('data-inline-artifact') === key);
+  const target = live[live.length - 1];
+  if (!target) return false;
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  return true;
 }
 
 // One turn's steps and ask_user cards, rendered in event order: work done
@@ -889,7 +921,7 @@ function StepConnectorDrafts({ steps, onConnect }) {
   );
 }
 
-export function ArtifactCard({ artifact, onOpen, onShare = null, live = false }) {
+export function ArtifactCard({ artifact, onOpen, onShare = null, live = false, inlineSuperseded = false, onInlineSubmit = null }) {
   // This card is an artifact surface like the panel's rows, so it answers to the
   // same deployment gate. Without it the chat offered a local preview, Export
   // and Show in Finder for content an org deployment does not serve, while the
@@ -951,7 +983,10 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
   // an image, or before the artifact card carries a serveUrl (org mode, or the
   // live-turn card streamed in ahead of ChatView.jsx's serveUrl passthrough).
   const { src: thumbSrc } = useBlobImageSrc({ url: isImage ? (artifactServeUrl(artifact) || null) : null });
-  const published = !!artifact.publishedUrl;
+  // A widget (ENG-4684) collects input in the chat and is not a deliverable:
+  // no Share, and no shared page to open (a stray published URL included).
+  const widget = isWidgetArtifact(artifact);
+  const published = !!artifact.publishedUrl && !widget;
   const hasBridge = host.isElectron || !host.isWeb;
   const canDownload = canDownloadArtifact(artifact);
   const openTarget = artifactOpenTarget({
@@ -1021,7 +1056,11 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
        * The viewer reads the draft URL in org mode and the local bytes on
        * desktop, so it opens on either without a canonical path of its own.
        */
-      onOpen(artifact);
+      // A live inline page hands over where the user is in it (its tab or
+      // slide, scroll, hash), for the viewer to open on the same place.
+      const view = liveInline ? liveInlineViewRef.current : null;
+      if (view) onOpen(artifact, { view });
+      else onOpen(artifact);
       return;
     }
     if (openTarget === 'published') {
@@ -1150,8 +1189,14 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
    * A document preview keeps the file one click away beside it: Download on
    * web, and on desktop Open, which hands the file to the default app.
    */
+  // "Shared link" only once the link reaches someone besides the owner
+  // (artifactShareState, the Share button's own rule); before that it is
+  // just the artifact's link.
+  const linkShared = artifactShareState(artifact).shared === true;
   const sharedLinkAction = !deleted && showSharedLink
-    ? { label: t('chatView.artifactCard.sharedLink'), onClick: handleOpenPublished, tooltip: t('chatView.artifactCard.sharedLinkTooltip') }
+    ? linkShared
+      ? { label: t('chatView.artifactCard.sharedLink'), onClick: handleOpenPublished, tooltip: t('chatView.artifactCard.sharedLinkTooltip') }
+      : { label: t('chatView.artifactCard.openLink'), onClick: handleOpenPublished, tooltip: t('chatView.artifactCard.openLinkTooltip') }
     : null;
   const downloadAction = !deleted && openTarget !== 'download'
     && (orgMode ? canDownloadOrgDraft(artifact) : (!hasBridge && canPreviewDoc && canDownload))
@@ -1171,17 +1216,57 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
    * which the viewer would show disabled without.
    */
   const shareAction = onShare && !deleted
+    && !widget
     && isPublishableArtifact(artifact)
     && !(liveApps && BACKEND_ARTIFACT_TYPES.has(artifact.type) && !published)
     && capabilities?.canEdit !== false
     && (orgMode || canAct)
     ? { label: t('chatView.artifactCard.share'), onClick: () => onShare(artifact), tooltip: t('chatView.artifactCard.shareTooltip') }
     : null;
+  /*
+   * An artifact the agent marked to show inline (ENG-4684) shows its live page
+   * in the card body, under the same head and actions: Preview still opens it
+   * full size in the viewer. Only where this card would preview that page
+   * anyway: an HTML page, not a fullstack app (it needs the viewer's proxy),
+   * that this deployment can render and that is still there.
+   */
+  const showInline = isInlineArtifact(artifact)
+    && isHtmlArtifact(artifact)
+    && !isBackendArtifact(artifact)
+    && !canPreviewDoc
+    && openTarget === 'preview'
+    && canActivate;
+  /*
+   * A later card shows this artifact live (latestInlineArtifactByKey), so
+   * this one is the plain card: no frame until "Preview this version" opens
+   * the page as this card made it (its `revisionId`, the revision its turn
+   * captured). A card with no revision (one stored before cards carried it,
+   * or a turn whose capture failed) offers no "Preview this version": the
+   * page as it is now is the live copy below, and showing it here under that
+   * label would claim it is this reply's version. It keeps the ordinary
+   * Preview, which opens the viewer and its history.
+   */
+  const superseded = showInline && inlineSuperseded;
+  const liveInline = showInline && !superseded;
+  const versionRevisionId = superseded ? cardRevisionId(artifact) : '';
+  const [versionOpen, setVersionOpen] = useState(false);
+  const framed = liveInline || (!!versionRevisionId && versionOpen);
+  // The live frame's latest view report (usePreviewView), read by handleOpen.
+  const liveInlineViewRef = useRef(null);
   const primaryDisabled = needsLocalPath && !canAct;
   const primaryReason = primaryDisabled ? (disabledReason || t('chatView.artifactCard.noFilePath')) : '';
-  const openAction = !deleted && primaryAction
-    ? { ...primaryAction, disabled: primaryDisabled, tooltip: primaryDisabled ? undefined : primaryAction.tooltip }
-    : null;
+  // A live inline card is already the page: no Preview button (the title
+  // still opens it full size); Share stays.
+  const openAction = liveInline
+    ? null
+    : versionRevisionId
+    ? {
+      label: versionOpen ? t('chatView.artifactCard.hideVersionPreview') : t('chatView.artifactCard.previewThisVersion'),
+      onClick: () => setVersionOpen((v) => !v),
+    }
+    : !deleted && primaryAction
+      ? { ...primaryAction, disabled: primaryDisabled, tooltip: primaryDisabled ? undefined : primaryAction.tooltip }
+      : null;
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
   /*
    * Whole-card click → preview. The inner buttons (the primary action,
@@ -1198,16 +1283,25 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
           It mounts empty because `status` starts null, which is what lets
           aria-live see a content CHANGE when an action fills it. */}
       <div className="sr-only" role="status" aria-live="polite">{status?.text ?? ''}</div>
+    {/* Inline, the card is a group, not a button: a live page cannot sit
+        inside a role="button" (its content would leave the accessibility
+        tree), and its clicks belong to the page. The title and Preview still
+        open the viewer. */}
     <Card
       as="div"
-      interactive={canActivate}
+      interactive={canActivate && !framed}
       flat
       padding="none"
-      onActivate={canActivate ? handleOpen : undefined}
+      onActivate={canActivate && !framed ? handleOpen : undefined}
+      role={framed ? 'group' : undefined}
       aria-label={deleted
         ? t('chatView.artifactCard.deletedAriaLabel', { title: artifact.title })
-        : (canActivate ? t('chatView.artifactCard.actionTarget', { action: activateLabel, target: artifact.title }) : noDestinationReason)}
-      className="railed chat-artifact-card"
+        : framed
+          ? artifact.title
+          : (canActivate ? t('chatView.artifactCard.actionTarget', { action: activateLabel, target: artifact.title }) : noDestinationReason)}
+      className={cn('railed chat-artifact-card', framed && 'is-inline')}
+      data-inline-artifact={liveInline ? inlineArtifactKey(artifact) || undefined : undefined}
+      data-testid={superseded ? 'artifact-inline-superseded' : undefined}
     >
       <div
         className={cn(
@@ -1233,7 +1327,16 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
           className="m-0 block min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-base font-semibold text-ink underline-offset-[3px] enabled:hover:underline disabled:cursor-not-allowed disabled:opacity-70"
         >{artifact.title}</button>
         <span className="flex min-w-0 items-center gap-1.5 font-body text-xs text-ink-3">
-          <span className="shrink-0">{artifact.kind && artifact.kind !== 'live artifact' ? artifact.kind : t('chatView.artifactCard.liveArtifact')}</span>
+          {superseded ? (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); scrollToLiveInlineArtifact(inlineArtifactKey(artifact)); }}
+              title={t('chatView.artifactCard.goToLatestTooltip')}
+              className="m-0 min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-xs text-ink-3 underline-offset-[3px] hover:underline"
+            >{t('chatView.artifactCard.updatedSeeBelow')}</button>
+          ) : (
+            <span className="shrink-0">{artifact.kind && artifact.kind !== 'live artifact' ? artifact.kind : t('chatView.artifactCard.liveArtifact')}</span>
+          )}
           {deleted && <Badge variant="muted" size="xs">{t('chatView.artifactCard.deletedBadge')}</Badge>}
         </span>
         {/* A disabled button takes no hover, so its reason is said here, in
@@ -1273,6 +1376,17 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
           <ActionBar size="sm" align="start" className="flex-wrap" primary={openAction} />
         )}
       </div>
+      {framed && (
+        <div className="chat-artifact-card__frame">
+          <ArtifactInlinePreview
+            artifact={artifact}
+            title={artifact.title || ''}
+            revisionId={versionRevisionId || undefined}
+            onSubmit={onInlineSubmit ? (submission) => onInlineSubmit(artifact, submission) : null}
+            onView={liveInline ? (view) => { liveInlineViewRef.current = view; } : null}
+          />
+        </div>
+      )}
       {/* The footer is the artifact's location bar: the path at rest, and the
           result of an action for the moment it is on screen. One or the
           other, so a long message never crushes the path beside it. */}
@@ -2470,7 +2584,10 @@ export default function ChatView({
   }, [dockDoc, docSide.open, onDocDocked]);
   // A new object per Share click, so the viewer opens its panel once per click.
   const [previewShare, setPreviewShare] = useState(null);
-  const handleArtifactOpen = (artifact) => {
+  // Where a live inline page was when its Preview was clicked (a new object
+  // per click), for the viewer to open on the same place.
+  const [previewViewRequest, setPreviewViewRequest] = useState(null);
+  const handleArtifactOpen = (artifact, { view = null } = {}) => {
     if (isDocArtifact(artifact)) {
       docSide.open(artifact);
       return;
@@ -2478,6 +2595,7 @@ export default function ChatView({
     // The card already filters: it only calls onOpen for previewable
     // types (HTML / md / txt / csv). Dispatch straight to the viewer.
     setPreviewShare(null);
+    setPreviewViewRequest(view ? { view } : null);
     setPreviewArt(artifact);
   };
   const handleArtifactShare = (artifact) => {
@@ -2487,6 +2605,7 @@ export default function ChatView({
       return;
     }
     setPreviewShare({});
+    setPreviewViewRequest(null);
     setPreviewArt(artifact);
   };
   // Task settings menu (kebab in header).
@@ -3018,6 +3137,18 @@ export default function ChatView({
     () => latestSkillCardIndexByKey(streamingMsg ? [...visibleMessages, streamingMsg] : visibleMessages),
     [visibleMessages, streamingMsg],
   );
+  // One live frame per inline artifact (ENG-4684): the latest card showing it
+  // inline keeps the frame, earlier ones fold to a chip. Same order as skills.
+  const latestInlineArtifact = useMemo(
+    () => latestInlineArtifactByKey(streamingMsg ? [...visibleMessages, streamingMsg] : visibleMessages),
+    [visibleMessages, streamingMsg],
+  );
+  // An inline page's Submit is a chat turn, sent the way a question card's
+  // typed answer is: the quick-edit bar's prompt about the artifact, plus the
+  // page's state. [] so it does not take the composer's staged files.
+  const handleInlineSubmit = onSend
+    ? (artifact, { state, message }) => onSend(inlineSubmitChatPrompt(artifact, message, state), [])
+    : null;
 
   const stick = useStickToBottom(scrollRef);
   const { scrollToBottom, follow: followEnd, anchorLastTurn } = stick;
@@ -3075,21 +3206,14 @@ export default function ChatView({
   // load. Re-running once a load settles re-checks a reader who is still
   // parked at the top and needs the page after this one.
   const loadEarlierSentinelRef = useRef(null);
-  useEffect(() => {
-    if (!task.hasMoreMessages || !onLoadEarlierMessages) return undefined;
-    if (typeof IntersectionObserver === 'undefined') return undefined;
-    const root = scrollRef.current;
-    const sentinel = loadEarlierSentinelRef.current;
-    if (!root || !sentinel) return undefined;
-    const observer = new IntersectionObserver(
-      (entries) => { if (entries.some((e) => e.isIntersecting)) onLoadEarlierMessages({ auto: true }); },
-      // Start the fetch slightly before the top is actually reached, so the
-      // page is usually already there by the time the reader gets there.
-      { root, rootMargin: '200px 0px 0px 0px' },
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [task.hasMoreMessages, task.id, onLoadEarlierMessages, loadingEarlierMessages]);
+  useIntersection(
+    loadEarlierSentinelRef,
+    (intersecting) => { if (intersecting) onLoadEarlierMessages({ auto: true }); },
+    // Start the fetch slightly before the top is actually reached, so the
+    // page is usually already there by the time the reader gets there.
+    { rootRef: scrollRef, rootMargin: '200px 0px 0px 0px', enabled: !!(task.hasMoreMessages && onLoadEarlierMessages) },
+    [task.id, onLoadEarlierMessages, loadingEarlierMessages],
+  );
 
   // Outer ref + conv-column ref. The orb canvas binds to the conv
   // column so the floating orb is naturally clipped to that area
@@ -4220,9 +4344,11 @@ export default function ChatView({
                       artifact={normalizeArtifactRecord(m.artifact, artifactProjectPath)}
                       onOpen={handleArtifactOpen}
                       onShare={handleArtifactShare}
+                      inlineSuperseded={isSupersededInline(latestInlineArtifact, m.artifact, i, MESSAGE_CARD_SLOT)}
+                      onInlineSubmit={handleInlineSubmit}
                     />
                   )}
-                  <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} activeDocId={docSide.doc?.artifactId} />
+                  <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} activeDocId={docSide.doc?.artifactId} latestInline={latestInlineArtifact} messageIndex={i} onInlineSubmit={handleInlineSubmit} />
                   <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
                   <StepConnectorDrafts steps={m.steps} onConnect={onConnectCustomConnector} />
                   {(() => {
@@ -4332,7 +4458,7 @@ export default function ChatView({
                     <StreamCursor />
                   </div>
                 )}
-                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} activeDocId={docSide.doc?.artifactId} live />
+                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} activeDocId={docSide.doc?.artifactId} live latestInline={latestInlineArtifact} messageIndex={visibleMessages.length} onInlineSubmit={handleInlineSubmit} />
                 <StepSkills steps={streamingMsg.steps} latestByKey={latestSkillCardByKey} messageIndex={visibleMessages.length} projectName={project?.name} />
                 <StepConnectorDrafts steps={streamingMsg.steps} onConnect={onConnectCustomConnector} />
               </AnswerTurn>
@@ -4641,7 +4767,9 @@ export default function ChatView({
         artifact={previewArt}
         shareRequest={previewShare}
         shareEntry={previewShare ? 'chat_card' : 'viewer'}
-        onClose={() => { setPreviewArt(null); setPreviewShare(null); }}
+        viewRequest={previewViewRequest}
+        onInlineSubmit={handleInlineSubmit}
+        onClose={() => { setPreviewArt(null); setPreviewShare(null); setPreviewViewRequest(null); }}
         onChange={(updated) => setPreviewArt(updated)}
         conversationId={task?.id || null}
         onAddressWithAgent={({ prompt }) => onSend?.(prompt)}

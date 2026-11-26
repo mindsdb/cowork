@@ -24,10 +24,6 @@
         "untilMobile": "免费 MindsHub Air 已对所有用户暂停，直至 {until}。暂停期间不会消耗你的额度。",
         "dailyResetMobile": "免费 MindsHub Air 已对所有用户暂停，直至每日预算重置。暂停期间不会消耗你的额度。"
       },
-      "resting": {
-        "resetsAt": "将于 {time} 重置。",
-        "noReset": "Air 可使用这些令牌，直至用完。"
-      },
       "balanceEmptySentence": "你的余额已用完。",
       "percentLeft": "免费额度剩余 {percent}",
       "autoTopUpFailed": {
@@ -46,8 +42,6 @@
       },
       "balanceLow": {
         "title": "余额不足",
-        "autoRefills": "剩余 {usd}。余额低于 {floor} 时，自动充值会将其补足至 {target}。",
-        "autoCovers": "剩余 {usd}。自动充值将补足余额。",
         "autoPending": "剩余 {usd}。自动充值正在等待银行处理。",
         "autoCapReached": "剩余 {usd}。为避免超出每月上限，自动充值已暂停。请充值以继续。",
         "body": "剩余 {usd}。请充值或开启自动充值。",
@@ -83,7 +77,8 @@
         "lowThenWalletWithTime": "之后，任务将按 API 价格使用你的余额，直到 {time} 重置。",
         "lowThenPause": "之后，任务将暂停，直到额度重置。",
         "lowThenPauseWithTime": "之后，任务将暂停至 {time}。"
-      }
+      },
+      "resetsAt": "将于 {time} 重置。"
     },
     "scheduleWhen": {
       "timeZone": "{city} 时间",

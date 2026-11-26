@@ -34,7 +34,7 @@ import { PLATFORM_UI } from '../../lib/deployment';
 import { modelPickerMode, operatorEffortLevels } from '../../lib/modelPicker';
 import UsageBar from './UsageBar';
 import { HubUsageContext } from '../lib/hubUsageContext';
-import { deriveComposerWarning, countsAsWarning } from '../lib/usageWarnings';
+import { deriveComposerWarning } from '../lib/usageWarnings';
 import { connectionMuteKey } from '../lib/connectionMutes';
 import { useTranslation } from '../../lib/i18n';
 import { useDocsEnabled } from '../../lib/docsEnabled';
@@ -997,16 +997,8 @@ export default function Composer({
     [hubUsage],
   );
   // "Healthy" means nothing to WARN about for any pick, not merely that the
-  // current paid model hides the free-token warnings. `countsAsWarning` owns
-  // the resting-is-not-a-warning rule, so it is stated and tested once.
-  const usageHealthy = !!hubUsage?.usage?.reachable && !countsAsWarning(anyPickWarning);
-  // An explicit paid pick cannot spend the grant, so it gets no figure — but
-  // the account still has one, and letting the bar come and go with the pick
-  // moved the whole composer by the bar's height on every switch. Reserve
-  // exactly that height with the same component instead of a magic number:
-  // `visibility: hidden` keeps the layout and drops it out of the tab order,
-  // and aria-hidden keeps it out of the accessibility tree.
-  const reservedBar = !usageWarning && anyPickWarning?.resting ? anyPickWarning : null;
+  // current paid model hides the free-token warnings.
+  const usageHealthy = !!hubUsage?.usage?.reachable && !anyPickWarning;
   const [noConnectorsBefore, noConnectorsAfter = ''] = t('composer.menu.noConnectors', { link: INLINE_SLOT }).split(INLINE_SLOT);
 
   return (
@@ -1029,11 +1021,6 @@ export default function Composer({
           isBillingOwner={!!hubUsage?.usage?.isBillingOwner}
           usageKnown={usageHealthy}
         />
-        {reservedBar && (
-          <div className="invisible pointer-events-none" aria-hidden="true" data-usage-bar-reserved="true">
-            <UsageBar warning={reservedBar} />
-          </div>
-        )}
         <ComposerFrame className={`composer-wrap${inFence ? ' in-fence' : ''}`} focused={focused}>
 
           {/* "/" slash-command menu — anchored to composer-wrap so it appears

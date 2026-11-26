@@ -24,10 +24,6 @@
         "untilMobile": "MindsHub Air gratuito è sospeso per tutti fino alle {until}. La tua quota non viene consumata.",
         "dailyResetMobile": "MindsHub Air gratuito è sospeso per tutti fino al rinnovo del budget giornaliero. La tua quota non viene consumata."
       },
-      "resting": {
-        "resetsAt": "Si rinnova alle {time}.",
-        "noReset": "Air li usa finché non si esauriscono."
-      },
       "balanceEmptySentence": "Il tuo saldo è a zero.",
       "percentLeft": "Ti resta il {percent} della quota gratuita",
       "autoTopUpFailed": {
@@ -46,8 +42,6 @@
       },
       "balanceLow": {
         "title": "Saldo in esaurimento",
-        "autoRefills": "Restano {usd}. Quando il saldo scende sotto {floor}, la ricarica automatica lo riporta a {target}.",
-        "autoCovers": "Restano {usd}. Ci penserà la ricarica automatica.",
         "autoPending": "Restano {usd}. La ricarica automatica è in attesa della tua banca.",
         "autoCapReached": "Restano {usd} e la ricarica automatica è sospesa per non superare il limite mensile. Aggiungi fondi per continuare.",
         "body": "Restano {usd}. Aggiungi fondi o attiva la ricarica automatica.",
@@ -83,7 +77,8 @@
         "lowThenWalletWithTime": "Dopo, le attività usano il tuo saldo a tariffe API fino al rinnovo alle {time}.",
         "lowThenPause": "Dopo, le attività vanno in pausa fino al rinnovo.",
         "lowThenPauseWithTime": "Dopo, le attività vanno in pausa fino alle {time}."
-      }
+      },
+      "resetsAt": "Si rinnova alle {time}."
     },
     "scheduleWhen": {
       "timeZone": "ora di {city}",

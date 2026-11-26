@@ -44,7 +44,7 @@ import { useTranslation } from '../../../lib/i18n';
 const RAIL_COLLAPSED_ROWS = 6;
 import {
   canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, canShowInBrowserTab,
-  isBackendArtifact, isInlinePreviewable,
+  isBackendArtifact, isInlinePreviewable, isWidgetArtifact,
 } from '../../lib/artifactKinds';
 import { canPreviewDocument } from '../../preview/kinds';
 import { downloadArtifactFile } from '../../lib/artifactDownload';
@@ -172,7 +172,9 @@ export function WorkingFolderLive({
   // when nothing in it changed, so the rail and its viewer sync do not re-run.
   const applyArtifacts = (list, ticket) => {
     if (ticket !== loadVersion.current) return;
-    const next = Array.isArray(list) ? list : [];
+    // A widget (ENG-4684) is not a deliverable: the server leaves it out of
+    // the list, and so does the rail.
+    const next = Array.isArray(list) ? list.filter((a) => !isWidgetArtifact(a)) : [];
     setArtifacts((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
   };
 

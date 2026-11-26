@@ -1,0 +1,31 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>body{margin:0;font:14px sans-serif} li{padding:4px}</style></head>
+<body>
+<h2>People to contact</h2>
+<ul id="list"></ul><button id="ok">Confirm</button>
+<script>
+const D = [{id: "ana", label: "Ana Ruiz, Acme"}, {id: "li", label: "Li Wei, Globex"}, {id: "bo", label: "Bo Chen, Initech"}, {id: "zo", label: "Zoe Park, Umbrella"}];
+let state = {picked: D.map(d => d.id)};
+const api = window.anton;
+function render() {
+  document.getElementById("list").replaceChildren(...D.map(d => {
+    const li = document.createElement("li"), label = document.createElement("label"), box = document.createElement("input");
+    box.type = "checkbox"; box.dataset.id = d.id; box.checked = state.picked.includes(d.id);
+    label.append(box, " " + d.label); li.append(label); return li;
+  }));
+}
+function apply(s) {
+  if (s && Array.isArray(s.picked)) { state = {picked: s.picked.filter(id => D.some(d => d.id === id))}; render(); }
+}
+document.getElementById("list").addEventListener("change", e => {
+  const id = e.target.dataset.id;
+  state.picked = e.target.checked ? [...state.picked, id] : state.picked.filter(x => x !== id);
+  if (api) api.setState(state);
+});
+document.getElementById("ok").addEventListener("click", () => {
+  if (api) api.submit(state, `Contact these ${state.picked.length} people`);
+});
+render();
+if (api) { apply(api.getState()); api.onState(apply); }
+</script>
+</body></html>

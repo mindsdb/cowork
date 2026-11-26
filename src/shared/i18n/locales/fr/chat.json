@@ -20,7 +20,8 @@
       "deleting": "Suppression…",
       "copyMessage": "Copier le message",
       "copyResponse": "Copier la réponse",
-      "agentFallback": "Agent"
+      "agentFallback": "Agent",
+      "submittedData": "Données envoyées"
     },
     "incomplete": {
       "spendCeiling": "Arrêt anticipé : cette tâche a atteint son budget de jetons.",
@@ -74,7 +75,13 @@
       "liveArtifact": "artefact en direct",
       "deletedBadge": "Supprimé",
       "share": "Partager",
-      "shareTooltip": "Choisir qui peut l'ouvrir"
+      "shareTooltip": "Choisir qui peut l'ouvrir",
+      "goToLatestTooltip": "Faire défiler jusqu'à la dernière version",
+      "openLink": "Ouvrir le lien",
+      "openLinkTooltip": "Ouvrir le lien de l'artefact dans un nouvel onglet",
+      "updatedSeeBelow": "Ceci a été mis à jour. Consultez la dernière version ci-dessous.",
+      "previewThisVersion": "Prévisualiser cette version",
+      "hideVersionPreview": "Masquer cette version"
     },
     "kinds": {
       "provider": "Fournisseur",
@@ -506,7 +513,19 @@
       "missingType": "Type de graphique manquant",
       "unsupportedType": "Type de graphique non pris en charge : « {type} ». Types pris en charge : {supported}.",
       "invalidJson": "JSON non valide dans la spécification du graphique",
-      "error": "ERREUR : {error}"
+      "error": "ERREUR : {error}",
+      "loading": "Création du graphique…",
+      "chartLabel": "Graphique",
+      "diagramLabel": "Diagramme",
+      "copyImage": "Copier comme image",
+      "downloadPng": "Télécharger en PNG",
+      "showSource": "Afficher la source",
+      "hideSource": "Masquer la source",
+      "tooLarge": "La spécification dépasse {limit} Ko",
+      "tooManyDatasets": "Trop de séries de données ({count}) ; la limite est de {limit}",
+      "tooManyPoints": "Trop de points de données ({count}) ; la limite est de {limit}",
+      "tooManyNodes": "Trop de nœuds ({count}) ; la limite est de {limit}",
+      "emptyDiagram": "Le diagramme est vide"
     }
   },
   "taskModes": {

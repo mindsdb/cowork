@@ -240,10 +240,6 @@
   "upToDate": "已是最新版本",
   "upToDateSaving": "正在保存…",
   "upToDateSaved": "已保存",
-  "usageBar": {
-    "hideAllowance": "隐藏额度",
-    "hide": "隐藏"
-  },
   "diagnostics": {
     "copy": "复制诊断信息",
     "copied": "已复制",
