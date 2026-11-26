@@ -74,7 +74,13 @@ export function inlineStateKey(artifact) {
 const latest = new Map();
 // key -> Set of (content, from) listeners: the frames showing that artifact.
 const listeners = new Map();
+// key -> Set of save schedulers, one per frame of that artifact that saves
+// its state.json: a state set from outside the frames (the voice call's
+// operator, setInlineArtifactState) is saved through one of them.
+const savers = new Map();
 let seq = 0;
+// The `from` of a state set from outside every frame: each frame shows it.
+const FROM_APP = () => {};
 
 function remember(key, content, { unsaved, from }) {
   if (!key) return;
@@ -91,6 +97,28 @@ export function latestInlineState(artifact) {
   const entry = latest.get(inlineStateKey(artifact));
   if (!entry) return undefined;
   try { return JSON.parse(entry.content); } catch { return undefined; }
+}
+
+/**
+ * Sets the state of `artifact` from outside its frames (the voice call's
+ * operator, ENG-4684), the way a change from one of them goes: the shared
+ * state, handed to every live frame of the artifact (postPreviewState), and
+ * its state.json saved after the quiet spell. True when it was taken; false
+ * when the state is not JSON-safe or too large, or no live frame shows the
+ * artifact (there is nothing to show it, and no frame to save it).
+ *
+ * @param {object} artifact
+ * @param {unknown} state
+ * @returns {boolean}
+ */
+export function setInlineArtifactState(artifact, state) {
+  const key = inlineStateKey(artifact);
+  const content = serializeInlineState(state);
+  if (!key || content == null || !listeners.get(key)?.size) return false;
+  const save = savers.get(key)?.values().next().value;
+  remember(key, content, { unsaved: !!save, from: FROM_APP });
+  save?.(content);
+  return true;
 }
 
 /** Forgets every shared state (tests). */
@@ -192,6 +220,13 @@ export function useInlineArtifactState(iframeRef, artifact, { enabled, onSubmit 
       return savingRef.current;
     };
 
+    // `content` is saved after the quiet spell, unless a newer one comes.
+    const schedule = (content) => {
+      pendingRef.current = content;
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => { void flush(); }, INLINE_STATE_DEBOUNCE_MS);
+    };
+
     // The page set `content`, and it is the user's: shared, and saved after
     // the quiet spell.
     const take = (content) => {
@@ -199,9 +234,7 @@ export function useInlineArtifactState(iframeRef, artifact, { enabled, onSubmit 
       // A page echoing a state it was handed changes nothing.
       if (latest.get(key)?.content === content && pendingRef.current == null) return;
       remember(key, content, { unsaved: persists, from: onFrameState });
-      pendingRef.current = content;
-      if (timerRef.current) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => { void flush(); }, INLINE_STATE_DEBOUNCE_MS);
+      schedule(content);
     };
 
     const read = async () => {
@@ -299,6 +332,10 @@ export function useInlineArtifactState(iframeRef, artifact, { enabled, onSubmit 
     if (key) {
       if (!listeners.has(key)) listeners.set(key, new Set());
       listeners.get(key).add(onFrameState);
+      if (persists) {
+        if (!savers.has(key)) savers.set(key, new Set());
+        savers.get(key).add(schedule);
+      }
     }
     window.addEventListener('message', onMessage);
     return () => {
@@ -307,6 +344,9 @@ export function useInlineArtifactState(iframeRef, artifact, { enabled, onSubmit 
       const set = listeners.get(key);
       set?.delete(onFrameState);
       if (set && !set.size) listeners.delete(key);
+      const saving = savers.get(key);
+      saving?.delete(schedule);
+      if (saving && !saving.size) savers.delete(key);
       // A change still waiting is saved rather than lost with the frame.
       if (timerRef.current) void flush();
     };

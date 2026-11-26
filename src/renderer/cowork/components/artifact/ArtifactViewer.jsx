@@ -54,7 +54,7 @@ import { trackArtifactStatsOpened } from '../../lib/analytics';
 import { UNKNOWN_SHARE_SNAPSHOT, reportWithdrawal, shareSnapshot } from '../../lib/artifactShareAnalytics';
 import { diagnostic } from '../../../../shared/diagnostics';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
-import { isPublishableArtifact, isImageArtifact, isInlineArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
+import { isPublishableArtifact, isImageArtifact, isInlineArtifact, isWidgetArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
 import { useBlobImageSrc } from '../AttachmentThumbnail';
 import { Modal } from '../ui/Modal';
 import { ConfirmModal } from '../ConfirmModal';
@@ -92,6 +92,7 @@ import { useArtifactStats } from './stats/useArtifactStats';
 import { canPreviewDocument, documentPreviewType } from '../../preview/kinds';
 import { useTranslation } from '../../../lib/i18n';
 import { htmlText, showArtifactOnScreen } from '../../lib/voice/screenArtifacts';
+import { showWidgetOnScreen } from '../../lib/voice/screenWidgets';
 import './artifactWorkspace.css';
 import {
   artifactExtension,
@@ -762,13 +763,35 @@ export function ArtifactViewer({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, artifact?.path]);
+  /* An inline artifact or widget shown here is live for the operator too
+     (lib/voice/screenWidgets.js): its state, the page's text as read above,
+     and its Submit, which goes the way the page's own does. */
+  const inlineLive = open && !!(previewUrl || previewDoc) && isInlineArtifact(artifact);
+  useEffect(() => {
+    if (!inlineLive) return undefined;
+    return showWidgetOnScreen(() => {
+      const { artifact: shown, previewDoc: doc } = onScreenRef.current;
+      if (!shown) return null;
+      const html = doc || previewSourceRef.current?.()?.html || '';
+      return { artifact: shown, html, onSubmit: onInlineSubmitRef.current ? submitFromViewer : null };
+    });
+  }, [inlineLive, submitFromViewer]);
   /*
    * With live apps on, a full-stack app shares through "Share with…" on its
    * card, and cowork-server refuses to publish one as a page, so the header
    * offers no page Share until it is published (it never is, unless that
    * happened before live apps were turned on).
+   *
+   * Nor where the server says it can't be published (`canPublish` false in
+   * the workspace's or the card's capabilities), as it does for a widget
+   * (ENG-4684): input collected in the chat, not a deliverable. A widget is
+   * left out here too, for a server that does not send the capability yet.
    */
-  const publishable = isPublishableArtifact(artifact) && !(liveApps && isBackendArtifact && !pub.publishedUrl);
+  const publishCapabilities = workspace.capabilities || artifact?.capabilities;
+  const publishable = isPublishableArtifact(artifact)
+    && !isWidgetArtifact(artifact)
+    && publishCapabilities?.canPublish !== false
+    && !(liveApps && isBackendArtifact && !pub.publishedUrl);
   const canManage = workspace.capabilities
     ? workspace.capabilities.canEdit !== false
     : artifact?.capabilities

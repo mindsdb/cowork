@@ -27,19 +27,36 @@ export function isHtmlArtifact(a) {
   return _ext(a) === '.html' || _path(a).endsWith('.html');
 }
 
+/** The artifact's `display` metadata, trimmed and lower-cased ('' when absent). */
+function _display(a) {
+  const display = a?.display ?? a?.metadata?.display;
+  return typeof display === 'string' ? display.trim().toLowerCase() : '';
+}
+
 /**
  * An artifact the agent marked to show live inside the chat reply (ENG-4684):
  * metadata `display: "inline"`, a small interactive chart or diagram rather
- * than a page the person opens. Anton writes the field and cowork-server
+ * than a page the person opens, or `display: "widget"` (isWidgetArtifact),
+ * which renders the same way. Anton writes the field and cowork-server
  * passes it through; it may arrive at the top level of the card or nested
  * under `metadata`, so both are read here and nowhere else. Absent means the
  * usual card. Says nothing about whether the card can render it: callers
  * still ask isHtmlArtifact and the deployment's own preview gate.
  */
 export function isInlineArtifact(a) {
-  if (!a) return false;
-  const display = a.display ?? a.metadata?.display;
-  return typeof display === 'string' && display.trim().toLowerCase() === 'inline';
+  const display = _display(a);
+  return display === 'inline' || display === 'widget';
+}
+
+/**
+ * A widget (ENG-4684): metadata `display: "widget"`, an interactive piece
+ * that collects input from the person in the chat. It renders exactly like
+ * an inline artifact (isInlineArtifact is true for it too), but it is not a
+ * deliverable: nothing offers to share or publish it, and the Artifacts list
+ * leaves it out (cowork-server filters it, and the list guards it again).
+ */
+export function isWidgetArtifact(a) {
+  return _display(a) === 'widget';
 }
 
 // Raster/vector image extensions a `create_artifact(type="image")` output

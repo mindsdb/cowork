@@ -37,6 +37,21 @@ describe('the voice operator', () => {
     expect(history.at(-1)).toEqual({ role: 'assistant', content: 'Made Sales and moved the task there.' });
   });
 
+  it('sends the widgets on screen beside the snapshot, read again every round', async () => {
+    const operate = vi.fn()
+      .mockResolvedValueOnce({ tool_calls: [{ id: 'w', name: 'set_widget_state', arguments: { key: 'k', state: { n: 1 } } }] })
+      .mockResolvedValueOnce({ content: 'Set.', tool_calls: [] });
+    let n = 0;
+    const widgets = vi.fn(() => [{ key: 'k', title: 'Pick', display: 'widget', state: { n }, excerpt: '', submittable: true }]);
+    const actions = { set_widget_state: vi.fn(() => { n = 1; return 'Set the state of "Pick".'; }) };
+
+    await runOperator({ request: 'Pick one.', history: [], snapshot: () => 'Home', widgets, actions, operate });
+
+    expect(operate.mock.calls[0][2]).toEqual([expect.objectContaining({ key: 'k', state: { n: 0 } })]);
+    expect(operate.mock.calls[1][2]).toEqual([expect.objectContaining({ key: 'k', state: { n: 1 } })]);
+    expect(actions.set_widget_state).toHaveBeenCalledWith({ key: 'k', state: { n: 1 } });
+  });
+
   it('cuts a request past the server limit to its end, what the person said last', async () => {
     const operate = vi.fn().mockResolvedValueOnce({ content: 'On it.', tool_calls: [] });
     const request = `${'a'.repeat(MAX_REQUEST_CHARS)} and then stop the task`;

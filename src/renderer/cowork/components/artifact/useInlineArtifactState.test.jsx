@@ -22,6 +22,7 @@ import {
   latestInlineState,
   saveInlineState,
   serializeInlineState,
+  setInlineArtifactState,
   useInlineArtifactState,
 } from './useInlineArtifactState';
 
@@ -306,5 +307,42 @@ describe('useInlineArtifactState: shared between frames', () => {
     expect(() => fromWindow(viewer, { type: 'submit', state: { ok: true } })).not.toThrow();
     await act(async () => {});
     expect(api.saveArtifactSource).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ENG-4684: a voice call's operator sets a widget's state from outside its
+// frames: the same way a frame's own change goes.
+describe('setInlineArtifactState', () => {
+  it('shares the state, hands it to every live frame and saves state.json once, after the quiet spell', async () => {
+    api.loadArtifactSource.mockResolvedValue({ content: '{"n":0}', revision: { id: 'r1' } });
+    render(<TwoFrames />);
+    const [inline, viewer] = frames();
+    fromWindow(inline, { type: 'document-start' });
+    await act(async () => {});
+    const toInline = vi.spyOn(inline, 'postMessage');
+    const toViewer = vi.spyOn(viewer, 'postMessage');
+
+    let taken;
+    act(() => { taken = setInlineArtifactState(artifact, { n: 7 }); });
+    expect(taken).toBe(true);
+    expect(latestInlineState(artifact)).toEqual({ n: 7 });
+    expect(toInline).toHaveBeenCalledWith(stateMessage({ n: 7 }), '*');
+    expect(toViewer).toHaveBeenCalledWith(stateMessage({ n: 7 }), '*');
+
+    // The page echoing what it was handed changes nothing.
+    fromWindow(inline, { type: 'state', state: { n: 7 } });
+    await act(async () => { vi.advanceTimersByTime(INLINE_STATE_DEBOUNCE_MS); });
+    expect(api.saveArtifactSource).toHaveBeenCalledTimes(1);
+    expect(api.saveArtifactSource.mock.calls[0][1]).toEqual({
+      path: 'state.json', content: '{"n":7}', expectedRevisionId: 'r1', summary: 'Inline state',
+    });
+  });
+
+  it('takes nothing with no live frame, or a state that is not JSON-safe', () => {
+    expect(setInlineArtifactState(artifact, { n: 1 })).toBe(false);
+    render(<Harness />);
+    const loop = {}; loop.self = loop;
+    expect(setInlineArtifactState(artifact, loop)).toBe(false);
+    expect(latestInlineState(artifact)).toBeUndefined();
   });
 });

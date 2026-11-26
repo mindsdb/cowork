@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { load } from 'js-yaml';
 import {
   canDownloadArtifact, canDownloadOrgDraft, canShowInBrowserTab,
-  canPreviewLocally, canPreviewOrgDraft, isImageArtifact, isInlineArtifact, isInlinePreviewable,
+  canPreviewLocally, canPreviewOrgDraft, isImageArtifact, isInlineArtifact, isInlinePreviewable, isWidgetArtifact,
 } from './artifactKinds';
 
 const FIXTURES = load(readFileSync(resolve(import.meta.dirname, 'artifactSurfaces.yaml'), 'utf-8'));
@@ -182,5 +182,27 @@ describe('isInlineArtifact', () => {
     expect(isInlineArtifact({ display: 'block' })).toBe(false);
     expect(isInlineArtifact({ display: true })).toBe(false);
     expect(isInlineArtifact({ metadata: null })).toBe(false);
+  });
+
+  it('is true for a widget too, which renders the same way', () => {
+    expect(isInlineArtifact({ display: 'widget' })).toBe(true);
+    expect(isInlineArtifact({ metadata: { display: ' Widget ' } })).toBe(true);
+  });
+});
+
+// ENG-4684: `display: "widget"` collects input in the chat. It renders like
+// an inline artifact but is not a deliverable (no share, publish or list row).
+describe('isWidgetArtifact', () => {
+  it('is true for display "widget", top level or nested', () => {
+    expect(isWidgetArtifact({ display: 'widget' })).toBe(true);
+    expect(isWidgetArtifact({ metadata: { display: 'WIDGET ' } })).toBe(true);
+  });
+
+  it('is false for inline and everything else', () => {
+    expect(isWidgetArtifact({ display: 'inline' })).toBe(false);
+    expect(isWidgetArtifact({ display: 'card', metadata: { display: 'widget' } })).toBe(false);
+    expect(isWidgetArtifact({})).toBe(false);
+    expect(isWidgetArtifact(null)).toBe(false);
+    expect(isWidgetArtifact({ display: 1 })).toBe(false);
   });
 });

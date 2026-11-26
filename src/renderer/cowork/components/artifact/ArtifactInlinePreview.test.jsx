@@ -9,7 +9,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 const loadHtmlPreview = vi.fn();
 vi.mock('./htmlPreviewSource', () => ({
   loadHtmlPreview: (...a) => loadHtmlPreview(...a),
-  loadHtmlRevision: vi.fn(),
+  loadHtmlRevision: vi.fn(async () => ({ doc: '<p>chart then</p>' })),
   usesDraftLink: () => false,
   withdrawDraftLinks: vi.fn(async () => false),
 }));
@@ -22,6 +22,7 @@ import {
   clampInlineHeight,
 } from './ArtifactInlinePreview';
 import { PREVIEW_PARENT_SOURCE } from './usePreviewView';
+import { widgetsOnScreen } from '../../lib/voice/screenWidgets';
 
 const artifact = {
   title: 'Revenue by month',
@@ -186,5 +187,28 @@ describe('ArtifactInlinePreview', () => {
     setInView(true);
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not load the draft.');
     expect(screen.queryByTitle('Revenue by month')).toBeNull();
+  });
+});
+
+// ENG-4684: a voice call's operator sees the live frame while it is mounted.
+describe('ArtifactInlinePreview on screen for the voice operator', () => {
+  it('registers the live frame with its page text and Submit, and only while mounted', async () => {
+    const widget = { ...artifact, display: 'widget' };
+    const { unmount } = render(<ArtifactInlinePreview artifact={widget} title={widget.title} onSubmit={vi.fn()} />);
+    expect(widgetsOnScreen()).toEqual([]);
+    setInView(true);
+    await screen.findByTitle('Revenue by month');
+    expect(widgetsOnScreen()).toEqual([
+      expect.objectContaining({ title: 'Revenue by month', display: 'widget', excerpt: 'chart', submittable: true }),
+    ]);
+    unmount();
+    expect(widgetsOnScreen()).toEqual([]);
+  });
+
+  it('leaves out a frame showing an earlier revision', async () => {
+    render(<ArtifactInlinePreview artifact={artifact} title={artifact.title} revisionId="rev-1" />);
+    setInView(true);
+    await screen.findByTitle('Revenue by month');
+    expect(widgetsOnScreen()).toEqual([]);
   });
 });

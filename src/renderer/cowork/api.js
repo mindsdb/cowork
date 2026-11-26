@@ -3394,13 +3394,15 @@ export async function startVoiceSession(sdp, voice) {
 /* One step of the voice call's operator: the call's history and what is on
    screen in, the model's next turn ({content, tool_calls: [{id, name,
    arguments}]}) out. The app runs the calls (lib/voice/operator.js). */
-export async function voiceOperate(messages, snapshot) {
+export async function voiceOperate(messages, snapshot, widgets) {
   return req('/voice/operate', {
     method: 'POST',
     timeoutMs: 40_000,
     headers: await hubHeaders(),
     // The time zone, so the operator counts dates from the person's today.
-    body: JSON.stringify({ messages, snapshot, timezone: localTimeZone() || undefined }),
+    // `widgets`: the inline artifacts and widgets live on screen (ENG-4684,
+    // lib/voice/screenWidgets.js), when the caller reads them.
+    body: JSON.stringify({ messages, snapshot, widgets, timezone: localTimeZone() || undefined }),
   });
 }
 
