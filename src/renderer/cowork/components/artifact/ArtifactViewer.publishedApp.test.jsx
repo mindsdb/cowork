@@ -214,6 +214,8 @@ describe('publishedAppUrl', () => {
     ['http://view.example/x', ''],
     ['javascript:alert(1)', ''],
     ['data:text/html,hi', ''],
+    // Cowork's own API origin: never framed with allow-same-origin.
+    ['https://cowork.example/api/v1/anything', ''],
     ['', ''],
     [undefined, ''],
   ])('%s → %s', (value, expected) => {

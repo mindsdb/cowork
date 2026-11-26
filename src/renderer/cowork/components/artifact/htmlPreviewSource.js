@@ -50,11 +50,18 @@ import {
 
 const tr = (key) => i18n.t(key, { ns: 'artifacts' });
 
-// A published app's address, for the preview frame: an https page, or ''.
+// A published app's address, for the preview frame: an https page on
+// another origin than this page and its API, or ''. The frame keeps the app's
+// origin (allow-same-origin), which is safe only because that origin is not
+// Cowork's: a page on Cowork's own origin with scripts and same-origin could
+// reach the shell around it.
 export function publishedAppUrl(value) {
   try {
     const url = new URL(String(value || ''));
-    return url.protocol === 'https:' ? url.href : '';
+    if (url.protocol !== 'https:') return '';
+    const own = [window.location?.origin, host.getApiOrigin?.()].filter(Boolean)
+      .map((origin) => { try { return new URL(origin).origin; } catch { return ''; } });
+    return own.includes(url.origin) ? '' : url.href;
   } catch {
     return '';
   }
