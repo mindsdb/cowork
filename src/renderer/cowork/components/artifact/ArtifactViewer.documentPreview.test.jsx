@@ -229,10 +229,10 @@ describe.each(data.documentArtifacts)('a $type artifact', (artifactData) => {
     expect(screen.queryByRole('button', { name: 'Live edit' })).toBeNull();
   });
 
+  // A document draws no comment layer, so there is no comment to hand off.
   it('offers no "Address with agent"', async () => {
     renderViewer(artifact);
     await waitFor(() => expect(previewFrames()).toHaveLength(1));
-    expect(calls.body.at(-1).review.onAddressWithAgent).toBeUndefined();
     expect(screen.queryByText('Address with agent')).toBeNull();
   });
 

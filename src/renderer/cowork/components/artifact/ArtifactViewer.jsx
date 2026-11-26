@@ -1891,7 +1891,7 @@ export function ArtifactViewer({
     reportId: commentReportId,
     controller: comments,
     onStatus: setCommentStatus,
-    onAddressWithAgent: documentType ? undefined : addressCommentWithAgent,
+    onAddressWithAgent: addressCommentWithAgent,
     onCreate: createArtifactComment,
     loadCommentImage: readCommentImage,
     // Comments sent to the "Ask for a change" bar: the one it is on, and

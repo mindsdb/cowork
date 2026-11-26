@@ -84,9 +84,7 @@ export const previewOnlyReason = () => tr('previewOnly', { product: productName(
  * (`source.binary`, no `content`), so Live edit, a save and comments stay
  * off. A server that keeps no workspace for it (one from before documents
  * had revisions) answers 404/422, and the hook names PREVIEW_ONLY as the
- * reason. It returns `previewOnly` too: an older card with a short id is
- * also not `supported`, and the header needs the flag to name PREVIEW_ONLY
- * instead of a refresh.
+ * reason.
  */
 export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = false } = {}) {
   const supported = canUseArtifactWorkspace(artifact);
@@ -593,7 +591,6 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
 
   return useMemo(() => ({
     supported,
-    previewOnly,
     mode,
     setMode: changeMode,
     source,
@@ -631,7 +628,7 @@ export function useArtifactWorkspace(artifact, { open, onChange, previewOnly = f
     addressWithAgent, cancelRepair, capabilities, capabilitiesFromServer, changeMode, commentsReady,
     commentsOffReason,
     compareRevision, comparison, conflict, currentRevision, decideRepair, dirty, discard, draft, error, load,
-    mode, previewOnly, publishedRevision, refreshRepair, releaseRepairsForComment, repair, repairPending,
+    mode, publishedRevision, refreshRepair, releaseRepairsForComment, repair, repairPending,
     repairSuperseded, restoreRevision, reviewPublish, revisions, save, source, status,
     supported, unsupportedReason,
   ]);

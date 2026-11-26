@@ -20,8 +20,8 @@ import { Button, Tooltip } from '../components/ui';
 import { badgeVariants } from '../components/ui/Badge';
 import { cn } from '../lib/cn';
 import {
-  revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
-  publishTargetPath, artifactServeUrl, openArtifactFile, fetchPendingDatasources,
+  revealArtifact, unpublishArtifact, updateArtifact,
+  publishTargetPath, artifactServeUrl, openArtifactFile,
 } from '../api';
 import { copyText } from '../lib/clipboard';
 import { projectNameOf } from '../lib/artifactProject';
@@ -44,31 +44,22 @@ import {
   isHtmlArtifact, isPublishableArtifact, isBackendArtifact, isInlinePreviewable,
 } from '../lib/artifactKinds';
 import { canPreviewDocument } from '../preview/kinds';
-import { trackArtifactPublished } from '../lib/analytics';
 import { askAgentAbout } from '../lib/docViewContext';
-import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
 import { ArtifactViewer } from '../components/artifact';
 import DocModal from '../components/doc/DocModal';
 import { docPageTarget, isDocArtifact } from '../components/doc/docArtifact';
-import {
-  AccessChooser,
-  accessDraftFromArtifact,
-  isAccessDraftValid,
-  buildAccessPayload,
-} from '../components/artifact/publish/AccessChooser';
 import {
   ARTIFACT_AUDIENCE_ORDER, AUDIENCE_CHOICE, artifactAudienceChoice, groupArtifactsBySection, isOrgSharingOn,
 } from '../lib/orgSharing';
 import { useArtifactAudiencesState } from '../hooks/useArtifactAudiences';
 import { useKnownPeople, useMindsHubTeams, useSharingCapabilities, useSharingOrgName } from '../hooks/useOrgSharing';
 import { artifactOwnerUserId } from '../lib/artifactAuthorship';
-import { LOAD_STATUS, readAudienceAnswer, readAudienceRequest } from '../lib/sharingContract';
+import { LOAD_STATUS } from '../lib/sharingContract';
 import {
-  isDatasourceApprovalError, pendingDatasourcesFromError, publishFailureReason, publishRefusalMessage, unapprovedDatasourcesNotice,
+  publishRefusalMessage, unapprovedDatasourcesNotice,
 } from '../components/artifact/publish/publishErrors';
-import { DatasourceApprovalNotice } from '../components/artifact/publish/DatasourceApprovalNotice';
 import {
-  publishedPageId, reportAccessChangeFailed, reportAccessChanged, reportLinkCopied, reportShareOpened, reportWithdrawal,
+  reportLinkCopied, reportWithdrawal,
   shareSnapshot,
 } from '../lib/artifactShareAnalytics';
 import { republishNotice, stopSharingNotice } from '../components/artifact/publish/linkLeftLive';
@@ -212,57 +203,6 @@ export function titleCompare(a, b) {
   // would reintroduce the exact "invisible sort key" bug this fixes).
   if (isWebAppArtifact(a) || isWebAppArtifact(b)) return 0;
   return NAME_COLLATOR.compare(fileNameOf(a), fileNameOf(b));
-}
-
-// Publish visibility chooser — a thin wrapper over the shared
-// <AccessChooser>. Owns only the draft + dialog chrome; the Public /
-// Password / Restricted UI and its validation live in one place now.
-// On confirm it hands back the access payload. Re-publishing pre-fills
-// the existing selection.
-function PublishDialog({ artifact, initialDraft, initialPending, onCancel, onConfirm }) {
-  const { t } = useTranslation('artifacts');
-  const [draft, setDraft] = useState(() => initialDraft || accessDraftFromArtifact(artifact));
-  const [pending, setPending] = useState(() => initialPending || []);
-  useEffect(() => {
-    let live = true;
-    // A dialog reopened after a 409 already holds the server's newest list.
-    if (artifact?.path && !initialPending) {
-      // Inside the promise chain, so a call that throws synchronously cannot
-      // escape the effect.
-      Promise.resolve()
-        .then(() => fetchPendingDatasources(publishTargetPath(artifact)))
-        .then((list) => { if (live) setPending(Array.isArray(list) ? list : []); })
-        .catch(() => { if (live) setPending([]); });
-    }
-    return () => { live = false; };
-  }, [artifact, initialPending]);
-  if (!artifact) return null;
-  const canConfirm = isAccessDraftValid(draft);
-  const submit = () => { if (canConfirm) onConfirm(buildAccessPayload(draft), pending, draft); };
-
-  return (
-    <Modal open onClose={onCancel} size="sm" width="min(440px, 94vw)" maxHeight="min(600px, 90vh)" labelledBy="publish-dialog-title">
-      <ModalHeader
-        id="publish-dialog-title"
-        title={t('publish.shareToWeb')}
-        subtitle={artifact.title || artifact.path?.split('/').pop()}
-        onClose={onCancel}
-      />
-      <ModalBody>
-        <div className="font-[family-name:var(--font-body)] font-semibold text-sm text-ink mb-2">
-          {t('publish.whoCanAccess')}
-        </div>
-        <AccessChooser value={draft} onChange={setDraft} onSubmit={submit} />
-        <DatasourceApprovalNotice pending={pending} className="mt-3" />
-      </ModalBody>
-      <ModalFooter cancel={<Button variant="subtle" onClick={onCancel}>{t('common.cancel')}</Button>}>
-        <Button variant="primary" onClick={submit} disabled={!canConfirm}>
-          {draft.mode === AUDIENCE_CHOICE.PASSWORD ? t('artifactsView.shareProtected')
-            : draft.mode === AUDIENCE_CHOICE.SPECIFIC ? t('artifactsView.shareRestricted') : t('publish.share')}
-        </Button>
-      </ModalFooter>
-    </Modal>
-  );
 }
 
 // ─── Card / Bubble (grid view) ───────────────────────────────────────────
@@ -910,8 +850,12 @@ export default function ArtifactsView({
   // its Comments panel then (ArtifactViewer's commentsRequest), and as it
   // remembers otherwise.
   const [commentsRequest, setCommentsRequest] = useState(null);
-  const openViewer = (artifact, { comments = false } = {}) => {
+  // The same for Share: the page's Share opens the viewer's own Share menu
+  // (ENG-4687), as the chat card does, rather than a dialog of its own.
+  const [shareRequest, setShareRequest] = useState(null);
+  const openViewer = (artifact, { comments = false, share = false } = {}) => {
     setCommentsRequest(comments ? {} : null);
+    setShareRequest(share ? {} : null);
     setViewerPath(artifact?.path || null);
   };
   const openComments = (artifact) => openViewer(artifact, { comments: true });
@@ -922,6 +866,7 @@ export default function ArtifactsView({
     if (viewer) forgetOpenCommentCount(viewer);
     setViewerPath(null);
     setCommentsRequest(null);
+    setShareRequest(null);
     setCommentsRefresh((n) => n + 1);
   };
   // Phones always get the grid (list rows are 5 columns); see ViewToggle.
@@ -931,21 +876,6 @@ export default function ArtifactsView({
   // Per-artifact-path "in flight" set so multiple cards can publish
   // independently without freezing the whole grid.
   const [busyPaths, setBusyPaths] = useState(() => new Set());
-  // Artifact awaiting the publish visibility choice (public vs password).
-  // Null when the chooser is closed.
-  const [publishTarget, setPublishTarget] = useState(null);
-  // The choice and connection list to restore when the dialog reopens after
-  // the server asked for connection approval.
-  const [publishRetry, setPublishRetry] = useState(null);
-  // Resolver for the promise returned by `handlePublish`, so a delegated
-  // caller (the preview's Publish button) can await the whole dialog +
-  // POST flow for its busy state. Settled when the chooser confirms,
-  // cancels, or errors — exactly once per flow.
-  const publishResolveRef = useRef(null);
-  const settlePublish = () => {
-    publishResolveRef.current?.();
-    publishResolveRef.current = null;
-  };
   // Page-level state for the shared HoverMenu — mounting the menu at
   // the parent (and not inside a card) is required because cards
   // apply `transform` on hover, which would re-anchor a position:fixed
@@ -996,106 +926,17 @@ export default function ArtifactsView({
     return { ...prev, [path]: phase };
   });
 
-  // Centralized publish — single source of truth for state updates,
-  // toast dispatch, and busy bookkeeping. Mirrors anton's /publish
-  // command flow: POST → server zips, scrubs credentials, uploads to
-  // MindsHub, persists report_id in `.published.json`. We then reflect
-  // the returned URL into App's list so the UI flips to "Published"
-  // without a refetch.
-  // Publishing is two steps: choose visibility (public / password) in a
-  // small dialog, then confirmPublish does the actual POST. Re-publishing
-  // a protected artifact pre-fills its existing password.
+  // Share opens the viewer on its Share menu (ENG-4687): the one place an
+  // artifact is shared from, with the same panel the chat card and the
+  // viewer's own button open. It publishes, reports and updates the card
+  // (the viewer's onChange) itself.
   const handlePublish = (artifact) => {
-    if (!artifact?.path || busyPaths.has(artifact.path)) return Promise.resolve();
+    if (!artifact?.path) return;
     if (!isPublishableArtifact(artifact)) {
       showToast({ kind: 'error', message: t('artifactsView.onlyHtmlMd') });
-      return Promise.resolve();
+      return;
     }
-    // Settle any prior unresolved flow before starting a new one so a
-    // delegated awaiter is never left hanging.
-    settlePublish();
-    setPublishRetry(null);
-    setPublishTarget(artifact);
-    reportShareOpened(artifact, { entry: 'list', isShared: shareSnapshot(artifact).shared });
-    return new Promise((resolve) => { publishResolveRef.current = resolve; });
-  };
-
-  const confirmPublish = async (access, approvedDatasources = [], draft = null) => {
-    const artifact = publishTarget;
-    let reopened = false;
-    setPublishTarget(null);
-    setPublishRetry(null);
-    if (!artifact?.path || busyPaths.has(artifact.path)) { settlePublish(); return; }
-    setBusy(artifact.path, true);
-    setPhase(artifact.path, 'publishing');
-    try {
-      const r = await publishArtifact(publishTargetPath(artifact), access, { approvedDatasources });
-      if (r?.url) {
-        // Server is authoritative (it degrades an empty restricted/password
-        // selection back to public); fall back to the requested access.
-        const m = r.accessMode || access?.mode || 'public';
-        // Each audience field the answer leaves out is the request's
-        // (lib/sharingContract reads both).
-        const answered = readAudienceAnswer(r);
-        const requested = readAudienceRequest(access);
-        const saved = {
-          ...artifact,
-          reportId: publishedPageId(r) || artifact.reportId || '',
-          publishedUrl: r.url,
-          accessMode: m,
-          accessProtected: m === 'password',
-          accessPassword: m === 'password' ? (access?.password || '') : '',
-          accessEmails: m === 'restricted' ? (answered.emails ?? requested.emails) : [],
-          orgAllowed: m === 'restricted' ? (answered.orgAllowed ?? requested.orgAllowed) : false,
-          ownerOnly: m === 'restricted' ? (answered.ownerOnly ?? requested.ownerOnly) : false,
-        };
-        updateOne(saved);
-        setPhase(artifact.path, null);
-        trackArtifactPublished(r.report_id || artifact.id || '', m);
-        reportAccessChanged(artifact, {
-          entry: 'list',
-          before: shareSnapshot(artifact),
-          after: shareSnapshot(saved),
-          reportId: publishedPageId(r),
-          access,
-        });
-        showToast({
-          kind: 'ok',
-          message: t('artifactsView.sharedToast', { mode: m === 'password' || m === 'restricted' ? m : 'other', url: r.url }),
-        });
-        const unapproved = unapprovedDatasourcesNotice(r);
-        if (unapproved) showToast({ kind: 'warning', message: unapproved });
-      } else {
-        setPhase(artifact.path, 'failed');
-        showToast({ kind: 'error', message: t('publish.errors.noUrl') });
-      }
-    } catch (e) {
-      reportAccessChangeFailed(artifact, { entry: 'list', reason: publishFailureReason(e) });
-      if (isDatasourceApprovalError(e)) {
-        // The dialog is open again with the new list, which says what to do,
-        // so no toast; the caller keeps waiting for the dialog.
-        reopened = true;
-        setPublishRetry({ draft, pending: pendingDatasourcesFromError(e) });
-        setPublishTarget(artifact);
-        setPhase(artifact.path, null);
-        return;
-      }
-      const msg = e?.message || String(e);
-      // Map the failures a user can act on to a clearer message.
-      const refusal = publishRefusalMessage(e);
-      let friendly = refusal ?? t('publish.errors.sharingFailed', { message: msg });
-      if (!refusal && (/minds_api_key/i.test(msg) || /minds api key/i.test(msg))) {
-        friendly = t('artifactsView.mindsApiKey');
-      }
-      /* A refused share (another owner's artifact, or a share with everyone
-         the caller may not make) is refused again, so the card keeps its
-         state and offers no Try again; the toast says why. */
-      setPhase(artifact.path, refusal ? null : 'failed');
-      showToast({ kind: 'error', message: friendly });
-    } finally {
-      setBusy(artifact.path, false);
-      if (!reopened) settlePublish();
-    }
+    openViewer(artifact, { share: true });
   };
 
   const handleUnpublish = async (artifact) => {
@@ -1537,11 +1378,12 @@ export default function ArtifactsView({
         artifact={viewer}
         onClose={closeViewer}
         commentsRequest={commentsRequest}
+        shareRequest={shareRequest}
+        shareEntry={shareRequest ? 'list' : 'viewer'}
         onChange={updateOne}
         // The viewer closes once its card leaves the list, so a link the
         // delete left live is told here instead.
         onDelete={(_path, { notice } = {}) => { if (notice) showToast({ kind: 'warning', message: notice }); }}
-        onPublish={handlePublish}
         onAddressWithAgent={onAddressWithAgent}
         // No host chat here — the viewer asks which one a repair belongs to.
         resolveRepairConversation={resolveRepairConversation}
@@ -1552,17 +1394,6 @@ export default function ArtifactsView({
 
       {shareTarget && (
         <LiveAppShareDialog artifact={shareTarget} onClose={() => setShareTarget(null)} />
-      )}
-
-      {publishTarget && (
-        <PublishDialog
-          key={publishTarget.path}
-          artifact={publishTarget}
-          initialDraft={publishRetry?.draft}
-          initialPending={publishRetry?.pending}
-          onCancel={() => { setPublishTarget(null); setPublishRetry(null); settlePublish(); }}
-          onConfirm={confirmPublish}
-        />
       )}
 
       {/* Single shared menu for the whole grid — anchored to whichever

@@ -33,9 +33,12 @@ function makeController(overrides = {}) {
 }
 
 function shareButton() {
-  // The trigger and the footer both read "Share"; the footer's is the one in the panel.
-  return within(screen.getByText('Share to the Web').parentElement).getByRole('button', { name: 'Share' });
+  // The trigger, the panel header and the footer all read "Share"; the
+  // footer's button is the one in the panel.
+  return within(screen.getByTestId('publish-menu-body').parentElement).getByRole('button', { name: 'Share' });
 }
+
+const accessDropdown = () => screen.getByTestId('access-dropdown');
 
 describe('PublishMenu with the platform UI off and no shared publish token', () => {
   it('opens an unpublished artifact on "Only me"', () => {
@@ -43,6 +46,8 @@ describe('PublishMenu with the platform UI off and no shared publish token', () 
     render(<PublishMenu controller={ctrl} />);
     fireEvent.click(screen.getByText('Share'));
 
+    expect(accessDropdown()).toHaveAccessibleName('Who can access your app: Only me');
+    fireEvent.click(accessDropdown());
     const checked = screen.getAllByRole('radio').filter((r) => r.getAttribute('aria-checked') === 'true');
     expect(checked).toHaveLength(1);
     expect(screen.getByRole('radio', { name: /Only me/ })).toHaveAttribute('aria-checked', 'true');
@@ -55,7 +60,9 @@ describe('PublishMenu with the platform UI off and no shared publish token', () 
     render(<PublishMenu controller={ctrl} />);
     fireEvent.click(screen.getByText('Share'));
 
+    fireEvent.click(accessDropdown());
     fireEvent.click(screen.getByRole('radio', { name: /Only me/ }));
+    expect(accessDropdown()).toHaveAccessibleName('Who can access your app: Only me');
     fireEvent.click(shareButton());
     expect(ctrl.publish).toHaveBeenCalledWith({
       mode: 'restricted', emails: [], org_allowed: false, owner_only: true,
