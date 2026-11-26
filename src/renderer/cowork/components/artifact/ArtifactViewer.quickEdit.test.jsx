@@ -1300,6 +1300,22 @@ describe('ArtifactViewer quick edit bar', () => {
       clearInlineStateCache();
     });
 
+    it("sends an inline page's Submit to the chat and closes, as the card's frame does", async () => {
+      clearInlineStateCache();
+      const inline = { ...artifact, display: 'inline' };
+      const onInlineSubmit = vi.fn();
+      const onClose = vi.fn();
+      renderViewer({ artifact: inline, onInlineSubmit, onClose });
+      await previewShown();
+      fromPreview({ type: 'submit', state: { picked: ['b'] }, message: 'Go' });
+      expect(onInlineSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ display: 'inline' }),
+        { state: { picked: ['b'] }, message: 'Go' },
+      );
+      expect(onClose).toHaveBeenCalled();
+      clearInlineStateCache();
+    });
+
     it('sends the preview back to its slide after an applied quick edit', async () => {
       workspaceApi.streamQuickEdit.mockImplementation(plays(applied));
       renderViewer();

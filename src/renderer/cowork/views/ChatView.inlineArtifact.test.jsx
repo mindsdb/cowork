@@ -90,8 +90,9 @@ describe('ArtifactCard inline mode', () => {
     // A group around a live page, not a button.
     expect(screen.getByRole('group', { name: 'Revenue by month' })).toBeInTheDocument();
 
-    // Preview still opens it full size in the viewer.
-    await userEvent.click(screen.getByRole('button', { name: 'Preview' }));
+    // Already the page: no Preview button. The title opens it full size.
+    expect(screen.queryByRole('button', { name: 'Preview' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: /Revenue by month/ }));
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ title: 'Revenue by month', display: 'inline' }));
   });
 
@@ -110,14 +111,12 @@ describe('ArtifactCard inline mode', () => {
       }));
     });
 
-    await userEvent.click(screen.getByRole('button', { name: 'Preview' }));
+    // The title opens it full size, at the frame's place.
+    await userEvent.click(screen.getByRole('button', { name: /Revenue by month/ }));
     expect(onOpen).toHaveBeenLastCalledWith(
       expect.objectContaining({ title: 'Revenue by month' }),
       { view: expect.objectContaining({ hash: '#q3', scrollY: 120, inputs: [{ type: 'click', path: 'button:2', label: 'Q3' }] }) },
     );
-    // The title opens it the same way.
-    await userEvent.click(screen.getByRole('button', { name: /Revenue by month/ }));
-    expect(onOpen).toHaveBeenLastCalledWith(expect.anything(), { view: expect.objectContaining({ hash: '#q3' }) });
   });
 
   it('reads the flag nested under metadata too', async () => {

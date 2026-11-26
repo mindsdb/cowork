@@ -156,6 +156,10 @@ export function ArtifactViewer({
   // (`{ view }`, a new object per click, ENG-4684): the preview opens on the
   // same place, through the restore a reload keeps its place with.
   viewRequest = null,
+  // An inline artifact's Submit (window.anton.submit) sent from the full
+  // view: the same chat turn the chat card's frame sends (ENG-4684). The
+  // viewer closes after it, so the reply is in sight.
+  onInlineSubmit = null,
 }) {
   const { t } = useTranslation('artifacts');
   const orgMode = useOrgMode();
@@ -419,8 +423,18 @@ export function ArtifactViewer({
   // chat card's frame: the viewer opens on the picks made there, and what is
   // picked here is saved and shown back in the card. Same gate as the
   // diagnostics above. No Submit here: the viewer is not the chat.
+  const onInlineSubmitRef = useRef(onInlineSubmit);
+  onInlineSubmitRef.current = onInlineSubmit;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const submitFromViewer = useCallback((submission) => {
+    if (!onInlineSubmitRef.current) return;
+    onInlineSubmitRef.current(artifactRef.current, submission);
+    onCloseRef.current?.();
+  }, []);
   useInlineArtifactState(iframeRef, artifact, {
     enabled: open && !!(previewUrl || previewDoc) && isInlineArtifact(artifact),
+    onSubmit: onInlineSubmit ? submitFromViewer : undefined,
   });
   // A page cut off in the frame with nothing to scroll is fitted to it.
   const previewFit = usePreviewFit(iframeRef, {

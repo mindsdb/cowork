@@ -1236,7 +1236,11 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false, i
   const liveInlineViewRef = useRef(null);
   const primaryDisabled = needsLocalPath && !canAct;
   const primaryReason = primaryDisabled ? (disabledReason || t('chatView.artifactCard.noFilePath')) : '';
-  const openAction = versionRevisionId
+  // A live inline card is already the page: no Preview button (the title
+  // still opens it full size); Share stays.
+  const openAction = liveInline
+    ? null
+    : versionRevisionId
     ? {
       label: versionOpen ? t('chatView.artifactCard.hideVersionPreview') : t('chatView.artifactCard.previewThisVersion'),
       onClick: () => setVersionOpen((v) => !v),
@@ -4689,6 +4693,7 @@ export default function ChatView({
         shareRequest={previewShare}
         shareEntry={previewShare ? 'chat_card' : 'viewer'}
         viewRequest={previewViewRequest}
+        onInlineSubmit={handleInlineSubmit}
         onClose={() => { setPreviewArt(null); setPreviewShare(null); setPreviewViewRequest(null); }}
         onChange={(updated) => setPreviewArt(updated)}
         conversationId={task?.id || null}
