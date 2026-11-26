@@ -5,7 +5,9 @@
 // are trusted only from this frame (previewReportFrom, as the size and
 // diagnostics listeners do):
 //
-//   { type: 'state', state }            the page set its state
+//   { type: 'state', state, handed? }   the page set its state; `handed`
+//                                       false when the app's state had not
+//                                       reached the page yet
 //   { type: 'submit', state, message? } the page asked to send it to the chat
 //   { type: 'document-start' }          a new document: hand it its state
 //   { type: 'view-restored' }           a kept place was replayed: hand it
@@ -18,6 +20,16 @@
 // quiet spell, and a frame already showing the artifact is handed a change
 // another frame made, so Preview opens on the picks made inline and the card
 // shows what was picked in the viewer.
+//
+// Only the user's own changes go round. A page often sets a default state as
+// it starts, and sets again whatever it is handed (its render saves). Taken
+// as changes, the first replaced the picks made in the other frame, and the
+// second, handed on to that frame and set again there, bounced between the
+// two frames without end (ENG-4684). So a page reporting the state it was
+// just handed changes nothing, and neither does one it set before the app's
+// state reached it (`handed: false`) once there is a state to hand it: while
+// it is still being read, that report waits for the read, and counts only
+// when there is none.
 //
 // State is the artifact's own `state.json`, saved through the same source
 // save the editor uses (saveArtifactSource, PUT /artifacts/workspace/...),
@@ -145,11 +157,18 @@ export function useInlineArtifactState(iframeRef, artifact, { enabled, onSubmit 
     // What this frame was last handed or reported, so the same state is not
     // posted back to it.
     let shown = null;
+    // Whether this document has been handed a state; while its state.json is
+    // read with none to hand yet, the default the page set meanwhile.
+    let handed = false;
+    let reading = false;
+    let held = null;
+    let documents = 0;
     const post = (content) => {
       if (content == null) return;
       let state;
       try { state = JSON.parse(content); } catch { return; }
       shown = content;
+      handed = true;
       postPreviewState(iframeRef.current?.contentWindow, state);
     };
     const current = () => latest.get(key)?.content ?? pendingRef.current;
@@ -173,12 +192,19 @@ export function useInlineArtifactState(iframeRef, artifact, { enabled, onSubmit 
       return savingRef.current;
     };
 
-    const handOver = async () => {
-      // A new document gets the latest state at once: a change still waiting
-      // out its quiet spell here or in another frame, or one read before.
-      shown = null;
-      post(current());
-      if (!persists) return;
+    // The page set `content`, and it is the user's: shared, and saved after
+    // the quiet spell.
+    const take = (content) => {
+      shown = content;
+      // A page echoing a state it was handed changes nothing.
+      if (latest.get(key)?.content === content && pendingRef.current == null) return;
+      remember(key, content, { unsaved: persists, from: onFrameState });
+      pendingRef.current = content;
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => { void flush(); }, INLINE_STATE_DEBOUNCE_MS);
+    };
+
+    const read = async () => {
       const before = latest.get(key)?.seq;
       let loaded;
       try {
@@ -191,11 +217,38 @@ export function useInlineArtifactState(iframeRef, artifact, { enabled, onSubmit 
       const content = typeof loaded?.content === 'string' ? loaded.content : '';
       try { JSON.parse(content); } catch { return; }
       // A frame's change the server may not have yet, or one that came while
-      // this read was out, is newer than what was read.
+      // this read was out, is newer than what was read, and is what this
+      // document is shown.
       const entry = latest.get(key);
-      if (pendingRef.current != null || (entry && (entry.unsaved || entry.seq !== before))) return;
+      if (pendingRef.current != null || (entry && (entry.unsaved || entry.seq !== before))) {
+        if (!handed) post(current());
+        return;
+      }
       remember(key, content, { unsaved: false });
-      if (content !== shown) post(content);
+      if (content !== shown || !handed) post(content);
+    };
+
+    const handOver = async () => {
+      // A new document gets the latest state at once: a change still waiting
+      // out its quiet spell here or in another frame, or one read before.
+      const doc = ++documents;
+      shown = null;
+      handed = false;
+      held = null;
+      post(current());
+      if (!persists) return;
+      reading = true;
+      try {
+        await read();
+      } finally {
+        if (doc === documents) reading = false;
+      }
+      // A later document has its own read.
+      if (doc !== documents) return;
+      // Nothing to hand it: the default it set while the read was out stands.
+      const waiting = held;
+      held = null;
+      if (live && !handed && waiting != null) take(waiting);
     };
 
     const onMessage = (event) => {
@@ -214,13 +267,15 @@ export function useInlineArtifactState(iframeRef, artifact, { enabled, onSubmit 
       if (data.type === 'state') {
         const content = serializeInlineState(data.state);
         if (content == null) return;
-        shown = content;
-        // A page echoing a state it was handed changes nothing.
-        if (latest.get(key)?.content === content && pendingRef.current == null) return;
-        remember(key, content, { unsaved: persists, from: onFrameState });
-        pendingRef.current = content;
-        if (timerRef.current) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(() => { void flush(); }, INLINE_STATE_DEBOUNCE_MS);
+        // What it was just handed, or just said, again.
+        if (content === shown) return;
+        // A default set before the app's state reached the page: the state
+        // handed to it replaces it, or, while still being read, decides.
+        if (data.handed === false) {
+          if (handed) return;
+          if (reading) { held = content; return; }
+        }
+        take(content);
         return;
       }
       if (data.type === 'submit') {
