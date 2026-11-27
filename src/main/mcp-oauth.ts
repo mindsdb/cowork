@@ -12,7 +12,7 @@
  * meant for another service under its own name.
  */
 
-import type { GuardedFetch } from './guarded-fetch';
+import { SseParser, type GuardedFetch } from './guarded-fetch';
 
 export type McpOAuthErrorCode =
   | 'not_mcp'
@@ -79,10 +79,52 @@ const MAX_LIFETIME_SECONDS = 365 * 24 * 60 * 60;
 
 const INITIALIZE_BODY = JSON.stringify({
   jsonrpc: '2.0',
-  id: 1,
+  id: 1, // INITIALIZE_ID
   method: 'initialize',
   params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'MindsHub Cowork', version: '1' } },
 });
+
+const INITIALIZE_ID = 1;
+
+/* The JSON-RPC message in `data` when it is the reply to our `initialize`
+   request: the same id, carrying a `result` or an `error`. */
+function initializeReply(data: string): Record<string, unknown> | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch {
+    return null;
+  }
+  if (!isRecord(parsed) || parsed.jsonrpc !== '2.0' || parsed.id !== INITIALIZE_ID) return null;
+  return 'result' in parsed || 'error' in parsed ? parsed : null;
+}
+
+/* Whether `body` holds a success reply to `initialize`: the request's id, a
+   `result` and no `error`, naming the protocol version, the capabilities and
+   the server (name and version). A server answers as plain JSON or as an
+   event stream; in a stream other events (notifications) may come first, and
+   only a complete event counts. */
+function isInitializeAnswer(contentType: string | null, body: string): boolean {
+  const text = body.charCodeAt(0) === 0xfeff ? body.slice(1) : body;
+  const messages = (contentType ?? '').toLowerCase().includes('text/event-stream') ? new SseParser().push(text) : [text];
+  const reply = messages.map(initializeReply).find((message) => message !== null);
+  if (!reply || 'error' in reply || !isRecord(reply.result)) return false;
+  const { protocolVersion, capabilities, serverInfo } = reply.result;
+  return (
+    typeof protocolVersion === 'string' &&
+    protocolVersion !== '' &&
+    isRecord(capabilities) &&
+    isRecord(serverInfo) &&
+    typeof serverInfo.name === 'string' &&
+    serverInfo.name !== '' &&
+    typeof serverInfo.version === 'string' &&
+    serverInfo.version !== ''
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 /**
  * Asks the MCP server at `serverUrl` whether it needs a login, and if so,
@@ -96,8 +138,17 @@ export async function discoverMcpAuth(serverUrl: string, fetchFn: GuardedFetch):
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
     body: INITIALIZE_BODY,
+    settleEarly: (data) => initializeReply(data) !== null,
+    decodeBody: true,
   });
-  if (probe.ok) return { needsLogin: false };
+  if (probe.ok) {
+    // Any 2xx is not proof of an MCP server: a web page or a plain API answers
+    // 200 too. Only a valid `initialize` result counts.
+    if (!isInitializeAnswer(probe.headers.get('content-type'), await probe.text())) {
+      throw new McpOAuthError('not_mcp', 'the server answered 200 but not with an MCP initialize result');
+    }
+    return { needsLogin: false };
+  }
   if (probe.status !== 401) {
     throw new McpOAuthError('not_mcp', `the server answered ${probe.status} instead of an MCP response`);
   }

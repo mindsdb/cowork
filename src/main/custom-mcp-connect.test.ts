@@ -143,7 +143,10 @@ const LOGIN_SERVER: Record<string, Answer> = {
   [`POST ${AUTH}/token`]: { status: 200, json: { access_token: 'AT-1', refresh_token: 'RT-1', token_type: 'Bearer', expires_in: 3600 } },
 };
 
-const NO_LOGIN_SERVER: Record<string, Answer> = { [`POST ${SERVER_URL}`]: { status: 200, json: { jsonrpc: '2.0', id: 1, result: {} } } };
+const INITIALIZE_RESULT = { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'Example', version: '1' } };
+const NO_LOGIN_SERVER: Record<string, Answer> = {
+  [`POST ${SERVER_URL}`]: { status: 200, headers: { 'content-type': 'application/json' }, json: { jsonrpc: '2.0', id: 1, result: INITIALIZE_RESULT } },
+};
 
 let ids: string[];
 function deps(table: Record<string, Answer>, overrides: Partial<ConnectDeps> = {}) {
@@ -240,6 +243,43 @@ describe('connectCustomMcp', () => {
     expect(authorize).not.toHaveBeenCalled();
     expect(server.held.get(ID)).not.toHaveProperty('access_token');
     expect(await readPart(store.root!, ID, 'refresh')).toBeNull();
+    expect(hasRefreshLoop(store.root!, ID)).toBe(false);
+  });
+
+  it('connects a server with no login that answers as an event stream', async () => {
+    const stream = `event: message\r\ndata: ${JSON.stringify({ jsonrpc: '2.0', id: 1, result: INITIALIZE_RESULT })}\r\n\r\n`;
+    const fetchFn: GuardedFetch = async () => new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+
+    const result = await connectCustomMcp({ label: 'Docs', url: SERVER_URL }, deps(NO_LOGIN_SERVER, { fetchFn }).deps);
+
+    expect(result).toMatchObject({ ok: true, id: ID });
+  });
+
+  it('connects a real server whose tools cannot be listed, with every tool off', async () => {
+    server.tools = 'unreachable';
+
+    const result = await connectCustomMcp({ label: 'Docs', url: SERVER_URL }, deps(NO_LOGIN_SERVER).deps);
+
+    expect(result).toMatchObject({ ok: true, id: ID });
+    expect(server.held.get(ID)).toMatchObject({ allowed_tools: [] });
+  });
+
+  it.each([
+    ['an HTML page', { status: 200, headers: { 'content-type': 'text/html' }, json: undefined }],
+    ['plain JSON', { status: 200, headers: { 'content-type': 'application/json' }, json: { ok: true } }],
+    ['an empty body', { status: 200, headers: { 'content-type': 'application/json' } }],
+    ['a JSON-RPC error with no result', { status: 200, headers: { 'content-type': 'application/json' }, json: { jsonrpc: '2.0', id: 1, error: { code: -32600, message: 'bad' } } }],
+  ] satisfies Array<[string, Answer]>)('refuses an address that answers 200 with %s, and stores nothing', async (_name, answer) => {
+    const { deps: d, authorize } = deps({ [`POST ${SERVER_URL}`]: answer });
+
+    const result = await connectCustomMcp({ label: 'Docs', url: SERVER_URL }, d);
+
+    expect(result).toMatchObject({ ok: false, code: 'not_mcp' });
+    expect(authorize).not.toHaveBeenCalled();
+    expect(server.records.size).toBe(0);
+    expect(server.held.size).toBe(0);
+    expect(keychain.entries.size).toBe(0);
+    expect(await listConnectionIds(store.root!)).toEqual([]);
     expect(hasRefreshLoop(store.root!, ID)).toBe(false);
   });
 

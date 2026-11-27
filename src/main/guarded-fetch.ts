@@ -13,6 +13,9 @@
 
 import { lookup as dnsLookup } from 'node:dns/promises';
 import * as https from 'node:https';
+import { StringDecoder } from 'node:string_decoder';
+import { createBrotliDecompress, createGunzip, createInflate, type BrotliDecompress, type Gunzip, type Inflate } from 'node:zlib';
+import type { Readable } from 'node:stream';
 import type { IncomingMessage, RequestOptions } from 'node:http';
 import type { LookupAddress } from 'node:dns';
 import { isIP } from 'node:net';
@@ -42,6 +45,17 @@ export interface GuardedRequestInit {
   method?: string;
   headers?: Record<string, string> | Headers;
   body?: string | URLSearchParams;
+  /** Answer as soon as the server has sent one complete server-sent event
+   *  (ended by an empty line) whose data the function accepts, or, for `true`,
+   *  any event with non-blank data, without waiting for the stream to close.
+   *  Only for a 2xx, uncompressed `text/event-stream` answer; anything else is
+   *  read to its end, so a compressed body is always checked whole. The body
+   *  is what arrived up to that event. */
+  settleEarly?: boolean | ((data: string) => boolean);
+  /** Decode a gzip, deflate or br body. The decoded size, like the raw one, is
+   *  held to `maxBytes`; a body that does not decode is `bad_response`.
+   *  Without it the body is returned as it arrived. */
+  decodeBody?: boolean;
 }
 
 export type GuardedFetch = (input: string | URL, init?: GuardedRequestInit) => Promise<Response>;
@@ -63,6 +77,7 @@ export interface GuardedFetchOptions {
 const DEFAULT_MAX_BYTES = 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 15_000;
 const NO_BODY_STATUSES = new Set([204, 205, 304]);
+const SUPPORTED_ENCODINGS = 'gzip, deflate, br';
 
 /** A fetch that sends requests only to checked public https addresses. */
 export function createGuardedFetch(options: GuardedFetchOptions = {}): GuardedFetch {
@@ -178,6 +193,11 @@ function send(
   const host = bare(url.hostname);
   const body = init.body === undefined ? undefined : String(init.body);
   const headers: Record<string, string> = { ...headerRecord(init.headers), host: url.host };
+  // A body read as it streams in is simplest to judge uncompressed; ask for
+  // only what `decodeBody` can undo.
+  if (!hasHeader(headers, 'accept-encoding')) {
+    headers['accept-encoding'] = init.decodeBody && !init.settleEarly ? SUPPORTED_ENCODINGS : 'identity';
+  }
   if (body !== undefined && !Object.keys(headers).some((name) => name.toLowerCase() === 'content-length')) {
     headers['content-length'] = String(Buffer.byteLength(body));
   }
@@ -203,28 +223,62 @@ function send(
       outcome();
     };
     const req = request(requestOptions, (res: IncomingMessage) => {
+      const fail = (code: GuardedFetchErrorCode, message: string) => {
+        req.destroy();
+        res.destroy();
+        finish(() => reject(new GuardedFetchError(code, message)));
+      };
+      // Only a success body is decoded; a refusal keeps its status and headers
+      // for the caller, and its body is not read as anything.
+      const status = res.statusCode ?? 0;
+      const encoding = init.decodeBody && status >= 200 && status < 300 ? contentEncoding(res) : null;
+      if (encoding === 'unsupported') {
+        fail('bad_response', 'the server sent a body in an encoding that cannot be read');
+        return;
+      }
+      const decoder = encoding ? decoderFor(encoding) : null;
+      // An unfinished compressed stream cannot be vouched for, so it is read to its end.
+      const early = init.settleEarly && !decoder && isEventStream(res);
+      const accepts = typeof init.settleEarly === 'function' ? init.settleEarly : (data: string) => data.trim() !== '';
+      const events = early ? new EventWatcher(accepts) : null;
       const chunks: Buffer[] = [];
       let size = 0;
-      res.on('data', (chunk: Buffer) => {
-        size += chunk.length;
-        if (size > maxBytes) {
-          req.destroy();
-          finish(() => reject(new GuardedFetchError('too_large', 'the server sent more than the allowed size')));
-          return;
-        }
-        chunks.push(chunk);
-      });
-      res.on('end', () =>
+      let rawSize = 0;
+
+      const done = (decoded: boolean) =>
         finish(() => {
           // Node's parser passes any three-digit status, and `Response` throws
           // outside 200-599; thrown here it would escape every handler.
           try {
-            resolve(toResponse(res, Buffer.concat(chunks)));
+            resolve(toResponse(res, Buffer.concat(chunks), decoded));
           } catch {
             reject(new GuardedFetchError('bad_response', 'the server sent a response that is not valid HTTP'));
           }
-        }),
-      );
+        });
+
+      const body: Readable = decoder ? res.pipe(decoder) : res;
+      if (decoder) {
+        res.on('data', (chunk: Buffer) => {
+          rawSize += chunk.length;
+          if (rawSize > maxBytes) fail('too_large', 'the server sent more than the allowed size');
+        });
+        decoder.on('error', () => fail('bad_response', 'the server sent a body that cannot be decoded'));
+      }
+      body.on('data', (chunk: Buffer) => {
+        if (settled) return;
+        size += chunk.length;
+        if (size > maxBytes) {
+          fail('too_large', 'the server sent more than the allowed size');
+          return;
+        }
+        chunks.push(chunk);
+        if (events?.complete(chunk)) {
+          req.destroy();
+          res.destroy();
+          done(decoder !== null);
+        }
+      });
+      body.on('end', () => done(decoder !== null));
       res.on('error', () => finish(() => reject(new GuardedFetchError('network', 'the connection failed'))));
     });
     const timer = setTimeout(() => {
@@ -237,9 +291,94 @@ function send(
   });
 }
 
-function toResponse(res: IncomingMessage, body: Buffer): Response {
+function hasHeader(headers: Record<string, string>, name: string): boolean {
+  return Object.keys(headers).some((key) => key.toLowerCase() === name);
+}
+
+function isEventStream(res: IncomingMessage): boolean {
+  const status = res.statusCode ?? 0;
+  return status >= 200 && status < 300 && String(res.headers['content-type'] ?? '').toLowerCase().includes('text/event-stream');
+}
+
+/** The one encoding the body carries, `null` for none, or `unsupported`. */
+function contentEncoding(res: IncomingMessage): 'gzip' | 'deflate' | 'br' | 'unsupported' | null {
+  const value = String(res.headers['content-encoding'] ?? '').trim().toLowerCase();
+  if (!value || value === 'identity') return null;
+  if (value === 'gzip' || value === 'x-gzip') return 'gzip';
+  if (value === 'deflate' || value === 'br') return value;
+  return 'unsupported';
+}
+
+function decoderFor(encoding: 'gzip' | 'deflate' | 'br'): Gunzip | Inflate | BrotliDecompress {
+  if (encoding === 'gzip') return createGunzip();
+  if (encoding === 'deflate') return createInflate();
+  return createBrotliDecompress();
+}
+
+/** An incremental server-sent-events parser. Lines end in LF, CR or CRLF (a
+ *  CRLF split across chunks included); an event is dispatched only by an empty
+ *  line, so an event cut off at the end of the stream is never returned. */
+export class SseParser {
+  private line = '';
+  private afterCR = false;
+  private started = false;
+  private data: string[] = [];
+
+  /** The data of every event completed by `text`; data lines join with a newline. */
+  push(text: string): string[] {
+    const events: string[] = [];
+    for (const ch of text) {
+      if (!this.started) {
+        this.started = true;
+        if (ch === '\ufeff') continue;
+      }
+      if (this.afterCR) {
+        this.afterCR = false;
+        if (ch === '\n') continue;
+      }
+      if (ch === '\r' || ch === '\n') {
+        this.afterCR = ch === '\r';
+        const event = this.endLine();
+        if (event !== null) events.push(event);
+      } else {
+        this.line += ch;
+      }
+    }
+    return events;
+  }
+
+  private endLine(): string | null {
+    const line = this.line;
+    this.line = '';
+    if (line === '') {
+      const data = this.data;
+      this.data = [];
+      return data.length > 0 ? data.join('\n') : null;
+    }
+    if (line.startsWith('data:')) this.data.push(line.slice(5).replace(/^ /, ''));
+    else if (line === 'data') this.data.push('');
+    return null;
+  }
+}
+
+/* Tells when the stream so far holds a whole event whose data is the answer.
+   A comment, or an event the caller does not accept (a priming event, a
+   notification), is not the answer and does not count. */
+class EventWatcher {
+  private readonly decoder = new StringDecoder('utf8');
+  private readonly parser = new SseParser();
+
+  constructor(private readonly accepts: (data: string) => boolean) {}
+
+  complete(chunk: Buffer): boolean {
+    return this.parser.push(this.decoder.write(chunk)).some((data) => this.accepts(data));
+  }
+}
+
+function toResponse(res: IncomingMessage, body: Buffer, decoded = false): Response {
   const headers = new Headers();
   for (const [name, value] of Object.entries(res.headers)) {
+    if (decoded && (name === 'content-encoding' || name === 'content-length')) continue;
     if (Array.isArray(value)) value.forEach((item) => headers.append(name, item));
     else if (value !== undefined) headers.set(name, value);
   }

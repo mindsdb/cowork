@@ -110,6 +110,7 @@ describe('CustomMcpConnectModal', () => {
     [{ code: 'login_failed', reason: 'cancelled' }, "The login didn't finish: cancelled"],
     [{ code: 'grant_refused', reason: 'the token endpoint answered 400: invalid_grant' }, "The login didn't finish: the token endpoint answered 400: invalid_grant"],
     [{ code: 'keychain_unavailable', reason: 'x' }, "The system keychain isn't available, so the connection can't be stored safely."],
+    [{ code: 'not_mcp', reason: 'x' }, "This address didn't answer as an MCP server. Check that it's the server's MCP address."],
     [{ code: 'something_else', reason: 'it broke' }, "Couldn't connect the server: it broke"],
   ])('shows its own message for %j', async (refusal, message) => {
     const user = userEvent.setup();

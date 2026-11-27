@@ -711,7 +711,8 @@
       "unreachable": "Le serveur est injoignable. Réessayez plus tard.",
       "notHandedOver": "L'application n'a pas encore transmis ses réglages à ce serveur. Redémarrez l'application et réessayez.",
       "missing": "Cette connexion n'existe plus.",
-      "unreadable": "L'enregistrement de cette connexion est illisible pour le moment. Réessayez plus tard."
+      "unreadable": "L'enregistrement de cette connexion est illisible pour le moment. Réessayez plus tard.",
+      "notMcp": "Cette adresse n'a pas répondu comme un serveur MCP. Vérifiez qu'il s'agit bien de l'adresse MCP du serveur."
     },
     "detail": {
       "server": "Serveur",

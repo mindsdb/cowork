@@ -711,7 +711,8 @@
       "unreachable": "The server couldn't be reached. Try again later.",
       "notHandedOver": "The app hasn't handed this server its settings yet. Restart the app and try again.",
       "missing": "This connection no longer exists.",
-      "unreadable": "This connection's record can't be read right now. Try again later."
+      "unreadable": "This connection's record can't be read right now. Try again later.",
+      "notMcp": "This address didn't answer as an MCP server. Check that it's the server's MCP address."
     },
     "detail": {
       "server": "Server",
