@@ -41,13 +41,19 @@ describe('PublishMenu on Desktop with an organization', () => {
     expect(await screen.findByText('Everyone at Acme')).toBeInTheDocument();
   });
 
-  it('still lists the emails an organization-wide artifact names', async () => {
+  it('lists the emails an organization-wide artifact also names, and Everyone drops them', async () => {
     const user = userEvent.setup();
-    render(<PublishMenu controller={makeController({ orgAllowed: true, ownerOnly: false, accessEmails: ['zed@partner.io'] })} />);
+    const pub = makeController({ orgAllowed: true, ownerOnly: false, accessEmails: ['zed@partner.io'] });
+    render(<PublishMenu controller={pub} />);
     await user.click(trigger());
     const summary = await screen.findByTestId('access-summary');
-    expect(summary).toHaveTextContent('Everyone at Acme');
     expect(summary).toHaveTextContent('zed@partner.io');
+    expect(screen.getByTestId('org-also-has-access')).toBeInTheDocument();
+    await user.click(screen.getByTestId('access-dropdown'));
+    await user.click(screen.getByRole('radio', { name: /Everyone at Acme/ }));
+    await user.click(screen.getByRole('button', { name: /^(Update|Save)/ }));
+    await waitFor(() => expect(pub.publish).toHaveBeenCalled());
+    expect(pub.publish.mock.calls[0][0]).toMatchObject({ mode: 'restricted', emails: [], org_allowed: true, owner_only: false });
   });
 
   it('saves Everyone as org_allowed through /publish', async () => {

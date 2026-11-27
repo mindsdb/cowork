@@ -149,17 +149,27 @@ describe('createArtifactSharePermissionReader', () => {
     expect(d.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('asks again once the kept answer is older than its lifetime, so a role change shows up', async () => {
+  it('asks again once a granted answer is older than its lifetime, so a withdrawn permission shows up', async () => {
     let clock = 1_000;
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ org_role: 'member', permissions: ['artifacts.share_org'] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ org_role: 'member', permissions: [] }), { status: 200 }));
+    const reader = createArtifactSharePermissionReader(deps({ fetch, now: () => clock }));
+    await expect(reader.read()).resolves.toMatchObject({ canShareArtifactsOrg: true });
+    clock += KEEP_ANSWER_MS - 1;
+    await expect(reader.read()).resolves.toMatchObject({ canShareArtifactsOrg: true });
+    clock += 1;
+    await expect(reader.read()).resolves.toMatchObject({ canShareArtifactsOrg: false });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks again after a refusal, so a permission just granted unlocks the card', async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ org_role: 'member', permissions: [] }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ org_role: 'member', permissions: ['artifacts.share_org'] }), { status: 200 }));
-    const reader = createArtifactSharePermissionReader(deps({ fetch, now: () => clock }));
-    await expect(reader.read()).resolves.toMatchObject({ canShareArtifactsOrg: false });
-    clock += KEEP_ANSWER_MS - 1;
-    await expect(reader.read()).resolves.toMatchObject({ canShareArtifactsOrg: false });
-    clock += 1;
-    await expect(reader.read()).resolves.toMatchObject({ canShareArtifactsOrg: true });
+    const reader = createArtifactSharePermissionReader(deps({ fetch }));
+    await expect(reader.read()).resolves.toMatchObject({ known: true, canShareArtifactsOrg: false });
+    await expect(reader.read()).resolves.toMatchObject({ known: true, canShareArtifactsOrg: true });
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 });

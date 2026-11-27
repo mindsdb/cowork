@@ -34,22 +34,25 @@ const NO_ANSWER = Object.freeze({ key: null, value: null });
 export function useDesktopOrgAudience(active) {
   const reading = active === true && isElectron;
   const accountUser = useAccountUser(false, { active: reading });
-  const eligible = reading && !!accountUser?.org && !accountUser.orgIsPersonal;
+  // Signing out leaves the token this hook read in place, so the sign-in
+  // event, not the token, says when there is nobody to share as.
+  const [signedOut, setSignedOut] = useState(false);
+  const eligible = reading && !signedOut && !!accountUser?.org && !accountUser.orgIsPersonal;
   const key = eligible ? `${accountUser.sub}:${accountUser.orgId}` : null;
   const [answer, setAnswer] = useState(NO_ANSWER);
   const [credentialVersion, setCredentialVersion] = useState(0);
 
   useEffect(() => {
-    if (!key) return undefined;
+    if (!reading) return undefined;
     // A new credential may be a pasted key: drop the answer so the card is
-    // off until main answers for it. A sign-in change only asks again.
+    // off until main answers for it. A token refresh changes nothing here.
     const offCredential = onMindsHubCredentialChanged(() => {
       setAnswer(NO_ANSWER);
       setCredentialVersion((n) => n + 1);
     });
-    const offAuth = onMindsHubAuthChanged(() => setCredentialVersion((n) => n + 1));
+    const offAuth = onMindsHubAuthChanged(({ authenticated } = {}) => setSignedOut(authenticated === false));
     return () => { offCredential(); offAuth(); };
-  }, [key]);
+  }, [reading]);
 
   useEffect(() => {
     // Forget the answer once there is no key, so coming back to the same

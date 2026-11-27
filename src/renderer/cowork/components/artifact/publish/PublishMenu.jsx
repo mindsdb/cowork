@@ -164,15 +164,11 @@ export function AccessSummaryCard({ pub, sharing, orgAudience = null, orgName, p
       : summary;
   const draft = accessDraftFromArtifact(pub, { orgSharing, orgAudience: !!orgAudience, teams: sharing?.teams?.teams || [] });
   const listed = draft.mode === AUDIENCE_CHOICE.SPECIFIC;
-  // Desktop reads org_allowed with emails as Everyone (an earlier checkbox
-  // allowed both). Those addresses still open the link until the access is
-  // saved again, so the card keeps listing them under Everyone.
-  const orgWithEmails = !orgSharing && draft.mode === AUDIENCE_CHOICE.ORG;
-  const emails = listed || orgWithEmails ? parseEmailList(draft.emailsText).valid : [];
+  const emails = listed ? parseEmailList(draft.emailsText).valid : [];
   const teamIds = listed && orgSharing ? draft.teamIds : [];
   const userIds = listed && orgSharing ? draft.userIds : [];
   const count = emails.length + teamIds.length + userIds.length;
-  const desc = count > 0 && listed
+  const desc = count > 0
     ? recipientSummary({ teamIds, userIds, emails }, { orgName, emailsOnly: !orgSharing })
     : m.desc;
   const list = count > 0 && (

@@ -98,18 +98,22 @@ export function accessDraftFromArtifact(artifact, { orgSharing = false, orgAudie
   const audience = readArtifactAudience(artifact);
   if (!audience) return { mode: '', password: '', emailsText: '', teamIds: [], userIds: [] };
   const serverMode = artifact?.accessMode || (artifact?.accessProtected ? 'password' : 'public');
-  const everyoneOffered = orgSharing || orgAudience;
+  // Desktop's Everyone sends `org_allowed` alone, so an access that also lists
+  // emails (an earlier checkbox allowed both) reads as that list with the
+  // organization kept: picking Everyone then is a change that drops them.
+  const desktop = !getOrgMode();
+  const everyone = orgSharing || (orgAudience && audience.emails.length === 0);
   let mode = serverMode;
   let keepOrgAllowed = false;
   if (serverMode === 'restricted') {
     if (isOwnerOnlyAccess(artifact)) mode = AUDIENCE_CHOICE.PRIVATE;
-    else if (everyoneOffered && (audience.orgAllowed || namesDefaultTeam(audience.teamIds, teams))) mode = AUDIENCE_CHOICE.ORG;
+    else if (everyone && (audience.orgAllowed || namesDefaultTeam(audience.teamIds, teams))) mode = AUDIENCE_CHOICE.ORG;
     else {
       mode = AUDIENCE_CHOICE.SPECIFIC;
-      // Without the Everyone card a Desktop list must not drop the
-      // organization's access when it is saved. MindsHub mode's payload never
-      // reads this, so a draft there must stay as invalid as before.
-      keepOrgAllowed = !getOrgMode() && !everyoneOffered && audience.orgAllowed === true;
+      // A Desktop list must not drop the organization's access when it is
+      // saved. MindsHub mode's payload never reads this, so a draft there
+      // must stay as invalid as before.
+      keepOrgAllowed = desktop && audience.orgAllowed === true;
     }
   }
   return {
@@ -337,8 +341,11 @@ export function accessSummaryLabel(artifact, { orgSharing = false, orgAudience =
   // owner alone; saying "people you list" there would be a lie.
   if (artifact.ownerOnly) return ACCESS_LABELS.private;
   if (!orgSharing) {
-    // Desktop reads org_allowed as Everyone, lists or not, as its draft does.
-    if (orgAudience && audience.orgAllowed) return { ...ACCESS_LABELS.org, title: everyoneAtLabel(orgName) };
+    // Desktop reads org_allowed alone as Everyone, as its draft does; with
+    // emails it is a list the organization can also open.
+    if (orgAudience && audience.orgAllowed && audience.emails.length === 0) {
+      return { ...ACCESS_LABELS.org, title: everyoneAtLabel(orgName) };
+    }
     return ACCESS_LABELS.specificPeople;
   }
   const lists = audience.teamIds.length + audience.userIds.length + audience.emails.length;

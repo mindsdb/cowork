@@ -66,10 +66,11 @@ async function askAuth(deps: ArtifactSharePermissionDeps, token: string): Promis
 }
 
 /**
- * Reads the permission, keeping a known answer per person and active
+ * Reads the permission, keeping a granted answer per person and active
  * organization for KEEP_ANSWER_MS: the Share button asks whenever a viewer
- * opens. Only a known answer is kept, so one auth couldn't give is asked
- * again next time.
+ * opens. A refusal, and an answer auth couldn't give, are asked again next
+ * time, so a permission just granted unlocks the card at once; auth still
+ * refuses a save if it was withdrawn meanwhile.
  */
 export function createArtifactSharePermissionReader(deps: ArtifactSharePermissionDeps): ArtifactSharePermissionReader {
   const now = deps.now ?? Date.now;
@@ -101,7 +102,7 @@ export function createArtifactSharePermissionReader(deps: ArtifactSharePermissio
       const key = sub && orgId ? JSON.stringify([sub, orgId]) : null;
       if (key && kept?.key === key && now() - kept.at < KEEP_ANSWER_MS) return kept.answer;
       const answer = await askAuth(deps, token);
-      if (key && answer.known) kept = { key, answer, at: now() };
+      if (key && answer.canShareArtifactsOrg) kept = { key, answer, at: now() };
       return answer;
     },
   };

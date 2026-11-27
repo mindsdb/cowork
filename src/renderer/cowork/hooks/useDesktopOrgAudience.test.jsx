@@ -162,13 +162,23 @@ describe('useDesktopOrgAudience', () => {
     expect(seen.slice(from + 1).every((r) => !isOrgAudienceOn(r.capabilities))).toBe(true);
   });
 
-  it('asks again when the sign-in changes', async () => {
+  it('takes the card away on sign-out and asks again on sign-in', async () => {
+    const { result } = renderHook(() => useDesktopOrgAudience(true));
+    await waitFor(() => expect(isOrgAudienceOn(result.current.capabilities)).toBe(true));
+    await act(async () => { listeners.auth.forEach((cb) => cb({ authenticated: false })); });
+    expect(result.current.status).toBe('idle');
+    expect(isOrgAudienceOn(result.current.capabilities)).toBe(false);
+    await act(async () => { listeners.auth.forEach((cb) => cb({ authenticated: true })); });
+    await waitFor(() => expect(isOrgAudienceOn(result.current.capabilities)).toBe(true));
+    expect(hostMock.mindshubArtifactSharePermission).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks nothing more on a token refresh', async () => {
     const { result } = renderHook(() => useDesktopOrgAudience(true));
     await waitFor(() => expect(result.current.status).toBe('ready'));
-    hostMock.mindshubArtifactSharePermission.mockResolvedValue({ sessionCredential: true, known: false, canShareArtifactsOrg: false });
-    await act(async () => { listeners.auth.forEach((cb) => cb({ authenticated: false })); });
-    await waitFor(() => expect(result.current.capabilities.permissionsKnown).toBe(false));
-    expect(hostMock.mindshubArtifactSharePermission).toHaveBeenCalledTimes(2);
+    await act(async () => { listeners.auth.forEach((cb) => cb({ authenticated: true })); });
+    expect(result.current.status).toBe('ready');
+    expect(hostMock.mindshubArtifactSharePermission).toHaveBeenCalledTimes(1);
   });
 
   it('stops listening once inactive', async () => {

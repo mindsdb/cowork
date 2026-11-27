@@ -31,10 +31,13 @@ function Harness({ initial, sharing }) {
 }
 
 describe('accessDraftFromArtifact on Desktop', () => {
-  it('reads org_allowed as Everyone with the organization audience', () => {
+  it('reads org_allowed alone as Everyone with the organization audience', () => {
     expect(accessDraftFromArtifact(published({ orgAllowed: true }), { orgAudience: true }).mode).toBe(AUDIENCE_CHOICE.ORG);
-    expect(accessDraftFromArtifact(published({ orgAllowed: true, accessEmails: ['a@x.com'] }), { orgAudience: true }).mode)
-      .toBe(AUDIENCE_CHOICE.ORG);
+  });
+
+  it('reads org_allowed with emails as a list the organization keeps, so Everyone can drop them', () => {
+    const draft = accessDraftFromArtifact(published({ orgAllowed: true, accessEmails: ['a@x.com'] }), { orgAudience: true });
+    expect(draft).toMatchObject({ mode: AUDIENCE_CHOICE.SPECIFIC, keepOrgAllowed: true, emailsText: 'a@x.com' });
   });
 
   it('keeps org_allowed on a list when the card is not offered', () => {
@@ -103,6 +106,11 @@ describe('accessSummaryLabel on Desktop', () => {
   it('names everyone at the organization', () => {
     expect(accessSummaryLabel(published({ orgAllowed: true }), { orgAudience: true, orgName: 'Acme' }).title).toBe('Everyone at Acme');
   });
+  it('names a list when emails sit beside org_allowed', () => {
+    expect(accessSummaryLabel(published({ orgAllowed: true, accessEmails: ['a@x.com'] }), { orgAudience: true, orgName: 'Acme' }).title)
+      .toBe('Specific people');
+  });
+
   it('stays Specific people without the audience', () => {
     expect(accessSummaryLabel(published({ orgAllowed: true }), {}).title).toBe('Specific people');
   });
