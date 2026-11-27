@@ -196,11 +196,10 @@ function freeState(free) {
   };
 }
 
-/* The console's no-grant sentence (mindshub_frontend grant-usage-card.jsx
-   NO_GRANT_SENTENCE), word for word, so both apps describe the same account
-   the same way. It names no cause and no size. */
+/* What an account with no free grant is told, in English. It names no cause,
+   no size, and no model, since the free allowance can cover more than one. */
 export const NO_FREE_GRANT_SENTENCE =
-  'This account does not include free MindsHub Air tokens. MindsHub Air uses your balance, like every other model.';
+  'This account does not include free tokens. Every model uses your balance.';
 
 /** NO_FREE_GRANT_SENTENCE in the viewer's language. */
 export function noFreeGrantSentence() {
@@ -301,11 +300,11 @@ export function modelAccessSignature(usage) {
  *  card and the Settings probe notice alike. The drained-wallet card's
  *  spent-allowance branch describes the same state, so it uses this too.
  *
- *  An org with no free grant is told that, in the console's words, and never a
- *  refill time. Otherwise the refill time is the gate's (`resetAt`), falling
- *  back to the hub usage read's. When neither is a usable future instant, the
- *  sentence offers funds alone: nothing then says the allowance refills at
- *  all, and the org may have no grant to refill. */
+ *  An org with no free grant is told that, and never a reset time. Otherwise
+ *  the reset time is the gate's (`resetAt`), falling back to the hub usage
+ *  read's. When neither is a usable future instant, the sentence offers funds
+ *  alone: nothing then says the allowance resets at all, and the org may have
+ *  no grant to reset. */
 export function allowanceStopCopy({ resetAt = null, usage = null } = {}) {
   const free = freeAllowanceState(usage);
   if (!offersBilling()) {
@@ -362,7 +361,7 @@ function isExplicitPaidModel(model, coveredByTier, plan) {
   return isPaidPlan(plan) || coveredByTier !== 'free';
 }
 
-/* `${key}WithTime` with the refill time, or `${key}` when none is quotable. */
+/* `${key}WithTime` with the reset time, or `${key}` when none is quotable. */
 function withResetTime(free, key, vars, translate = tr) {
   const time = formatResetTime(free?.resetsAt);
   return time ? translate(`${key}WithTime`, { ...vars, time }) : translate(key, vars);
@@ -528,12 +527,15 @@ export function deriveUsageWarning(usage, {
   // A healthy wallet just carries Air until the refill: no bar (ENG-4188).
   if (freeInUse && f.out && balanceCarries) return null;
 
+  // Only a read with no balance gets here, so the note names no wallet figure:
+  // an empty wallet stopped above, a short one said so, and one that carries
+  // the next task says nothing.
   if (freeInUse && f.out) {
     return {
       kind: 'free_used',
       tone: 'info',
       title: tr('freeUsed.title'),
-      body: usd ? withResetTime(free, 'freeUsed.bodyWithUsd', { usd }) : withResetTime(free, 'freeUsed.body'),
+      body: withResetTime(free, 'freeUsed.body'),
       actions: [USAGE_ACTIONS.viewUsage],
     };
   }

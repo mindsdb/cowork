@@ -166,17 +166,17 @@
       "updatePaymentMethod": "更新付款方式"
     },
     "free": {
-      "title": "Air 免费额度",
-      "badge": "仅限 MindsHub Air",
+      "title": "免费额度",
+      "badge": "仅限免费模型",
       "resetsAt": "{time} 重置",
       "unlimited": "此账户无限制。",
       "used": "已使用 {percent} 的额度",
       "left": "剩余 {percent}",
-      "meterLabel": "Air 免费额度已用量",
-      "usedUpUntil": "已用完。在 {time} 额度恢复前，MindsHub Air 将从你的余额中扣费。",
-      "usedUp": "已用完。在额度恢复前，MindsHub Air 将从你的余额中扣费。",
-      "afterUntil": "用完后，在 {time} 额度恢复前，MindsHub Air 将使用你的余额。",
-      "after": "用完后，MindsHub Air 将使用你的余额。"
+      "meterLabel": "免费额度已用量",
+      "usedUpUntil": "已用完。在 {time} 额度重置前，免费模型将使用你的余额。",
+      "usedUp": "已用完。在额度重置前，免费模型将使用你的余额。",
+      "afterUntil": "用完后，在 {time} 额度重置前，免费模型将使用你的余额。",
+      "after": "用完后，免费模型将使用你的余额。"
     },
     "autoTopUp": {
       "off": "自动充值已关闭。开启后，余额不足时任务也能继续运行。",
@@ -202,7 +202,7 @@
     "balance": {
       "title": "余额",
       "empty": "余额为零。充值前，付费模型将无法运行。",
-      "usedBy": "供付费模型使用；免费 token 用完后，MindsHub Air 也会使用余额。",
+      "usedBy": "供付费模型使用；免费 token 用完后，免费模型也会使用余额。",
       "spentRange": "积分已用（{start} 至 {end}）",
       "spentDate": "积分已用（{date}）",
       "spentThisPeriod": "积分本期已用",
@@ -211,7 +211,7 @@
     },
     "signIn": {
       "title": "登录以查看用量",
-      "body": "登录 MindsHub 后，你的 Air 免费额度和余额将显示在这里。",
+      "body": "登录 MindsHub 后，你的免费额度和余额将显示在这里。",
       "goToAccount": "前往“账户”"
     },
     "loading": "正在加载用量…",

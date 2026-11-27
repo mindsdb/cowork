@@ -1442,11 +1442,11 @@
     },
     "allowanceExhausted": {
       "title": "Your included allowance is used up",
-      "body": "Add credits to continue now, or wait for the allowance to refill, then continue in this task."
+      "body": "Add credits to continue now, or wait for the allowance to reset, then continue in this task."
     },
     "freeAirPaused": {
-      "title": "Free MindsHub Air is paused",
-      "body": "It resumes when the daily budget resets. Add credits or choose another model to continue now."
+      "title": "Free models are paused",
+      "body": "They resume when the daily budget resets. Add credits or choose another model to continue now."
     },
     "notStarted": {
       "title": "Task did not start",

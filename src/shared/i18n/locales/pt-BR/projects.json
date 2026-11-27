@@ -9,20 +9,20 @@
         "updatePaymentMethod": "Atualizar forma de pagamento",
         "upgrade": "{tier, select, plus {Assinar Plus} pro {Mudar para Pro} other {Fazer upgrade}}"
       },
-      "noFreeGrant": "Esta conta não inclui tokens gratuitos do MindsHub Air. O MindsHub Air usa seu saldo, como qualquer outro modelo.",
+      "noFreeGrant": "Esta conta não inclui tokens gratuitos. Todos os modelos usam seu saldo.",
       "allowanceStop": {
         "noGrant": "{noGrant} Seu saldo está vazio, então adicione fundos para continuar.",
-        "withTime": "Sua cota gratuita do MindsHub Air acabou e seu saldo está vazio. Adicione fundos para continuar trabalhando ou espere ela ser renovada às {time}.",
-        "noTime": "Sua cota gratuita do MindsHub Air acabou e seu saldo está vazio. Adicione fundos para continuar trabalhando.",
-        "noTimeMobile": "Sua cota gratuita do MindsHub Air acabou e seu saldo está vazio.",
+        "withTime": "Sua cota gratuita acabou e seu saldo está vazio. Adicione fundos para continuar trabalhando ou espere ela ser renovada às {time}.",
+        "noTime": "Sua cota gratuita acabou e seu saldo está vazio. Adicione fundos para continuar trabalhando.",
+        "noTimeMobile": "Sua cota gratuita acabou e seu saldo está vazio.",
         "noGrantMobile": "{noGrant} Seu saldo está vazio.",
-        "withTimeMobile": "Sua cota gratuita do MindsHub Air acabou e seu saldo está vazio. Renova às {time}."
+        "withTimeMobile": "Sua cota gratuita acabou e seu saldo está vazio. Renova às {time}."
       },
       "freeServingPaused": {
-        "until": "O MindsHub Air gratuito está pausado para todos até {until}. Isso não usa sua cota. Adicione fundos para continuar trabalhando agora.",
-        "dailyReset": "O MindsHub Air gratuito está pausado para todos até o orçamento diário ser reiniciado. Isso não usa sua cota. Adicione fundos para continuar trabalhando agora.",
-        "untilMobile": "O MindsHub Air gratuito está pausado para todos até {until}. Isso não usa sua cota.",
-        "dailyResetMobile": "O MindsHub Air gratuito está pausado para todos até o orçamento diário ser reiniciado. Isso não usa sua cota."
+        "until": "Os modelos gratuitos estão pausados para todos até {until}. Isso não usa sua cota. Adicione fundos para continuar trabalhando agora.",
+        "dailyReset": "Os modelos gratuitos estão pausados para todos até o orçamento diário ser reiniciado. Isso não usa sua cota. Adicione fundos para continuar trabalhando agora.",
+        "untilMobile": "Os modelos gratuitos estão pausados para todos até {until}. Isso não usa sua cota.",
+        "dailyResetMobile": "Os modelos gratuitos estão pausados para todos até o orçamento diário ser reiniciado. Isso não usa sua cota."
       },
       "balanceEmptySentence": "Seu saldo está vazio.",
       "percentLeft": "Resta {percent} da sua cota gratuita",
@@ -50,20 +50,18 @@
       },
       "freeUsed": {
         "title": "Cota gratuita esgotada",
-        "body": "O MindsHub Air usa seu saldo até sua cota ser renovada.",
-        "bodyWithTime": "O MindsHub Air usa seu saldo até sua cota ser renovada às {time}.",
-        "bodyWithUsd": "O MindsHub Air usa seu saldo (restam {usd}) até sua cota ser renovada.",
-        "bodyWithUsdWithTime": "O MindsHub Air usa seu saldo (restam {usd}) até sua cota ser renovada às {time}."
+        "body": "Os modelos gratuitos agora usam seu saldo até sua cota ser renovada.",
+        "bodyWithTime": "Os modelos gratuitos agora usam seu saldo até sua cota ser renovada às {time}."
       },
       "freeLow": {
-        "body": "Depois disso, o MindsHub Air usará seu saldo até sua cota ser renovada.",
-        "bodyWithTime": "Depois disso, o MindsHub Air usará seu saldo até sua cota ser renovada às {time}.",
+        "body": "Depois disso, os modelos gratuitos usarão seu saldo até sua cota ser renovada.",
+        "bodyWithTime": "Depois disso, os modelos gratuitos usarão seu saldo até sua cota ser renovada às {time}.",
         "balanceLowToo": "Seu saldo também está baixo ({usd})."
       },
       "budgetExceeded": {
         "airOnPlan": "{hasModel, select, true {{scope, select, org {{model} não pode ser executado até que um proprietário ou administrador aumente o orçamento em Orçamentos. Os outros modelos continuam funcionando.} other {{model} não pode ser executado até que um administrador aumente o orçamento em Orçamentos. Os outros modelos continuam funcionando.}}} other {{scope, select, org {Os modelos pagos não podem ser executados até que um proprietário ou administrador o aumente em Orçamentos. O MindsHub Air continua funcionando enquanto durar a cota do seu plano.} other {Os modelos pagos não podem ser executados até que um administrador o aumente em Orçamentos. O MindsHub Air continua funcionando enquanto durar a cota do seu plano.}}}}",
         "raise": "{hasModel, select, true {{scope, select, org {{model} não pode ser executado até que um proprietário ou administrador aumente o orçamento em Orçamentos. Os outros modelos continuam funcionando.} other {{model} não pode ser executado até que um administrador aumente o orçamento em Orçamentos. Os outros modelos continuam funcionando.}}} other {{scope, select, org {Os modelos pagos não podem ser executados até que um proprietário ou administrador o aumente em Orçamentos.} other {Os modelos pagos não podem ser executados até que um administrador o aumente em Orçamentos.}}}}",
-        "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} não pode ser executado até que um proprietário ou administrador aumente o orçamento em Orçamentos. Os outros modelos continuam funcionando.} other {{model} não pode ser executado até que um administrador aumente o orçamento em Orçamentos. Os outros modelos continuam funcionando.}}} other {{scope, select, org {Os modelos pagos não podem ser executados até que um proprietário ou administrador o aumente em Orçamentos. O MindsHub Air continua funcionando enquanto durar a cota gratuita.} other {Os modelos pagos não podem ser executados até que um administrador o aumente em Orçamentos. O MindsHub Air continua funcionando enquanto durar a cota gratuita.}}}}"
+        "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} não pode ser executado até que um proprietário ou administrador aumente o orçamento em Orçamentos. Os outros modelos continuam funcionando.} other {{model} não pode ser executado até que um administrador aumente o orçamento em Orçamentos. Os outros modelos continuam funcionando.}}} other {{scope, select, org {Os modelos pagos não podem ser executados até que um proprietário ou administrador o aumente em Orçamentos. O MindsHub Air continua funcionando enquanto durar sua cota gratuita.} other {Os modelos pagos não podem ser executados até que um administrador o aumente em Orçamentos. O MindsHub Air continua funcionando enquanto durar sua cota gratuita.}}}}"
       },
       "window": {
         "usedUpTitle": "{window, select, 7d {Cota semanal esgotada} other {Cota de 5 horas esgotada}}",
@@ -124,8 +122,8 @@
       },
       "row": {
         "walletEmpty": "Nenhum crédito disponível. Adicione fundos para usar o MindsHub.",
-        "allowanceExhausted": "Nenhum token gratuito do MindsHub Air disponível, e o saldo está vazio.",
-        "freeAirPaused": "O MindsHub Air gratuito está pausado no momento.",
+        "allowanceExhausted": "Nenhum token gratuito disponível, e o saldo está vazio.",
+        "freeAirPaused": "Os modelos gratuitos estão pausados no momento.",
         "budgetExceeded": "Um orçamento acabou.",
         "walletEmptyMobile": "Nenhum crédito disponível."
       },

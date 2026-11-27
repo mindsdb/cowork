@@ -166,17 +166,17 @@
       "updatePaymentMethod": "Mettre à jour le moyen de paiement"
     },
     "free": {
-      "title": "Quota gratuit Air",
-      "badge": "MindsHub Air uniquement",
+      "title": "Quota gratuit",
+      "badge": "Modèles gratuits uniquement",
       "resetsAt": "Réinitialisation : {time}",
       "unlimited": "Illimité sur ce compte.",
       "used": "{percent} de votre quota utilisé",
       "left": "{percent} restant",
-      "meterLabel": "Quota gratuit Air utilisé",
-      "usedUpUntil": "Épuisé. MindsHub Air est facturé sur votre solde jusqu’au renouvellement du quota à {time}.",
-      "usedUp": "Épuisé. MindsHub Air est facturé sur votre solde jusqu’au renouvellement du quota.",
-      "afterUntil": "Ensuite, MindsHub Air utilise votre solde jusqu’au renouvellement du quota à {time}.",
-      "after": "Ensuite, MindsHub Air utilise votre solde."
+      "meterLabel": "Quota gratuit utilisé",
+      "usedUpUntil": "Épuisé. Les modèles gratuits utilisent désormais votre solde jusqu’à la réinitialisation du quota à {time}.",
+      "usedUp": "Épuisé. Les modèles gratuits utilisent désormais votre solde jusqu’à la réinitialisation du quota.",
+      "afterUntil": "Ensuite, les modèles gratuits utilisent votre solde jusqu’à la réinitialisation du quota à {time}.",
+      "after": "Ensuite, les modèles gratuits utilisent votre solde."
     },
     "autoTopUp": {
       "off": "La recharge automatique est désactivée. Activez-la pour que les tâches continuent lorsque votre solde baisse.",
@@ -202,7 +202,7 @@
     "balance": {
       "title": "Solde",
       "empty": "Solde vide. Les modèles payants ne fonctionneront pas tant que vous n’aurez pas ajouté de fonds.",
-      "usedBy": "Utilisé par les modèles payants, et par MindsHub Air une fois les jetons gratuits épuisés.",
+      "usedBy": "Utilisé par les modèles payants, et par les modèles gratuits une fois les jetons gratuits épuisés.",
       "spentRange": "de crédit utilisé du {start} au {end}",
       "spentDate": "de crédit utilisé le {date}",
       "spentThisPeriod": "de crédit utilisé sur cette période",
@@ -211,7 +211,7 @@
     },
     "signIn": {
       "title": "Connectez-vous pour voir votre utilisation",
-      "body": "Votre quota gratuit Air et votre solde s’affichent ici une fois que vous êtes connecté à MindsHub.",
+      "body": "Votre quota gratuit et votre solde s’affichent ici une fois que vous êtes connecté à MindsHub.",
       "goToAccount": "Aller au compte"
     },
     "loading": "Chargement de l’utilisation…",

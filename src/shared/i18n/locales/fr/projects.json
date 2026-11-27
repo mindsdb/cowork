@@ -9,20 +9,20 @@
         "updatePaymentMethod": "Mettre à jour le moyen de paiement",
         "upgrade": "{tier, select, plus {Passer à Plus} pro {Passer à Pro} other {Changer de forfait}}"
       },
-      "noFreeGrant": "Ce compte n’inclut pas de jetons MindsHub Air gratuits. MindsHub Air utilise votre solde, comme tous les autres modèles.",
+      "noFreeGrant": "Ce compte n’inclut pas de jetons gratuits. Tous les modèles utilisent votre solde.",
       "allowanceStop": {
         "noGrant": "{noGrant} Votre solde est épuisé : ajoutez des fonds pour continuer.",
-        "withTime": "Votre quota gratuit MindsHub Air est épuisé, tout comme votre solde. Ajoutez des fonds pour continuer, ou attendez qu’il se renouvelle à {time}.",
-        "noTime": "Votre quota gratuit MindsHub Air est épuisé, tout comme votre solde. Ajoutez des fonds pour continuer.",
-        "noTimeMobile": "Votre quota gratuit MindsHub Air est épuisé, tout comme votre solde.",
+        "withTime": "Votre quota gratuit est épuisé, tout comme votre solde. Ajoutez des fonds pour continuer, ou attendez sa réinitialisation à {time}.",
+        "noTime": "Votre quota gratuit est épuisé, tout comme votre solde. Ajoutez des fonds pour continuer.",
+        "noTimeMobile": "Votre quota gratuit est épuisé, tout comme votre solde.",
         "noGrantMobile": "{noGrant} Votre solde est épuisé.",
-        "withTimeMobile": "Votre quota gratuit MindsHub Air est épuisé, tout comme votre solde. Réinitialisation à {time}."
+        "withTimeMobile": "Votre quota gratuit est épuisé, tout comme votre solde. Réinitialisation à {time}."
       },
       "freeServingPaused": {
-        "until": "MindsHub Air gratuit est suspendu pour tout le monde jusqu’à {until}. Votre quota n’est pas consommé. Ajoutez des fonds pour continuer dès maintenant.",
-        "dailyReset": "MindsHub Air gratuit est suspendu pour tout le monde jusqu’à la réinitialisation du budget quotidien. Votre quota n’est pas consommé. Ajoutez des fonds pour continuer dès maintenant.",
-        "untilMobile": "MindsHub Air gratuit est suspendu pour tout le monde jusqu’à {until}. Votre quota n’est pas consommé.",
-        "dailyResetMobile": "MindsHub Air gratuit est suspendu pour tout le monde jusqu’à la réinitialisation du budget quotidien. Votre quota n’est pas consommé."
+        "until": "Les modèles gratuits sont suspendus pour tout le monde jusqu’à {until}. Votre quota n’est pas consommé. Ajoutez des fonds pour continuer dès maintenant.",
+        "dailyReset": "Les modèles gratuits sont suspendus pour tout le monde jusqu’à la réinitialisation du budget quotidien. Votre quota n’est pas consommé. Ajoutez des fonds pour continuer dès maintenant.",
+        "untilMobile": "Les modèles gratuits sont suspendus pour tout le monde jusqu’à {until}. Votre quota n’est pas consommé.",
+        "dailyResetMobile": "Les modèles gratuits sont suspendus pour tout le monde jusqu’à la réinitialisation du budget quotidien. Votre quota n’est pas consommé."
       },
       "balanceEmptySentence": "Votre solde est épuisé.",
       "percentLeft": "{percent} de votre quota gratuit restant",
@@ -34,8 +34,8 @@
       "balanceEmpty": {
         "title": "Solde épuisé",
         "body": "Ajoutez des fonds pour lancer une autre tâche.",
-        "freeUsedToo": "Votre quota gratuit est également épuisé. Ajoutez des fonds ou attendez qu’il se renouvelle.",
-        "freeUsedTooWithTime": "Votre quota gratuit est également épuisé. Ajoutez des fonds ou attendez qu’il se renouvelle à {time}.",
+        "freeUsedToo": "Votre quota gratuit est également épuisé. Ajoutez des fonds ou attendez sa réinitialisation.",
+        "freeUsedTooWithTime": "Votre quota gratuit est également épuisé. Ajoutez des fonds ou attendez sa réinitialisation à {time}.",
         "freeUsedTooMobile": "Votre quota gratuit est également épuisé.",
         "freeUsedTooWithTimeMobile": "Votre quota gratuit est également épuisé. Réinitialisation à {time}.",
         "bodyMobile": "Votre solde est vide. Les modèles payants sont indisponibles."
@@ -50,20 +50,18 @@
       },
       "freeUsed": {
         "title": "Quota gratuit épuisé",
-        "body": "MindsHub Air utilise votre solde jusqu’au renouvellement de votre quota.",
-        "bodyWithTime": "MindsHub Air utilise votre solde jusqu’au renouvellement de votre quota à {time}.",
-        "bodyWithUsd": "MindsHub Air utilise votre solde (il reste {usd}) jusqu’au renouvellement de votre quota.",
-        "bodyWithUsdWithTime": "MindsHub Air utilise votre solde (il reste {usd}) jusqu’au renouvellement de votre quota à {time}."
+        "body": "Les modèles gratuits utilisent désormais votre solde jusqu’à la réinitialisation de votre quota.",
+        "bodyWithTime": "Les modèles gratuits utilisent désormais votre solde jusqu’à la réinitialisation de votre quota à {time}."
       },
       "freeLow": {
-        "body": "Ensuite, MindsHub Air utilisera votre solde jusqu’au renouvellement de votre quota.",
-        "bodyWithTime": "Ensuite, MindsHub Air utilisera votre solde jusqu’au renouvellement de votre quota à {time}.",
+        "body": "Ensuite, les modèles gratuits utiliseront votre solde jusqu’à la réinitialisation de votre quota.",
+        "bodyWithTime": "Ensuite, les modèles gratuits utiliseront votre solde jusqu’à la réinitialisation de votre quota à {time}.",
         "balanceLowToo": "Votre solde est également bas ({usd})."
       },
       "budgetExceeded": {
         "airOnPlan": "{hasModel, select, true {{scope, select, org {{model} est bloqué jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.} other {{model} est bloqué jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.}}} other {{scope, select, org {Les modèles payants sont bloqués jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ». MindsHub Air reste disponible tant que le quota de votre forfait n’est pas épuisé.} other {Les modèles payants sont bloqués jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ». MindsHub Air reste disponible tant que le quota de votre forfait n’est pas épuisé.}}}}",
         "raise": "{hasModel, select, true {{scope, select, org {{model} est bloqué jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.} other {{model} est bloqué jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.}}} other {{scope, select, org {Les modèles payants sont bloqués jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ».} other {Les modèles payants sont bloqués jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ».}}}}",
-        "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} est bloqué jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.} other {{model} est bloqué jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.}}} other {{scope, select, org {Les modèles payants sont bloqués jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ». MindsHub Air reste disponible tant que son quota gratuit n’est pas épuisé.} other {Les modèles payants sont bloqués jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ». MindsHub Air reste disponible tant que son quota gratuit n’est pas épuisé.}}}}"
+        "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} est bloqué jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.} other {{model} est bloqué jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.}}} other {{scope, select, org {Les modèles payants sont bloqués jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ». MindsHub Air reste disponible tant que votre quota gratuit n’est pas épuisé.} other {Les modèles payants sont bloqués jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ». MindsHub Air reste disponible tant que votre quota gratuit n’est pas épuisé.}}}}"
       },
       "window": {
         "usedUpTitle": "{window, select, 7d {Quota hebdomadaire épuisé} other {Quota de 5 heures épuisé}}",
@@ -124,8 +122,8 @@
       },
       "row": {
         "walletEmpty": "Aucun crédit disponible. Ajoutez des fonds pour utiliser MindsHub.",
-        "allowanceExhausted": "Aucun jeton MindsHub Air gratuit disponible et le solde est épuisé.",
-        "freeAirPaused": "MindsHub Air gratuit est actuellement suspendu.",
+        "allowanceExhausted": "Aucun jeton gratuit disponible et le solde est épuisé.",
+        "freeAirPaused": "Les modèles gratuits sont actuellement suspendus.",
         "budgetExceeded": "Un budget est épuisé.",
         "walletEmptyMobile": "Aucun crédit disponible."
       },

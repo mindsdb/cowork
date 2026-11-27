@@ -9,20 +9,20 @@
         "updatePaymentMethod": "Zahlungsmethode aktualisieren",
         "upgrade": "{tier, select, plus {Plus holen} pro {Auf Pro upgraden} other {Upgraden}}"
       },
-      "noFreeGrant": "Dieses Konto enthält keine kostenlosen MindsHub Air-Tokens. MindsHub Air wird wie jedes andere Modell über Ihr Guthaben abgerechnet.",
+      "noFreeGrant": "Dieses Konto enthält keine kostenlosen Tokens. Jedes Modell wird über Ihr Guthaben abgerechnet.",
       "allowanceStop": {
         "noGrant": "{noGrant} Ihr Guthaben ist aufgebraucht. Laden Sie es auf, um weiterzumachen.",
-        "withTime": "Ihr Gratiskontingent für MindsHub Air und Ihr Guthaben sind aufgebraucht. Laden Sie Guthaben auf, um weiterzuarbeiten, oder warten Sie, bis das Kontingent um {time} wieder aufgefüllt wird.",
-        "noTime": "Ihr Gratiskontingent für MindsHub Air und Ihr Guthaben sind aufgebraucht. Laden Sie Guthaben auf, um weiterzuarbeiten.",
-        "noTimeMobile": "Ihr Gratiskontingent für MindsHub Air und Ihr Guthaben sind aufgebraucht.",
+        "withTime": "Ihr Gratiskontingent und Ihr Guthaben sind aufgebraucht. Laden Sie Guthaben auf, um weiterzuarbeiten, oder warten Sie, bis das Kontingent um {time} zurückgesetzt wird.",
+        "noTime": "Ihr Gratiskontingent und Ihr Guthaben sind aufgebraucht. Laden Sie Guthaben auf, um weiterzuarbeiten.",
+        "noTimeMobile": "Ihr Gratiskontingent und Ihr Guthaben sind aufgebraucht.",
         "noGrantMobile": "{noGrant} Ihr Guthaben ist aufgebraucht.",
-        "withTimeMobile": "Ihr Gratiskontingent für MindsHub Air und Ihr Guthaben sind aufgebraucht. Wird um {time} zurückgesetzt."
+        "withTimeMobile": "Ihr Gratiskontingent und Ihr Guthaben sind aufgebraucht. Wird um {time} zurückgesetzt."
       },
       "freeServingPaused": {
-        "until": "Das kostenlose MindsHub Air ist für alle bis {until} pausiert. Ihr Kontingent wird dadurch nicht verbraucht. Laden Sie Guthaben auf, um jetzt weiterzuarbeiten.",
-        "dailyReset": "Das kostenlose MindsHub Air ist für alle pausiert, bis das Tagesbudget zurückgesetzt wird. Ihr Kontingent wird dadurch nicht verbraucht. Laden Sie Guthaben auf, um jetzt weiterzuarbeiten.",
-        "untilMobile": "Das kostenlose MindsHub Air ist für alle bis {until} pausiert. Ihr Kontingent wird dadurch nicht verbraucht.",
-        "dailyResetMobile": "Das kostenlose MindsHub Air ist für alle pausiert, bis das Tagesbudget zurückgesetzt wird. Ihr Kontingent wird dadurch nicht verbraucht."
+        "until": "Kostenlose Modelle sind für alle bis {until} pausiert. Ihr Kontingent wird dadurch nicht verbraucht. Laden Sie Guthaben auf, um jetzt weiterzuarbeiten.",
+        "dailyReset": "Kostenlose Modelle sind für alle pausiert, bis das Tagesbudget zurückgesetzt wird. Ihr Kontingent wird dadurch nicht verbraucht. Laden Sie Guthaben auf, um jetzt weiterzuarbeiten.",
+        "untilMobile": "Kostenlose Modelle sind für alle bis {until} pausiert. Ihr Kontingent wird dadurch nicht verbraucht.",
+        "dailyResetMobile": "Kostenlose Modelle sind für alle pausiert, bis das Tagesbudget zurückgesetzt wird. Ihr Kontingent wird dadurch nicht verbraucht."
       },
       "balanceEmptySentence": "Ihr Guthaben ist aufgebraucht.",
       "percentLeft": "Noch {percent} Ihres Gratiskontingents übrig",
@@ -34,8 +34,8 @@
       "balanceEmpty": {
         "title": "Guthaben aufgebraucht",
         "body": "Laden Sie Guthaben auf, um eine weitere Aufgabe zu starten.",
-        "freeUsedToo": "Auch Ihr Gratiskontingent ist aufgebraucht. Laden Sie Guthaben auf oder warten Sie, bis das Kontingent wieder aufgefüllt wird.",
-        "freeUsedTooWithTime": "Auch Ihr Gratiskontingent ist aufgebraucht. Laden Sie Guthaben auf oder warten Sie, bis das Kontingent um {time} wieder aufgefüllt wird.",
+        "freeUsedToo": "Auch Ihr Gratiskontingent ist aufgebraucht. Laden Sie Guthaben auf oder warten Sie, bis das Kontingent zurückgesetzt wird.",
+        "freeUsedTooWithTime": "Auch Ihr Gratiskontingent ist aufgebraucht. Laden Sie Guthaben auf oder warten Sie, bis das Kontingent um {time} zurückgesetzt wird.",
         "freeUsedTooMobile": "Auch Ihr Gratiskontingent ist aufgebraucht.",
         "freeUsedTooWithTimeMobile": "Auch Ihr Gratiskontingent ist aufgebraucht. Wird um {time} zurückgesetzt.",
         "bodyMobile": "Ihr Guthaben ist aufgebraucht. Kostenpflichtige Modelle sind nicht verfügbar."
@@ -50,20 +50,18 @@
       },
       "freeUsed": {
         "title": "Gratiskontingent aufgebraucht",
-        "body": "MindsHub Air wird über Ihr Guthaben abgerechnet, bis Ihr Kontingent wieder aufgefüllt wird.",
-        "bodyWithTime": "MindsHub Air wird über Ihr Guthaben abgerechnet, bis Ihr Kontingent um {time} wieder aufgefüllt wird.",
-        "bodyWithUsd": "MindsHub Air wird über Ihr Guthaben abgerechnet (noch {usd}), bis Ihr Kontingent wieder aufgefüllt wird.",
-        "bodyWithUsdWithTime": "MindsHub Air wird über Ihr Guthaben abgerechnet (noch {usd}), bis Ihr Kontingent um {time} wieder aufgefüllt wird."
+        "body": "Kostenlose Modelle werden jetzt über Ihr Guthaben abgerechnet, bis Ihr Kontingent zurückgesetzt wird.",
+        "bodyWithTime": "Kostenlose Modelle werden jetzt über Ihr Guthaben abgerechnet, bis Ihr Kontingent um {time} zurückgesetzt wird."
       },
       "freeLow": {
-        "body": "Danach wird MindsHub Air über Ihr Guthaben abgerechnet, bis Ihr Kontingent wieder aufgefüllt wird.",
-        "bodyWithTime": "Danach wird MindsHub Air über Ihr Guthaben abgerechnet, bis Ihr Kontingent um {time} wieder aufgefüllt wird.",
+        "body": "Danach werden kostenlose Modelle über Ihr Guthaben abgerechnet, bis Ihr Kontingent zurückgesetzt wird.",
+        "bodyWithTime": "Danach werden kostenlose Modelle über Ihr Guthaben abgerechnet, bis Ihr Kontingent um {time} zurückgesetzt wird.",
         "balanceLowToo": "Auch Ihr Guthaben ist niedrig ({usd})."
       },
       "budgetExceeded": {
         "airOnPlan": "{hasModel, select, true {{scope, select, org {{model} ist gesperrt, bis ein Inhaber oder Administrator das Budget unter „Budgets“ erhöht. Andere Modelle funktionieren weiterhin.} other {{model} ist gesperrt, bis ein Administrator das Budget unter „Budgets“ erhöht. Andere Modelle funktionieren weiterhin.}}} other {{scope, select, org {Kostenpflichtige Modelle sind gesperrt, bis ein Inhaber oder Administrator das Budget unter „Budgets“ erhöht. MindsHub Air funktioniert weiterhin, solange das Kontingent Ihres Plans reicht.} other {Kostenpflichtige Modelle sind gesperrt, bis ein Administrator das Budget unter „Budgets“ erhöht. MindsHub Air funktioniert weiterhin, solange das Kontingent Ihres Plans reicht.}}}}",
         "raise": "{hasModel, select, true {{scope, select, org {{model} ist gesperrt, bis ein Inhaber oder Administrator das Budget unter „Budgets“ erhöht. Andere Modelle funktionieren weiterhin.} other {{model} ist gesperrt, bis ein Administrator das Budget unter „Budgets“ erhöht. Andere Modelle funktionieren weiterhin.}}} other {{scope, select, org {Kostenpflichtige Modelle sind gesperrt, bis ein Inhaber oder Administrator das Budget unter „Budgets“ erhöht.} other {Kostenpflichtige Modelle sind gesperrt, bis ein Administrator das Budget unter „Budgets“ erhöht.}}}}",
-        "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} ist gesperrt, bis ein Inhaber oder Administrator das Budget unter „Budgets“ erhöht. Andere Modelle funktionieren weiterhin.} other {{model} ist gesperrt, bis ein Administrator das Budget unter „Budgets“ erhöht. Andere Modelle funktionieren weiterhin.}}} other {{scope, select, org {Kostenpflichtige Modelle sind gesperrt, bis ein Inhaber oder Administrator das Budget unter „Budgets“ erhöht. MindsHub Air funktioniert weiterhin, solange das Gratiskontingent reicht.} other {Kostenpflichtige Modelle sind gesperrt, bis ein Administrator das Budget unter „Budgets“ erhöht. MindsHub Air funktioniert weiterhin, solange das Gratiskontingent reicht.}}}}"
+        "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} ist gesperrt, bis ein Inhaber oder Administrator das Budget unter „Budgets“ erhöht. Andere Modelle funktionieren weiterhin.} other {{model} ist gesperrt, bis ein Administrator das Budget unter „Budgets“ erhöht. Andere Modelle funktionieren weiterhin.}}} other {{scope, select, org {Kostenpflichtige Modelle sind gesperrt, bis ein Inhaber oder Administrator das Budget unter „Budgets“ erhöht. MindsHub Air funktioniert weiterhin, solange Ihr Gratiskontingent reicht.} other {Kostenpflichtige Modelle sind gesperrt, bis ein Administrator das Budget unter „Budgets“ erhöht. MindsHub Air funktioniert weiterhin, solange Ihr Gratiskontingent reicht.}}}}"
       },
       "window": {
         "usedUpTitle": "{window, select, 7d {Wochenkontingent aufgebraucht} other {5-Stunden-Kontingent aufgebraucht}}",
@@ -124,8 +122,8 @@
       },
       "row": {
         "walletEmpty": "Kein Guthaben verfügbar. Laden Sie Guthaben auf, um MindsHub zu nutzen.",
-        "allowanceExhausted": "Keine kostenlosen MindsHub Air-Tokens verfügbar und das Guthaben ist aufgebraucht.",
-        "freeAirPaused": "Das kostenlose MindsHub Air ist derzeit pausiert.",
+        "allowanceExhausted": "Keine kostenlosen Tokens verfügbar und das Guthaben ist aufgebraucht.",
+        "freeAirPaused": "Kostenlose Modelle sind derzeit pausiert.",
         "budgetExceeded": "Ein Budget ist aufgebraucht.",
         "walletEmptyMobile": "Kein Guthaben verfügbar."
       },

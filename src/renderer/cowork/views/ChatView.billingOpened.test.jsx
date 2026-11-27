@@ -90,7 +90,7 @@ describe('billing_opened trigger per call site', () => {
     expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
   });
 
-  it('free_serving_paused: the paused-free-Air card records its own trigger, not token_limit', async () => {
+  it('free_serving_paused: the paused-free-models card records its own trigger, not token_limit', async () => {
     const user = userEvent.setup();
     // A fleet-wide pause is not this user running out, so its clicks cannot be
     // filed under either of the cap cards.
@@ -325,7 +325,7 @@ describe('inside the mobile app', () => {
   it.each([
     ['token_limit', "You've run out of credits.", {}, 'Task stopped'],
     ['included_allowance_exhausted', "You've used this month's free tokens.", { resetAt: '2099-01-01T00:00:00Z' }, 'Task stopped'],
-    ['free_serving_paused', 'Free MindsHub Air is paused.', {}, 'Free MindsHub Air is paused'],
+    ['free_serving_paused', 'Free MindsHub Air is paused.', {}, 'Free models are paused'],
   ])('%s: the stopped-task card says what happened and offers no purchase', (code, content, extra, title) => {
     render(<ChatView task={taskWith(failedTurn(code, content, extra))} />);
 
