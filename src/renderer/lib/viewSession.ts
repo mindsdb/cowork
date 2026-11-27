@@ -79,8 +79,9 @@ export async function publishedFrameCredential(
   getToken: () => Promise<string | null>,
   signal?: AbortSignal,
 ): Promise<PublishedFrame> {
-  if (typeof window === 'undefined' || window.location.protocol !== 'https:') return { error: 'unavailable' };
-  if (!besideViewHost()) return { error: 'unavailable' };
+  if (typeof window === 'undefined' || window.location.protocol !== 'https:' || !besideViewHost()) {
+    return { error: 'unavailable' };
+  }
   let page: URL;
   let viewOrigin: string;
   try {
@@ -103,6 +104,12 @@ export async function publishedFrameCredential(
     return { error: 'retry' };
   }
   if (!token) return { error: 'unavailable' };
+  // AbortSignal.any is Safari 17.4+ and Firefox 124+; older ones keep only the
+  // timeout, and a cancelled preview then lets its request finish unread.
+  const timeout = AbortSignal.timeout(PUBLISHED_FRAME_TIMEOUT_MS);
+  const requestSignal = signal && typeof AbortSignal.any === 'function'
+    ? AbortSignal.any([signal, timeout])
+    : timeout;
   let response: Response;
   try {
     response = await fetch(`${viewOrigin}/a/${id}/_cowork_token`, {
@@ -111,9 +118,7 @@ export async function publishedFrameCredential(
       body: JSON.stringify({ token }),
       credentials: 'omit',
       redirect: 'error',
-      signal: signal
-        ? AbortSignal.any([signal, AbortSignal.timeout(PUBLISHED_FRAME_TIMEOUT_MS)])
-        : AbortSignal.timeout(PUBLISHED_FRAME_TIMEOUT_MS),
+      signal: requestSignal,
     });
   } catch {
     // A network error, the timeout, or a refused preflight: any answer
@@ -126,9 +131,9 @@ export async function publishedFrameCredential(
     const credential = typeof body?.credential === 'string' && FRAME_CREDENTIAL.test(body.credential)
       ? body.credential
       : '';
-    const exp = body?.exp === null ? null : Number.isFinite(body?.exp) ? Number(body.exp) : undefined;
-    if (!origin || !credential || exp === undefined) return { error: 'unavailable' };
-    return { origin, credential, exp };
+    const exp = body?.exp;
+    if (!origin || !credential || (exp !== null && !Number.isFinite(exp))) return { error: 'unavailable' };
+    return { origin, credential, exp: exp === null ? null : Number(exp) };
   }
   if (response.status === 403 && (body?.reason === 'no_access' || body?.reason === 'password')) {
     return { error: body.reason };

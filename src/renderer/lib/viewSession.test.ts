@@ -227,6 +227,23 @@ describe('publishedFrameCredential', () => {
     expect(init.signal?.aborted).toBe(true);
   });
 
+  it('keeps the timeout alone where the browser has no AbortSignal.any', async () => {
+    const fetchMock = onStaging(json({ origin: ORIGIN, credential: 'v1.p.s', exp: null }));
+    const original = Object.getOwnPropertyDescriptor(AbortSignal, 'any');
+    Object.defineProperty(AbortSignal, 'any', { value: undefined, configurable: true });
+    try {
+      const { publishedFrameCredential } = await importViewSession();
+      const controller = new AbortController();
+      expect(await publishedFrameCredential(PAGE, token, controller.signal))
+        .toEqual({ origin: ORIGIN, credential: 'v1.p.s', exp: null });
+      const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+      expect(init.signal).not.toBe(controller.signal);
+    } finally {
+      if (original) Object.defineProperty(AbortSignal, 'any', original);
+    }
+  });
+
   it('answers an aborted request as a network error, with no frame', async () => {
     onStaging(() => { throw new DOMException('Aborted', 'AbortError'); });
     const { publishedFrameCredential } = await importViewSession();

@@ -131,7 +131,7 @@ export function ArtifactViewerBody({
     setIframeReady,
     onReload,
     // A published app's preview: why it has none, and whether its token is
-    // past the viewer's deadline.
+    // past the viewer's deadline (only ever set for a published frame).
     publishedFailure = null,
     sessionEnded = false,
     reloadPhase = 'idle',
@@ -305,7 +305,7 @@ export function ArtifactViewerBody({
           allow={previewKind === 'published' ? PUBLISHED_FRAME_ALLOW : undefined}
           // Past the deadline the app's frame takes no input at all: the
           // overlay stops the pointer, inert stops keys and Tab.
-          inert={sessionEnded && previewKind === 'published'}
+          inert={sessionEnded}
           style={{
             width: '100%', height: '100%', border: 0, background: '#fff',
             opacity: iframeReady ? 1 : 0, transition: 'opacity var(--dur-layout) ease',
@@ -315,7 +315,7 @@ export function ArtifactViewerBody({
           }}
         />
       )}
-      {sessionEnded && previewKind === 'published' && <PublishedSessionEnded onReload={onReload} frameRef={iframeRef} />}
+      {sessionEnded && <PublishedSessionEnded onReload={onReload} frameRef={iframeRef} />}
       {/* Under the reload cover the page reloads unseen: no placeholder
           flashes in between, the cover itself is the wait. */}
       {(loading || !(previewUrl || previewDoc) || !iframeReady) && reloadPhase === 'idle' && <PreviewPlaceholder />}
