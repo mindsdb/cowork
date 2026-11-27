@@ -47,6 +47,7 @@ import {
   RefusedDraftLink,
   draftLinkLifetimeMs,
   draftLinkUrl,
+  publishedFrameLifetimeMs,
 } from '../../lib/draftLinkRules';
 import { useDraftLinks } from '../../../lib/draftLinks';
 import { trackArtifactStatsOpened } from '../../lib/analytics';
@@ -227,6 +228,11 @@ export function ArtifactViewer({
   // The preview's signed link has expired: pages and files the draft loads
   // from now on are refused until a reload asks for a new link.
   const [draftLinkExpired, setDraftLinkExpired] = useState(false);
+  // A published app's preview: why it has none ({ reason, url }), and whether
+  // its frame token is past the deadline, after which its requests fail.
+  const [publishedFailure, setPublishedFailure] = useState(null);
+  const [publishedSessionEnded, setPublishedSessionEnded] = useState(false);
+  const publishedDeadlineRef = useRef(0);
   const [backendPort, setBackendPort] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -399,8 +405,12 @@ export function ArtifactViewer({
   // comparison view mounts its own `sandbox="allow-scripts"` frames of
   // agent-written HTML that could otherwise post into this channel. Same
   // rationale as the comments bridge's `commentsOpen` gate below.
+  // A published app's frame holds only the app's own code: no preview shim
+  // and no comment layer. Nothing in it may report errors to the agent,
+  // move or scale the viewer, set inline state or drive comments.
+  const frameHasOurShim = previewKind !== 'published';
   const diagnostics = usePreviewDiagnostics(iframeRef, {
-    enabled: open && !!(previewUrl || previewDoc),
+    enabled: open && frameHasOurShim && !!(previewUrl || previewDoc),
     resetKey: previewUrl || previewDoc,
   });
   // Where the user is in the preview, so Edit opens on the same slide. Same
@@ -408,7 +418,7 @@ export function ArtifactViewer({
   // A reload the viewer makes after a change keeps the place
   // (`keepPlace`, below): the preview goes back to the same slide.
   const previewView = usePreviewView(iframeRef, {
-    enabled: open && !!(previewUrl || previewDoc),
+    enabled: open && frameHasOurShim && !!(previewUrl || previewDoc),
     resetKey: previewUrl || previewDoc,
     scopeKey: open ? `${artifact?.id || ''}:${artifact?.path || ''}` : '',
   });
@@ -427,12 +437,12 @@ export function ArtifactViewer({
     onCloseRef.current?.();
   }, []);
   useInlineArtifactState(iframeRef, artifact, {
-    enabled: open && !!(previewUrl || previewDoc) && isInlineArtifact(artifact),
+    enabled: open && frameHasOurShim && !!(previewUrl || previewDoc) && isInlineArtifact(artifact),
     onSubmit: onInlineSubmit ? submitFromViewer : undefined,
   });
   // A page cut off in the frame with nothing to scroll is fitted to it.
   const previewFit = usePreviewFit(iframeRef, {
-    enabled: open && !!(previewUrl || previewDoc),
+    enabled: open && frameHasOurShim && !!(previewUrl || previewDoc),
     resetKey: previewUrl || previewDoc,
   });
   const comments = useArtifactComments(commentUserDir, commentReportId, {
@@ -485,7 +495,7 @@ export function ArtifactViewer({
     // no ambient path to act through the owner's comment session.
     // A live app's pane holds the app's own code and no comment layer, so no
     // frame there may drive comments.
-    enabled: open && commentsEnabled && commentsOpen && !liveAppView,
+    enabled: open && commentsEnabled && commentsOpen && !liveAppView && frameHasOurShim,
     markersVisible: commentsOpen && markersShown,
     onCreate: createArtifactComment,
     onReply: replyToComment,
@@ -862,6 +872,9 @@ export function ArtifactViewer({
     setBackendPort(null);
     setTextPreview(null);
     setDraftLinkExpired(false);
+    setPublishedFailure(null);
+    setPublishedSessionEnded(false);
+    publishedDeadlineRef.current = 0;
     let cancelled = false;
     const withCommentLayer = commentLayerRequestedRef.current;
     commentLayerMountedRef.current = withCommentLayer;
@@ -941,10 +954,8 @@ export function ArtifactViewer({
       withCommentLayer,
       draftLinkEnabled,
       signal: reading.signal,
-      // A fullstack app in org mode shows from where it's published.
-      publishedApp: orgMode
-        ? { url: pub.publishedUrl || artifact?.publishedUrl || '', accessMode: pub.accessMode }
-        : null,
+      // A fullstack app in org mode shows from its artifact host, once published.
+      publishedApp: orgMode ? { url: pub.publishedUrl || artifact?.publishedUrl || '' } : null,
     })
       .then((source) => {
         if (cancelled) return;
@@ -955,8 +966,16 @@ export function ArtifactViewer({
         else setPreviewUrl(source.url);
         if (source.port != null) setBackendPort(source.port);
         // Each signed draft link expires; then the viewer offers a reload.
+        // A published app's token too, but its frame must not take input
+        // after that, so the overlay comes up a margin before.
         if (source.expiresAt != null) {
-          expiry = setTimeout(() => setDraftLinkExpired(true), draftLinkLifetimeMs(source.expiresAt));
+          if (source.kind === 'published') {
+            const left = publishedFrameLifetimeMs(source.expiresAt);
+            publishedDeadlineRef.current = Date.now() + left;
+            expiry = setTimeout(() => setPublishedSessionEnded(true), left);
+          } else {
+            expiry = setTimeout(() => setDraftLinkExpired(true), draftLinkLifetimeMs(source.expiresAt));
+          }
         }
       })
       .catch(async (e) => {
@@ -964,6 +983,9 @@ export function ArtifactViewer({
         // Links off reruns this effect, which then takes the srcdoc path.
         if (e?.stage === 'draft-link' && await withdrawDraftLinks(e.cause)) return;
         if (cancelled) return;
+        if (e?.stage === 'published' && e.reason) {
+          setPublishedFailure({ reason: e.reason, url: pub.publishedUrl || artifact?.publishedUrl || '' });
+        }
         setErr(e?.message || t('viewer.loadFailed'));
       })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -975,9 +997,27 @@ export function ArtifactViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, textExt, isImage, liveAppView, showDocumentPreview, reloadNonce, draftLinkEnabled, orgMode, pub.publishedUrl, pub.accessMode, artifact?.publishedUrl]);
 
+  // A timer runs late in a sleeping laptop or a throttled background tab, so
+  // the deadline is checked again whenever the page comes back.
+  useEffect(() => {
+    if (!open) return undefined;
+    const check = () => {
+      const deadline = publishedDeadlineRef.current;
+      if (deadline && Date.now() >= deadline) setPublishedSessionEnded(true);
+    };
+    document.addEventListener('visibilitychange', check);
+    window.addEventListener('focus', check);
+    return () => {
+      document.removeEventListener('visibilitychange', check);
+      window.removeEventListener('focus', check);
+    };
+  }, [open]);
+
   // Opening comments on a preview mounted before the key arrived is the one
   // time a reload is worth it: the user asked for the markers.
   useEffect(() => {
+    // A published app has no comment layer: a reload would only reset the app.
+    if (previewKind === 'published') return;
     if (!open || !commentsOpen || !commentLayerRequested) return;
     if (!(previewUrl || previewDoc) || commentLayerMountedRef.current) return;
     // The page comes back on the slide the user was commenting on, or the
@@ -985,7 +1025,7 @@ export function ArtifactViewer({
     previewView.keepPlace(leftEditorViewRef.current);
     leftEditorViewRef.current = null;
     setReloadNonce((n) => n + 1);
-  }, [open, commentsOpen, commentLayerRequested, previewUrl, previewDoc, previewView.keepPlace]);
+  }, [open, commentsOpen, commentLayerRequested, previewUrl, previewDoc, previewKind, previewView.keepPlace]);
 
   // Parse CSV → GFM pipe table once per loaded text. We cap at
   // CSV_PREVIEW_ROW_LIMIT data rows to keep the markdown renderer
@@ -1794,6 +1834,8 @@ export function ArtifactViewer({
     url: previewUrl,
     doc: previewDoc,
     kind: previewKind,
+    publishedFailure,
+    sessionEnded: publishedSessionEnded,
     iframeRef,
     view: previewView,
     fitStyle: previewFit.style,
