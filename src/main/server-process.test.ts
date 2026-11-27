@@ -1262,11 +1262,7 @@ describe('the Slack connector switch', () => {
     return (vi.mocked(cp.spawn).mock.calls.at(-1)?.[2] as { env: Record<string, string> }).env;
   }
 
-  it.each(['stable', 'preview'])('is on for a %s (staging) build', async (kind) => {
-    expect((await spawnedEnvFor(kind)).SLACK_CONNECTOR_ENABLED).toBe('true');
-  });
-
-  it.each(['prod', 'dev'])('is left unset for a %s build', async (kind) => {
+  it.each(['stable', 'preview', 'prod', 'dev'])('is left unset for a %s build', async (kind) => {
     expect(await spawnedEnvFor(kind)).not.toHaveProperty('SLACK_CONNECTOR_ENABLED');
   });
 });
