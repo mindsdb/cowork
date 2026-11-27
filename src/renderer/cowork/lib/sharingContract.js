@@ -316,16 +316,17 @@ export function orgRestrictedAccessRequest({ emails = NO_IDS, ownerOnly, ...audi
 }
 
 /**
- * Desktop's restricted body: everyone named by email.
+ * Desktop's restricted body: everyone named by email, and with `orgAllowed`
+ * everyone in the publisher's organization too.
  *
- * @param {{ emails: string[], ownerOnly: boolean }} audience
+ * @param {{ emails: string[], ownerOnly: boolean, orgAllowed?: boolean }} audience
  * @returns {import('./sharingContract').DesktopRestrictedAccessPayload}
  */
-export function desktopRestrictedAccessRequest({ emails, ownerOnly }) {
+export function desktopRestrictedAccessRequest({ emails, ownerOnly, orgAllowed = false }) {
   return {
     mode: 'restricted',
     [AUDIENCE_FIELD.EMAILS]: [...emails],
-    [AUDIENCE_FIELD.ORG_ALLOWED]: false,
+    [AUDIENCE_FIELD.ORG_ALLOWED]: orgAllowed === true,
     [AUDIENCE_FIELD.OWNER_ONLY]: ownerOnly === true,
   };
 }

@@ -41,6 +41,13 @@ export function isOrgSharingOn(capabilities) {
   return capabilities?.enabled === true;
 }
 
+/** Whether the artifact Share panel offers "Everyone at ‹org›": with sharing
+    on in MindsHub mode, or on Desktop for an organization (`orgAudience`),
+    where teams and people stay off. */
+export function isOrgAudienceOn(capabilities) {
+  return capabilities?.enabled === true || capabilities?.orgAudience === true;
+}
+
 /**
  * The name sharing copy gives the active organization ("Everyone at Acme"),
  * from where the account menu reads it: the app's own organization list
@@ -634,9 +641,11 @@ export const ARTIFACT_SHARE_UNKNOWN = Object.freeze({ shared: false, kind: 'unkn
  * artifact is ARTIFACT_SHARE_UNKNOWN with `audienceKnown` false (MindsHub
  * mode before the access route answers) and when the artifact itself doesn't
  * know who it reaches (a MindsHub mode card, whose audience fields are null).
+ * `orgAudience` is Desktop's organization audience, which reads `org_allowed`
+ * as everyone at the organization.
  */
 export function artifactShareState(artifact, {
-  orgSharing = false, orgName = null, teams = [], audienceKnown = true,
+  orgSharing = false, orgAudience = false, orgName = null, teams = [], audienceKnown = true,
 } = {}) {
   if (!artifact?.publishedUrl) return { shared: false, kind: 'private', hint: tr('share.notYet') };
   const mode = artifact.accessMode || (artifact.accessProtected ? 'password' : 'public');
@@ -645,7 +654,7 @@ export function artifactShareState(artifact, {
   const audience = audienceKnown ? readArtifactAudience(artifact) : null;
   if (!audience) return ARTIFACT_SHARE_UNKNOWN;
   if (isOwnerOnlyAccess(artifact)) return { shared: false, kind: 'private', hint: onlyMeDesc(SHARED_KIND.ARTIFACT) };
-  if (orgSharing && (audience.orgAllowed || namesDefaultTeam(audience.teamIds, teams))) {
+  if ((orgSharing || orgAudience) && (audience.orgAllowed || namesDefaultTeam(audience.teamIds, teams))) {
     return { shared: true, kind: 'org', hint: sharedWithEveryoneHint(orgName) };
   }
   const phrase = orgSharing

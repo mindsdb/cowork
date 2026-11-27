@@ -141,11 +141,12 @@ describe('usePublish with sharing in MindsHub mode', () => {
      panel is open on sharing in MindsHub mode. */
   it('asks for the org name only while sharing is on with the panel open', () => {
     renderHook(() => usePublish(ORG_ARTIFACT, { enabled: true }));
-    expect(sharing.useSharingOrgName).toHaveBeenLastCalledWith(true);
+    expect(sharing.useSharingOrgName).toHaveBeenCalledWith(true);
 
     sharing.useSharingOrgName.mockClear();
     renderHook(() => usePublish(ORG_ARTIFACT, { enabled: false }));
-    expect(sharing.useSharingOrgName).toHaveBeenLastCalledWith(false);
+    expect(sharing.useSharingOrgName).toHaveBeenCalledWith(false);
+    expect(sharing.useSharingOrgName).not.toHaveBeenCalledWith(true);
   });
 
   it('passes on a capabilities read still loading or failed', () => {

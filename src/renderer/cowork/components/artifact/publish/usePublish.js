@@ -51,6 +51,7 @@ import i18n from '../../../../lib/i18n';
 const tr = (key, vars) => i18n.t(`publish.errors.${key}`, { ns: 'artifacts', ...vars });
 import { republishNotice, stopSharingNotice } from './linkLeftLive';
 import { useMindsHubTeams, useSharingCapabilities, useSharingOrgName } from '../../../hooks/useOrgSharing';
+import { useDesktopOrgAudience } from '../../../hooks/useDesktopOrgAudience';
 import { isOrgSharingOn, isOwnerOnlyAccess } from '../../../lib/orgSharing';
 import { readArtifactAudience, readAudienceAnswer, readAudienceRequest } from '../../../lib/sharingContract';
 
@@ -258,6 +259,9 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
   const teams = useMindsHubTeams(sharingOn);
   const orgName = useSharingOrgName(sharingOn);
   const orgSharing = { ...sharing, teams, orgName };
+  // Desktop: "Everyone at ‹org›" alone, read while a viewer or doc share is
+  // open (the Share button names it too). MindsHub mode uses `orgSharing`.
+  const orgAudience = useDesktopOrgAudience(!orgMode && enabled);
   /* Who the artifact reaches as this render knows it, for the sharing
      analytics: what a save started from. Unknown until its access is read. */
   const teamListRef = useRef([]);
@@ -665,7 +669,7 @@ export function usePublish(artifact, { onChange, enabled = false, entry = 'viewe
 
   return {
     publishedUrl, accessMode, accessPassword, accessEmails, orgAllowed, ownerOnly, artifactKey, modified,
-    allowedTeamIds: teamIds, allowedUserIds: userIds, orgSharing,
+    allowedTeamIds: teamIds, allowedUserIds: userIds, orgSharing, orgAudience,
     accessLoaded, accessLoadFailed,
     phase, busy, error, setError, notice, linkOwnerRecorded,
     pendingDatasources,

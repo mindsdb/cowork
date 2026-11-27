@@ -42,7 +42,7 @@ import { getPickedFiles, savePickedFiles, verifyPickedFiles, type PickedFile } f
 import { saveTokens, getAccessToken, getRefreshToken, clearTokens, initTokenStore } from './token-store';
 import { holdQuitWriters, runQuitFlushes } from './quit-flush';
 import { signedInAccountId, refreshTokensOnly, refreshMindsCredentialAfterResume, handOffMindsCredentialToStartedSidecar, beginMindsCredentialSignOut, endMindsCredentialSignOut, commitMindsSignIn, selectEntitledOrg, scheduleRefresh, cancelScheduledRefresh, revokeDeviceKeyAndEndSession, getRevokeToken, freshAccessToken, listMindsOrgs, switchMindsOrg, KEYCLOAK_AUTH_URL, KEYCLOAK_REGISTRATION_URL, KEYCLOAK_TOKEN_URL, SIGNUP_CALLBACK_TIMEOUT_MS } from './minds-auth';
-import { clearUserSuppliedMindsKey, establishMindsCredential, forgetMindsCredential, setUserSuppliedMindsKey } from './minds-credential';
+import { clearUserSuppliedMindsKey, establishMindsCredential, forgetMindsCredential, hasUserSuppliedMindsCredential, setUserSuppliedMindsKey } from './minds-credential';
 import { isMindsResumeCredentialGateActive, resetMindsResumeCredentialGate, settleMindsResumeCredentialGate, waitForMindsResumeCredential } from './minds-resume-gate';
 import {
   gateMindsResponseCreationRequest,
@@ -59,7 +59,8 @@ import {
 } from './sign-out';
 import { awaitSignOutSidecarFlush, startSignOutSidecarFlush } from './sign-out-restart';
 import { SERVER_START_CAP_MS } from '../shared/server-status';
-import { MINDS_API_HOST } from './minds-urls';
+import { MINDS_API_HOST, MINDS_AUTH_SERVICE_URL } from './minds-urls';
+import { createArtifactSharePermissionReader } from './artifact-share-permission';
 import {
   validateAnthropic,
   validateMinds,
@@ -1334,6 +1335,16 @@ function setupIPC() {
   // renderer cannot reach Keycloak: auth's ingress names console origins in
   // its CORS allowlist and no Cowork host is among them.
   ipcMain.handle(IPC.MINDSHUB_LIST_ORGS, () => listMindsOrgs());
+  // Whether the active organization lets this person share an artifact with
+  // everyone in it, for the Share panel. Read here for the same CORS reason
+  // as the organization list.
+  const artifactSharePermission = createArtifactSharePermissionReader({
+    userSuppliedCredential: hasUserSuppliedMindsCredential,
+    accessToken: freshAccessToken,
+    fetch: (url, init) => fetch(url, { signal: AbortSignal.timeout(10_000), ...init }),
+    authServiceUrl: MINDS_AUTH_SERVICE_URL,
+  });
+  ipcMain.handle(IPC.MINDSHUB_ARTIFACT_SHARE_PERMISSION, () => artifactSharePermission.read());
 
   // Move this install to another organization: switch the session, mint and
   // commit a key there, remember the pick, and retire the key left behind.

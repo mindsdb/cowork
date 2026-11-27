@@ -338,6 +338,8 @@
       "restrictedDesc": "Who can open the link isn't known yet",
       "specificTitle": "Specific people",
       "specificDesc": "Only the people you list",
+      "orgAlsoHasAccess": "The organization can also open this.",
+      "orgAlsoHasAccessHint": "To stop that, choose Only me, Password protected or Public.",
       "websiteTitle": "Public website",
       "websiteDesc": "Its own web address, open to anyone on the internet"
     },

@@ -15,6 +15,7 @@ import { diagnostic } from '../../shared/diagnostics';
 // so call sites can branch / hide affordances.
 
 import type { MindsOrg } from '../../shared/minds-orgs';
+import type { ArtifactSharePermission } from '../../shared/artifact-share-permission';
 import type { InAppBrowserBridge } from '../../shared/browser-contract';
 import type { ServerStartErrorKind } from '../../shared/server-status';
 import type { UpdateCheckSummary } from '../../shared/update-types';
@@ -1839,6 +1840,28 @@ export async function mindshubOrgIconUris(urls: Record<string, string>): Promise
   }
 }
 
+export type { ArtifactSharePermission };
+
+/**
+ * Desktop only: whether the active organization lets this person share an
+ * artifact with everyone in it, read by main from auth. Null on web and on a
+ * desktop shell older than this call, where the Share panel stays as it was.
+ */
+export async function mindshubArtifactSharePermission(): Promise<ArtifactSharePermission | null> {
+  if (!isElectron || typeof bridge.mindshubArtifactSharePermission !== 'function') return null;
+  try {
+    const answer = await bridge.mindshubArtifactSharePermission();
+    return {
+      sessionCredential: answer?.sessionCredential !== false,
+      known: answer?.known === true,
+      canShareArtifactsOrg: answer?.canShareArtifactsOrg === true,
+    };
+  } catch (error) {
+    diagnostic("renderer.platform.host", "WARNING", "host_could_not_read_the_artifact_share_permission", '[host] could not read the artifact share permission', error);
+    return { sessionCredential: true, known: false, canShareArtifactsOrg: false };
+  }
+}
+
 export async function mindshubSwitchOrg(organizationId: string): Promise<SwitchMindsOrgResult> {
   if (isElectron) {
     if (typeof bridge.mindshubSwitchOrg === 'function') {
@@ -2111,6 +2134,7 @@ export const host = {
   canPickOrganization,
   mindshubSetUserKey,
   mindshubListOrgs,
+  mindshubArtifactSharePermission,
   mindshubSwitchOrg,
   mindshubGetCachedToken,
   onMindsHubAuthChanged,

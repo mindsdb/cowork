@@ -44,6 +44,7 @@ import {
   mindsHubRetryHelps,
   sharingOrgName,
   MINDSHUB_THROTTLED,
+  isOrgAudienceOn,
 } from './orgSharing';
 import { firstMindsHubFailure, readArtifactAudience, readMindsHubFailure } from './sharingContract';
 
@@ -564,5 +565,33 @@ describe('artifactAudienceChoice (ENG-4647)', () => {
 
   it('lists the levels narrowest first', () => {
     expect(ARTIFACT_AUDIENCE_ORDER).toEqual(['private', 'specific', 'org', 'password', 'public', 'website']);
+  });
+});
+
+describe('isOrgAudienceOn', () => {
+  it('is on with sharing in MindsHub mode', () => {
+    expect(isOrgAudienceOn({ enabled: true })).toBe(true);
+  });
+  it('is on for a desktop organization audience without org sharing', () => {
+    expect(isOrgAudienceOn({ enabled: false, orgAudience: true })).toBe(true);
+  });
+  it('is off otherwise', () => {
+    expect(isOrgAudienceOn({ enabled: false })).toBe(false);
+    expect(isOrgAudienceOn(null)).toBe(false);
+  });
+});
+
+describe('artifactShareState with a desktop organization audience', () => {
+  const ORG_ONLY = {
+    publishedUrl: 'https://share/abc', accessMode: 'restricted',
+    accessEmails: [], orgAllowed: true, ownerOnly: false,
+  };
+  it('names everyone at the organization', () => {
+    expect(artifactShareState(ORG_ONLY, { orgAudience: true, orgName: 'Acme' })).toMatchObject({
+      shared: true, kind: 'org',
+    });
+  });
+  it('stays a list without the audience, as before', () => {
+    expect(artifactShareState(ORG_ONLY, {})).toMatchObject({ shared: true, kind: 'specific' });
   });
 });

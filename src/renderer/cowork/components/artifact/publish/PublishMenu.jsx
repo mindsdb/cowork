@@ -39,6 +39,7 @@ import { AUDIENCE_CHOICE, hasViewerAnalytics, mindsHubUnreachablePermissions, of
 import { LOAD_STATUS } from '../../../lib/sharingContract';
 import { LoadStatus, RetryAlert } from '../../LoadStatus';
 import { useArtifactShareState } from './useArtifactShareState';
+import OrgAlsoHasAccessNote from './OrgAlsoHasAccessNote';
 import { shareStateIcon } from '../../ShareStateLabel';
 import { UpToDateTag, useSaveStatus } from '../../UpToDateTag';
 import { useArtifactStats } from '../stats/useArtifactStats';
@@ -152,16 +153,16 @@ function UrlField({ url, onCopied }) {
 // ENG-4455), so its words are about the owner's choice, not the reader's:
 // "Only its owner" for an owner-only link, and, when the lists are withheld
 // (the reader is outside the org), what kind of list it is without one.
-export function AccessSummaryCard({ pub, sharing, orgName, picker = null, readOnly = false }) {
+export function AccessSummaryCard({ pub, sharing, orgAudience = null, orgName, picker = null, readOnly = false }) {
   const { t } = useTranslation('artifacts');
   const orgSharing = !!sharing;
-  const summary = accessSummaryLabel(pub, { orgSharing, orgName });
+  const summary = accessSummaryLabel(pub, { orgSharing, orgAudience: !!orgAudience, orgName });
   const m = readOnly && pub?.accessMode === 'restricted' && pub?.ownerOnly
     ? { icon: Ico.lock, title: t('publish.sharedWith.ownerOnlyTitle'), desc: t('publish.sharedWith.ownerOnlyDesc') }
     : readOnly && (summary === ACCESS_LABELS.specific || summary === ACCESS_LABELS.specificPeople)
       ? { icon: summary.icon, title: summary.title, desc: t('publish.sharedWith.listWithheld') }
       : summary;
-  const draft = accessDraftFromArtifact(pub, { orgSharing, teams: sharing?.teams?.teams || [] });
+  const draft = accessDraftFromArtifact(pub, { orgSharing, orgAudience: !!orgAudience, teams: sharing?.teams?.teams || [] });
   const listed = draft.mode === AUDIENCE_CHOICE.SPECIFIC;
   const emails = listed ? parseEmailList(draft.emailsText).valid : [];
   const teamIds = listed && orgSharing ? draft.teamIds : [];
@@ -180,11 +181,13 @@ export function AccessSummaryCard({ pub, sharing, orgName, picker = null, readOn
       emailsOnly={!orgSharing}
     />
   );
+  const orgNote = !readOnly && draft.keepOrgAllowed && <OrgAlsoHasAccessNote />;
   if (picker) {
     return (
       <div className="flex flex-col gap-2" data-testid="access-summary">
         {picker(desc)}
         {list && <div className="rounded-card border border-solid border-line bg-surface-2 py-1 px-1">{list}</div>}
+        {orgNote}
       </div>
     );
   }
@@ -210,6 +213,7 @@ export function AccessSummaryCard({ pub, sharing, orgName, picker = null, readOn
           />
         </div>
       )}
+      {orgNote && <div className="px-3 pb-2.5">{orgNote}</div>}
     </div>
   );
 }
@@ -364,7 +368,7 @@ export function PublishMenu({
   // Which reads the panel waits on, and whether it may claim "Shared"
   // (useArtifactShareState).
   const {
-    orgMode, sharing, orgName, sharingStatus, sharingReady, accessStatus, shareState, isSharedWithSomeone,
+    orgMode, sharing, orgAudience, chooserSharing, orgName, sharingStatus, sharingReady, accessStatus, shareState, isSharedWithSomeone,
     permissionsUnreachable,
   } = useArtifactShareState(pub);
   // "Public website": MindsHub mode, a deployment that allows it (/health's
@@ -382,7 +386,7 @@ export function PublishMenu({
   const accessLoadStatus = accessStatus !== LOAD_STATUS.READY && (
     <LoadStatus status={accessStatus} what={t('publish.load.currentAccess')} onRetry={pub.refresh} />
   );
-  const draftOptions = { orgSharing: !!sharing, teams: sharing?.teams?.teams || [] };
+  const draftOptions = { orgSharing: !!sharing, orgAudience: !!orgAudience, teams: sharing?.teams?.teams || [] };
   // The draft the live access reads as.
   const seedDraft = () => accessDraftFromArtifact(pub, draftOptions);
   // Editable access draft for the publish + change-access flows.
@@ -426,11 +430,21 @@ export function PublishMenu({
     if (!open || view !== 'access' || draftDirty) return;
     setDraft(seedDraft());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, view, draftDirty, pub.accessLoaded, pub.accessMode, pub.orgAllowed, (pub.accessEmails || []).join(','), (pub.allowedTeamIds || []).join(','), (pub.allowedUserIds || []).join(','), !!sharing, sharing?.teams?.status]);
+  }, [open, view, draftDirty, pub.accessLoaded, pub.accessMode, pub.orgAllowed, (pub.accessEmails || []).join(','), (pub.allowedTeamIds || []).join(','), (pub.allowedUserIds || []).join(','), !!sharing, sharing?.teams?.status, !!orgAudience]);
+
+  // On Desktop, an Everyone draft whose card went away (the organization
+  // changed, or the audience turned off) is rebuilt as the panel would open,
+  // and follows the saved access again.
+  useEffect(() => {
+    if (!open || orgMode || sharing || orgAudience || draft.mode !== AUDIENCE_CHOICE.ORG) return;
+    setDraft(isPublished ? seedDraft() : firstShareDraft());
+    setDraftDirty(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, orgMode, !!sharing, !!orgAudience]);
 
   const current = seedDraft();
   const draftValid = (d) => isAccessDraftValid(d, { orgSharing: !!sharing });
-  const accessPayload = (d, notify) => buildAccessPayload(d, { orgMode, notify });
+  const accessPayload = (d, notify) => buildAccessPayload(d, { orgMode, orgAudience: !!orgAudience, notify });
 
   // Saves `d`, first asking whether to email the individuals it adds over
   // `saved` (none added: saved without asking, nobody notified).
@@ -610,7 +624,7 @@ export function PublishMenu({
                     {sharingSettingsStatus || (
                       <>
                         {permissionsNotice}
-                        <AccessChooser value={draft} onChange={editDraft} onSubmit={doPublish} sharing={sharing} ariaLabel={whoCanAccess} website={offerWebsite} />
+                        <AccessChooser value={draft} onChange={editDraft} onSubmit={doPublish} sharing={chooserSharing} ariaLabel={whoCanAccess} website={offerWebsite} />
                       </>
                     )}
                   </div>
@@ -658,6 +672,7 @@ export function PublishMenu({
                             <AccessSummaryCard
                               pub={pub}
                               sharing={sharing}
+                              orgAudience={orgAudience}
                               orgName={orgName}
                               // Not before the real list is in: a pick drafts
                               // over it, and would not be re-seeded (ENG-931).
@@ -667,7 +682,7 @@ export function PublishMenu({
                                   chosenDesc={desc}
                                   ariaLabel={whoCanAccess}
                                   value={current}
-                                  sharing={sharing}
+                                  sharing={chooserSharing}
                                   website={offerWebsite}
                                   onChange={(d) => {
                                     if (d.mode === current.mode) return;
@@ -700,7 +715,7 @@ export function PublishMenu({
                           {sharingSettingsStatus || accessLoadStatus || (
                             <>
                               {permissionsNotice}
-                              <AccessChooser value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} ariaLabel={whoCanAccess} website={offerWebsite} />
+                              <AccessChooser value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={chooserSharing} ariaLabel={whoCanAccess} website={offerWebsite} />
                               {draft.mode === AUDIENCE_CHOICE.WEBSITE && analytics.data?.require_email === true && (
                                 <Alert variant="info" className="mt-2">{t('publish.websiteEmailGateNotice')}</Alert>
                               )}

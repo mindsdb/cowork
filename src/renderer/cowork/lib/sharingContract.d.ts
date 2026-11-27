@@ -158,7 +158,7 @@ export interface OrgRestrictedAccessPayload {
 export interface DesktopRestrictedAccessPayload {
   mode: 'restricted';
   emails: string[];
-  org_allowed: false;
+  org_allowed: boolean;
   owner_only: boolean;
   notify?: NotifyPayload;
 }
@@ -187,7 +187,7 @@ export function skillAccessRequest(
 ): SkillAccessPayload;
 export function skillAlwaysOnRequest(alwaysOn: boolean): SkillAlwaysOnPayload;
 export function orgRestrictedAccessRequest(audience: Audience & { ownerOnly: boolean }): OrgRestrictedAccessPayload;
-export function desktopRestrictedAccessRequest(audience: { emails: string[]; ownerOnly: boolean }): DesktopRestrictedAccessPayload;
+export function desktopRestrictedAccessRequest(audience: { emails: string[]; ownerOnly: boolean; orgAllowed?: boolean }): DesktopRestrictedAccessPayload;
 export function withNotifyRequest<P extends { mode: string }>(
   payload: P,
   notify: { userIds?: string[]; emails?: string[] } | null | undefined,

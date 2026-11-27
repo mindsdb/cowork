@@ -1654,3 +1654,35 @@ describe('checkConfigured() on web reads artifact_websites from /health', () => 
     await expect(host.checkConfigured()).resolves.toMatchObject({ artifactWebsites: false });
   });
 });
+
+describe('mindshubArtifactSharePermission', () => {
+  it('answers null on web, where nothing asks', async () => {
+    delete (window as unknown as Record<string, unknown>).antontron;
+    const host = await importHost();
+    await expect(host.mindshubArtifactSharePermission()).resolves.toBeNull();
+  });
+
+  it('answers null on an older desktop shell without the method', async () => {
+    (window as unknown as Record<string, unknown>).antontron = {};
+    const host = await importHost();
+    await expect(host.mindshubArtifactSharePermission()).resolves.toBeNull();
+  });
+
+  it('passes the main answer through', async () => {
+    const mindshubArtifactSharePermission = vi.fn(async () => ({ sessionCredential: true, known: true, canShareArtifactsOrg: true }));
+    (window as unknown as Record<string, unknown>).antontron = { mindshubArtifactSharePermission };
+    const host = await importHost();
+    await expect(host.mindshubArtifactSharePermission()).resolves.toEqual({
+      sessionCredential: true, known: true, canShareArtifactsOrg: true,
+    });
+  });
+
+  it('reads a failed call as unknown, so the card shows locked', async () => {
+    const mindshubArtifactSharePermission = vi.fn(async () => { throw new Error('ipc gone'); });
+    (window as unknown as Record<string, unknown>).antontron = { mindshubArtifactSharePermission };
+    const host = await importHost();
+    await expect(host.mindshubArtifactSharePermission()).resolves.toEqual({
+      sessionCredential: true, known: false, canShareArtifactsOrg: false,
+    });
+  });
+});

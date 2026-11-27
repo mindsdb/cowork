@@ -281,6 +281,32 @@ describe('on Desktop', () => {
     expect(analytics.trackArtifactAccessChangeFailed).toHaveBeenCalledWith(expect.objectContaining({ reason: 'owned_by_other' }));
   });
 
+  it('records Everyone at the organization as an organization-wide share', async () => {
+    setOrgMode(false);
+    apiMock.publishArtifact.mockResolvedValue({
+      url: 'https://share/abc', accessMode: 'restricted', accessEmails: [], orgAllowed: true, ownerOnly: false, result: { report_id: 'rep-1' },
+    });
+    const published = { ...LOCAL, publishedUrl: 'https://share/abc', accessMode: 'restricted', ownerOnly: true };
+    const { result } = renderHook(() => usePublish(published, { enabled: true }));
+
+    await act(async () => { await result.current.publish({ mode: 'restricted', emails: [], org_allowed: true, owner_only: false }); });
+
+    expect(changed()).toEqual([expect.objectContaining({
+      after: expect.objectContaining({ audience: 'organization', orgWide: true }),
+    })]);
+  });
+
+  it('records a refused Everyone share as refused, and nothing as shared', async () => {
+    setOrgMode(false);
+    apiMock.publishArtifact.mockRejectedValue(Object.assign(new Error('not allowed'), { status: 403, code: SHARE_ORG_REQUIRED_CODE }));
+    const { result } = renderHook(() => usePublish(LOCAL, { enabled: true }));
+
+    await act(async () => { await result.current.publish({ mode: 'restricted', emails: [], org_allowed: true, owner_only: false }); });
+
+    expect(analytics.trackArtifactAccessChanged).not.toHaveBeenCalled();
+    expect(analytics.trackArtifactAccessChangeFailed).toHaveBeenCalledWith(expect.objectContaining({ reason: 'share_org_not_allowed' }));
+  });
+
   it('records nothing when a save fails, except the failure', async () => {
     apiMock.publishArtifact.mockRejectedValue(new Error('network down'));
     const { result } = renderHook(() => usePublish(LOCAL, { enabled: true }));
