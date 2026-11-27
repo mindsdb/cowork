@@ -166,17 +166,17 @@
       "updatePaymentMethod": "Update payment method"
     },
     "free": {
-      "title": "Free Air allowance",
-      "badge": "MindsHub Air only",
+      "title": "Free allowance",
+      "badge": "Free models only",
       "resetsAt": "Resets at {time}",
       "unlimited": "Unlimited on this account.",
       "used": "{percent} of your allowance used",
       "left": "{percent} left",
-      "meterLabel": "Free Air allowance used",
-      "usedUpUntil": "Used up. MindsHub Air is billing your balance until it refills at {time}.",
-      "usedUp": "Used up. MindsHub Air is billing your balance until it refills.",
-      "afterUntil": "After that, MindsHub Air uses your balance until it refills at {time}.",
-      "after": "After that, MindsHub Air uses your balance."
+      "meterLabel": "Free allowance used",
+      "usedUpUntil": "Used up. Free models now use your balance until it resets at {time}.",
+      "usedUp": "Used up. Free models now use your balance until it resets.",
+      "afterUntil": "After that, free models use your balance until it resets at {time}.",
+      "after": "After that, free models use your balance."
     },
     "autoTopUp": {
       "off": "Auto top up is off. Turn it on so tasks keep running when your balance gets low.",
@@ -202,7 +202,7 @@
     "balance": {
       "title": "Balance",
       "empty": "Empty. Paid models won't run until you add funds.",
-      "usedBy": "Used by paid models, and by MindsHub Air once the free tokens run out.",
+      "usedBy": "Used by paid models, and by free models once the free tokens run out.",
       "spentRange": "credit spent {start} to {end}",
       "spentDate": "credit spent {date}",
       "spentThisPeriod": "credit spent this period",
@@ -211,7 +211,7 @@
     },
     "signIn": {
       "title": "Sign in to see your usage",
-      "body": "Your free Air allowance and your balance show up here once you're signed in to MindsHub.",
+      "body": "Your free allowance and your balance show up here once you're signed in to MindsHub.",
       "goToAccount": "Go to Account"
     },
     "loading": "Loading usage…",

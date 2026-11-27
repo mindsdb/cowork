@@ -150,14 +150,22 @@ export function orgShareLockReason(capabilities, kind) {
 
 /* The audience cards both Share panels offer, private → public. The same
    values name the same choice on a skill and on an artifact; an artifact
-   adds Password and Public. */
+   adds Password, Public and, in MindsHub mode, Public website (served at its
+   own address, without the shell). */
 export const AUDIENCE_CHOICE = Object.freeze({
   PRIVATE: 'private',
   ORG: 'org',
   SPECIFIC: 'specific',
   PASSWORD: 'password',
   PUBLIC: 'public',
+  WEBSITE: 'website',
 });
+
+/** A public website's visitors are not tracked, so it has no viewer analytics. */
+export const hasViewerAnalytics = (mode) => mode !== AUDIENCE_CHOICE.WEBSITE;
+
+/** Whether the Share panel offers the analytics setting: not for Only me, which nobody else opens. */
+export const offersViewerAnalytics = (mode) => mode !== AUDIENCE_CHOICE.PRIVATE && hasViewerAnalytics(mode);
 
 /** The private choice's title, on every surface. */
 export const ONLY_ME_TITLE = 'Only me';
@@ -518,6 +526,7 @@ export function groupArtifactsBySection(artifacts) {
 /** Narrowest first: the Access filter's order. */
 export const ARTIFACT_AUDIENCE_ORDER = Object.freeze([
   AUDIENCE_CHOICE.PRIVATE, AUDIENCE_CHOICE.SPECIFIC, AUDIENCE_CHOICE.ORG, AUDIENCE_CHOICE.PASSWORD, AUDIENCE_CHOICE.PUBLIC,
+  AUDIENCE_CHOICE.WEBSITE,
 ]);
 
 /**
@@ -528,6 +537,7 @@ export const ARTIFACT_AUDIENCE_ORDER = Object.freeze([
  * - `org`: shared with everyone at the org (or its default team).
  * - `password`: anyone with the link and its password.
  * - `public`: anyone with the link.
+ * - `website`: anyone, at the artifact's own web address.
  *
  * Unlike artifactShareState (what its Share button says), an artifact with no
  * access mode here is `specific`, not public: a list badge must never read
@@ -544,6 +554,7 @@ export function artifactAudienceChoice(artifact, { orgMode = false, teams = [] }
   if (!artifact?.publishedUrl) return own ? AUDIENCE_CHOICE.PRIVATE : AUDIENCE_CHOICE.SPECIFIC;
   const mode = artifact.accessMode || (artifact.accessProtected ? 'password' : null);
   if (mode === 'public') return AUDIENCE_CHOICE.PUBLIC;
+  if (mode === AUDIENCE_CHOICE.WEBSITE) return AUDIENCE_CHOICE.WEBSITE;
   if (mode === 'password') return AUDIENCE_CHOICE.PASSWORD;
   if (mode !== 'restricted') return AUDIENCE_CHOICE.SPECIFIC;
   const read = readArtifactAudience(artifact);
@@ -618,7 +629,8 @@ export const ARTIFACT_SHARE_UNKNOWN = Object.freeze({ shared: false, kind: 'unkn
 
 /**
  * The same for a published artifact (its publish controller or artifact):
- * `kind` 'private' | 'public' | 'password' | 'org' | 'specific'. A restricted
+ * `kind` 'private' | 'public' | 'password' | 'org' | 'specific'; a public
+ * website is 'public'. A restricted
  * artifact is ARTIFACT_SHARE_UNKNOWN with `audienceKnown` false (MindsHub
  * mode before the access route answers) and when the artifact itself doesn't
  * know who it reaches (a MindsHub mode card, whose audience fields are null).
@@ -628,7 +640,7 @@ export function artifactShareState(artifact, {
 } = {}) {
   if (!artifact?.publishedUrl) return { shared: false, kind: 'private', hint: tr('share.notYet') };
   const mode = artifact.accessMode || (artifact.accessProtected ? 'password' : 'public');
-  if (mode === 'public') return { shared: true, kind: 'public', hint: tr('share.public') };
+  if (mode === 'public' || mode === AUDIENCE_CHOICE.WEBSITE) return { shared: true, kind: 'public', hint: tr('share.public') };
   if (mode === 'password') return { shared: true, kind: 'password', hint: tr('share.password') };
   const audience = audienceKnown ? readArtifactAudience(artifact) : null;
   if (!audience) return ARTIFACT_SHARE_UNKNOWN;

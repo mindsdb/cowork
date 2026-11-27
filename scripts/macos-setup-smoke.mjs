@@ -4,15 +4,16 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createWriteStream, existsSync, appendFileSync, writeFileSync } from 'node:fs';
 import { mkdir, mkdtemp, copyFile, realpath } from 'node:fs/promises';
-import { join, resolve, relative, isAbsolute } from 'node:path';
+import { join, resolve } from 'node:path';
 import { createServer } from 'node:net';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { checkLaunches, checkLint, LAUNCH_STEP, LINT_STEP } from './installed-app-checks.mjs';
-import { assertAppIdentity, assertSetupPassed, failureStep, inspectableCopy, packageIdentity, validateManifest, STEP_NAMES } from './macos-setup-contract.mjs';
+import { assertAppIdentity, assertSetupPassed, failureStep, packageIdentity, validateManifest, within, STEP_NAMES } from './macos-setup-contract.mjs';
 import { heldEntitlements } from './release-app-check.mjs';
-import { checkFuses, enableInspector, INSPECTABLE_FUSES } from './release-fuses.mjs';
+import { checkFuses } from './release-fuses.mjs';
+import { makeInspectableCopy } from './inspectable-copy.mjs';
 
 const execute = promisify(execFile);
 const channel = process.env.MACOS_SETUP_CHANNEL;
@@ -28,11 +29,6 @@ const started = Date.now();
 
 function save(name, value) {
   writeFileSync(join(output, name), typeof value === 'string' ? value : `${JSON.stringify(value, null, 2)}\n`);
-}
-
-function within(parent, child) {
-  const path = relative(parent, child);
-  return path === '' || (!path.startsWith('..') && !isAbsolute(path));
 }
 
 async function bounded(promise, milliseconds, message) {
@@ -166,20 +162,16 @@ async function run() {
 
   result.failingStep = 'Prepare inspectable copy';
   /* Playwright attaches through Node's inspector, which the release fuses off,
-     so the smoke drives a copy with that one fuse on and leaves the installed app
-     as shipped. The flip breaks the Developer ID signature, so the whole copy is
-     signed again ad hoc, without the hardened runtime: the runtime's library
-     validation refuses a framework no team signed. ditto leaves out extended
-     attributes, since codesign refuses Finder info and resource forks and a
-     quarantine flag would send the ad hoc copy to Gatekeeper. */
-  const copy = inspectableCopy(bundle, join(bundle, 'Contents/MacOS', executableName), await mkdtemp(join(process.env.RUNNER_TEMP, 'cowork-app-')));
-  await command('/usr/bin/ditto', ['--noextattr', bundle, copy.root], { timeout: 5 * 60_000 });
-  await enableInspector(copy.root);
-  await command('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', copy.root], { timeout: 5 * 60_000 });
-  await command('/usr/bin/codesign', ['--verify', '--deep', '--strict', copy.root], { timeout: 5 * 60_000 });
-  const copyFuses = await checkFuses(copy.root, INSPECTABLE_FUSES);
-  save('fuses-copy.json', copyFuses.states);
-  if (copyFuses.mismatches.length) throw new Error(`Inspectable copy differs from the release in more than its inspector fuse: ${copyFuses.mismatches.join('; ')}.`);
+     so the smoke drives the copy that testers make with scripts/inspectable-copy.mjs,
+     and leaves the installed app as shipped. */
+  const copy = await makeInspectableCopy({
+    installed: bundle, executable: join(bundle, 'Contents/MacOS', executableName),
+    folder: await mkdtemp(join(process.env.RUNNER_TEMP, 'cowork-app-')), exec: command,
+  }).catch((error) => {
+    if (error.fuses) save('fuses-copy.json', error.fuses);
+    throw error;
+  });
+  save('fuses-copy.json', copy.fuses);
   const executablePath = copy.executable;
 
   result.failingStep = 'Launch and isolate app';

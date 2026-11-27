@@ -54,6 +54,7 @@ import { UNKNOWN_SHARE_SNAPSHOT, reportWithdrawal, shareSnapshot } from '../../l
 import { diagnostic } from '../../../../shared/diagnostics';
 import { artifactCommentsKey, artifactIdentity } from '../../lib/artifactIdentity';
 import { isPublishableArtifact, isImageArtifact, isInlineArtifact, isWidgetArtifact, BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
+import { hasViewerAnalytics } from '../../lib/orgSharing';
 import { useBlobImageSrc } from '../AttachmentThumbnail';
 import { Modal } from '../ui/Modal';
 import { ConfirmModal } from '../ConfirmModal';
@@ -772,8 +773,9 @@ export function ArtifactViewer({
     (workspace.capabilitiesFromServer ? workspace.capabilities : null) ?? artifact?.capabilities,
   );
 
-  // Stats are for the owner of a published artifact only.
-  const statsAvailable = !!pub.publishedUrl && canManage;
+  // Stats are for the owner of a published artifact only, and a public
+  // website has none.
+  const statsAvailable = !!pub.publishedUrl && canManage && hasViewerAnalytics(pub.accessMode);
   const statsOpen = open && statsAvailable && sidePanel === 'stats';
   const stats = useArtifactStats(artifact, { enabled: statsOpen });
   // The Stats layer drives the docked slot. It turns off when Stats stops

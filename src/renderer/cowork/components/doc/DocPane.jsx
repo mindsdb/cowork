@@ -324,7 +324,7 @@ export default function DocPane({
     const files = await threadImageFiles(thread, loadCommentImage);
     askAgent({
       blockIds: where?.blockIds || [],
-      request: commentFixMessage(thread),
+      request: commentFixMessage(thread, { doc: true }),
       tabId: where?.tabId || viewedTabId,
       attachments: files.map(imageAttachment),
     });

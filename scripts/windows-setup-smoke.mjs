@@ -4,16 +4,17 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { createWriteStream, existsSync, appendFileSync, writeFileSync } from 'node:fs';
-import { cp, mkdir, mkdtemp, copyFile, realpath } from 'node:fs/promises';
-import { join, resolve, relative, isAbsolute } from 'node:path';
+import { mkdir, mkdtemp, copyFile, realpath } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { createServer } from 'node:net';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { channelIdentity } from './channel-identity.mjs';
 import { checkLaunches, checkLint, LAUNCH_STEP, LINT_STEP } from './installed-app-checks.mjs';
-import { assertAppIdentity, assertSetupPassed, failureStep, inspectableCopy, packageIdentity, validateManifest, STEP_NAMES } from './macos-setup-contract.mjs';
-import { checkFuses, enableInspector, INSPECTABLE_FUSES } from './release-fuses.mjs';
+import { assertAppIdentity, assertSetupPassed, failureStep, packageIdentity, validateManifest, within, STEP_NAMES } from './macos-setup-contract.mjs';
+import { checkFuses } from './release-fuses.mjs';
+import { makeInspectableCopy } from './inspectable-copy.mjs';
 import { appEnvironment as isolatedEnvironment, assertRemoved, assertTrimmed, installedExecutable, removalPlan, rootsToRemove, ON_DEMAND_ROOTS, ROOT_AUTO_UPDATE_BACKUP, ROOT_BACKUP, ROOT_STORES } from './windows-setup-contract.mjs';
 
 const execute = promisify(execFile);
@@ -33,11 +34,6 @@ const started = Date.now();
 
 function save(name, value) {
   writeFileSync(join(output, name), typeof value === 'string' ? value : `${JSON.stringify(value, null, 2)}\n`);
-}
-
-function within(parent, child) {
-  const path = relative(parent, child);
-  return path === '' || (!path.startsWith('..') && !isAbsolute(path));
 }
 
 async function bounded(promise, milliseconds, message) {
@@ -215,20 +211,18 @@ ConvertTo-Json -Compress -InputObject @{ status = [string]$s.Status; signer = $s
 
   result.failingStep = 'Prepare inspectable copy';
   /* Playwright attaches through Node's inspector, which the release fuses off,
-     so the smoke drives a copy of the install folder with that one fuse on and
-     leaves the installed app as shipped. The installed exe carries no
-     Authenticode signature: the build signs release\win-unpacked's exe only
-     after NSIS has packed the unsigned one into the installer. So the flip
-     changes no signature, and Windows starts the copy as it starts the
-     installed exe. The smoke makes the copy before the trim, while the image
-     still blocks root downloads, so nothing that verifies the changed file through
-     Windows can bring a root back. */
-  const copy = inspectableCopy(installed.installLocation, installed.executable, await mkdtemp(join(process.env.RUNNER_TEMP, 'cowork-app-')));
-  await cp(installed.installLocation, copy.root, { recursive: true });
-  await enableInspector(copy.executable);
-  const copyFuses = await checkFuses(copy.executable, INSPECTABLE_FUSES);
-  save('fuses-copy.json', copyFuses.states);
-  if (copyFuses.mismatches.length) throw new Error(`Inspectable copy differs from the release in more than its inspector fuse: ${copyFuses.mismatches.join('; ')}.`);
+     so the smoke drives the copy that testers make with scripts/inspectable-copy.mjs,
+     and leaves the installed app as shipped. The smoke makes the copy before the
+     trim, while the image still blocks root downloads, so nothing that verifies
+     the changed file through Windows can bring a root back. */
+  const copy = await makeInspectableCopy({
+    installed: installed.installLocation, executable: installed.executable,
+    folder: await mkdtemp(join(process.env.RUNNER_TEMP, 'cowork-app-')),
+  }).catch((error) => {
+    if (error.fuses) save('fuses-copy.json', error.fuses);
+    throw error;
+  });
+  save('fuses-copy.json', copy.fuses);
   const executablePath = copy.executable;
 
   result.failingStep = 'Trim root store';

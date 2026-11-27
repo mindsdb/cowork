@@ -454,7 +454,7 @@
     "connectProvider": {
       "title": "Connect a provider to start chatting",
       "operatorTitle": "Provider setup is required",
-      "body": "Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key (Anthropic, OpenAI, or any OpenAI-compatible endpoint) in Settings.",
+      "body": "Start with MindsHub and get a free allowance, then pay as you go. Or add your own API key (Anthropic, OpenAI, or any OpenAI-compatible endpoint) in Settings.",
       "operatorBody": "Ask your operator to configure the model provider before starting a task.",
       "startFree": "Start for free",
       "bodyMobile": "Connect your own provider in Settings."

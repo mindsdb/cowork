@@ -141,6 +141,8 @@ jobs:
         run: npm run test:windows-setup-contract
       - name: Page update signer
         run: npm run test:sign-ui-bundle
+      - name: Inspectable copy for test automation
+        run: npm run test:inspectable-copy
       - name: Cowork purity guard (no direct bridge access)
         run: npm run check:cowork-purity
       - name: Translations in step with English (ENG-4149)

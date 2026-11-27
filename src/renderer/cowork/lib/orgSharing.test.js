@@ -494,6 +494,24 @@ describe('artifactSection and groupArtifactsBySection (ENG-4647)', () => {
   });
 });
 
+
+describe('a public website', () => {
+  const site = {
+    publishedUrl: 'https://k3x9-staging.mindshub.co/', accessMode: 'website', accessProtected: false,
+    accessEmails: [], orgAllowed: false, ownerOnly: false, allowedTeamIds: [], allowedUserIds: [],
+  };
+
+  it('reads as shared publicly, whatever its empty audience says', () => {
+    expect(artifactShareState(site)).toEqual({
+      shared: true, kind: 'public', hint: 'Public link: anyone with the URL can open it',
+    });
+  });
+
+  it('needs no audience read to say so', () => {
+    expect(artifactShareState(site, { orgSharing: true, audienceKnown: false })).toMatchObject({ shared: true, kind: 'public' });
+  });
+});
+
 describe('artifactAudienceChoice (ENG-4647)', () => {
   const TEAMS = [{ id: 't-all', display_name: 'All members', is_default: true }, { id: 't-1', display_name: 'Platform' }];
   const live = { publishedUrl: 'https://x.test/a' };
@@ -512,6 +530,8 @@ describe('artifactAudienceChoice (ENG-4647)', () => {
     expect(artifactAudienceChoice(mine({ ...live, accessMode: 'public' }))).toBe(AUDIENCE_CHOICE.PUBLIC);
     expect(artifactAudienceChoice(mine({ ...live, accessMode: 'password' }))).toBe(AUDIENCE_CHOICE.PASSWORD);
     expect(artifactAudienceChoice(mine({ ...live, accessProtected: true }))).toBe(AUDIENCE_CHOICE.PASSWORD);
+    expect(artifactAudienceChoice(mine({ ...live, accessMode: 'website' }))).toBe(AUDIENCE_CHOICE.WEBSITE);
+    expect(artifactAudienceChoice(theirs({ ...live, accessMode: 'website' }), { orgMode: true })).toBe(AUDIENCE_CHOICE.WEBSITE);
   });
 
   it('tells a restricted link apart by who it reaches', () => {
@@ -543,6 +563,6 @@ describe('artifactAudienceChoice (ENG-4647)', () => {
   });
 
   it('lists the levels narrowest first', () => {
-    expect(ARTIFACT_AUDIENCE_ORDER).toEqual(['private', 'specific', 'org', 'password', 'public']);
+    expect(ARTIFACT_AUDIENCE_ORDER).toEqual(['private', 'specific', 'org', 'password', 'public', 'website']);
   });
 });

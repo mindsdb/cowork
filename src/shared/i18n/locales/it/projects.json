@@ -9,20 +9,20 @@
         "updatePaymentMethod": "Aggiorna metodo di pagamento",
         "upgrade": "{tier, select, plus {Passa a Plus} pro {Passa a Pro} other {Cambia piano}}"
       },
-      "noFreeGrant": "Questo account non include token gratuiti di MindsHub Air. MindsHub Air usa il tuo saldo, come tutti gli altri modelli.",
+      "noFreeGrant": "Questo account non include token gratuiti. Tutti i modelli usano il tuo saldo.",
       "allowanceStop": {
         "noGrant": "{noGrant} Il tuo saldo è esaurito: aggiungi fondi per continuare.",
-        "withTime": "Hai esaurito la quota gratuita di MindsHub Air e il tuo saldo è a zero. Aggiungi fondi per continuare a lavorare, oppure attendi che la quota si rinnovi alle {time}.",
-        "noTime": "Hai esaurito la quota gratuita di MindsHub Air e il tuo saldo è a zero. Aggiungi fondi per continuare a lavorare.",
-        "noTimeMobile": "Hai esaurito la quota gratuita di MindsHub Air e il tuo saldo è a zero.",
+        "withTime": "Hai esaurito la quota gratuita e il tuo saldo è a zero. Aggiungi fondi per continuare a lavorare, oppure attendi che la quota si rinnovi alle {time}.",
+        "noTime": "Hai esaurito la quota gratuita e il tuo saldo è a zero. Aggiungi fondi per continuare a lavorare.",
+        "noTimeMobile": "Hai esaurito la quota gratuita e il tuo saldo è a zero.",
         "noGrantMobile": "{noGrant} Il tuo saldo è a zero.",
-        "withTimeMobile": "Hai esaurito la quota gratuita di MindsHub Air e il tuo saldo è a zero. Si rinnova alle {time}."
+        "withTimeMobile": "Hai esaurito la quota gratuita e il tuo saldo è a zero. Si rinnova alle {time}."
       },
       "freeServingPaused": {
-        "until": "MindsHub Air gratuito è sospeso per tutti fino alle {until}. La tua quota non viene consumata. Aggiungi fondi per continuare a lavorare subito.",
-        "dailyReset": "MindsHub Air gratuito è sospeso per tutti fino al rinnovo del budget giornaliero. La tua quota non viene consumata. Aggiungi fondi per continuare a lavorare subito.",
-        "untilMobile": "MindsHub Air gratuito è sospeso per tutti fino alle {until}. La tua quota non viene consumata.",
-        "dailyResetMobile": "MindsHub Air gratuito è sospeso per tutti fino al rinnovo del budget giornaliero. La tua quota non viene consumata."
+        "until": "I modelli gratuiti sono sospesi per tutti fino alle {until}. La tua quota non viene consumata. Aggiungi fondi per continuare a lavorare subito.",
+        "dailyReset": "I modelli gratuiti sono sospesi per tutti fino al rinnovo del budget giornaliero. La tua quota non viene consumata. Aggiungi fondi per continuare a lavorare subito.",
+        "untilMobile": "I modelli gratuiti sono sospesi per tutti fino alle {until}. La tua quota non viene consumata.",
+        "dailyResetMobile": "I modelli gratuiti sono sospesi per tutti fino al rinnovo del budget giornaliero. La tua quota non viene consumata."
       },
       "balanceEmptySentence": "Il tuo saldo è a zero.",
       "percentLeft": "Ti resta il {percent} della quota gratuita",
@@ -50,19 +50,18 @@
       },
       "freeUsed": {
         "title": "Quota gratuita esaurita",
-        "body": "MindsHub Air usa il tuo saldo finché la quota non si rinnova.",
-        "bodyWithTime": "MindsHub Air usa il tuo saldo finché la quota non si rinnova alle {time}.",
-        "bodyWithUsd": "MindsHub Air usa il tuo saldo (restano {usd}) finché la quota non si rinnova.",
-        "bodyWithUsdWithTime": "MindsHub Air usa il tuo saldo (restano {usd}) finché la quota non si rinnova alle {time}."
+        "body": "I modelli gratuiti ora usano il tuo saldo finché la quota non si rinnova.",
+        "bodyWithTime": "I modelli gratuiti ora usano il tuo saldo finché la quota non si rinnova alle {time}."
       },
       "freeLow": {
-        "body": "Dopodiché, MindsHub Air userà il tuo saldo finché la quota non si rinnova.",
-        "bodyWithTime": "Dopodiché, MindsHub Air userà il tuo saldo finché la quota non si rinnova alle {time}.",
+        "body": "Dopodiché, i modelli gratuiti useranno il tuo saldo finché la quota non si rinnova.",
+        "bodyWithTime": "Dopodiché, i modelli gratuiti useranno il tuo saldo finché la quota non si rinnova alle {time}.",
         "balanceLowToo": "Anche il tuo saldo è basso ({usd})."
       },
       "budgetExceeded": {
+        "airOnPlan": "{hasModel, select, true {{scope, select, org {{model} non può essere usato finché un proprietario o un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.} other {{model} non può essere usato finché un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.}}} other {{scope, select, org {I modelli a pagamento non possono essere usati finché un proprietario o un amministratore non aumenta il limite in «Budget». MindsHub Air funziona ancora finché dura la quota del tuo piano.} other {I modelli a pagamento non possono essere usati finché un amministratore non aumenta il limite in «Budget». MindsHub Air funziona ancora finché dura la quota del tuo piano.}}}}",
         "raise": "{hasModel, select, true {{scope, select, org {{model} non può essere usato finché un proprietario o un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.} other {{model} non può essere usato finché un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.}}} other {{scope, select, org {I modelli a pagamento non possono essere usati finché un proprietario o un amministratore non aumenta il limite in «Budget».} other {I modelli a pagamento non possono essere usati finché un amministratore non aumenta il limite in «Budget».}}}}",
-        "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} non può essere usato finché un proprietario o un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.} other {{model} non può essere usato finché un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.}}} other {{scope, select, org {I modelli a pagamento non possono essere usati finché un proprietario o un amministratore non aumenta il limite in «Budget». MindsHub Air funziona ancora finché dura la quota gratuita.} other {I modelli a pagamento non possono essere usati finché un amministratore non aumenta il limite in «Budget». MindsHub Air funziona ancora finché dura la quota gratuita.}}}}"
+        "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} non può essere usato finché un proprietario o un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.} other {{model} non può essere usato finché un amministratore non aumenta il limite in «Budget». Gli altri modelli continuano a funzionare.}}} other {{scope, select, org {I modelli a pagamento non possono essere usati finché un proprietario o un amministratore non aumenta il limite in «Budget». MindsHub Air funziona ancora finché dura la tua quota gratuita.} other {I modelli a pagamento non possono essere usati finché un amministratore non aumenta il limite in «Budget». MindsHub Air funziona ancora finché dura la tua quota gratuita.}}}}"
       },
       "window": {
         "usedUpTitle": "{window, select, 7d {Quota settimanale esaurita} other {Quota di 5 ore esaurita}}",
@@ -123,8 +122,8 @@
       },
       "row": {
         "walletEmpty": "Nessun credito disponibile. Aggiungi fondi per usare MindsHub.",
-        "allowanceExhausted": "Nessun token gratuito di MindsHub Air disponibile e il saldo è a zero.",
-        "freeAirPaused": "MindsHub Air gratuito è sospeso al momento.",
+        "allowanceExhausted": "Nessun token gratuito disponibile e il saldo è a zero.",
+        "freeAirPaused": "I modelli gratuiti sono sospesi al momento.",
         "budgetExceeded": "Un budget è esaurito.",
         "walletEmptyMobile": "Nessun credito disponibile."
       },
@@ -469,6 +468,13 @@
         "pending": "Verifica della connessione",
         "pendingDetail": "Le tue credenziali sono archiviate in forma crittografata. Questa pagina si aggiorna al termine della verifica."
       }
+    },
+    "httpRefusal": {
+      "uploadTooLarge": "Questo caricamento supera il limite di dimensione. Scegli un file più piccolo o carica meno file alla volta.",
+      "requestTooLarge": "Questa richiesta supera il limite di dimensione. Prova a inviare meno contenuti."
+    },
+    "projectUploads": {
+      "notUploaded": "File non caricati: {files}."
     },
     "fileDrop": {
       "uploading": "Caricamento…"
@@ -826,6 +832,9 @@
     "folderUnsupported": "Questo server non consente di associare un progetto a una cartella. Ha creato «{name}» come progetto normale e ha annullato la selezione della cartella. Aggiorna Cowork per usare la tua cartella, oppure elimina quel progetto se non ti serve.",
     "couldNotCreate": "Impossibile creare il progetto.",
     "couldNotOpenPicker": "Impossibile aprire la selezione della cartella.",
+    "filesNotUploaded": "«{name}» è stato creato, ma i suoi file non sono stati caricati.",
+    "someFilesNotUploaded": "«{name}» è stato creato, ma non tutti i suoi file sono stati caricati.",
+    "filesUploadUnconfirmed": "«{name}» è stato creato. Controlla i file del progetto prima di riprovare a caricarli.",
     "title": "Avvia un nuovo progetto",
     "nameLabel": "Nome del progetto",
     "instructionsLabel": "Istruzioni",

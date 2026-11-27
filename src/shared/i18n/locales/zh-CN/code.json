@@ -1442,10 +1442,10 @@
     },
     "allowanceExhausted": {
       "title": "你的免费额度已用完",
-      "body": "立即充值即可继续，或等待额度恢复后在此任务中继续。"
+      "body": "立即充值即可继续，或等待额度重置后在此任务中继续。"
     },
     "freeAirPaused": {
-      "title": "免费的 MindsHub Air 已暂停",
+      "title": "免费模型已暂停",
       "body": "每日预算重置后会恢复。如需立即继续，请充值或选择其他模型。"
     },
     "notStarted": {

@@ -27,7 +27,7 @@ export function compareAvailable({ platformUi, pickerMode, models = [], modelEna
 const FAILED_ROLES = new Set(['error', 'provider_required']);
 
 /** Failures that mean the account could not pay for the turn, not that the
- *  model did badly: the paid balance ran out, the free Air allowance did, a
+ *  model did badly: the paid balance ran out, the free allowance did, a
  *  spending budget stopped paid models, or, on Plus or Pro with an empty
  *  wallet, a plan window ran out or the plan does not cover the model. */
 export const CREDIT_FAILURE_CODES = new Set([

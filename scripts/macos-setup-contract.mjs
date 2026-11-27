@@ -89,12 +89,21 @@ export function forbiddenEntitlements(xml) {
   return FORBIDDEN_ENTITLEMENTS.filter((key) => text.includes(`<key>${key}</key>`));
 }
 
+/* Whether `child` is `parent` or a path below it. It compares the paths as
+   given, so a caller that must not be fooled by a symlink or a case variant
+   resolves both with fs/promises realpath first. A name that starts with two
+   dots, such as `..qa`, is below its parent. */
+export function within(parent, child, path = nodePath) {
+  const relative = path.relative(parent, child);
+  return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+}
+
 /* Where the setup smokes put their inspectable copy of the installed app: the
    installed folder's own name inside a fresh folder, with the executable at the
    same place inside it. */
 export function inspectableCopy(installed, executable, folder, path = nodePath) {
   const inside = path.relative(installed, executable);
-  if (!inside || inside.startsWith('..') || path.isAbsolute(inside)) throw new Error(`The executable is not inside the installed app: ${executable}`);
+  if (!inside || !within(installed, executable, path)) throw new Error(`The executable is not inside the installed app: ${executable}`);
   const root = path.join(folder, path.basename(installed));
   return { root, executable: path.join(root, inside) };
 }

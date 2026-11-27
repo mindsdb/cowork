@@ -9,20 +9,20 @@
         "updatePaymentMethod": "Update payment method",
         "upgrade": "{tier, select, plus {Get Plus} pro {Upgrade to Pro} other {Upgrade}}"
       },
-      "noFreeGrant": "This account does not include free MindsHub Air tokens. MindsHub Air uses your balance, like every other model.",
+      "noFreeGrant": "This account does not include free tokens. Every model uses your balance.",
       "allowanceStop": {
         "noGrant": "{noGrant} Your balance is empty, so add funds to continue.",
-        "withTime": "Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at {time}.",
-        "noTime": "Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working.",
-        "noTimeMobile": "Your free MindsHub Air allowance is used up and your balance is empty.",
+        "withTime": "Your free allowance is used up and your balance is empty. Add funds to keep working, or wait for it to reset at {time}.",
+        "noTime": "Your free allowance is used up and your balance is empty. Add funds to keep working.",
+        "noTimeMobile": "Your free allowance is used up and your balance is empty.",
         "noGrantMobile": "{noGrant} Your balance is empty.",
-        "withTimeMobile": "Your free MindsHub Air allowance is used up and your balance is empty. Resets at {time}."
+        "withTimeMobile": "Your free allowance is used up and your balance is empty. Resets at {time}."
       },
       "freeServingPaused": {
-        "until": "Free MindsHub Air is paused for everyone until {until}. This doesn't use your allowance. Add funds to keep working now.",
-        "dailyReset": "Free MindsHub Air is paused for everyone until the daily budget resets. This doesn't use your allowance. Add funds to keep working now.",
-        "untilMobile": "Free MindsHub Air is paused for everyone until {until}. This doesn't use your allowance.",
-        "dailyResetMobile": "Free MindsHub Air is paused for everyone until the daily budget resets. This doesn't use your allowance."
+        "until": "Free models are paused for everyone until {until}. This doesn't use your allowance. Add funds to keep working now.",
+        "dailyReset": "Free models are paused for everyone until the daily budget resets. This doesn't use your allowance. Add funds to keep working now.",
+        "untilMobile": "Free models are paused for everyone until {until}. This doesn't use your allowance.",
+        "dailyResetMobile": "Free models are paused for everyone until the daily budget resets. This doesn't use your allowance."
       },
       "balanceEmptySentence": "Your balance is empty.",
       "percentLeft": "{percent} of your free allowance left",
@@ -34,8 +34,8 @@
       "balanceEmpty": {
         "title": "Balance empty",
         "body": "Add funds to start another task.",
-        "freeUsedToo": "Your free allowance is used up too. Add funds, or wait for it to refill.",
-        "freeUsedTooWithTime": "Your free allowance is used up too. Add funds, or wait for it to refill at {time}.",
+        "freeUsedToo": "Your free allowance is used up too. Add funds, or wait for it to reset.",
+        "freeUsedTooWithTime": "Your free allowance is used up too. Add funds, or wait for it to reset at {time}.",
         "freeUsedTooMobile": "Your free allowance is used up too.",
         "freeUsedTooWithTimeMobile": "Your free allowance is used up too. Resets at {time}.",
         "bodyMobile": "Your balance is empty. Paid models are unavailable."
@@ -50,19 +50,18 @@
       },
       "freeUsed": {
         "title": "Free allowance used up",
-        "body": "MindsHub Air is on your balance until your allowance refills.",
-        "bodyWithTime": "MindsHub Air is on your balance until your allowance refills at {time}.",
-        "bodyWithUsd": "MindsHub Air is on your balance ({usd} left) until your allowance refills.",
-        "bodyWithUsdWithTime": "MindsHub Air is on your balance ({usd} left) until your allowance refills at {time}."
+        "body": "Free models now use your balance until your allowance resets.",
+        "bodyWithTime": "Free models now use your balance until your allowance resets at {time}."
       },
       "freeLow": {
-        "body": "After that, MindsHub Air uses your balance until your allowance refills.",
-        "bodyWithTime": "After that, MindsHub Air uses your balance until your allowance refills at {time}.",
+        "body": "After that, free models use your balance until your allowance resets.",
+        "bodyWithTime": "After that, free models use your balance until your allowance resets at {time}.",
         "balanceLowToo": "Your balance is low too ({usd})."
       },
       "budgetExceeded": {
+        "airOnPlan": "{hasModel, select, true {{scope, select, org {{model} can't run until an owner or admin raises it in Budgets. Other models still work.} other {{model} can't run until an administrator raises it in Budgets. Other models still work.}}} other {{scope, select, org {Paid models can't run until an owner or admin raises it in Budgets. MindsHub Air still works while your plan's allowance lasts.} other {Paid models can't run until an administrator raises it in Budgets. MindsHub Air still works while your plan's allowance lasts.}}}}",
         "raise": "{hasModel, select, true {{scope, select, org {{model} can't run until an owner or admin raises it in Budgets. Other models still work.} other {{model} can't run until an administrator raises it in Budgets. Other models still work.}}} other {{scope, select, org {Paid models can't run until an owner or admin raises it in Budgets.} other {Paid models can't run until an administrator raises it in Budgets.}}}}",
-        "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} can't run until an owner or admin raises it in Budgets. Other models still work.} other {{model} can't run until an administrator raises it in Budgets. Other models still work.}}} other {{scope, select, org {Paid models can't run until an owner or admin raises it in Budgets. MindsHub Air still works while its free allowance lasts.} other {Paid models can't run until an administrator raises it in Budgets. MindsHub Air still works while its free allowance lasts.}}}}"
+        "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} can't run until an owner or admin raises it in Budgets. Other models still work.} other {{model} can't run until an administrator raises it in Budgets. Other models still work.}}} other {{scope, select, org {Paid models can't run until an owner or admin raises it in Budgets. MindsHub Air still works while your free allowance lasts.} other {Paid models can't run until an administrator raises it in Budgets. MindsHub Air still works while your free allowance lasts.}}}}"
       },
       "window": {
         "usedUpTitle": "{window, select, 7d {Weekly allowance used up} other {5-hour allowance used up}}",
@@ -123,8 +122,8 @@
       },
       "row": {
         "walletEmpty": "No credits available. Add funds to use MindsHub.",
-        "allowanceExhausted": "No free MindsHub Air tokens available, and the balance is empty.",
-        "freeAirPaused": "Free MindsHub Air is paused right now.",
+        "allowanceExhausted": "No free tokens available, and the balance is empty.",
+        "freeAirPaused": "Free models are paused right now.",
         "budgetExceeded": "A budget is used up.",
         "walletEmptyMobile": "No credits available."
       },
@@ -469,6 +468,13 @@
         "pending": "Checking the connection",
         "pendingDetail": "Your credentials are stored encrypted. This page updates when the check finishes."
       }
+    },
+    "httpRefusal": {
+      "uploadTooLarge": "This upload is over the size limit. Pick a smaller file, or fewer files at once.",
+      "requestTooLarge": "This request is over the size limit. Try sending less content."
+    },
+    "projectUploads": {
+      "notUploaded": "Files not uploaded: {files}."
     },
     "fileDrop": {
       "uploading": "Uploading…"
@@ -826,6 +832,9 @@
     "folderUnsupported": "This server does not support pointing a project at a folder. It created \"{name}\" as a normal project and cleared your folder selection. Update Cowork to use your folder, or delete that project if you do not want it.",
     "couldNotCreate": "Could not create project.",
     "couldNotOpenPicker": "Could not open the folder picker.",
+    "filesNotUploaded": "\"{name}\" was created, but its files didn't upload.",
+    "someFilesNotUploaded": "\"{name}\" was created, but not all of its files uploaded.",
+    "filesUploadUnconfirmed": "\"{name}\" was created. Check its files before trying the upload again.",
     "title": "Start a new project",
     "nameLabel": "Project name",
     "instructionsLabel": "Instructions",
