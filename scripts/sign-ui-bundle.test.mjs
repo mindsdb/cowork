@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash, generateKeyPairSync, verify } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   buildBundleManifest,
@@ -301,6 +301,28 @@ test('--check-public-key on a file without the one-line shape is refused', (t) =
   assertNothingWritten(workspace);
 });
 
+test('--check-public-key refuses a file with an old key commented out above the release key', (t) => {
+  /* The old key sits in a block comment at column 0, so it matches the line
+     shape too. Checked against the first match, the old signing key would pass
+     and sign a bundle every shell with the new key refuses. */
+  const oldKey = makeKey();
+  const releaseKey = makeKey();
+  const workspace = makeWorkspace(t);
+  const keyFile = join(workspace.root, 'ui-release-public-key.ts');
+  writeFileSync(
+    keyFile,
+    `/* Old key:\nexport const RELEASE_UI_PUBLIC_KEY = '${oldKey.publicKeyBase64}';\n*/\n`
+      + `export const RELEASE_UI_PUBLIC_KEY = '${releaseKey.publicKeyBase64}';\n`,
+  );
+  const result = runSigner(
+    ['--dir', workspace.dir, '--version', '1.0.0', '--out', workspace.out, '--check-public-key', keyFile],
+    { UI_SIGNING_KEY: oldKey.pem },
+    [oldKey, releaseKey],
+  );
+  assertRefused(result, /2 lines of the form .* it must hold exactly one/);
+  assertNothingWritten(workspace);
+});
+
 test('a missing UI_SIGNING_KEY exits non-zero and writes nothing', (t) => {
   const workspace = makeWorkspace(t);
   const result = runSigner(['--dir', workspace.dir, '--version', '1.0.0', '--out', workspace.out], {}, []);
@@ -380,8 +402,36 @@ test('readReleasePublicKey reads the contract\'s one-line shape and nothing loos
   }
 });
 
-const RELEASE_KEY_FILE = resolve('src/main/ui-release-public-key.ts');
-test('the release public key file holds one Ed25519 key in the shape the signer reads', { skip: !existsSync(RELEASE_KEY_FILE) && 'src/main/ui-release-public-key.ts does not exist yet' }, () => {
+test('readReleasePublicKey requires exactly one key line: zero and two are refused, one is read', () => {
+  const oldKey = makeKey().publicKeyBase64;
+  const line = (key) => `export const RELEASE_UI_PUBLIC_KEY = '${key}';`;
+  const refused = (pattern) => (err) => err instanceof SignError && pattern.test(err.message);
+
+  // Zero lines.
+  assert.throws(() => readReleasePublicKey('/* The release key goes here. */\n'), refused(/^no line of the form/));
+
+  // One line, with an old key in a line comment, which does not match the shape.
+  assert.equal(readReleasePublicKey(`// ${line(oldKey)}\n${line(CONTRACT_SAMPLE_KEY)}\n`), CONTRACT_SAMPLE_KEY);
+
+  // Two lines: an old key in a block comment at column 0, then the release key.
+  assert.throws(
+    () => readReleasePublicKey(`/*\n${line(oldKey)}\n*/\n${line(CONTRACT_SAMPLE_KEY)}\n`),
+    refused(/^2 lines of the form .* it must hold exactly one/),
+  );
+
+  // Two copies of the same line.
+  assert.throws(
+    () => readReleasePublicKey(`${line(CONTRACT_SAMPLE_KEY)}\n${line(CONTRACT_SAMPLE_KEY)}\n`),
+    refused(/^2 lines of the form/),
+  );
+});
+
+/* publish-ui.yml signs with `--check-public-key src/main/ui-release-public-key.ts`,
+   so a missing file fails this test rather than skipping it. The path resolves
+   from this file, so the test reads the same file from any working directory. */
+const RELEASE_KEY_FILE = fileURLToPath(new URL('../src/main/ui-release-public-key.ts', import.meta.url));
+test('the release public key file holds one Ed25519 key in the shape the signer reads', () => {
+  assert.ok(existsSync(RELEASE_KEY_FILE), `${RELEASE_KEY_FILE} does not exist, and publish-ui.yml signs against it`);
   const key = readReleasePublicKey(readFileSync(RELEASE_KEY_FILE, 'utf8'));
   assert.match(key, /^MCowBQYDK2VwAyEA[A-Za-z0-9+/]{43}=$/);
   assert.equal(Buffer.from(key, 'base64').length, 44);

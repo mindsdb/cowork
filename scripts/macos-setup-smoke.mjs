@@ -3,13 +3,15 @@ import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createWriteStream, existsSync, appendFileSync, writeFileSync } from 'node:fs';
-import { mkdir, mkdtemp, copyFile, readdir, realpath } from 'node:fs/promises';
-import { basename, join, resolve, relative, isAbsolute } from 'node:path';
+import { mkdir, mkdtemp, copyFile, realpath } from 'node:fs/promises';
+import { join, resolve, relative, isAbsolute } from 'node:path';
 import { createServer } from 'node:net';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { setTimeout as delay } from 'node:timers/promises';
-import { assertAppIdentity, assertSetupPassed, failureStep, forbiddenEntitlements, inspectableCopy, packageIdentity, validateManifest, STEP_NAMES } from './macos-setup-contract.mjs';
+import { checkLaunches, checkLint, LAUNCH_STEP, LINT_STEP } from './installed-app-checks.mjs';
+import { assertAppIdentity, assertSetupPassed, failureStep, inspectableCopy, packageIdentity, validateManifest, STEP_NAMES } from './macos-setup-contract.mjs';
+import { heldEntitlements } from './release-app-check.mjs';
 import { checkFuses, enableInspector, INSPECTABLE_FUSES } from './release-fuses.mjs';
 
 const execute = promisify(execFile);
@@ -58,6 +60,46 @@ async function freePort() {
   await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   if (!address || typeof address === 'string') throw new Error('Could not allocate a loopback port.');
   return address.port;
+}
+
+/** A fresh folder in RUNNER_TEMP to stand in for the app's home, with its temporary folder. */
+async function freshHome(prefix) {
+  const home = await mkdtemp(join(process.env.RUNNER_TEMP, prefix));
+  await mkdir(join(home, 'tmp'));
+  return home;
+}
+
+// An allowlist keeps CI tokens, provider configuration, and source overrides out of the app.
+function isolatedEnvironment(home, port) {
+  return {
+    HOME: home, CFFIXED_USER_HOME: home, TMPDIR: join(home, 'tmp'), MAC_CHROMIUM_TMPDIR: join(home, 'tmp'),
+    PATH: '/usr/bin:/bin:/usr/sbin:/sbin', SHELL: '/bin/sh', LANG: 'en_US.UTF-8',
+    USER: process.env.USER, LOGNAME: process.env.LOGNAME,
+    COWORK_SERVER_PORT: String(port),
+    UV_CACHE_DIR: join(home, 'uv-cache'), UV_PYTHON_INSTALL_DIR: join(home, 'uv-python'),
+  };
+}
+
+/** A throwaway profile for one launch of the installed app (installed-app-checks.mjs). */
+async function throwawayProfile(purpose) {
+  const home = await freshHome(`cowork-${purpose}-`);
+  return { env: isolatedEnvironment(home, await freePort()), userDataDir: join(home, 'chromium') };
+}
+
+/* Counts a process's windows on screen at the normal window level, from the
+   window server's list. Each entry names its owner's pid without the screen
+   recording permission, which only window titles need. In the call, 1 is
+   kCGWindowListOptionOnScreenOnly and 0 is kCGNullWindowID. */
+const ONSCREEN_WINDOWS = `ObjC.import('CoreGraphics');
+function run(argv) {
+  const windows = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(1, 0)));
+  return windows.filter((window) => Number(window.kCGWindowOwnerPID) === Number(argv[0]) && Number(window.kCGWindowLayer) === 0).length;
+}`;
+
+/** Whether the process shows a window. The app shows its main window once the renderer has painted it. */
+async function showsWindow(pid) {
+  const { stdout } = await execute('/usr/bin/osascript', ['-l', 'JavaScript', '-e', ONSCREEN_WINDOWS, String(pid)], { timeout: 15_000 });
+  return Number(stdout.trim()) > 0;
 }
 
 async function downloadManifest() {
@@ -109,14 +151,18 @@ async function run() {
   if (fuses.mismatches.length) throw new Error(`Installed app does not carry the release fuses: ${fuses.mismatches.join('; ')}.`);
 
   result.failingStep = 'Check entitlements';
-  const frameworks = join(bundle, 'Contents/Frameworks');
-  const helpers = (await readdir(frameworks)).filter((name) => name.includes('Helper') && name.endsWith('.app')).map((name) => join(frameworks, name));
-  if (!helpers.length) throw new Error('Installed app has no helper apps to check.');
-  const held = [];
-  for (const code of [bundle, ...helpers]) {
-    for (const key of forbiddenEntitlements(await command('/usr/bin/codesign', ['-d', '--entitlements', '-', '--xml', code]))) held.push(`${basename(code)} holds ${key}`);
-  }
+  // The same check the build runs before it uploads the app (release-app-check.mjs).
+  const held = await heldEntitlements(bundle);
   if (held.length) throw new Error(`${held.join('; ')}.`);
+
+  /* The installed, notarized app under its hardened runtime and library
+     validation, which the inspectable copy below gives up. Each launch uses a
+     throwaway home and Chromium profile and is killed before the next. */
+  const installedApp = { executable: join(bundle, 'Contents/MacOS', executableName), profile: throwawayProfile, showsWindow, save };
+  result.failingStep = LAUNCH_STEP;
+  await checkLaunches(installedApp);
+  result.failingStep = LINT_STEP;
+  await checkLint(installedApp);
 
   result.failingStep = 'Prepare inspectable copy';
   /* Playwright attaches through Node's inspector, which the release fuses off,
@@ -137,17 +183,9 @@ async function run() {
   const executablePath = copy.executable;
 
   result.failingStep = 'Launch and isolate app';
-  profile = await mkdtemp(join(process.env.RUNNER_TEMP, 'cowork-profile-'));
-  await mkdir(join(profile, 'tmp'));
+  profile = await freshHome('cowork-profile-');
   const port = await freePort();
-  // An allowlist keeps CI tokens, provider configuration, and source overrides out of the app.
-  appEnvironment = {
-    HOME: profile, CFFIXED_USER_HOME: profile, TMPDIR: join(profile, 'tmp'), MAC_CHROMIUM_TMPDIR: join(profile, 'tmp'),
-    PATH: '/usr/bin:/bin:/usr/sbin:/sbin', SHELL: '/bin/sh', LANG: 'en_US.UTF-8',
-    USER: process.env.USER, LOGNAME: process.env.LOGNAME,
-    COWORK_SERVER_PORT: String(port),
-    UV_CACHE_DIR: join(profile, 'uv-cache'), UV_PYTHON_INSTALL_DIR: join(profile, 'uv-python'),
-  };
+  appEnvironment = isolatedEnvironment(profile, port);
   app = await _electron.launch({ executablePath, args: [`--user-data-dir=${join(profile, 'chromium')}`], env: appEnvironment, timeout: 60_000 });
   app.process().stdout?.on('data', (chunk) => appendFileSync(join(output, 'electron-stdout.log'), chunk));
   app.process().stderr?.on('data', (chunk) => appendFileSync(join(output, 'electron-stderr.log'), chunk));

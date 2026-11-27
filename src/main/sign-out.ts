@@ -249,7 +249,8 @@ export async function performSignOutCleanup(deps: SignOutDeps): Promise<void> {
   // Force-reload the renderer from main. The renderer's own
   // `window.location.reload()` was unreliable here (page stayed on
   // the stuck confirm modal); driving the reload from the main
-  // process via webContents.reload() always navigates and reboots
+  // process, which loads the page again after the folder check
+  // (loadMainRenderer in app.ts), always navigates and reboots
   // App.tsx's init() → checkConfigured() → onboarding redirect.
   //
   // Defer to the next tick so this handler's promise resolves and the

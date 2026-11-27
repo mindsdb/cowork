@@ -11,6 +11,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { channelIdentity } from './channel-identity.mjs';
+import { checkLaunches, checkLint, LAUNCH_STEP, LINT_STEP } from './installed-app-checks.mjs';
 import { assertAppIdentity, assertSetupPassed, failureStep, inspectableCopy, packageIdentity, validateManifest, STEP_NAMES } from './macos-setup-contract.mjs';
 import { checkFuses, enableInspector, INSPECTABLE_FUSES } from './release-fuses.mjs';
 import { appEnvironment as isolatedEnvironment, assertRemoved, assertTrimmed, installedExecutable, removalPlan, rootsToRemove, ON_DEMAND_ROOTS, ROOT_AUTO_UPDATE_BACKUP, ROOT_BACKUP, ROOT_STORES } from './windows-setup-contract.mjs';
@@ -108,6 +109,33 @@ async function freePort() {
   return address.port;
 }
 
+/** A fresh folder in RUNNER_TEMP to stand in for the user profile, with the folders appEnvironment names. */
+async function freshHome(prefix) {
+  const home = await mkdtemp(join(process.env.RUNNER_TEMP, prefix));
+  for (const folder of ['tmp', 'AppData/Roaming', 'AppData/Local']) await mkdir(join(home, folder), { recursive: true });
+  return home;
+}
+
+/** A throwaway profile for one launch of the installed app (installed-app-checks.mjs). */
+async function throwawayProfile(purpose) {
+  const home = await freshHome(`cowork-${purpose}-`);
+  return { env: isolatedEnvironment(home, await freePort(), process.env), userDataDir: join(home, 'chromium') };
+}
+
+/** Whether the process shows a top-level window. The app shows its main window once the renderer has painted it. */
+async function showsWindow(pid) {
+  const visible = await powershell(`$app = Get-Process -Id $env:COWORK_APP_PID -ErrorAction SilentlyContinue
+[bool]($app -and $app.MainWindowHandle -ne [IntPtr]::Zero)`, { env: { ...process.env, COWORK_APP_PID: String(pid) } });
+  return visible === 'True';
+}
+
+/** Stops every process that runs from the install folder, and saves what it stopped as `name`. */
+async function stopInstalledApp(installLocation, name) {
+  const stopped = await powershell(`Get-Process | Where-Object { try { $_.Path -and $_.Path.StartsWith($env:COWORK_INSTALL_DIR, [StringComparison]::OrdinalIgnoreCase) } catch { $false } } | Stop-Process -Force -PassThru | ForEach-Object { "$($_.Id) $($_.Path)" }`,
+    { env: { ...process.env, COWORK_INSTALL_DIR: installLocation } });
+  if (stopped) save(name, stopped);
+}
+
 async function downloadManifest() {
   const snapshot = process.env.WINDOWS_SETUP_SNAPSHOT_URL;
   if (snapshot) {
@@ -163,21 +191,36 @@ ConvertTo-Json -Compress -InputObject @{ status = [string]$s.Status; signer = $s
   const installed = installedExecutable(await registrations(), productName, join(process.env.LOCALAPPDATA, 'Programs'));
   save('install.json', { installLocation: installed.installLocation, executablePath: installed.executable, signer: signature.signer });
   // A launch by the installer would set up the runner's real profile, not the fresh one.
-  const stopped = await powershell(`Get-Process | Where-Object { try { $_.Path -and $_.Path.StartsWith($env:COWORK_INSTALL_DIR, [StringComparison]::OrdinalIgnoreCase) } catch { $false } } | Stop-Process -Force -PassThru | ForEach-Object { "$($_.Id) $($_.Path)" }`,
-    { env: { ...process.env, COWORK_INSTALL_DIR: installed.installLocation } });
-  if (stopped) save('stopped-after-install.txt', stopped);
+  await stopInstalledApp(installed.installLocation, 'stopped-after-install.txt');
 
   result.failingStep = 'Check release fuses';
+  // The same check the build runs on the exe NSIS packs, before it uploads the installer (release-app-check.mjs).
   const fuses = await checkFuses(installed.executable);
   save('fuses-installed.json', fuses.states);
   if (fuses.mismatches.length) throw new Error(`Installed app does not carry the release fuses: ${fuses.mismatches.join('; ')}.`);
 
+  /* The installed exe with the release fuses, which the inspectable copy below
+     gives up. Each launch uses a throwaway profile and is killed with its child
+     processes before the next. These launches run before the trim, while the
+     image still blocks root downloads. */
+  const installedApp = { executable: installed.executable, profile: throwawayProfile, showsWindow, save };
+  try {
+    result.failingStep = LAUNCH_STEP;
+    await checkLaunches(installedApp);
+    result.failingStep = LINT_STEP;
+    await checkLint(installedApp);
+  } finally {
+    await stopInstalledApp(installed.installLocation, 'stopped-after-launch-checks.txt');
+  }
+
   result.failingStep = 'Prepare inspectable copy';
   /* Playwright attaches through Node's inspector, which the release fuses off,
      so the smoke drives a copy of the install folder with that one fuse on and
-     leaves the installed app as shipped. The flip breaks the copy's Authenticode
-     signature, which Windows does not check when it starts a program that carries
-     no mark of the web. The smoke makes the copy before the trim, while the image
+     leaves the installed app as shipped. The installed exe carries no
+     Authenticode signature: the build signs release\win-unpacked's exe only
+     after NSIS has packed the unsigned one into the installer. So the flip
+     changes no signature, and Windows starts the copy as it starts the
+     installed exe. The smoke makes the copy before the trim, while the image
      still blocks root downloads, so nothing that verifies the changed file through
      Windows can bring a root back. */
   const copy = inspectableCopy(installed.installLocation, installed.executable, await mkdtemp(join(process.env.RUNNER_TEMP, 'cowork-app-')));
@@ -206,8 +249,7 @@ ConvertTo-Json -Compress -InputObject @{ status = [string]$s.Status; signer = $s
   assertTrimmed(await rootStores('roots-trimmed.json'));
 
   result.failingStep = 'Launch and isolate app';
-  profile = await mkdtemp(join(process.env.RUNNER_TEMP, 'cowork-profile-'));
-  for (const folder of ['tmp', 'AppData/Roaming', 'AppData/Local']) await mkdir(join(profile, folder), { recursive: true });
+  profile = await freshHome('cowork-profile-');
   const port = await freePort();
   appEnvironment = isolatedEnvironment(profile, port, process.env);
   app = await _electron.launch({ executablePath, args: [`--user-data-dir=${join(profile, 'chromium')}`], env: appEnvironment, timeout: 60_000 });

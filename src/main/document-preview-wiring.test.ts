@@ -94,7 +94,7 @@ describe('the main window wiring in app.ts', () => {
   const end = start < 0 ? -1 : source.indexOf('\n}\n', start);
   const createWindow = end > start ? source.slice(start, end) : '';
   const listenerStart = createWindow.indexOf('webRequest.onBeforeSendHeaders(');
-  const firstLoad = listenerStart < 0 ? -1 : createWindow.indexOf('mainWindow.loadURL(', listenerStart);
+  const firstLoad = listenerStart < 0 ? -1 : createWindow.indexOf('loadMainRenderer(mainWindow);', listenerStart);
   const listener = firstLoad > listenerStart ? createWindow.slice(listenerStart, firstLoad) : '';
 
   it('locates createWindow, the token listener and the first load after it, so the checks below are not vacuous', () => {
@@ -112,7 +112,7 @@ describe('the main window wiring in app.ts', () => {
     /* The whole declaration, so the listener's `guard: previewGuard` below is the real guard. */
     const registered = createWindow.indexOf('const previewGuard = guardDocumentPreviewFrames(mainWindow.webContents);');
     expect(registered).toBeGreaterThan(-1);
-    for (const load of ['mainWindow.loadURL(', 'mainWindow.loadFile(']) {
+    for (const load of ['loadMainRenderer(mainWindow);']) {
       expect(createWindow.indexOf(load)).toBeGreaterThan(registered);
     }
   });
@@ -131,7 +131,7 @@ describe('the main window wiring in app.ts', () => {
   });
 
   it("holds the server's requests while a start is pending, before the Minds gate sees them", () => {
-    expect(listener).toMatch(/gate: gatesInOrder\(\s*holdWhileServerStarts\(getServerPort, untilServerStartSettles\),\s*\(details, settle\) => gateMindsResponseCreationRequest\(/);
+    expect(listener).toMatch(/gate: beforeLoopbackRouteCheck\(gatesInOrder\(\s*holdWhileServerStarts\(getServerPort, untilServerStartSettles\),\s*\(details, settle\) => gateMindsResponseCreationRequest\(/);
   });
 
   it('leaves the frame to the listener and hands the Minds gate\'s answer back to it', () => {

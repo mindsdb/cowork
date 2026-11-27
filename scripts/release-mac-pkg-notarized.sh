@@ -160,6 +160,13 @@ else
   echo "==> Verifying app signature"
   codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
+  # The check the setup smokes run on the installed app, run here on the
+  # signed app before it is notarized, packed and uploaded: a builder change
+  # that drops a release fuse, or signs with an entitlement that lets outside
+  # code load, fails this build instead of a smoke after the release ships.
+  echo "==> Checking release fuses and entitlements"
+  node scripts/release-app-check.mjs "$APP_PATH"
+
   echo "==> Notarizing app zip"
   ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$APP_ZIP"
   APP_NOTARY_OUT="$(xcrun notarytool submit "$APP_ZIP" \

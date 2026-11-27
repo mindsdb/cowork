@@ -67,6 +67,35 @@ test('the harness checks the emptied AuthRoot before it turns root downloads bac
   assert.ok(removed > 0 && removed < downloadsOn && downloadsOn < smoke.indexOf('assertTrimmed(await rootStores('));
 });
 
+test('the harness launches and lints the installed exe before it copies it, and stops what is left from the install folder', () => {
+  const smoke = readFileSync(resolve('scripts/windows-setup-smoke.mjs'), 'utf8');
+  const at = (text) => {
+    const index = smoke.indexOf(text);
+    assert.ok(index > 0, text);
+    return index;
+  };
+  assert.ok(at("result.failingStep = 'Check release fuses'") < at('await checkLaunches(installedApp)'));
+  assert.ok(at('await checkLaunches(installedApp)') < at('await checkLint(installedApp)'));
+  assert.ok(at('await checkLint(installedApp)') < at("await stopInstalledApp(installed.installLocation, 'stopped-after-launch-checks.txt')"));
+  assert.ok(at("await stopInstalledApp(installed.installLocation, 'stopped-after-launch-checks.txt')") < at("result.failingStep = 'Prepare inspectable copy'"));
+  assert.ok(at("result.failingStep = 'Prepare inspectable copy'") < at("result.failingStep = 'Trim root store'"));
+  assert.match(smoke, /const installedApp = \{ executable: installed\.executable,/);
+  // The install-folder sweep runs whether the checks pass or throw.
+  assert.match(smoke, /\} finally \{\n\s+await stopInstalledApp\(installed\.installLocation, 'stopped-after-launch-checks\.txt'\);\n\s+\}/);
+});
+
+test('the Windows build runs the release check on the exe NSIS packed, before it signs or uploads anything', () => {
+  const workflow = readFileSync(resolve('.github/workflows/build-windows-installer.yml'), 'utf8');
+  const check = workflow.indexOf('- name: Check release fuses');
+  assert.ok(check > workflow.indexOf('- name: Resolve app executable path'));
+  assert.ok(check < workflow.indexOf('- name: Sign installer with SSL.com eSigner'));
+  assert.ok(check < workflow.indexOf('- name: Upload installer artifact'));
+  const step = workflow.slice(check, workflow.indexOf('\n      - name:', check + 1));
+  assert.match(step, /APP_EXE: \$\{\{ steps\.app_exe\.outputs\.app_exe_path \}\}/);
+  assert.match(step, /run: node scripts\/release-app-check\.mjs "\$env:APP_EXE"/);
+  assert.doesNotMatch(step, /^\s+if:/m);
+});
+
 test('the app gets a fresh profile and system folders only, never CI tokens or runner tools', () => {
   const runner = {
     SystemRoot: 'C:\\Windows', SystemDrive: 'C:', PATHEXT: '.COM;.EXE;.BAT;.CMD', ProgramData: 'C:\\ProgramData',

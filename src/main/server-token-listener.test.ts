@@ -11,6 +11,7 @@ import { guardDocumentPreviewFrames, type DocumentPreviewGuard, type GuardedFram
 import {
   gatesInOrder,
   holdWhileServerStarts,
+  requireDirectRoute,
   serverTokenListener,
   type MainWindowContents,
   type RequestGate,
@@ -155,6 +156,16 @@ const withToken = (token: string, proof?: string): BeforeSendResponse => ({
 });
 const withoutToken: BeforeSendResponse = { requestHeaders: {} };
 
+/* A server start that has not settled yet, and the call that settles it. */
+function pendingStart() {
+  let settle!: () => void;
+  const settled = new Promise<void>((resolve) => { settle = resolve; });
+  return { settled, settle };
+}
+
+/* Lets every callback waiting on a settled promise run. */
+const afterPendingCallbacks = () => new Promise<void>((resolve) => setImmediate(resolve));
+
 describe('the server token listener', () => {
   it.each(loadRequestCases())('$name', (request) => {
     const frames = guardedFrames();
@@ -271,13 +282,6 @@ describe('a request the gate holds', () => {
 });
 
 describe('a request a pending server start holds', () => {
-  /* A start that has not settled yet, and the call that settles it. */
-  function pendingStart() {
-    let settle!: () => void;
-    const settled = new Promise<void>((resolve) => { settle = resolve; });
-    return { settled, settle };
-  }
-
   it('waits for the start, then goes out with the values the start published', async () => {
     const { guard, main } = guardedFrames();
     const start = pendingStart();
@@ -336,6 +340,161 @@ describe('a request a pending server start holds', () => {
     const listener = listenerWith({ guard, gate: holdWhileServerStarts(() => SERVER_PORT, () => null) });
 
     expect(send(listener, mainWindowFetch(main))).toEqual([withToken(TOKEN, PROOF)]);
+  });
+});
+
+describe('a request the route check holds', () => {
+  /* A proxy lookup that answers when the test says so, and the URLs it was asked about. */
+  function pendingLookup() {
+    const asked: string[] = [];
+    let answer!: (resolved: string) => void;
+    let fail!: (err: Error) => void;
+    const answered = new Promise<string>((resolve, reject) => { answer = resolve; fail = reject; });
+    const resolveProxy = (url: string): Promise<string> => {
+      asked.push(url);
+      return answered;
+    };
+    return { resolveProxy, asked, answer, fail };
+  }
+
+  it.each([
+    ['localhost at the server\'s port', `http://localhost:${SERVER_PORT}/api/v1/conversations`],
+    ['another loopback port', 'http://127.0.0.1:9999/api/v1/conversations'],
+    ['a URL that does not parse', 'not a url'],
+  ])('lets %s go at once, without asking how it is routed', (_label, url) => {
+    const { guard, main } = guardedFrames();
+    const lookup = pendingLookup();
+    const listener = listenerWith({ guard, gate: requireDirectRoute(() => SERVER_PORT, lookup.resolveProxy, () => {}) });
+
+    expect(send(listener, mainWindowFetch(main, { url }))).toHaveLength(1);
+    expect(lookup.asked).toEqual([]);
+  });
+
+  it('holds a request to the server until the session answers, and sends it with both headers on DIRECT', async () => {
+    const { guard, main } = guardedFrames();
+    const lookup = pendingLookup();
+    const onFirstRefusal = vi.fn();
+    const responses = send(
+      listenerWith({ guard, gate: requireDirectRoute(() => SERVER_PORT, lookup.resolveProxy, onFirstRefusal) }),
+      mainWindowFetch(main),
+    );
+    expect(lookup.asked).toEqual([RESPONSES_URL]);
+    expect(responses).toEqual([]);
+
+    lookup.answer('DIRECT');
+    await afterPendingCallbacks();
+
+    expect(responses).toEqual([withToken(TOKEN, PROOF)]);
+    expect(onFirstRefusal).not.toHaveBeenCalled();
+  });
+
+  it.each(['PROXY x:1', 'PROXY a:1;DIRECT'])("cancels a request to the server routed '%s', and adds no header to it", async (resolved) => {
+    const { guard, main } = guardedFrames();
+    const lookup = pendingLookup();
+    const token = vi.fn(() => TOKEN);
+    const windowProof = vi.fn(() => PROOF);
+    const onFirstRefusal = vi.fn();
+    const responses = send(
+      listenerWith({ guard, token, windowProof, gate: requireDirectRoute(() => SERVER_PORT, lookup.resolveProxy, onFirstRefusal) }),
+      mainWindowFetch(main),
+    );
+
+    lookup.answer(resolved);
+    await afterPendingCallbacks();
+
+    expect(responses).toEqual([{ cancel: true }]);
+    expect(token).not.toHaveBeenCalled();
+    expect(windowProof).not.toHaveBeenCalled();
+    expect(onFirstRefusal).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels a request to the server whose lookup fails, whether it rejects or throws', async () => {
+    const { guard, main } = guardedFrames();
+    const lookup = pendingLookup();
+    const throwing = (): Promise<string> => { throw new Error('session gone'); };
+    const rejected = send(listenerWith({ guard, gate: requireDirectRoute(() => SERVER_PORT, lookup.resolveProxy, () => {}) }), mainWindowFetch(main));
+    const thrown = send(listenerWith({ guard, gate: requireDirectRoute(() => SERVER_PORT, throwing, () => {}) }), mainWindowFetch(main));
+
+    lookup.fail(new Error('session gone'));
+    await afterPendingCallbacks();
+
+    expect(rejected).toEqual([{ cancel: true }]);
+    expect(thrown).toEqual([{ cancel: true }]);
+  });
+
+  it('asks again for every request, so a proxy set while the app runs is refused, and reports the first refusal only', async () => {
+    const { guard, main } = guardedFrames();
+    const answers = ['DIRECT', 'PROXY x:1', 'PROXY x:1', 'DIRECT', 'PROXY a:1;DIRECT'];
+    const resolveProxy = vi.fn(async () => answers.shift() ?? 'DIRECT');
+    const onFirstRefusal = vi.fn();
+    const listener = listenerWith({ guard, gate: requireDirectRoute(() => SERVER_PORT, resolveProxy, onFirstRefusal) });
+
+    const sent = [0, 1, 2, 3, 4].map(() => send(listener, mainWindowFetch(main)));
+    await afterPendingCallbacks();
+
+    expect(resolveProxy).toHaveBeenCalledTimes(5);
+    expect(sent).toEqual([
+      [withToken(TOKEN, PROOF)],
+      [{ cancel: true }],
+      [{ cancel: true }],
+      [withToken(TOKEN, PROOF)],
+      [{ cancel: true }],
+    ]);
+    expect(onFirstRefusal).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs after the gates before it, and is not asked about a request one of them cancels', () => {
+    const { guard, main } = guardedFrames();
+    const lookup = pendingLookup();
+    const before: SettleHeldRequest[] = [];
+    const holding: RequestGate = (_details, settle) => { before.push(settle); return true; };
+    const listener = listenerWith({ guard, gate: gatesInOrder(holding, requireDirectRoute(() => SERVER_PORT, lookup.resolveProxy, () => {})) });
+
+    const canceled = send(listener, mainWindowFetch(main));
+    before[0](false);
+    expect(canceled).toEqual([{ cancel: true }]);
+    expect(lookup.asked).toEqual([]);
+
+    const released = send(listener, mainWindowFetch(main));
+    expect(lookup.asked).toEqual([]);
+    before[1](true);
+    expect(lookup.asked).toEqual([RESPONSES_URL]);
+    expect(released).toEqual([]);
+  });
+
+  it('asks how a request is routed only once a pending server start lets it go, and cancels it when a proxy was set during the wait', async () => {
+    const { guard, main } = guardedFrames();
+    const start = pendingStart();
+    let proxySetting = 'DIRECT';
+    const resolveProxy = vi.fn(async (_url: string) => proxySetting);
+    const token = vi.fn(() => TOKEN);
+    const windowProof = vi.fn(() => PROOF);
+    const onFirstRefusal = vi.fn();
+    const listener = listenerWith({
+      guard,
+      token,
+      windowProof,
+      gate: gatesInOrder(
+        holdWhileServerStarts(() => SERVER_PORT, () => start.settled),
+        requireDirectRoute(() => SERVER_PORT, resolveProxy, onFirstRefusal),
+      ),
+    });
+
+    const responses = send(listener, mainWindowFetch(main));
+    await afterPendingCallbacks();
+    expect(resolveProxy).not.toHaveBeenCalled();
+    expect(responses).toEqual([]);
+
+    proxySetting = 'PROXY x:1';
+    start.settle();
+    await afterPendingCallbacks();
+
+    expect(resolveProxy).toHaveBeenCalledTimes(1);
+    expect(resolveProxy).toHaveBeenCalledWith(RESPONSES_URL);
+    expect(responses).toEqual([{ cancel: true }]);
+    expect(token).not.toHaveBeenCalled();
+    expect(windowProof).not.toHaveBeenCalled();
+    expect(onFirstRefusal).toHaveBeenCalledTimes(1);
   });
 });
 

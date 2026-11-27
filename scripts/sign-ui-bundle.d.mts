@@ -1,6 +1,6 @@
 // Hand-written declarations for sign-ui-bundle.mjs so the desktop verifier's
-// cross-check test typechecks under `npm run typecheck:test`. Only the names
-// that test imports are declared.
+// cross-check tests typecheck under `npm run typecheck:test`. Only the names
+// the tests import are declared.
 export interface SignOptions {
   dir: string;
   version: string;
@@ -36,3 +36,4 @@ export interface SignResult {
 export declare const TARBALL_NAME: 'ui-bundle.tar.gz';
 export declare const SIGNATURE_JSON_NAME: 'ui-signature.json';
 export declare function signUiBundle(options: SignOptions): SignResult;
+export declare function readReleasePublicKey(source: string): string;

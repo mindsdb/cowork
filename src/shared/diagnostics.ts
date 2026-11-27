@@ -94,6 +94,7 @@ export function diagnostic(
           "outcome",
           "device_key_id",
           "count",
+          "duration_ms",
           "exit_code",
           "exit_signal",
           "config_field",
@@ -101,7 +102,11 @@ export function diagnostic(
           "setting_key",
         ]) {
           const entry = Object.getOwnPropertyDescriptor(value, field)?.value;
-          if (field === "count" && Number.isSafeInteger(entry) && entry >= 0)
+          if (
+            (field === "count" || field === "duration_ms") &&
+            Number.isSafeInteger(entry) &&
+            entry >= 0
+          )
             payload[field] = entry;
           else if (field === "exit_code" && Number.isSafeInteger(entry))
             payload[field] = entry;

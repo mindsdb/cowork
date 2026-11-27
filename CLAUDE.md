@@ -131,7 +131,7 @@ Default: **git, branch `main`** for both — except **prod-kind builds, which de
 | `COWORK_SERVER_MIN_VERSION` | `0.1.10` static floor | pypi channel: minimum version for install/verify; release builds bake the latest published version |
 | `COWORK_SERVER_REF` | `main` | cowork-server branch / tag / commit (git channel) |
 | `ANTON_REF` | `main` | anton branch / tag / commit — applied via `uv ... --with`, overriding cowork-server's `tool.uv.sources` pin |
-| `COWORK_SERVER_PACKAGE` | — | escape hatch: a literal `uv` spec (local path, custom URL); wins over all |
+| `COWORK_SERVER_PACKAGE` | — | escape hatch: a literal `uv` spec (local path, custom URL); wins over all. Like every var in this table, it works in unpackaged runs only: a packaged build deletes it at start and uses the baked value |
 | `ANTON_PACKAGE` | — | escape hatch for anton; only honoured when `COWORK_SERVER_PACKAGE` is also set. Must be an absolute path or valid `uv` spec. **Requires** `backend/core_api/pyproject.toml` `[tool.uv.sources]` to be updated to `{ path = "../../core_agent" }` first — uv rejects conflicting URL sources for the same package. |
 
 ```sh
@@ -227,7 +227,7 @@ Dark/light via `body[data-theme="dark"]` selector. Colors defined as CSS variabl
 
 ## Misc
 
-- DevTools: `ANTON_DEVTOOLS=1` or Cmd+Option+I (auto-open removed).
+- DevTools: `ANTON_DEVTOOLS=1` (unpackaged runs; a packaged build deletes it at start) or Cmd+Option+I (auto-open removed).
 - Debug Electron with DevTools open from start: `npm run dev:debug`.
 - Renderer build-time globals: `__APP_VERSION__`, `__GIT_HASH__`, `__BUILD_TIME__` (baked by Vite).
 - Build target toggle: `BUILD_TARGET=web vite build src/renderer` for web SPA.

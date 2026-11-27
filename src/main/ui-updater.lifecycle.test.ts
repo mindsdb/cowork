@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { pathToFileURL } from 'url';
 import {
   generateTestSigningKey,
   sha256Hex,
@@ -109,6 +110,26 @@ const untrusted = generateTestSigningKey();
 async function loadUpdater() {
   vi.resetModules();
   return import('./ui-updater');
+}
+
+type FileHandler = (request: Request) => Response | Promise<Response>;
+
+/* The updater and the window's file:// handler (ui-file-protocol.ts), registered on a fake
+   session. Both come from one module load, so the handler reads the updater's served slot. */
+async function loadUpdaterWithFileHandler() {
+  const ui = await loadUpdater();
+  const { registerUiFileProtocol } = await import('./ui-file-protocol');
+  let handler: FileHandler | null = null;
+  const session = {
+    protocol: { handle: (_scheme: string, registered: FileHandler) => { handler = registered; } },
+    fetch: async (): Promise<Response> => { throw new Error('no request in these tests leaves the cache'); },
+  };
+  registerUiFileProtocol(session as unknown as Parameters<typeof registerUiFileProtocol>[0]);
+  const load = async (file: string): Promise<Response> => {
+    if (!handler) throw new Error('the file:// handler was not registered');
+    return handler(new Request(pathToFileURL(file).href));
+  };
+  return { ui, load };
 }
 
 const cacheDir = () => path.join(h.userData, 'ui-cache');
@@ -253,6 +274,32 @@ describe('the folder check before every load', () => {
     expect(fs.existsSync(slotDir('current'))).toBe(false);
   });
 
+  it('serves a signed slot an older shell marked, after removing the marker, and keeps the slot', async () => {
+    // A shell from before signing still activates a signed update, and writes its marker into the slot.
+    seedSlot('current', '2.26.7.13.1');
+    const marker = path.join(slotDir('current'), '.ota-meta.json');
+    fs.writeFileSync(marker, JSON.stringify({ schema: 2, version: '2.26.7.13.1' }));
+    const ui = await loadUpdater();
+    const events = await eventsDuring('warn', () => {
+      expect(ui.resolveRendererLoad()).toEqual({ kind: 'ota', path: path.join(slotDir('current'), 'index.html'), version: '2.26.7.13.1' });
+    });
+    expect(events).toEqual([]);
+    expect(fs.existsSync(path.join(slotDir('current'), 'index.html'))).toBe(true);
+    expect(fs.existsSync(marker)).toBe(false);
+  });
+
+  it('leaves a marker that is not a regular file for the folder check to refuse', async () => {
+    seedSlot('current', '2.26.7.13.1');
+    fs.mkdirSync(path.join(slotDir('current'), '.ota-meta.json'));
+    fs.writeFileSync(path.join(slotDir('current'), '.ota-meta.json', 'payload.js'), 'evil()');
+    const ui = await loadUpdater();
+    const events = await eventsDuring('warn', () => {
+      expect(ui.resolveRendererLoad()).toEqual({ kind: 'bundled', path: bundledIndex() });
+    });
+    expect(events).toEqual(['ui_updater_cached_ui_refused_extra_file']);
+    expect(fs.existsSync(slotDir('current'))).toBe(false);
+  });
+
   it('refuses a slot with a file removed', async () => {
     seedSlot('current', '2.26.7.13.1');
     fs.rmSync(path.join(slotDir('current'), 'assets', 'app.js'));
@@ -376,6 +423,234 @@ describe('readServedUiFile (the per-file reader)', () => {
   });
 });
 
+describe('reloads (app.ts loadMainRenderer runs resolveRendererLoad before every load)', () => {
+  it('serves the bundled renderer on a reload after one byte changed since boot', async () => {
+    seedSlot('current', '2.26.7.13.1');
+    const ui = await loadUpdater();
+    // Boot.
+    expect(ui.resolveRendererLoad()).toMatchObject({ kind: 'ota', version: '2.26.7.13.1' });
+
+    flipOneByte(path.join(slotDir('current'), 'assets', 'app.js'));
+
+    // View > Reload, a sign-out, a sign-in that changes the data root, or the page's own location.reload().
+    const events = await eventsDuring('warn', () => {
+      expect(ui.resolveRendererLoad()).toEqual({ kind: 'bundled', path: bundledIndex() });
+    });
+    expect(events).toEqual(['ui_updater_cached_ui_refused_hash_mismatch']);
+    expect(fs.existsSync(slotDir('current'))).toBe(false);
+    expect(ui.getCachedVersion()).toBeNull();
+    expect(ui.readServedUiFile('index.html')).toEqual({ ok: false, reason: 'not-serving' });
+  });
+
+  it('records a bundled load, so nothing reads through the slot the window left', async () => {
+    // DEV_MODE=full and the OTA self-heal both load the bundled renderer through resolveBundledRendererLoad.
+    seedSlot('current', '2.26.7.13.1');
+    const ui = await loadUpdater();
+    ui.resolveRendererLoad();
+    expect(ui.getCachedVersion()).toBe('2.26.7.13.1');
+
+    expect(ui.resolveBundledRendererLoad()).toEqual({ kind: 'bundled', path: bundledIndex() });
+    expect(ui.getCachedVersion()).toBeNull();
+    expect(ui.servedUiRoot()).toBeNull();
+    expect(ui.readServedUiFile('index.html')).toEqual({ ok: false, reason: 'not-serving' });
+    // A bundled load refuses nothing: the slot stays for the next load.
+    expect(fs.existsSync(path.join(slotDir('current'), 'index.html'))).toBe(true);
+  });
+});
+
+describe('getCachedVersion (what the window runs)', () => {
+  it('reads the version verified at the last load, and neither hashes nor deletes the slot', async () => {
+    seedSlot('current', '2.26.7.13.1');
+    const ui = await loadUpdater();
+    ui.resolveRendererLoad();
+    // Finder drops a .DS_Store and a file changes: a folder check would refuse and delete the slot.
+    fs.writeFileSync(path.join(slotDir('current'), '.DS_Store'), 'finder');
+    flipOneByte(path.join(slotDir('current'), 'index.html'));
+
+    const events = await eventsDuring('warn', () => {
+      expect(ui.getCachedVersion()).toBe('2.26.7.13.1');
+    });
+    expect(events).toEqual([]);
+    expect(fs.existsSync(path.join(slotDir('current'), '.DS_Store'))).toBe(true);
+    expect(fs.existsSync(path.join(slotDir('current'), 'index.html'))).toBe(true);
+  });
+
+  it('reads no file at all, so a slot it could not read still reports the loaded version', async () => {
+    if (process.getuid?.() === 0) return; // root reads a mode-000 file anyway
+    seedSlot('current', '2.26.7.13.1');
+    const ui = await loadUpdater();
+    ui.resolveRendererLoad();
+    const app = path.join(slotDir('current'), 'assets', 'app.js');
+    fs.chmodSync(app, 0o000);
+    try {
+      expect(ui.getCachedVersion()).toBe('2.26.7.13.1');
+    } finally {
+      fs.chmodSync(app, 0o644);
+    }
+  });
+
+  it('is null until a load serves the slot, and while the bundled renderer is loaded', async () => {
+    seedSlot('current', '2.26.7.13.1');
+    const ui = await loadUpdater();
+    expect(ui.getCachedVersion()).toBeNull();
+    ui.resolveBundledRendererLoad();
+    expect(ui.getCachedVersion()).toBeNull();
+  });
+});
+
+describe('activatedUiVersion (what an update moved to)', () => {
+  it('reads the signed version of the current slot without hashing or deleting it', async () => {
+    seedSlot('current', '2.26.7.13.1');
+    flipOneByte(path.join(slotDir('current'), 'assets', 'app.js'));
+    const ui = await loadUpdater();
+    expect(ui.activatedUiVersion()).toBe('2.26.7.13.1');
+    expect(fs.existsSync(path.join(slotDir('current'), 'assets', 'app.js'))).toBe(true);
+  });
+
+  it('is null with no slot, or a slot without a trusted signature', async () => {
+    const ui = await loadUpdater();
+    expect(ui.activatedUiVersion()).toBeNull();
+    seedSlot('current', '2.26.7.13.1', null, untrusted);
+    expect(ui.activatedUiVersion()).toBeNull();
+  });
+});
+
+describe('the window\'s file:// loads from the cache (ui-file-protocol.ts)', () => {
+  it('serves a lazy chunk of the served slot through the manifest verified at load', async () => {
+    seedSlot('current', '2.26.7.13.1');
+    const { ui, load } = await loadUpdaterWithFileHandler();
+    ui.resolveRendererLoad();
+    const response = await load(path.join(slotDir('current'), 'assets', 'app.js'));
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('text/javascript');
+    expect(await response.text()).toBe('console.log("2.26.7.13.1");');
+  });
+
+  it('answers 404 to a chunk changed after the load, deletes the slot, and the next load serves bundled', async () => {
+    seedSlot('current', '2.26.7.13.1');
+    const { ui, load } = await loadUpdaterWithFileHandler();
+    ui.resolveRendererLoad();
+    flipOneByte(path.join(slotDir('current'), 'assets', 'app.js'));
+
+    const events = await eventsDuring('warn', async () => {
+      expect((await load(path.join(slotDir('current'), 'assets', 'app.js'))).status).toBe(404);
+    });
+    expect(events).toEqual(['ui_updater_served_ui_refused_hash_mismatch']);
+    expect(fs.existsSync(slotDir('current'))).toBe(false);
+    expect(ui.getCachedVersion()).toBeNull();
+    expect((await load(path.join(slotDir('current'), 'index.html'))).status).toBe(404);
+    expect(ui.resolveRendererLoad()).toEqual({ kind: 'bundled', path: bundledIndex() });
+  });
+
+  it('answers 404 to a file the bundle does not have, and keeps the slot', async () => {
+    seedSlot('current', '2.26.7.13.1');
+    const { ui, load } = await loadUpdaterWithFileHandler();
+    ui.resolveRendererLoad();
+    const events = await eventsDuring('warn', async () => {
+      expect((await load(path.join(slotDir('current'), 'assets', 'optional.js'))).status).toBe(404);
+      expect((await load(path.join(slotDir('current'), MANIFEST_FILE))).status).toBe(404);
+    });
+    expect(events).toEqual([]);
+    expect(ui.getCachedVersion()).toBe('2.26.7.13.1');
+    expect((await load(path.join(slotDir('current'), 'index.html'))).status).toBe(200);
+  });
+
+  it('answers 404 inside the cache outside the served slot, and for the slot while bundled is loaded', async () => {
+    seedSlot('previous', '2.26.7.10.1');
+    seedSlot('current', '2.26.7.13.1');
+    const { ui, load } = await loadUpdaterWithFileHandler();
+    ui.resolveRendererLoad();
+    expect((await load(path.join(slotDir('previous'), 'index.html'))).status).toBe(404);
+    expect((await load(rejectedFile())).status).toBe(404);
+
+    ui.resolveBundledRendererLoad();
+    expect((await load(path.join(slotDir('current'), 'index.html'))).status).toBe(404);
+    expect(fs.existsSync(path.join(slotDir('current'), 'index.html'))).toBe(true);
+  });
+
+  it('keeps a newly activated slot when the page about to be replaced asks for one of its old chunks', async () => {
+    seedSlot('current', '2.26.7.10.1');
+    stageRelease('2.26.7.13.1');
+    const { ui, load } = await loadUpdaterWithFileHandler();
+    ui.resolveRendererLoad();
+    await expect(ui.applyUIUpdate()).resolves.toBe(true);
+
+    // The old page's chunk path now holds the new bundle's bytes, which its manifest does not describe.
+    const events = await eventsDuring('warn', async () => {
+      expect((await load(path.join(slotDir('current'), 'assets', 'app.js'))).status).toBe(404);
+    });
+    expect(events).toEqual([]);
+    expect(ui.resolveRendererLoad()).toMatchObject({ kind: 'ota', version: '2.26.7.13.1' });
+  });
+
+  /* Locks the swap's final rename (staging to current) for good, so the swap tears and puts the
+     old slot back. The promise resolves once the swap has moved `current` aside and tries it. */
+  function lockFinalSwapRename(): Promise<void> {
+    return new Promise((resolve) => {
+      h.shouldFailRename = (from) => {
+        if (!from.includes(`${path.sep}staging`)) return false;
+        resolve();
+        return true;
+      };
+    });
+  }
+
+  it('answers 404 without refusing the slot while a swap has it moved aside, and serves it again after a torn swap puts it back', async () => {
+    seedSlot('current', '2.26.7.10.1');
+    stageRelease('2.26.7.13.1');
+    const { ui, load } = await loadUpdaterWithFileHandler();
+    ui.resolveRendererLoad();
+    const chunk = path.join(slotDir('current'), 'assets', 'app.js');
+    const midSwap = lockFinalSwapRename();
+
+    const applying = ui.applyUIUpdate();
+    await midSwap;
+    expect(fs.existsSync(slotDir('current'))).toBe(false);
+    // The old page asks for a lazy chunk while the swap retries the locked rename.
+    const events = await eventsDuring('warn', async () => {
+      expect((await load(chunk)).status).toBe(404);
+    });
+    expect(events).toEqual([]);
+
+    await expect(applying).resolves.toBe(false);
+    expect(ui.getCachedVersion()).toBe('2.26.7.10.1');
+    const response = await load(chunk);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('console.log("2.26.7.10.1");');
+  }, 15000); // the locked rename exhausts the retry backoff before the swap gives up
+
+  it('keeps serving the old page when the swap cannot move its slot aside', async () => {
+    seedSlot('current', '2.26.7.10.1');
+    stageRelease('2.26.7.13.1');
+    const { ui, load } = await loadUpdaterWithFileHandler();
+    ui.resolveRendererLoad();
+    h.shouldFailRename = (from) => from === slotDir('current');
+
+    await expect(ui.applyUIUpdate()).resolves.toBe(false);
+    expect(ui.getCachedVersion()).toBe('2.26.7.10.1');
+    expect((await load(path.join(slotDir('current'), 'assets', 'app.js'))).status).toBe(200);
+  }, 15000);
+
+  it('leaves the served state to a load made while a swap that then tears had the slot moved aside', async () => {
+    seedSlot('current', '2.26.7.10.1');
+    stageRelease('2.26.7.13.1');
+    const { ui, load } = await loadUpdaterWithFileHandler();
+    ui.resolveRendererLoad();
+    const midSwap = lockFinalSwapRename();
+
+    const applying = ui.applyUIUpdate();
+    await midSwap;
+    // The window reloads with `current` moved aside, so it loads the bundled renderer.
+    expect(ui.resolveRendererLoad()).toEqual({ kind: 'bundled', path: bundledIndex() });
+
+    await expect(applying).resolves.toBe(false);
+    expect(ui.getCachedVersion()).toBeNull();
+    expect((await load(path.join(slotDir('current'), 'assets', 'app.js'))).status).toBe(404);
+    // The next load checks the slot the swap put back.
+    expect(ui.resolveRendererLoad()).toMatchObject({ kind: 'ota', version: '2.26.7.10.1' });
+  }, 15000);
+});
+
 describe('verifyServedUiCompat (serve-time re-enforcement)', () => {
   it('opens the gate for a constrained cache once the server satisfies the floor', async () => {
     seedSlot('current', '2.26.7.13.1', '2.26.7.6.1');
@@ -384,6 +659,7 @@ describe('verifyServedUiCompat (serve-time re-enforcement)', () => {
     expect(ui.isServingOta()).toBe(false);
     await expect(ui.verifyServedUiCompat()).resolves.toBe('verified');
     expect(ui.isServingOta()).toBe(true);
+    expect(ui.resolveRendererLoad()).toMatchObject({ kind: 'ota', version: '2.26.7.13.1' });
     expect(ui.getCachedVersion()).toBe('2.26.7.13.1');
   });
 
@@ -438,16 +714,19 @@ describe('rollbackUI (quarantine + slot rotation)', () => {
     // The failed (current) version is quarantined so it isn't re-activated.
     expect(JSON.parse(fs.readFileSync(rejectedFile(), 'utf-8')).version).toBe('2.26.7.13.1');
     // `previous` rotated into `current`, carrying its own manifest.
-    expect(ui.getCachedVersion()).toBe('2.26.7.10.1');
     expect(ui.isServingOta()).toBe(true);
+    expect(ui.resolveRendererLoad()).toMatchObject({ kind: 'ota', version: '2.26.7.10.1' });
+    expect(ui.getCachedVersion()).toBe('2.26.7.10.1');
   });
 
   it('falls back to bundled when there is no previous slot', async () => {
     seedSlot('current', '2.26.7.13.1');
     const ui = await loadUpdater();
+    ui.resolveRendererLoad();
     await ui.rollbackUI();
     expect(ui.isServingOta()).toBe(false);
     expect(ui.getCachedVersion()).toBeNull();
+    expect(ui.resolveRendererLoad()).toEqual({ kind: 'bundled', path: bundledIndex() });
   });
 });
 
@@ -494,6 +773,8 @@ describe('applyUIUpdate (apply-time gate)', () => {
     // The blocker: a freshly-activated constrained bundle must be immediately
     // serveable, not fall back to bundled and report a false success.
     expect(ui.isServingOta()).toBe(true);
+    expect(ui.activatedUiVersion()).toBe('2.26.7.13.1');
+    expect(ui.resolveRendererLoad()).toMatchObject({ kind: 'ota', version: '2.26.7.13.1' });
     expect(ui.getCachedVersion()).toBe('2.26.7.13.1');
     // The slot holds the signed manifest and nothing the shell wrote itself.
     expect(fs.existsSync(path.join(slotDir('current'), MANIFEST_FILE))).toBe(true);
@@ -637,7 +918,7 @@ describe('applyUIUpdate (apply-time gate)', () => {
     // Declines the update instead of propagating the EPERM…
     await expect(ui.applyUIUpdate()).resolves.toBe(false);
     // …and the prior bundle is intact, not a torn/empty current slot.
-    expect(ui.getCachedVersion()).toBe('2.26.7.10.1');
+    expect(ui.resolveRendererLoad()).toMatchObject({ kind: 'ota', version: '2.26.7.10.1' });
     expect(fs.existsSync(path.join(slotDir('current'), 'index.html'))).toBe(true);
   }, 15000); // permanent-fail path exhausts the retry backoff before recovering
 
@@ -659,7 +940,7 @@ describe('applyUIUpdate (apply-time gate)', () => {
 
     await expect(ui.applyUIUpdate()).resolves.toBe(false);
     expect(prevTries).toBe(3); // recovery rename went through retryOnTransientLock
-    expect(ui.getCachedVersion()).toBe('2.26.7.10.1'); // prior slot restored
+    expect(ui.resolveRendererLoad()).toMatchObject({ kind: 'ota', version: '2.26.7.10.1' }); // prior slot restored
   }, 15000);
 });
 

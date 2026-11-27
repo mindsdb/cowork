@@ -32,7 +32,7 @@ When the user invokes `/ota`, determine which action they want. **If unclear, de
 Steps:
 
 1. Read `~/.anton/.env` and report the current `DEV_MODE` value. Explain what it means using the friendly names from the dev mode table below.
-2. Fetch `https://mindsdb.github.io/antontron-releases/latest.json` and extract the published version (which includes a git short SHA, e.g. `2.0.4-e94e713`). Check that it also carries `signed` and `signature`: a current shell takes no update from a manifest without them, so report a missing pair as "Unsigned: no shell built from this repo will take it".
+2. Fetch `https://mindsdb.github.io/antontron-releases/latest.json` and extract the published version (which includes a git short SHA, e.g. `2.0.4-e94e713`). Check that it also carries `signed` and `signature`. A shell that verifies page updates ([cowork#1560](https://github.com/mindsdb/cowork/pull/1560) and later) takes no update from a manifest without them, so report a missing pair as "Unsigned: shells that verify page updates won't take it; older shells still will". A shell from before cowork#1560 checks no signature: it reads the unsigned `url` and `sha256`, which `publish-ui` keeps in `latest.json` for those shells, and takes the update whether or not the pair is there.
 3. Run `git log --oneline -1 origin/main -- src/renderer/ src/shared/ package.json` to get the latest commit on main that would trigger a publish.
 4. Compare the SHA in the published version against the SHA from step 3. Report whether they match.
 5. If they don't match, check if a publish workflow is currently running: `gh run list --workflow=publish-ui.yml --repo mindsdb/cowork --limit 3` and report its status.
@@ -71,7 +71,7 @@ Switch how the local app loads the renderer. There are three modes:
 
 | Friendly name | DEV_MODE value | What it does |
 |---|---|---|
-| **Live** | `DEV_MODE=live` | Loads renderer from Vite dev server at `localhost:5173`. Use when actively editing renderer code -- gives you hot reload. You must have `npm run dev` running. |
+| **Live** | `DEV_MODE=live` | Loads renderer from Vite dev server at `localhost:5173`. Use when actively editing renderer code -- gives you hot reload. You must have `npm run dev` running. Works only in an unpackaged run: a packaged build ignores it. |
 | **Bundled** | `DEV_MODE=full` | Uses the renderer built into the .app package. Ignores any OTA updates. This is the current default when DEV_MODE is not set. |
 | **Production** | `DEV_MODE=ota` | Uses the OTA update system -- downloads published bundles on launch, just like a real user would see. Use to verify that a publish worked correctly. |
 

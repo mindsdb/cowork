@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="data:,">
+<title>Script error page</title>
+</head>
+<body>
+<h1>Script error page</h1>
+<!-- The lint must report this error as a console error. -->
+<script>
+  throw new Error('lint smoke: script error');
+</script>
+</body>
+</html>

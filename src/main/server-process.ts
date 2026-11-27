@@ -960,6 +960,14 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
        server's environment, which cell code inherits. */
     const { COWORK_AUTH_TOKEN: _inheritedToken, ...inheritedEnv } = process.env;
     const env = {
+      /* The rest of this app's environment passes through, including any
+         SSL_CERT_FILE, REQUESTS_CA_BUNDLE, CURL_CA_BUNDLE and HTTPS_PROXY that
+         whoever started the app set. The Python server honors them for its
+         outbound HTTPS, provider requests included: they choose the roots it
+         trusts and the proxy it sends through. NODE_USE_SYSTEM_CA below
+         reaches only the Node programs the server starts, not the server.
+         These variables stay because, on a network that inspects TLS, they
+         are how the server trusts that network's root. */
       ...inheritedEnv,
       ...(await loadBundledServerCredentials()),
       // An unpackaged checkout may use the developer-owned GitHub and Linear
@@ -985,9 +993,12 @@ async function startServerUnlocked(opts: { port?: number; readyTimeoutMs?: numbe
          NODE_EXTRA_CA_CERTS from this process's environment before any app
          code runs, so Node programs the server starts (npx-based tools) can't
          take a corporate root from it. This sends them to the operating
-         system's trust store instead, where a corporate root is installed and
-         where nothing can add one without the user's or an admin's consent.
-         A Node version without system-store support ignores it. */
+         system's trust store instead, where IT installs a corporate root. On
+         macOS and Windows, nothing can add a root to that store without the
+         user's or an admin's consent. On Linux, SSL_CERT_FILE and SSL_CERT_DIR
+         in this environment replace the paths Node reads the store from (see
+         system-trust.ts). The Python server itself ignores this variable, and
+         a Node version without system-store support ignores it too. */
       NODE_USE_SYSTEM_CA: '1',
       COWORK_SERVER_PORT: String(serverPort),
       COWORK_LISTEN_PORT: String(serverPort),

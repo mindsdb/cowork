@@ -409,10 +409,14 @@ PR #401); update polling and server updates run in every packaged build.
   with the release key.
 - Past the gate, a UI bundle is taken only when `latest.json` and the bundle's
   own file list carry valid signatures, and it is served only while every
-  cached file still matches that list. The app checks this before every load.
-  A cached bundle that fails is deleted without a prompt, and the window loads
-  the renderer bundled with the shell. The next check downloads a clean copy.
-  The README's "Over-the-Air Updates → Security" section has the details.
+  cached file still matches that list. The app hashes every cached file right
+  before every load of the main window, reloads included. A cached bundle that
+  fails is deleted without a prompt, and the window loads the renderer bundled
+  with the shell. While the window runs, a `file://` handler serves each file
+  of the bundle only when its SHA-256 still matches the list verified at that
+  load. A changed file gets a 404, and the next load serves the bundled
+  renderer. The next update check downloads a clean copy. The README's
+  "Over-the-Air Updates → Security" section has the details.
 
 ## Stream repair: a prod install holding a pre-release
 
