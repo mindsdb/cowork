@@ -395,21 +395,28 @@ describe('custom MCP on web', () => {
     expect(calls.map((call) => call.path)).toEqual(['/connect', '/status?state=st']);
   });
 
-  it("goes by this tab's own status whatever the finish page's request met", async () => {
-    // A finish page's /finish can time out at the relay while auth still finishes the sign-in.
+  it("goes by this tab's own status when the finish page's own request failed at the relay", async () => {
+    // cowork-server's relay can time out while auth still finishes the sign-in.
     const popup = fakePopup();
     vi.spyOn(window, 'open').mockImplementation(() => popup as unknown as Window);
-    answer = (call) => (call.path === '/connect'
-      ? { status: 200, body: { status: 'pending', auth_url: 'https://auth.example.com/authorize', state: 'st', name: NAME } }
-      : { status: 200, body: { status: 'success', label: 'Tracker', server_url: URL_, tools_on: 1, tools_unavailable: false } });
+    answer = (call) => {
+      if (call.path === '/connect') {
+        return { status: 200, body: { status: 'pending', auth_url: 'https://auth.example.com/authorize', state: 'st', name: NAME } };
+      }
+      if (call.path === '/finish') return { status: 502, body: { detail: "auth service unreachable: ReadTimeout('')" } };
+      return { status: 200, body: { status: 'success', label: 'Tracker', server_url: URL_, tools_on: 1, tools_unavailable: false } };
+    };
 
     const connecting = host.customMcpConnect({ label: 'Tracker', url: URL_, confirmedLoginHosts: ['auth.example.com'] });
     await untilSent(1);
     await vi.waitFor(() => expect(popup.location.href).not.toBe(''));
+    // What the finish page does: post the completion, then nudge whatever the answer was.
+    const finished = await host.customMcpFinish('A'.repeat(43));
     nudgeCustomMcpSignIns();
 
+    expect(finished).toMatchObject({ ok: false, code: 'http_502' });
     expect(await connecting).toMatchObject({ ok: true, id: NAME, toolsOn: 1 });
-    expect(calls.map((call) => call.path)).toEqual(['/connect', '/status?state=st']);
+    expect(calls.map((call) => call.path)).toEqual(['/connect', '/finish', '/status?state=st']);
     expect(popup.close).toHaveBeenCalled();
   });
 

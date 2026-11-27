@@ -1313,7 +1313,8 @@ function connectionPath(id: string): string | null {
 const POPUP_BLOCKED = Object.freeze({ ok: false as const, code: 'popup_blocked', reason: '' });
 
 /** The sign-in after a start or reconnect answered `pending`: the login page
- *  in the pop-up, then the status poll. Closes the pop-up whatever the end.
+ *  in the pop-up, then the status poll. Closes the pop-up, unless the sign-in
+ *  failed and the pop-up shows why.
  *  After Cancel the status is read once more: a sign-in the finish page saved
  *  before it is announced, so the connections list shows it as after a success. */
 async function customMcpWebSignIn(signIn: CustomMcpSignIn, started: { auth_url?: unknown; state?: unknown }): Promise<CustomMcpWebAnswer> {

@@ -225,6 +225,21 @@ describe("the finish page's nudge", () => {
     expect(popup.close).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['refused', { status: 'refused', name: 'cm-x', error: 'login_not_yours', detail: 'Someone else.' }, { ok: false, code: 'refused', reason: '' }],
+    ['a long sentence', { status: 'error', name: 'cm-x', error: 'token_failed', detail: 'x'.repeat(900) }, { ok: false, code: 'token_failed', reason: 'x'.repeat(500) }],
+    ['the older record shape', { status: 'error', name: 'cm-x' }, { ok: false, code: 'login_failed', reason: '' }],
+  ])('ends on %s and keeps the pop-up open on the page that says why', async (_case, data, expected) => {
+    const { win, popup } = fakeWindow();
+    const signIn = beginCustomMcpSignIn(win, undefined);
+
+    const ended = await pollCustomMcpSignIn(signIn, async () => ({ ok: true, data }), { sleep: async () => {} });
+    endCustomMcpSignIn(signIn);
+
+    expect(ended).toEqual(expected);
+    expect(popup.close).not.toHaveBeenCalled();
+  });
+
   it('keeps waiting when a nudge finds its own sign-in still pending', async () => {
     const { win } = fakeWindow();
     const signIn = beginCustomMcpSignIn(win, undefined);

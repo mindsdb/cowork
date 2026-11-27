@@ -1,5 +1,5 @@
 // The web half of adding a custom MCP server by URL: the sign-in pop-up, the
-// finish page's report, the status poll, and reading cowork-server's answers
+// finish page's nudge, the status poll, and reading cowork-server's answers
 // into the shapes the desktop screens already use. No imports, so
 // platform/host.ts can load it statically and open the pop-up inside the
 // click, before its first await.
