@@ -29,6 +29,7 @@ vi.mock('./workspace/TextSelectionComment', () => ({
 }));
 
 import { ArtifactViewerBody } from './ArtifactViewerBody';
+import { host } from '../../../platform/host';
 
 function renderBody(
   mode, previewOverrides = {}, workspaceOverrides = {}, stats = undefined, reviewOverrides = {}, layers = null,
@@ -399,5 +400,69 @@ describe('ArtifactViewerBody side panel', () => {
   it('shows no panel on the plain preview', () => {
     render(renderBody('preview'));
     expect(screen.queryByTestId('viewer-side-panel')).toBeNull();
+  });
+});
+
+describe('ArtifactViewerBody published app preview', () => {
+  const PAGE = 'https://f5h8n2w6-staging.mindshub.co/_t/v1.p.s/';
+  const PUBLISHED = 'https://view.staging.mindshub.ai/a/k3m7q2xwp6n4tahd5rzc2bvy7e/';
+
+  it("gives the app's frame what the published page's frame has", () => {
+    render(renderBody('preview', { kind: 'published', url: PAGE }));
+    const frame = screen.getByTitle('Deck preview');
+    expect(frame.getAttribute('sandbox').split(' ')).toEqual([
+      'allow-scripts', 'allow-same-origin', 'allow-forms', 'allow-popups',
+      'allow-popups-to-escape-sandbox', 'allow-modals', 'allow-downloads',
+    ]);
+    expect(frame.getAttribute('allow')).toBe('fullscreen; clipboard-write; autoplay');
+  });
+
+  it('gives other previews no allow attribute and their old sandbox', () => {
+    render(renderBody('preview', { kind: 'static' }));
+    const frame = screen.getByTitle('Deck preview');
+    expect(frame.getAttribute('allow')).toBeNull();
+    expect(frame.getAttribute('sandbox')).toBe('allow-scripts allow-popups allow-forms allow-modals');
+  });
+
+  it('offers a reload and the published page when the preview may load later', () => {
+    const openExternal = vi.spyOn(host, 'openExternal').mockImplementation(() => {});
+    const onReload = vi.fn();
+    render(renderBody('preview', {
+      error: "The app's preview couldn't load. Try again in a moment.",
+      publishedFailure: { reason: 'retry', url: PUBLISHED },
+      onReload,
+    }));
+    expect(screen.getByText("The app's preview couldn't load. Try again in a moment.")).toBeInTheDocument();
+    screen.getByRole('button', { name: /Reload preview/ }).click();
+    expect(onReload).toHaveBeenCalledOnce();
+    screen.getByRole('button', { name: /Open the published page/ }).click();
+    expect(openExternal).toHaveBeenCalledWith(PUBLISHED);
+    openExternal.mockRestore();
+  });
+
+  it('offers only the published page when a reload would not help', () => {
+    render(renderBody('preview', {
+      error: "You don't have access to this app's published page.",
+      publishedFailure: { reason: 'no_access', url: PUBLISHED },
+    }));
+    expect(screen.queryByRole('button', { name: /Reload preview/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Open the published page/ })).toBeInTheDocument();
+  });
+
+  it('covers the frame with a reload once the session has ended, and takes the frame out of input', () => {
+    const onReload = vi.fn();
+    render(renderBody('preview', { kind: 'published', url: PAGE, sessionEnded: true, onReload }));
+    expect(screen.getByText("This preview's session has ended. Reload to keep using the app.")).toBeInTheDocument();
+    expect(screen.getByTestId('published-session-ended')).toBeInTheDocument();
+    expect(screen.getByTitle('Deck preview').hasAttribute('inert')).toBe(true);
+    const reload = screen.getByRole('button', { name: /Reload preview/ });
+    expect(document.activeElement).toBe(reload);
+    reload.click();
+    expect(onReload).toHaveBeenCalledOnce();
+  });
+
+  it('leaves the frame live while the session runs', () => {
+    render(renderBody('preview', { kind: 'published', url: PAGE, sessionEnded: false }));
+    expect(screen.getByTitle('Deck preview').hasAttribute('inert')).toBe(false);
   });
 });

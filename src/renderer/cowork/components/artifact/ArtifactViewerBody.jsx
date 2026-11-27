@@ -1,3 +1,5 @@
+import { PublishedPreviewNotice, PublishedSessionEnded } from './PublishedPreviewNotice';
+import { PUBLISHED_FRAME_ALLOW, PUBLISHED_FRAME_SANDBOX } from './htmlPreviewSource';
 import { useEffect, useState } from 'react';
 import Ico from '../Icons';
 import { Button, Spinner } from '../ui';
@@ -128,6 +130,10 @@ export function ArtifactViewerBody({
     iframeReady,
     setIframeReady,
     onReload,
+    // A published app's preview: why it has none, and whether its token is
+    // past the viewer's deadline.
+    publishedFailure = null,
+    sessionEnded = false,
     reloadPhase = 'idle',
   } = preview;
   const {
@@ -208,9 +214,13 @@ export function ArtifactViewerBody({
   ) : null;
 
   const previewContent = err ? (
-    <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 28 }}>
-      <div style={{ color: 'var(--danger)', fontSize: 13, textAlign: 'center', maxWidth: 460, fontFamily: FONT_BODY }}>{err}</div>
-    </div>
+    publishedFailure ? (
+      <PublishedPreviewNotice message={err} reason={publishedFailure.reason} url={publishedFailure.url} onReload={onReload} />
+    ) : (
+      <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', padding: 28 }}>
+        <div style={{ color: 'var(--danger)', fontSize: 13, textAlign: 'center', maxWidth: 460, fontFamily: FONT_BODY }}>{err}</div>
+      </div>
+    )
   ) : liveApp ? (
     <LiveAppPanel {...liveApp} />
   ) : documentPreview ? (
@@ -285,11 +295,17 @@ export function ArtifactViewerBody({
           srcDoc={previewDoc || undefined}
           onLoad={() => { setIframeReady(true); layer.onIframeLoad(); }}
           // A local proxy and a published app are origins of their own, so
-          // allow-same-origin keeps theirs (never Cowork's): a published app's
-          // page needs it for its viewer session.
-          sandbox={previewKind === 'proxy' || previewKind === 'published'
-            ? 'allow-scripts allow-same-origin allow-popups allow-forms allow-modals'
-            : 'allow-scripts allow-popups allow-forms allow-modals'}
+          // allow-same-origin keeps theirs, never Cowork's. A published app
+          // gets what the published page's frame has.
+          sandbox={previewKind === 'published'
+            ? PUBLISHED_FRAME_SANDBOX
+            : previewKind === 'proxy'
+              ? 'allow-scripts allow-same-origin allow-popups allow-forms allow-modals'
+              : 'allow-scripts allow-popups allow-forms allow-modals'}
+          allow={previewKind === 'published' ? PUBLISHED_FRAME_ALLOW : undefined}
+          // Past the deadline the app's frame takes no input at all: the
+          // overlay stops the pointer, inert stops keys and Tab.
+          inert={sessionEnded && previewKind === 'published'}
           style={{
             width: '100%', height: '100%', border: 0, background: '#fff',
             opacity: iframeReady ? 1 : 0, transition: 'opacity var(--dur-layout) ease',
@@ -299,6 +315,7 @@ export function ArtifactViewerBody({
           }}
         />
       )}
+      {sessionEnded && previewKind === 'published' && <PublishedSessionEnded onReload={onReload} />}
       {/* Under the reload cover the page reloads unseen: no placeholder
           flashes in between, the cover itself is the wait. */}
       {(loading || !(previewUrl || previewDoc) || !iframeReady) && reloadPhase === 'idle' && <PreviewPlaceholder />}
