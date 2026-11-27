@@ -1,17 +1,17 @@
 // AccessChooser — the "Who can access your app" picker.
 //
-// One controlled component shared by every publish surface (the viewer's
-// inline publish popover and the Artifacts grid dialog) so the access logic,
-// and its validation, lives in exactly one place. Built on Base UI's
-// RadioGroup/Radio for real radiogroup semantics + arrow-key navigation;
-// skinned with the app's `--accent` / `--surface` / `--line` tokens.
+// One controlled component for every publish surface (the viewer's Share
+// menu, which the Artifacts page and the chat card open too: ENG-4687), so
+// the access logic, and its validation, lives in exactly one place. The
+// chosen access is a card that opens the others in a dropdown; skinned with
+// the app's `--accent` / `--surface` / `--line` tokens.
 //
 // The choices, private → public (AUDIENCE_CHOICE, the same values a skill's
 // audience uses): Only me, Everyone at ‹org› (sharing in MindsHub mode
 // only), Specific teams and people (or, without it, Specific people by
 // email), Password protected, Public, and Public website (MindsHub mode,
-// where the caller offers it: `website`). "Specific …" unfolds its recipient
-// field right under its own card.
+// where the caller offers it: `website`). The chosen one's field (the
+// password, the recipients) unfolds under the card.
 //
 // Controlled via a single `value` draft + `onChange`:
 //   const [draft, setDraft] = useState(accessDraftFromArtifact(artifact));
@@ -339,13 +339,13 @@ const DEFAULT_MODES = SHARED_TOKEN_PUBLISH ? SHARED_TOKEN_MODES : [AUDIENCE_CHOI
 // no "Everyone", and "Specific people" takes emails only. Without
 // `canShareArtifactsOrg` "Everyone" is grayed with the role hint, or with
 // "Couldn't reach MindsHub" while MindsHub couldn't be asked.
-// `layout`: 'list' shows every option as a card at once (the first share);
-// 'dropdown' shows the chosen one as a card that opens the others in a
-// dropdown, which closes on a pick (changing a published artifact's access).
-// With 'dropdown', `showEditor` false leaves out the field the choice unfolds
-// (the password, the people), for a card that only shows and switches, and
-// `chosenDesc` replaces the chosen option's line on the card (who is on a
-// list, rather than what a list is).
+// The chosen access shows as a card that opens the others in a dropdown,
+// which closes on a pick: the same control for the first share and for a
+// change (ENG-4687; the first share's list of every option is gone).
+// `showEditor` false leaves out the field the choice unfolds (the password,
+// the people), for a card that only shows and switches, and `chosenDesc`
+// replaces the chosen option's line on the card (who is on a list, rather
+// than what a list is).
 // `website` offers "Public website" (the caller decides: MindsHub mode, the
 // deployment allows it, a static artifact). A draft that already is a website
 // lists the card whatever `website` says, so a published website still shows
@@ -356,7 +356,8 @@ export function AccessChooser({
   modes = DEFAULT_MODES,
   onSubmit,
   sharing = null,
-  layout = 'list',
+  // The chooser's accessible name; "Who can access your app" by default.
+  ariaLabel,
   showEditor = true,
   chosenDesc = '',
   website = false,
@@ -424,7 +425,7 @@ export function AccessChooser({
       : { value: AUDIENCE_CHOICE.SPECIFIC, icon: specificPeople.icon(16), title: specificPeople.title, desc: specificPeople.desc }),
     modes.includes(AUDIENCE_CHOICE.PASSWORD) && {
       value: AUDIENCE_CHOICE.PASSWORD, icon: Ico.lock(16), title: ACCESS_LABELS.password.title, desc: ACCESS_LABELS.password.desc,
-      editor: draft.mode === AUDIENCE_CHOICE.PASSWORD ? passwordField : null, editorTestId: 'password-field',
+      editor: draft.mode === AUDIENCE_CHOICE.PASSWORD ? passwordField : null,
     },
     modes.includes(AUDIENCE_CHOICE.PUBLIC) && { value: AUDIENCE_CHOICE.PUBLIC, icon: Ico.globe(16), title: ACCESS_LABELS.public.title, desc: ACCESS_LABELS.public.desc },
     modes.includes(AUDIENCE_CHOICE.WEBSITE) && (website || draft.mode === AUDIENCE_CHOICE.WEBSITE) && {
@@ -432,29 +433,17 @@ export function AccessChooser({
     },
   ].filter(Boolean);
 
-  if (layout === 'dropdown') {
-    return (
-      <AccessDropdown
-        options={options}
-        value={draft.mode}
-        onValueChange={(m) => set({ mode: m })}
-        chosenDesc={chosenDesc}
-        editor={showEditor ? (
-          options.find((option) => option.value === draft.mode)?.editor
-          ?? (draft.mode === AUDIENCE_CHOICE.SPECIFIC ? <RecipientField {...recipients} /> : null)
-        ) : null}
-      />
-    );
-  }
-
   return (
-    <AudiencePanel
-      ariaLabel={t('publish.whoCanAccess')}
+    <AccessDropdown
+      options={options}
       value={draft.mode}
       onValueChange={(m) => set({ mode: m })}
-      options={options}
-      specificValue={AUDIENCE_CHOICE.SPECIFIC}
-      recipients={recipients}
+      chosenDesc={chosenDesc}
+      ariaLabel={ariaLabel ?? t('publish.whoCanAccess')}
+      editor={showEditor ? (
+        options.find((option) => option.value === draft.mode)?.editor
+        ?? (draft.mode === AUDIENCE_CHOICE.SPECIFIC ? <RecipientField {...recipients} /> : null)
+      ) : null}
     />
   );
 }
@@ -463,8 +452,9 @@ export function AccessChooser({
    options are the same cards, as radios, with the same lock hints; picking
    one closes it. The field the choice needs (password, people) sits under
    the card. */
-function AccessDropdown({ options, value, onValueChange, editor, chosenDesc = '' }) {
+function AccessDropdown({ options, value, onValueChange, editor, chosenDesc = '', ariaLabel }) {
   const { t } = useTranslation('artifacts');
+  const whoCanAccess = ariaLabel ?? t('publish.whoCanAccess');
   const [open, setOpen] = useState(false);
   // Arrow keys move through the options without picking: the radio group
   // checks each one it lands on, and a pick closes the dropdown (and, on the
@@ -491,14 +481,14 @@ function AccessDropdown({ options, value, onValueChange, editor, chosenDesc = ''
             [transition:border-color_var(--dur-hover)_ease,box-shadow_var(--dur-hover)_ease]
             hover:border-line-2 focus-visible:border-accent focus-visible:shadow-[var(--ring)]
             data-[popup-open]:border-accent"
-          aria-label={chosen ? `${t('publish.whoCanAccess')}: ${chosen.title}` : t('publish.whoCanAccess')}
+          aria-label={chosen ? `${whoCanAccess}: ${chosen.title}` : whoCanAccess}
           data-testid="access-dropdown"
         >
           <span className="inline-grid h-[30px] w-[30px] shrink-0 place-items-center rounded-card-row border border-solid border-line bg-surface text-ink-3">
             {chosen?.icon}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13px] font-semibold text-ink">{chosen?.title || t('publish.whoCanAccess')}</span>
+            <span className="block truncate text-[13px] font-semibold text-ink">{chosen?.title || whoCanAccess}</span>
             {(chosenDesc || chosen?.desc) && (
               <span className="mt-px block truncate text-[11.5px] text-ink-3">{chosenDesc || chosen.desc}</span>
             )}
@@ -523,7 +513,7 @@ function AccessDropdown({ options, value, onValueChange, editor, chosenDesc = ''
                 data-[open]:animate-scale-in data-[closed]:animate-scale-out"
             >
               <AudiencePanel
-                ariaLabel={t('publish.whoCanAccess')}
+                ariaLabel={whoCanAccess}
                 value={highlighted ?? value}
                 onValueChange={(m) => {
                   if (keyRef.current.startsWith('Arrow')) setHighlighted(m);

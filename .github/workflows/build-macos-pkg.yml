@@ -267,6 +267,21 @@ jobs:
             VERSION=$(echo "$JSON" | jq -r '[.releases | to_entries[] | select(.key | test("^[0-9]+(\\.[0-9]+)*(rc[0-9]+)?$")) | select((.value | length) > 0) | select(any(.value[]; .yanked != true)) | {v: .key, t: ([.value[].upload_time_iso_8601] | max)}] | sort_by(.t) | last | .v')
           fi
           test -n "$VERSION" && test "$VERSION" != "null"
+          # A desktop built from this commit refuses every server that does not
+          # read the launch hand-off, so the floor must be one that does: its
+          # cowork/app_secret.py carries this commit's HANDOFF_PROTOCOL
+          # (src/shared/server-launch.ts). Fail before baking a floor every
+          # install would refuse; a rerun passes once such a release is on PyPI.
+          PROTOCOL=$(sed -n 's/^export const HANDOFF_PROTOCOL = \([0-9][0-9]*\);.*/\1/p' src/shared/server-launch.ts)
+          [ -n "$PROTOCOL" ] || { echo "::error::Could not read HANDOFF_PROTOCOL from src/shared/server-launch.ts."; exit 1; }
+          WHEEL_URL=$(echo "$JSON" | jq -r --arg v "$VERSION" '[.releases[$v][]? | select(.packagetype == "bdist_wheel" and .yanked != true) | .url] | first // empty')
+          [ -n "$WHEEL_URL" ] || { echo "::error::PyPI lists no wheel for cowork-server $VERSION."; exit 1; }
+          WHEEL="$RUNNER_TEMP/cowork-server-$VERSION.whl"
+          curl -fsSL --retry 3 -o "$WHEEL" "$WHEEL_URL"
+          if ! python3 -c 'import re, sys, zipfile; z = zipfile.ZipFile(sys.argv[1]); n = "cowork/app_secret.py"; t = z.read(n).decode() if n in z.namelist() else ""; sys.exit(0 if re.search(r"^HANDOFF_PROTOCOL\s*(?::[^=\n]*)?=\s*%s\b" % sys.argv[2], t, re.M) else 1)' "$WHEEL" "$PROTOCOL"; then
+            echo "::error::cowork-server $VERSION, the floor this build would bake, does not read the launch hand-off: its cowork/app_secret.py lacks 'HANDOFF_PROTOCOL = $PROTOCOL'. Rerun once a cowork-server release that does is on PyPI."
+            exit 1
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Baking cowork-server floor $VERSION (build_kind=$BUILD_KIND)"
 

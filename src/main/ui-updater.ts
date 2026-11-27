@@ -5,20 +5,28 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { parseUiManifest, otaUiEnabled, otaCacheIsFresh, uiUpdateIsNewer, uiServerCompatSkipReason, type UIManifest } from './update-logic';
+import {
+  readSignedBundleManifest,
+  readVerifiedBundleFile,
+  trustedUiPublicKeys,
+  verifyBundleFiles,
+  verifyBundleFolder,
+  verifyLatestSignature,
+  type BundleFileRead,
+  type BundleManifest,
+  type FolderRefusal,
+  type LatestRefusal,
+  type SignedUiLatest,
+  type UiTrustedKeys,
+} from './ui-signature';
 import { parseCalVer } from '../shared/version';
 import { buildKindStrict, coworkHome, buildKind } from './cowork-home';
 import { getAppDisplayVersion } from './server-source';
 import { fetchServerVersions } from './server-process';
 import { retryOnTransientLock } from './fs-retry';
+import { isPackagedRun } from './launch-guard';
 
 export type { UIManifest };
-
-// Cache-metadata schema. Bumping this invalidates every prior cache slot
-// (readSlotVersion returns null), which is exactly what we want if the on-disk
-// format ever changes — a legacy slot must never be served blindly. Bumped to
-// 2 when the slot began persisting `minServerVersion`, so slot-1 caches (which
-// carried no floor) are re-derived rather than served without their constraint.
-const CACHE_META_SCHEMA = 2;
 
 // The exact slot VERSION whose server-compat floor has been verified satisfied
 // this session — either at apply time (against the just-updated server) or by
@@ -42,6 +50,46 @@ function serializeSwap<T>(fn: () => Promise<T>): Promise<T> {
   _swapChain = run.then(() => undefined, () => undefined);
   return run;
 }
+
+/* The keys a page update may be signed with. A packaged build trusts the release key only; an
+   unpackaged run (npm run dev, the e2e suites) also trusts COWORK_OTA_TEST_PUBLIC_KEY. A run
+   counts as unpackaged only when isPackagedRun says so, which also needs Electron's default app
+   to have loaded it: `app.isPackaged` alone is false for a copy of the signed binary renamed to
+   `electron`. */
+function trustedKeys(): UiTrustedKeys {
+  const packaged = isPackagedRun({ isPackaged: app.isPackaged, defaultApp: process.defaultApp });
+  return trustedUiPublicKeys({ isPackaged: packaged, testPublicKey: process.env.COWORK_OTA_TEST_PUBLIC_KEY });
+}
+
+/* One fixed diagnostic event per refusal, so a log line names why a bundle or a latest.json was
+   refused. `cached` is the slot the window would load; `downloaded` is a freshly extracted one. */
+const FOLDER_REFUSAL_SLUG: Record<FolderRefusal, string> = {
+  'manifest-missing': 'manifest_missing',
+  'signature-missing': 'signature_missing',
+  'malformed-signature': 'malformed_signature',
+  'bad-signature': 'bad_signature',
+  'malformed-document': 'malformed_manifest',
+  'wrong-kind': 'wrong_kind',
+  'unknown-schema': 'unknown_schema',
+  'non-regular-entry': 'non_regular_entry',
+  'missing-file': 'missing_file',
+  'extra-file': 'extra_file',
+  'hash-mismatch': 'hash_mismatch',
+  unreadable: 'unreadable',
+};
+
+function folderRefusalEvent(slot: 'cached' | 'downloaded', reason: FolderRefusal): string {
+  return `ui_updater_${slot}_ui_refused_${FOLDER_REFUSAL_SLUG[reason]}`;
+}
+
+const LATEST_REFUSAL_EVENT: Record<LatestRefusal, string> = {
+  unsigned: 'ui_updater_latest_json_unsigned_no_update',
+  'malformed-signature': 'ui_updater_latest_json_malformed_signature_no_update',
+  'bad-signature': 'ui_updater_latest_json_bad_signature_no_update',
+  'malformed-document': 'ui_updater_latest_json_malformed_signed_fields_no_update',
+  'wrong-kind': 'ui_updater_latest_json_wrong_kind_no_update',
+  'unknown-schema': 'ui_updater_latest_json_unknown_schema_no_update',
+};
 
 // Whether UI OTA hot-updates run in this build. Gated by build channel + env
 // (see otaUiEnabled) instead of a hardcoded constant (ENG-670): ON for prod
@@ -122,41 +170,87 @@ function getPreviousDir(): string {
   return path.join(getCacheDir(), 'previous');
 }
 
-// Per-slot metadata lives INSIDE the slot dir so it travels with the slot on a
-// rename (activate/rollback), unlike a cache-root file that would describe the
-// wrong slot after a rotation.
-function slotMetaFile(dir: string): string {
-  return path.join(dir, '.ota-meta.json');
-}
-
 // Marker for a version we activated and then rolled back, so the boot/poll
 // path won't re-download and re-activate the same failing bundle forever.
 function getRejectedFile(): string {
   return path.join(getCacheDir(), 'rejected.json');
 }
 
-interface SlotMeta {
-  version: string;
-  minServerVersion?: string; // persisted server-compat floor (CalVer), re-enforced at serve time
+/* A cache slot whose files passed the folder check against its signed manifest. */
+interface VerifiedSlot {
+  root: string;
+  manifest: BundleManifest;
 }
 
-/** Metadata recorded inside a cache slot, or null if the slot has no valid
- *  provenance — missing, wrong schema, or a legacy pre-gate cache. A slot
- *  without provenance is never trusted or served. */
-function readSlotMeta(dir: string): SlotMeta | null {
+/* The slot the window last loaded from the cache, with the manifest the folder check verified
+   right before that load; readServedUiFile reads through it. Null while the bundled renderer is
+   what the window loaded. */
+let _served: VerifiedSlot | null = null;
+
+/* True unless lstat says the slot is absent. Any other error counts as present, so the folder
+   check runs and reports the slot as unreadable rather than as missing. */
+function slotPresent(dir: string): boolean {
   try {
-    const data = JSON.parse(fs.readFileSync(slotMetaFile(dir), 'utf-8'));
-    if (data?.schema !== CACHE_META_SCHEMA || typeof data.version !== 'string' || !data.version) return null;
-    const meta: SlotMeta = { version: data.version };
-    if (typeof data.minServerVersion === 'string' && data.minServerVersion) meta.minServerVersion = data.minServerVersion;
-    return meta;
-  } catch {
-    return null;
+    fs.lstatSync(dir);
+    return true;
+  } catch (err) {
+    const code = err instanceof Error && 'code' in err ? err.code : undefined;
+    return code !== 'ENOENT' && code !== 'ENOTDIR';
   }
 }
 
-function readSlotVersion(dir: string): string | null {
-  return readSlotMeta(dir)?.version ?? null;
+/* The signed manifest of the `current` slot, checked for its signature but without hashing the
+   files. Enough to know which version the slot holds (the newer-than, quarantine and server-floor
+   decisions), never enough to serve it: checkServableSlot does the full check for that. */
+function readCurrentSignedManifest(): BundleManifest | null {
+  const root = getCurrentDir();
+  if (!slotPresent(root)) return null;
+  const signed = readSignedBundleManifest(root, trustedKeys());
+  return signed.ok ? signed.manifest : null;
+}
+
+/* Logs why the cached slot was refused and deletes it, so the next update check downloads a clean
+   bundle. A slot the check could not read stays: that says nothing about its contents. */
+function refuseCachedSlot(root: string, reason: FolderRefusal): null {
+  diagnostic("main.ui-updater", "WARNING", folderRefusalEvent('cached', reason));
+  if (reason === 'unreadable') return null;
+  try {
+    rmDir(root);
+  } catch (err) {
+    diagnostic("main.ui-updater", "ERROR", "ui_updater_refused_cache_slot_could_not_be_deleted", err);
+  }
+  return null;
+}
+
+/* Whether a bundle with this verified manifest may be served now: it has an index.html, it is
+   newer than the bundled renderer, and a declared server floor has been verified for this exact
+   version this session. */
+function manifestIsServable(manifest: BundleManifest): boolean {
+  if (!manifest.files.has('index.html')) return false;
+  if (!otaCacheIsFresh(manifest.version, getAppDisplayVersion())) return false;
+  // Fail closed: a cache with a server-compat floor is served only once THIS
+  // version has been verified against the running server (at apply time or by
+  // verifyServedUiCompat). At boot the server may not be up yet, so a
+  // constrained cache serves bundled until proven safe.
+  if (manifest.minServerVersion && _verifiedCompatVersion !== manifest.version) return false;
+  return true;
+}
+
+/* The `current` slot when it may be served right now, else null. Every call checks the signed
+   manifest, then the gates above, and then, for a slot it would serve, walks the folder and
+   hashes every file; nothing is cached between calls. A slot that fails the signature or the
+   files is deleted. Synchronous, because the boot load in createWindow is; the file hashing is
+   nearly all of its cost. */
+function checkServableSlot(): VerifiedSlot | null {
+  if (!otaEnabled()) return null;
+  const root = getCurrentDir();
+  if (!slotPresent(root)) return null;
+  const signed = readSignedBundleManifest(root, trustedKeys());
+  if (!signed.ok) return refuseCachedSlot(root, signed.reason);
+  if (!manifestIsServable(signed.manifest)) return null;
+  const files = verifyBundleFiles(root, signed.manifest);
+  if (!files.ok) return refuseCachedSlot(root, files.reason);
+  return { root, manifest: signed.manifest };
 }
 
 function getRejectedVersion(): string | null {
@@ -185,31 +279,47 @@ function getBundledRendererPath(): string {
   return path.join(__dirname, '..', '..', 'renderer', 'index.html');
 }
 
-/** Returns the index.html path to load — an activated OTA bundle when we can
- *  prove it is safe to serve (see isServingOta), otherwise the app-bundled
- *  renderer shipped with the app. */
-export function getRendererPath(): string {
-  return isServingOta() ? path.join(getCurrentDir(), 'index.html') : getBundledRendererPath();
+/** What the window loads next: the activated OTA bundle, or the app-bundled renderer. */
+export type RendererLoad =
+  | { kind: 'ota'; path: string; version: string }
+  | { kind: 'bundled'; path: string };
+
+/** Decides what the window loads next and records the decision for
+ *  readServedUiFile. The OTA bundle is served only when ALL hold: OTA is
+ *  enabled for this build channel; the `current` slot passes the folder check
+ *  run now (signed manifest, exact file set, every hash); its signed version is
+ *  newer than the app-bundled renderer (so a fresh install or a shell upgrade
+ *  can never downgrade the UI); and a declared server floor is verified.
+ *  Otherwise the always-safe bundled renderer. Call it right before each load. */
+export function resolveRendererLoad(): RendererLoad {
+  const slot = checkServableSlot();
+  _served = slot;
+  if (!slot) return { kind: 'bundled', path: getBundledRendererPath() };
+  return { kind: 'ota', path: path.join(slot.root, 'index.html'), version: slot.manifest.version };
 }
 
-/** True when getRendererPath() would serve an activated OTA bundle. The bundle
- *  is only served when ALL hold: OTA is enabled for this build channel; the
- *  `current` slot carries valid provenance; its index.html exists; and its
- *  version is genuinely newer than the app-bundled renderer (so a fresh
- *  install, a shell upgrade, or a legacy pre-gate cache can never downgrade the
- *  UI). Otherwise we fall back to the always-safe bundled renderer. */
+/** The index.html path to load next (see resolveRendererLoad). */
+export function getRendererPath(): string {
+  return resolveRendererLoad().path;
+}
+
+/** True when the next load would serve the activated OTA bundle. Runs the same
+ *  folder check as resolveRendererLoad, without recording a load. */
 export function isServingOta(): boolean {
-  if (!otaEnabled()) return false;
-  const meta = readSlotMeta(getCurrentDir());
-  if (!meta) return false;
-  if (!fs.existsSync(path.join(getCurrentDir(), 'index.html'))) return false;
-  if (!otaCacheIsFresh(meta.version, getAppDisplayVersion())) return false;
-  // Fail closed: a cache with a persisted server-compat floor is served only
-  // once THIS slot's version has been verified against the running server (at
-  // apply time or by verifyServedUiCompat). At boot the server may not be up
-  // yet, so a constrained cache serves bundled until proven safe.
-  if (meta.minServerVersion && _verifiedCompatVersion !== meta.version) return false;
-  return true;
+  return checkServableSlot() !== null;
+}
+
+/** The result of readServedUiFile: the file's bytes, or why they were refused. */
+export type ServedUiFileRead = BundleFileRead | { ok: false; reason: 'not-serving' };
+
+/** Reads one file of the page update the window loaded, by its path relative
+ *  to the slot. Returns the bytes only when their SHA-256 matches the manifest
+ *  that was verified right before that load and is held in memory, so a
+ *  manifest rewritten on disk afterwards changes nothing. Refuses everything
+ *  while the bundled renderer is loaded. */
+export function readServedUiFile(relativePath: string): ServedUiFileRead {
+  if (!_served) return { ok: false, reason: 'not-serving' };
+  return readVerifiedBundleFile(_served.root, _served.manifest, relativePath);
 }
 
 /** Always returns the app-bundled renderer, ignoring any OTA cache. */
@@ -217,10 +327,11 @@ export function getBundledPath(): string {
   return getBundledRendererPath();
 }
 
-/** The OTA UI version we are actually serving, or null when serving the
- *  bundled renderer (so version display reflects what's really running). */
+/** The OTA UI version the next load would serve, from its verified manifest,
+ *  or null when that is the bundled renderer (so version display reflects
+ *  what's really running). */
 export function getCachedVersion(): string | null {
-  return isServingOta() ? readSlotVersion(getCurrentDir()) : null;
+  return checkServableSlot()?.manifest.version ?? null;
 }
 
 /** Quick connectivity check — can we reach the manifest host? */
@@ -233,6 +344,9 @@ export async function hasInternet(): Promise<boolean> {
   }
 }
 
+/** latest.json as published, unverified. Only the unsigned, advisory
+ *  `shellVersion` is read from it directly; a UI update goes through
+ *  fetchVerifiedRelease. */
 export async function fetchManifest(): Promise<UIManifest | null> {
   try {
     const res = await httpsGet(getManifestUrl());
@@ -243,14 +357,36 @@ export async function fetchManifest(): Promise<UIManifest | null> {
   }
 }
 
+/* The release latest.json offers: its signed fields, plus the unsigned download URL (the signed
+   hash covers what it points to). */
+interface VerifiedUiRelease extends SignedUiLatest {
+  url: string;
+}
+
+type ReleaseFetch = { ok: true; release: VerifiedUiRelease } | { ok: false; reason: 'unreachable' | LatestRefusal };
+
+/* latest.json with its signature verified. A manifest that could not be fetched or parsed is
+   'unreachable'; one whose signed fields are missing or do not verify offers no update and logs
+   why. */
+async function fetchVerifiedRelease(): Promise<ReleaseFetch> {
+  const manifest = await fetchManifest();
+  if (!manifest) return { ok: false, reason: 'unreachable' };
+  const check = verifyLatestSignature(manifest, trustedKeys());
+  if (!check.ok) {
+    diagnostic("main.ui-updater", "WARNING", LATEST_REFUSAL_EVENT[check.reason]);
+    return check;
+  }
+  return { ok: true, release: { ...check.latest, url: manifest.url } };
+}
+
 function sha256(buf: Buffer): string {
   return crypto.createHash('sha256').update(buf).digest('hex');
 }
 
+/* Removes a slot, or a symlink standing where a slot should be (rmSync removes the link, not
+   its target). `force` makes an absent path a no-op. */
 function rmDir(dir: string) {
-  if (fs.existsSync(dir)) {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
+  fs.rmSync(dir, { recursive: true, force: true });
 }
 
 // Download caps: per-socket inactivity vs. absolute wall-clock (bounds a
@@ -276,18 +412,21 @@ export async function extractTarGz(buf: Buffer, targetDir: string): Promise<void
   }
 }
 
-/** Download, verify, and stage a new UI bundle. Returns true on success. */
-async function downloadAndStage(manifest: UIManifest): Promise<boolean> {
-  diagnostic("main.ui-updater", "INFO", "ui_updater_downloading_ui", `[ui-updater] downloading UI ${manifest.version}...`);
-  const res = await httpsGet(manifest.url, UI_DOWNLOAD_INACTIVITY_MS, UI_DOWNLOAD_DEADLINE_MS);
+/** Download, verify, and stage a new UI bundle. Returns true on success. The
+ *  tarball must hash to the signed sha256 before it is extracted; the extracted
+ *  folder must then pass the folder check and carry the signed version and
+ *  server floor. Any failure deletes the staging slot. */
+async function downloadAndStage(release: VerifiedUiRelease): Promise<boolean> {
+  diagnostic("main.ui-updater", "INFO", "ui_updater_downloading_ui", `[ui-updater] downloading UI ${release.version}...`);
+  const res = await httpsGet(release.url, UI_DOWNLOAD_INACTIVITY_MS, UI_DOWNLOAD_DEADLINE_MS);
   if (res.statusCode !== 200) {
     diagnostic("main.ui-updater", "ERROR", "ui_updater_download_failed_http", { status: res.statusCode });
     return false;
   }
 
   const hash = sha256(res.body);
-  if (hash !== manifest.sha256) {
-    diagnostic("main.ui-updater", "ERROR", "ui_updater_sha_256_mismatch_expected_got", `[ui-updater] SHA-256 mismatch: expected ${manifest.sha256}, got ${hash}`);
+  if (hash !== release.sha256) {
+    diagnostic("main.ui-updater", "ERROR", "ui_updater_sha_256_mismatch_expected_got", `[ui-updater] SHA-256 mismatch: expected ${release.sha256}, got ${hash}`);
     return false;
   }
 
@@ -301,8 +440,18 @@ async function downloadAndStage(manifest: UIManifest): Promise<boolean> {
     return false;
   }
 
-  // Verify index.html exists in the extracted bundle
-  if (!fs.existsSync(path.join(staging, 'index.html'))) {
+  const check = verifyBundleFolder(staging, trustedKeys());
+  if (!check.ok) {
+    diagnostic("main.ui-updater", "ERROR", folderRefusalEvent('downloaded', check.reason));
+    rmDir(staging);
+    return false;
+  }
+  if (check.manifest.version !== release.version || check.manifest.minServerVersion !== release.minServerVersion) {
+    diagnostic("main.ui-updater", "ERROR", "ui_updater_downloaded_ui_refused_manifest_differs_from_signed_release");
+    rmDir(staging);
+    return false;
+  }
+  if (!check.manifest.files.has('index.html')) {
     diagnostic("main.ui-updater", "ERROR", "ui_updater_extracted_bundle_missing_index_html", '[ui-updater] extracted bundle missing index.html');
     rmDir(staging);
     return false;
@@ -315,18 +464,13 @@ async function downloadAndStage(manifest: UIManifest): Promise<boolean> {
  *  The rm/rename steps race Windows locks (renderer/AV holding a file), so each
  *  retries. And the swap is multi-step: if `staging → current` fails after
  *  `current` was moved aside, the app would be left with NO active slot — so on
- *  a mid-swap failure we put `current` back before rethrowing. */
-async function activateStaged(version: string, minServerVersion?: string): Promise<void> {
+ *  a mid-swap failure we put `current` back before rethrowing. The slot's signed
+ *  manifest travels with it, and nothing else is written into it: the folder
+ *  check refuses any file the manifest does not list. */
+async function activateStaged(version: string): Promise<void> {
   const current = getCurrentDir();
   const previous = getPreviousDir();
   const staging = getStagingDir();
-
-  // Stamp provenance INTO the staging dir first, so it travels with the rename
-  // and can never describe the wrong slot. Persist the server-compat floor so
-  // it can be re-enforced when the cache is served on a later boot.
-  const meta: SlotMeta & { schema: number } = { schema: CACHE_META_SCHEMA, version };
-  if (minServerVersion) meta.minServerVersion = minServerVersion;
-  fs.writeFileSync(slotMetaFile(staging), JSON.stringify(meta), 'utf-8');
 
   await retryOnTransientLock(() => rmDir(previous));
   const movedCurrent = fs.existsSync(current);
@@ -353,11 +497,11 @@ async function activateStaged(version: string, minServerVersion?: string): Promi
  *  A safety net on top of the server-first update coupling: reads the running
  *  server version once from /health and delegates the (CalVer) decision to the
  *  pure helper. No constraint / unknown server never blocks. */
-async function serverCompatSkip(manifest: UIManifest): Promise<string | null> {
-  if (!manifest.minServerVersion) return null;
+async function serverCompatSkip(release: VerifiedUiRelease): Promise<string | null> {
+  if (!release.minServerVersion) return null;
   const { server } = await fetchServerVersions().catch(() => ({ server: null }));
-  const reason = uiServerCompatSkipReason({ minServerVersion: manifest.minServerVersion, serverVersion: server });
-  if (reason) diagnostic("main.ui-updater", "INFO", "ui_updater_withholding_ui", `[ui-updater] withholding UI ${manifest.version}: ${reason}`);
+  const reason = uiServerCompatSkipReason({ minServerVersion: release.minServerVersion, serverVersion: server });
+  if (reason) diagnostic("main.ui-updater", "INFO", "ui_updater_withholding_ui", `[ui-updater] withholding UI ${release.version}: ${reason}`);
   return reason;
 }
 
@@ -371,34 +515,40 @@ export async function checkForUIUpdate(): Promise<UpdateCheckResult> {
     return { updateAvailable: false, applied: false };
   }
   warnIfBundledVersionNotCalVer();
-  const manifest = await fetchManifest();
+  const fetched = await fetchVerifiedRelease();
   // fetchManifest() swallows its own network/parse errors to null — that's a
   // genuine "couldn't check" (error: true), not the same as a manifest that
-  // was fetched and simply isn't newer.
-  if (!manifest) return { updateAvailable: false, applied: false, error: true };
+  // was fetched and simply isn't newer. A manifest whose signature is missing
+  // or does not verify is a completed check that offers no update.
+  if (!fetched.ok) {
+    return fetched.reason === 'unreachable'
+      ? { updateAvailable: false, applied: false, error: true }
+      : { updateAvailable: false, applied: false };
+  }
+  const { release } = fetched;
 
   // Quarantine: a version we activated and rolled back stays skipped until the
   // manifest advances to a different version — otherwise every auto-update boot
   // re-downloads, re-activates, and re-fails the same bundle.
   const rejected = getRejectedVersion();
-  if (rejected === manifest.version) {
-    diagnostic("main.ui-updater", "INFO", "ui_updater_skipping_quarantined_after_a_failed_activation", `[ui-updater] skipping ${manifest.version} — quarantined after a failed activation`);
+  if (rejected === release.version) {
+    diagnostic("main.ui-updater", "INFO", "ui_updater_skipping_quarantined_after_a_failed_activation", `[ui-updater] skipping ${release.version} — quarantined after a failed activation`);
     return { updateAvailable: false, applied: false };
   }
   if (rejected) clearRejectedVersion(); // manifest moved on — retry allowed
 
   // Announce only a bundle strictly newer than the effective installed UI (the
-  // newest of the app-bundled renderer and the raw current cache). This stops a
-  // fresh install re-downloading the version it already ships, and blocks a
-  // regressed manifest from downgrading a newer cache.
-  if (!uiUpdateIsNewer(manifest.version, getAppDisplayVersion(), readSlotVersion(getCurrentDir()))) {
+  // newest of the app-bundled renderer and the current cache's signed version).
+  // This stops a fresh install re-downloading the version it already ships,
+  // and blocks a regressed manifest from downgrading a newer cache.
+  if (!uiUpdateIsNewer(release.version, getAppDisplayVersion(), readCurrentSignedManifest()?.version ?? null)) {
     return { updateAvailable: false, applied: false };
   }
 
-  const skippedReason = await serverCompatSkip(manifest);
+  const skippedReason = await serverCompatSkip(release);
   if (skippedReason) return { updateAvailable: false, applied: false, skippedReason };
 
-  return { updateAvailable: true, applied: false, newVersion: manifest.version };
+  return { updateAvailable: true, applied: false, newVersion: release.version };
 }
 
 /**
@@ -435,29 +585,30 @@ async function runApplyUIUpdate(): Promise<boolean> {
   _lastAttemptedVersion = null;
   if (!otaEnabled()) return false;
   warnIfBundledVersionNotCalVer();
-  const manifest = await fetchManifest();
-  if (!manifest) return false;
+  const fetched = await fetchVerifiedRelease();
+  if (!fetched.ok) return false;
+  const { release } = fetched;
 
   const rejected = getRejectedVersion();
-  if (rejected === manifest.version) return false; // quarantined (see checkForUIUpdate)
+  if (rejected === release.version) return false; // quarantined (see checkForUIUpdate)
   if (rejected) clearRejectedVersion();
 
   // Only apply a bundle strictly newer than the effective installed UI (never
   // re-activate the shipped version or downgrade a newer cache).
-  if (!uiUpdateIsNewer(manifest.version, getAppDisplayVersion(), readSlotVersion(getCurrentDir()))) return false;
+  if (!uiUpdateIsNewer(release.version, getAppDisplayVersion(), readCurrentSignedManifest()?.version ?? null)) return false;
 
   // Defense in depth: re-check compat at apply time (the manual apply path
   // forces a UI apply without a fresh checkForUIUpdate).
-  if (await serverCompatSkip(manifest)) return false;
+  if (await serverCompatSkip(release)) return false;
 
-  _lastAttemptedVersion = manifest.version;
-  const ok = await downloadAndStage(manifest);
+  _lastAttemptedVersion = release.version;
+  const ok = await downloadAndStage(release);
   if (!ok) return false;
 
   // If the swap fails after retries it has already restored the prior slot, so
   // treat it as "no update this pass" rather than propagating a torn reload.
   try {
-    await serializeSwap(() => activateStaged(manifest.version, manifest.minServerVersion));
+    await serializeSwap(() => activateStaged(release.version));
   } catch (err) {
     diagnostic("main.ui-updater", "ERROR", "ui_updater_activation_failed_kept_the_existing_ui_slot", '[ui-updater] activation failed — kept the existing UI slot', err);
     return false;
@@ -466,22 +617,25 @@ async function runApplyUIUpdate(): Promise<boolean> {
   // Open the serve-gate for this (compat-verified) slot only on success —
   // otherwise the reload right after activation falls back to bundled and
   // "succeeds" without ever loading the new bundle.
-  _verifiedCompatVersion = manifest.version;
+  _verifiedCompatVersion = release.version;
   return true;
 }
 
 /** Roll back the active OTA bundle: quarantine the version we're leaving (so it
  *  isn't re-activated), restore the previous slot if there is one, else fall
- *  through to the bundled renderer. Provenance travels with each slot, so
- *  getCachedVersion() reflects the restored state. The quarantine is recorded
- *  synchronously (before the first await), so a fire-and-forget caller is safe;
- *  the rm/rename retry the same Windows locks activateStaged guards. */
+ *  through to the bundled renderer. Each slot carries its signed manifest, so
+ *  getCachedVersion() reflects the restored state once it passes the folder
+ *  check. The quarantine is recorded synchronously (before the first await), so
+ *  a fire-and-forget caller is safe; the rm/rename retry the same Windows locks
+ *  activateStaged guards. */
 export async function rollbackUI(): Promise<void> {
   const current = getCurrentDir();
   const previous = getPreviousDir();
 
-  const failed = readSlotVersion(current);
+  const failed = readCurrentSignedManifest()?.version ?? null;
   if (failed) recordRejectedVersion(failed);
+  // The window is leaving the slot, so nothing may be read through it any more.
+  _served = null;
 
   // Quarantine above stays synchronous (before the first await) so a
   // fire-and-forget caller can't re-activate the bad version; the slot shuffle
@@ -508,12 +662,14 @@ export async function rollbackUI(): Promise<void> {
  *   - 'deferred' — incompatible or unverifiable; serve bundled, keep the slot */
 export async function verifyServedUiCompat(): Promise<'none' | 'verified' | 'deferred'> {
   if (!otaEnabled()) return 'none';
-  const meta = readSlotMeta(getCurrentDir());
-  if (!meta) return 'none';
-  if (!meta.minServerVersion) { _verifiedCompatVersion = meta.version; return 'verified'; }
+  // The floor comes from the slot's signed manifest; the load that follows a
+  // 'verified' runs the full folder check before serving it.
+  const manifest = readCurrentSignedManifest();
+  if (!manifest) return 'none';
+  if (!manifest.minServerVersion) { _verifiedCompatVersion = manifest.version; return 'verified'; }
   const { server } = await fetchServerVersions().catch(() => ({ server: null }));
-  const reason = uiServerCompatSkipReason({ minServerVersion: meta.minServerVersion, serverVersion: server });
-  if (!reason) { _verifiedCompatVersion = meta.version; return 'verified'; }
+  const reason = uiServerCompatSkipReason({ minServerVersion: manifest.minServerVersion, serverVersion: server });
+  if (!reason) { _verifiedCompatVersion = manifest.version; return 'verified'; }
   diagnostic("main.ui-updater", "WARNING", "ui_updater_active_ota_cache_not_served_this_session", `[ui-updater] active OTA cache not served this session: ${reason}`);
   return 'deferred';
 }

@@ -766,6 +766,39 @@ describe('ContextCard — truncated project file listings', () => {
   });
 });
 
+describe('ContextCard — project file uploads', () => {
+  async function pick(results) {
+    apiMock.uploadProjectFiles.mockResolvedValue({ results });
+    await act(async () => {
+      render(<ContextCard project={{ name: 'general', path: '/projects/general' }} conversationId={null} />);
+    });
+    await act(async () => {
+      fireEvent.change(document.querySelector('input[type="file"]'), {
+        target: { files: [new File(['x'], 'notes.md'), new File(['y'], '.env')] },
+      });
+    });
+    await waitFor(() => expect(apiMock.listProjectFiles).toHaveBeenCalledTimes(2));
+  }
+
+  it('names a file the server refused inside a successful upload, and still reloads the list', async () => {
+    await pick([
+      { name: 'notes.md', ok: true, size: 1 },
+      { name: '.env', ok: false, error: 'invalid filename' },
+    ]);
+
+    expect(screen.getByText('Files not uploaded: .env.')).toBeInTheDocument();
+  });
+
+  it('shows no upload error when the server saved every file', async () => {
+    await pick([
+      { name: 'notes.md', ok: true, size: 1 },
+      { name: '.env', ok: true, size: 1 },
+    ]);
+
+    expect(screen.queryByText(/Files not uploaded/)).not.toBeInTheDocument();
+  });
+});
+
 describe('ContextCard — working folders section', () => {
   async function renderCard(conversationId = 'chat-1') {
     await act(async () => {

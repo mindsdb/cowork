@@ -5,9 +5,10 @@
 // flags + a transient `phase` the parent owns) — no internal state, so the
 // status can't get "stuck": whatever the parent passes is exactly what shows.
 //
-//   <ArtifactStatus artifact={a} phase={statusByPath[a.path]} publishable orgMode={orgMode} onRetry={…} />
+//   <ArtifactStatus artifact={a} phase={statusByPath[a.path]} publishable orgMode={orgMode} />
 //
-// phase: 'publishing' | 'updating' | 'unpublishing' | 'deleting' | 'failed' | undefined(idle)
+// phase: 'updating' | 'unpublishing' | 'deleting' | undefined(idle). Sharing
+// happens in the viewer's Share menu, which shows its own progress and errors.
 
 import { createContext, useContext } from 'react';
 import Ico from '../Icons';
@@ -128,7 +129,7 @@ export function artifactStatusHint(artifact, publishable = true, { orgMode = fal
 //
 // `orgMode`: MindsHub mode, whose cards don't say who an artifact reaches
 // (artifactStatusHint).
-export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, inlineChanges = false, authorship = null, pageBadge = true, orgMode = false }) {
+export function ArtifactStatus({ artifact, phase, publishable = true, inlineChanges = false, authorship = null, pageBadge = true, orgMode = false }) {
   const { t } = useTranslation('artifacts');
   const orgName = useContext(ArtifactStatusOrgName);
   const teams = useContext(ArtifactStatusTeams);
@@ -138,27 +139,6 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
     : primary);
 
   // Transient phases win over the persisted state.
-  if (phase === 'failed') {
-    return withExtra(
-      <span className="inline-flex items-center gap-2 min-w-0">
-        <Badge variant="danger" size="sm">{t('status.sharingFailed')}</Badge>
-        <span className="font-body text-[12px] text-ink-3 whitespace-nowrap">
-          {t('status.couldNotShare')}{onRetry ? ' ' : ''}
-          {onRetry && (
-            // `all: unset` stays inline — as a utility its ordering vs the
-            // sibling utilities isn't guaranteed, so it could reset them.
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onRetry(); }}
-              onMouseDown={(e) => e.stopPropagation()}
-              style={{ all: 'unset', cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: '2px' }}
-            >{t('status.tryAgain')}</button>
-          )}
-        </span>
-      </span>,
-    );
-  }
-  if (phase === 'publishing') return withExtra(<Badge variant="accent" size="sm">{t('status.sharing')}</Badge>);
   if (phase === 'updating') return withExtra(<Badge variant="accent" size="sm">{t('status.updating')}</Badge>);
   if (phase === 'unpublishing') return withExtra(<Badge variant="default" size="sm">{t('status.stoppingSharing')}</Badge>);
   if (phase === 'deleting') return withExtra(<Badge variant="default" size="sm">{t('status.deleting')}</Badge>);

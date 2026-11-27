@@ -34,9 +34,10 @@ import { PLATFORM_UI } from '../../lib/deployment';
 import { modelPickerMode, operatorEffortLevels } from '../../lib/modelPicker';
 import UsageBar from './UsageBar';
 import { HubUsageContext } from '../lib/hubUsageContext';
-import { deriveComposerWarning, countsAsWarning } from '../lib/usageWarnings';
+import { deriveComposerWarning } from '../lib/usageWarnings';
 import { connectionMuteKey } from '../lib/connectionMutes';
 import { useTranslation } from '../../lib/i18n';
+import { useDocsEnabled } from '../../lib/docsEnabled';
 
 // Marks where an inline element (a link) sits inside a translated sentence.
 const INLINE_SLOT = '\u2063';
@@ -212,9 +213,21 @@ export default function Composer({
 }) {
   const { t } = useTranslation('chat');
   const placeholder = placeholderProp === undefined ? t('composer.placeholder') : placeholderProp;
-  const [value, setValue] = useDraft(draftKey || conversationId || 'new');
+  const surface = draftKey || conversationId || 'new';
+  const [value, setValue] = useDraft(surface);
   const [focused, setFocused] = useState(false);
   const [openMenu, setOpenMenu] = useState(null);
+  // Output: Doc — the next message asks for its answer as a doc. Held as the
+  // surface it was picked on and dropped when that changes, during render as
+  // useDraft adopts a surface's text: ChatView keeps one Composer across
+  // chats, so a pick made in one chat went out with the next chat's message.
+  const [docPick, setDocPick] = useState(null);
+  if (docPick && docPick !== surface) setDocPick(null);
+  // A deployment without doc tools offers no doc output, and a pick made
+  // before /health said so is not sent.
+  const docsEnabled = useDocsEnabled();
+  const docOutput = docsEnabled && docPick === surface;
+  const setDocOutput = (on) => setDocPick(on ? surface : null);
   const [codingHarness, setCodingHarness] = useState('anton');
   // Detected but not gating: shown as a non-blocking hint on the Claude Code
   // option rather than hiding the picker. A user should be able to configure
@@ -721,6 +734,8 @@ export default function Composer({
     taRef.current?.focus();
   }, [taskMode]);
 
+  const pendingSendRef = useRef(null);
+  const [sendTick, setSendTick] = useState(0);
   // Edit-and-resend: when ChatView bumps `prefill`, drop the supplied
   // text into the composer and focus the textarea so the user can
   // immediately tweak + send. Guarded on `bump > 0` so the initial
@@ -770,8 +785,22 @@ export default function Composer({
       setValue(text);
       ta?.focus();
     }
+    // `prefill.send` sends the text as if Send were pressed, once it is the
+    // composer's value and onSend is this render's, so the model and the
+    // caller's state ride along as on any send. The tick re-renders even when
+    // the text was already there.
+    if (prefill.send && text.trim()) {
+      pendingSendRef.current = text;
+      setSendTick((n) => n + 1);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefill?.bump]);
+  useEffect(() => {
+    if (pendingSendRef.current === null || value !== pendingSendRef.current) return;
+    pendingSendRef.current = null;
+    handleSend();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, sendTick]);
 
   // Close the open meta-pill menu on any press that isn't on the menu
   // popup itself or a trigger pill. The previous version only closed on
@@ -915,11 +944,18 @@ export default function Composer({
       // 2nd argument. `effectiveHarness`/`effectiveModelId` (not the raw
       // `codingHarness`/`model?.id`) so a same-tick send can't slip through
       // with a disabled harness or nothing pickable for Claude Code.
+      //
+      // "Write it as a doc" rides with this message the same way: parked for
+      // whichever turn started next, it went to the wrong message when this
+      // one queued, waited on a provider, or became an answer. ChatView's
+      // onSend takes options third (see `sendsMeta`).
+      const output = docOutput ? { output: 'doc' } : null;
       const result = sendsMeta
-        ? onSend(value.trim(), { harness: effectiveHarness, model: effectiveModelId })
-        : onSend(value.trim());
+        ? onSend(value.trim(), { harness: effectiveHarness, model: effectiveModelId, ...output })
+        : output ? onSend(value.trim(), null, output) : onSend(value.trim());
       await Promise.resolve(result);
       setValue('');
+      setDocOutput(false);
       // Clear the error only AFTER a successful send. Clearing it up
       // front meant a user hammering Send/Enter on a failing send wiped
       // the error before they could read it — the failure looked like a
@@ -961,16 +997,8 @@ export default function Composer({
     [hubUsage],
   );
   // "Healthy" means nothing to WARN about for any pick, not merely that the
-  // current paid model hides the free-token warnings. `countsAsWarning` owns
-  // the resting-is-not-a-warning rule, so it is stated and tested once.
-  const usageHealthy = !!hubUsage?.usage?.reachable && !countsAsWarning(anyPickWarning);
-  // An explicit paid pick cannot spend the grant, so it gets no figure — but
-  // the account still has one, and letting the bar come and go with the pick
-  // moved the whole composer by the bar's height on every switch. Reserve
-  // exactly that height with the same component instead of a magic number:
-  // `visibility: hidden` keeps the layout and drops it out of the tab order,
-  // and aria-hidden keeps it out of the accessibility tree.
-  const reservedBar = !usageWarning && anyPickWarning?.resting ? anyPickWarning : null;
+  // current paid model hides the free-token warnings.
+  const usageHealthy = !!hubUsage?.usage?.reachable && !anyPickWarning;
   const [noConnectorsBefore, noConnectorsAfter = ''] = t('composer.menu.noConnectors', { link: INLINE_SLOT }).split(INLINE_SLOT);
 
   return (
@@ -993,11 +1021,6 @@ export default function Composer({
           isBillingOwner={!!hubUsage?.usage?.isBillingOwner}
           usageKnown={usageHealthy}
         />
-        {reservedBar && (
-          <div className="invisible pointer-events-none" aria-hidden="true" data-usage-bar-reserved="true">
-            <UsageBar warning={reservedBar} />
-          </div>
-        )}
         <ComposerFrame className={`composer-wrap${inFence ? ' in-fence' : ''}`} focused={focused}>
 
           {/* "/" slash-command menu — anchored to composer-wrap so it appears
@@ -1250,6 +1273,17 @@ export default function Composer({
                 {Ico.plus(16)}
               </button>
               </Tooltip>
+              {docOutput && (
+                <button
+                  type="button"
+                  className="ml-1 inline-flex items-center gap-1 h-6 px-2 rounded-md border border-solid border-line bg-accent-bg text-accent-2 text-xs font-medium cursor-pointer"
+                  aria-label={t('composer.docOutput.remove')}
+                  title={t('composer.docOutput.title')}
+                  onClick={() => setDocOutput(false)}
+                >
+                  {Ico.doc(12)} {t('composer.docOutput.chip')} {Ico.close(12)}
+                </button>
+              )}
               {openMenu === 'attach' && (
                 <div
                   ref={attachMenuRef}
@@ -1267,6 +1301,18 @@ export default function Composer({
                   <button className="menu-item" onClick={() => fileRef.current?.click()}>
                     {Ico.attach(14)} {t('composer.menu.attachFiles')}
                   </button>
+                  {docsEnabled && (
+                    <button
+                      className="menu-item"
+                      role="menuitemcheckbox"
+                      aria-checked={docOutput}
+                      onClick={() => { setDocOutput(!docOutput); setOpenMenu(null); }}
+                    >
+                      {Ico.doc(14)}
+                      <span className="flex-1">{t('composer.menu.writeAsDoc')}</span>
+                      {docOutput && <span className="inline-flex text-accent">{Ico.check(12)}</span>}
+                    </button>
+                  )}
                   {onAddGoogleDriveFiles && (
                     <button
                       className="menu-item"

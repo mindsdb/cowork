@@ -32,7 +32,7 @@ When the user invokes `/ota`, determine which action they want. **If unclear, de
 Steps:
 
 1. Read `~/.anton/.env` and report the current `DEV_MODE` value. Explain what it means using the friendly names from the dev mode table below.
-2. Fetch `https://mindsdb.github.io/antontron-releases/latest.json` — extract the published version (which includes a git short SHA, e.g. `2.0.4-e94e713`).
+2. Fetch `https://mindsdb.github.io/antontron-releases/latest.json` and extract the published version (which includes a git short SHA, e.g. `2.0.4-e94e713`). Check that it also carries `signed` and `signature`: a current shell takes no update from a manifest without them, so report a missing pair as "Unsigned: no shell built from this repo will take it".
 3. Run `git log --oneline -1 origin/main -- src/renderer/ src/shared/ package.json` to get the latest commit on main that would trigger a publish.
 4. Compare the SHA in the published version against the SHA from step 3. Report whether they match.
 5. If they don't match, check if a publish workflow is currently running: `gh run list --workflow=publish-ui.yml --repo mindsdb/cowork --limit 3` and report its status.
@@ -98,7 +98,7 @@ Steps:
 
 1. First, check if there's already a recent successful publish that matches main: run `gh run list --workflow=publish-ui.yml --repo mindsdb/cowork --limit 3` and show the results.
 2. If the latest run succeeded and matches the current main HEAD, tell the user it's already published -- no action needed.
-3. Otherwise, trigger the workflow: `gh workflow run publish-ui.yml --repo mindsdb/cowork`
+3. Otherwise, trigger the workflow: `gh workflow run publish-ui.yml --repo mindsdb/cowork`. It runs from `main`. The signing job runs in the `ui-signing` environment, which admits only `main`, so a run with `--ref` set to another branch stops before it signs or publishes.
 4. Confirm it was triggered and show how to monitor: `gh run list --workflow=publish-ui.yml --repo mindsdb/cowork --limit 1`
 5. Note that it typically takes 1-2 minutes to complete, and users' apps will pick up the new version on their next launch.
 

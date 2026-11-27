@@ -1,30 +1,31 @@
 import * as crypto from 'crypto';
 
+import { HANDOFF_PROTOCOL } from '../shared/server-launch';
+
 /*
- * The per-spawn secret that proves a loopback request came from this main
- * process. Cell code on the desktop runs as the user and can read the server's
- * bearer token from disk, so the bearer alone cannot guard the routes that hold
- * MCP access tokens and the read/write tool switch.
+ * The per-launch secret that proves a loopback request came from this main
+ * process. The renderer's webRequest hook adds the bearer token and, on the
+ * main window's own fetches, the window proof, so neither of those can guard
+ * the routes that hold MCP access tokens and the read/write tool switch.
  *
- * The secret reaches the sidecar on its stdin only, never its environment
- * (cell code inherits the server's environment), and is sent only by
- * main-process fetches: the renderer's webRequest hook adds the bearer, never
- * this header.
+ * The secret reaches the sidecar in the launch's stdin line only
+ * (launchStdinLine in shared/server-launch.ts), never its environment (cell
+ * code inherits the server's environment), and is sent only by main-process
+ * fetches: the renderer's webRequest hook never adds this header.
  */
 
+/* cowork-server's cowork/app_secret.py mirrors these two values, as HEADER
+   and CHALLENGE_HEADER. */
 export const APP_SECRET_HEADER = 'X-Cowork-App-Secret';
-export const APP_SECRET_STDIN_ENV = 'COWORK_APP_SECRET_STDIN';
 export const APP_CHALLENGE_HEADER = 'X-Cowork-App-Challenge';
 
 /**
  * What this process may send the running server:
  * - protected: it proved it holds our secret; tokens go to memory there.
- * - legacy: a server without the protocol, before the one-time migration ran;
- *   today's behaviour, tokens in the vault file.
- * - untrusted: it could not prove the secret when it had to; nothing goes to it.
+ * - untrusted: it could not prove the secret; nothing goes to it.
  * - none: no verified server.
  */
-export type ServerTrust = 'none' | 'protected' | 'legacy' | 'untrusted';
+export type ServerTrust = 'none' | 'protected' | 'untrusted';
 
 let secret: string | null = null;
 let trust: ServerTrust = 'none';
@@ -36,11 +37,6 @@ export function newAppSecret(): string {
   secret = crypto.randomBytes(32).toString('hex');
   trust = 'none';
   return secret;
-}
-
-/** The one stdin line the sidecar reads at startup. */
-export function appSecretStdinLine(value: string): string {
-  return `${JSON.stringify({ app_secret: value })}\n`;
 }
 
 /** A fresh challenge for one /health probe. */
@@ -55,18 +51,18 @@ function proofMatches(challenge: string, proof: unknown): boolean {
 }
 
 /**
- * Judges one /health answer to `challenge`. A server that claims the protocol
- * must prove the secret. One without it is a pre-protocol server, acceptable
- * only until the migration has moved access modes out of the vault file;
- * after that it is indistinguishable from a stand-in started to collect tokens.
+ * Judges one /health answer to `challenge`. Only a server that reports
+ * HANDOFF_PROTOCOL and proves the secret is trusted. Any other answer, a
+ * missing protocol or an earlier one included, may be a stand-in started to
+ * collect tokens, and there is no legacy fallback.
  */
 export function judgeServer(
   health: { appSecretProtocol?: unknown; appSecretProof?: unknown },
   challenge: string,
-  migrated: boolean,
 ): ServerTrust {
-  if (health.appSecretProtocol === 1) return proofMatches(challenge, health.appSecretProof) ? 'protected' : 'untrusted';
-  return migrated ? 'untrusted' : 'legacy';
+  return health.appSecretProtocol === HANDOFF_PROTOCOL && proofMatches(challenge, health.appSecretProof)
+    ? 'protected'
+    : 'untrusted';
 }
 
 /** Records the server's trust, and whether the /health answer that earned
@@ -99,7 +95,7 @@ export function isAppSecretProtected(): boolean {
 
 /** Whether access tokens may be sent to the server at all. */
 export function serverMayReceiveTokens(): boolean {
-  return trust === 'protected' || trust === 'legacy';
+  return trust === 'protected';
 }
 
 /** Identifies the server run a multi-step sync started against, so a sync

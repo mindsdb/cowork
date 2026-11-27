@@ -20,6 +20,7 @@ import { setOrgMode } from './lib/orgMode';
 import { setLiveApps } from './lib/liveApps';
 import { setDraftLinks } from './lib/draftLinks';
 import { setArtifactWebsites } from './lib/artifactWebsites';
+import { resolveDocsEnabled, setDocsEnabled } from './lib/docsEnabled';
 import { trackBootScreenResolved, trackShellUpdatePhase, drainUpdateJournal } from './cowork/lib/analytics';
 import { hasBootedBefore, rememberBooted, welcomeFloorMs } from './lib/bootWelcome';
 import { runPostAuthHandshake } from './lib/postAuth';
@@ -92,10 +93,12 @@ export default function App() {
     setRetrying(true);
     try {
       const result = await checkServiceReady(() => host.checkConfigured());
-      setOrgMode(result.orgMode ?? host.isWeb);
+      const orgMode = result.orgMode ?? host.isWeb;
+      setOrgMode(orgMode);
       setLiveApps(result.liveApps);
       setDraftLinks(result.draftLinks);
       setArtifactWebsites(result.artifactWebsites);
+      setDocsEnabled(resolveDocsEnabled(result.docsEnabled, orgMode));
       setServiceUnconfigured(result.state === 'unconfigured');
       setPage(result.state === 'ready' ? 'terminal' : 'auth');
     } finally {
@@ -217,10 +220,14 @@ export default function App() {
       // Fail-safe for an unresolved mode: treat it as org in the web build. The
       // opposite default would render desktop-only artifact actions (Share,
       // Update, the iframe preview) in an org deployment whose /health blipped.
-      setOrgMode(decision.orgMode ?? host.isWeb);
+      const orgMode = decision.orgMode ?? host.isWeb;
+      setOrgMode(orgMode);
       setLiveApps(decision.liveApps);
       setDraftLinks(decision.draftLinks);
       setArtifactWebsites(decision.artifactWebsites);
+      // After the fail-safe above: an unreadable /health hides doc entries in
+      // the web build and keeps them on desktop.
+      setDocsEnabled(resolveDocsEnabled(decision.docsEnabled, orgMode));
       // ENG-921: record the resolved first screen + ground-truth server-install
       // state before sign-in, so first-run breakage between download and a
       // healthy server is measurable (app_installed only fires once the server

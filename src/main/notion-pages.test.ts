@@ -45,16 +45,6 @@ describe('Notion page search and fetch from main', () => {
     }
   });
 
-  it('sends no secret to a legacy server', async () => {
-    newAppSecret();
-    setServerTrust('legacy');
-    const sent = fakeServer();
-
-    await searchNotionPages('acme', 'roadmap');
-
-    expect(Object.keys(sent[0].headers)).not.toContain(APP_SECRET_HEADER);
-  });
-
   it('passes the server\'s refusal through as it was sent', async () => {
     newAppSecret();
     setServerTrust('protected');

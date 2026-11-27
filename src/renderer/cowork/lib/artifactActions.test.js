@@ -117,6 +117,18 @@ describe('artifactOpenTarget', () => {
     })).toBe('preview');
   });
 
+  it('previews a published full-stack app in the app on an org deployment', () => {
+    /* The viewer frames it at its published address (ENG-4687), so the click
+       and the card's button are Preview, as for a page. */
+    expect(artifactOpenTarget({
+      orgMode: true, published: true, canPreviewDraft: false, canPreviewPublished: true, hasDraft: false,
+    })).toBe('preview');
+    // Not published yet: nothing to frame, and no draft to download.
+    expect(artifactOpenTarget({
+      orgMode: true, published: false, canPreviewDraft: false, canPreviewPublished: true, hasDraft: false,
+    })).toBe(null);
+  });
+
   it('falls back to the shared page for a draft org mode cannot render', () => {
     /*
      * Fullstack apps and images: neither has bytes the viewer can render here

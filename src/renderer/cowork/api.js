@@ -15,7 +15,7 @@ import { reduceServerEvents, replayedAnswer } from './lib/conversationHistory';
 import { withQuickEditGroup } from './lib/quickEditGroup';
 import { isAntonConfigError } from './lib/antonErrors';
 import { ADDON_REQUEST_TIMEOUT_MS, foldAddonMessages, isValidLocalKey } from './lib/addons';
-import { readRefusalBody, readRefusalObject, readRetryAfter } from './lib/httpRefusal';
+import { readRefusalBody, readRefusalObject, readRetryAfter, refusalMessage } from './lib/httpRefusal';
 import { host } from '../platform/host';
 import { withoutNotionPageNotes, stripNotionPageNoteFromTitle } from './lib/notionPageNote';
 import { currentServerLocale } from '../lib/i18n';
@@ -30,6 +30,7 @@ import { liveAppSharesFrom, sharedLiveAppsFrom } from './lib/liveAppSharing';
 import { liveAppStatesFrom } from './lib/liveAppState';
 import { liveAppAvailabilityFrom } from './lib/liveAppAvailability';
 import { getOrgMode } from '../lib/orgMode';
+import { getDocsEnabled } from '../lib/docsEnabled';
 import { isTaskBrowserOff } from './lib/taskBrowser';
 import { SHARING_OFF } from './lib/orgSharing';
 import { markWorkStarted } from './lib/documentWork';
@@ -260,7 +261,8 @@ function dedupe(key, factory, { forceFresh = false } = {}) {
 
 /**
  * Builds the Error a refused request throws. The message is the body's
- * sentence, else the caller's fallback. status, code, retry_after and retry_at
+ * sentence, else the size sentence for a 413, else the caller's fallback
+ * (refusalMessage in lib/httpRefusal.js). status, code, retry_after and retry_at
  * let a caller tell a busy server from a turn already running, and wait as
  * long as the server asked. The body is read once, as text, and parsed from
  * there: reading it as JSON first would consume it, and a body that isn't JSON
@@ -268,9 +270,10 @@ function dedupe(key, factory, { forceFresh = false } = {}) {
  *
  * @param {Response} res
  * @param {string} fallback
+ * @param {{fileUpload?: boolean}} [options]
  * @returns {Promise<RefusalError>}
  */
-async function responseError(res, fallback) {
+async function responseError(res, fallback, { fileUpload = false } = {}) {
   let text = '';
   try {
     text = await res.text();
@@ -279,7 +282,7 @@ async function responseError(res, fallback) {
   }
   const { message, code } = readRefusalBody(text);
   const { retry_after, retry_at } = readRetryAfter(res.headers?.get?.('Retry-After'));
-  const err = /** @type {RefusalError} */ (new Error(message || fallback));
+  const err = /** @type {RefusalError} */ (new Error(refusalMessage({ status: res.status, message, fallback, fileUpload })));
   err.status = res.status;
   err.code = code;
   err.retry_after = retry_after;
@@ -699,6 +702,26 @@ export async function fetchOlderMessages(id, cursor, { timeoutMs } = {}) {
 }
 
 /**
+ * Whether conversation `id` can be opened, from its metadata alone (the
+ * preview's Open chat): 'ok'; 'not_found' when it is gone;
+ * 'forbidden' when it is someone else's; 'unavailable' on any other failure.
+ *
+ * @param {string} id
+ * @param {{timeoutMs?: number}} [options]
+ * @returns {Promise<'ok' | 'not_found' | 'forbidden' | 'unavailable'>}
+ */
+export async function fetchConversationStatus(id, { timeoutMs } = {}) {
+  try {
+    await req(`/conversations/${encodeURIComponent(id)}`, { timeoutMs });
+    return 'ok';
+  } catch (err) {
+    if (err?.status === 404) return 'not_found';
+    if (err?.status === 403) return 'forbidden';
+    return 'unavailable';
+  }
+}
+
+/**
  * Loader-facing conversation fetch. Unlike `fetchSession` (which collapses every
  * failure to `null`), this separates a gone conversation (`404 → 'not_found'`)
  * from an operational failure (auth / 5xx / network `→ 'unavailable'`) so the
@@ -819,7 +842,7 @@ export function sendablePicks(model, reasoningEffort) {
   return { sendsPicks, model: sentModel, reasoningEffort: sendsEffort ? reasoningEffort : null };
 }
 
-function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, resetPicks = [], attachmentIds = [], disabledConnections, browserOff = false, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
+function _streamResponse(text, { conversationId, projectName, projectId, projectPath, model, harness, reasoningEffort, resetPicks = [], attachmentIds = [], disabledConnections, browserOff = false, output, docContext, idleTimeoutMs = STREAM_IDLE_TIMEOUT_MS, onChunk, onProgress, onToolResult, onDone, onError, onEvent } = {}) {
   markWorkStarted();
   const ctrl = turnStreamController(onEvent);
   let userMessageId = null;
@@ -846,6 +869,7 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
   // operator-configured role settings, including restored tasks.
   const { sendsPicks, model: sentModel, reasoningEffort: sentEffort } = sendablePicks(model, reasoningEffort);
   const sendsEffort = sentEffort !== null;
+  const docsOn = getDocsEnabled();
   (async () => {
     try {
       bumpIdle();
@@ -882,6 +906,17 @@ function _streamResponse(text, { conversationId, projectName, projectId, project
           // The task's Browser switch is off (ENG-3188). Only sent then, so
           // an older server never sees the key.
           ...(browserOff ? { browser: 'off' } : {}),
+          // This app shows docs: the server gives the agent its doc tools
+          // only on a request that says so. A deployment without doc tools
+          // (/health's docs_enabled) gets none of the doc fields.
+          ...(docsOn ? { docs: true } : {}),
+          // The doc the person had open beside the conversation when they
+          // sent this message, with its own "Edit with agent" target, so
+          // "this section" means what they were looking at (the caller takes
+          // it then: a message that waited its turn keeps its own); and the
+          // composer's "Write it as a doc".
+          ...(docsOn && docContext ? { doc_context: docContext } : {}),
+          ...(docsOn && output ? { output } : {}),
         }),
         signal: ctrl.signal,
       });
@@ -1596,7 +1631,7 @@ export async function uploadProjectFiles(projectName, files) {
     method: 'POST',
     body: form,
   });
-  if (!res.ok) throw await responseError(res, `Upload failed (${res.status})`);
+  if (!res.ok) throw await responseError(res, `Upload failed (${res.status})`, { fileUpload: true });
   return res.json();
 }
 
@@ -2282,7 +2317,7 @@ export async function uploadSkillFile(file, { shared } = {}) {
   form.append('file', file, file.name);
   if (typeof shared === 'boolean') form.append('shared', shared ? 'true' : 'false');
   const res = await authFetch(BASE + '/skills/upload', { method: 'POST', body: form });
-  if (!res.ok) throw await responseError(res, `Upload failed (${res.status})`);
+  if (!res.ok) throw await responseError(res, `Upload failed (${res.status})`, { fileUpload: true });
   return res.json();
 }
 
@@ -3435,13 +3470,15 @@ export async function startVoiceSession(sdp, voice, mode) {
 /* One step of the voice call's operator: the call's history and what is on
    screen in, the model's next turn ({content, tool_calls: [{id, name,
    arguments}]}) out. The app runs the calls (lib/voice/operator.js). */
-export async function voiceOperate(messages, snapshot) {
+export async function voiceOperate(messages, snapshot, widgets) {
   return req('/voice/operate', {
     method: 'POST',
     timeoutMs: 40_000,
     headers: await hubHeaders(),
     // The time zone, so the operator counts dates from the person's today.
-    body: JSON.stringify({ messages, snapshot, timezone: localTimeZone() || undefined }),
+    // `widgets`: the inline artifacts and widgets live on screen (ENG-4684,
+    // lib/voice/screenWidgets.js), when the caller reads them.
+    body: JSON.stringify({ messages, snapshot, widgets, timezone: localTimeZone() || undefined }),
   });
 }
 
@@ -3705,7 +3742,7 @@ export async function uploadAttachments(files, { projectName, sessionId, timeout
       `${BASE}/attachments/${enc(projectName)}/${enc(sessionId)}/upload`,
       { method: 'POST', body: form, signal },
     );
-    if (!res.ok) throw await responseError(res, `Attachment upload failed (${res.status})`);
+    if (!res.ok) throw await responseError(res, `Attachment upload failed (${res.status})`, { fileUpload: true });
     const data = await res.json();
     return Array.isArray(data) ? data : [];
   } catch (err) {
@@ -4050,6 +4087,42 @@ export async function fetchScheduleRuns(id, { limit = 100, strict = false } = {}
     if (strict) throw err;
     return { schedule_id: id, runs: [] };
   }
+}
+
+// ─── Notices ────────────────────────────────────────────────────────────────
+//
+// The account's notification inbox: what happened while the user may not
+// have been looking, such as a scheduled run that ended. A server older than
+// these routes answers 404; the reads below return null then, so the caller
+// can hide the bell. Any other failure throws.
+
+async function noticesReq(path, options) {
+  try {
+    return await req(path, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS, ...options });
+  } catch (err) {
+    if (err?.status === 404) return null;
+    throw err;
+  }
+}
+
+// { notices: [{ id, kind, subject, target, createdAt, readAt }], unreadCount },
+// newest first, or null when the server has no notices.
+export async function fetchNotices({ limit = 50 } = {}) {
+  const data = await noticesReq(`/notices/?limit=${encodeURIComponent(limit)}`);
+  if (!data) return null;
+  return {
+    notices: Array.isArray(data.notices) ? data.notices : [],
+    unreadCount: Number.isFinite(data.unreadCount) ? data.unreadCount : 0,
+  };
+}
+
+// A 404 here means the notice is not the caller's (or is gone): nothing to mark.
+export async function markNoticeRead(id) {
+  return noticesReq(`/notices/${encodeURIComponent(id)}/read`, { method: 'POST' });
+}
+
+export async function markAllNoticesRead() {
+  return noticesReq('/notices/read-all', { method: 'POST' });
 }
 
 // ─── Mock data (used when server is offline) ──────────────────────────────────

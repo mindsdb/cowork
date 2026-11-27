@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   setOrgMode: vi.fn(),
   setDraftLinks: vi.fn(),
   setArtifactWebsites: vi.fn(),
+  setDocsEnabled: vi.fn(),
 }));
 
 // The cloud web image is built with the platform UI on (Dockerfile.frontend,
@@ -28,6 +29,10 @@ vi.mock('./platform/host', () => ({ host: {
 vi.mock('./lib/orgMode', () => ({ setOrgMode: mocks.setOrgMode }));
 vi.mock('./lib/draftLinks', () => ({ setDraftLinks: mocks.setDraftLinks }));
 vi.mock('./lib/artifactWebsites', () => ({ setArtifactWebsites: mocks.setArtifactWebsites }));
+vi.mock('./lib/docsEnabled', async (importOriginal) => ({
+  ...(await importOriginal()),
+  setDocsEnabled: mocks.setDocsEnabled,
+}));
 vi.mock('./lib/keycloak', () => ({ keycloak: { authenticated: true } }));
 vi.mock('./lib/bootWelcome', () => ({
   hasBootedBefore: () => true,
@@ -75,5 +80,28 @@ describe('platform boot stores the public-websites flag', () => {
     render(<App />);
     expect(await screen.findByText('Workspace ready')).toBeInTheDocument();
     expect(mocks.setArtifactWebsites).toHaveBeenLastCalledWith(stored);
+  });
+});
+
+describe('platform boot stores the docs flag', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it.each([
+    ['on as reported', { orgMode: true, docsEnabled: true }, true],
+    ['off as reported', { orgMode: true, docsEnabled: false }, false],
+    ['off from an old server in org mode', { orgMode: true }, false],
+    ['on from an old server outside org mode', { orgMode: false }, true],
+  ])('stores %s', async (_label, health, stored) => {
+    mocks.checkConfigured.mockResolvedValue({ configured: true, provider: 'minds_cloud', ...health });
+    render(<App />);
+    expect(await screen.findByText('Workspace ready')).toBeInTheDocument();
+    expect(mocks.setDocsEnabled).toHaveBeenLastCalledWith(stored);
+  });
+
+  it('reads off when /health fails in the web build', async () => {
+    mocks.checkConfigured.mockRejectedValue(new Error('offline'));
+    render(<App />);
+    expect(await screen.findByText('Provider onboarding')).toBeInTheDocument();
+    expect(mocks.setDocsEnabled).toHaveBeenLastCalledWith(false);
   });
 });

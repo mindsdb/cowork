@@ -56,7 +56,7 @@
     },
     "hint": {
       "notSharedYet": "Pas encore partagé. Ouvrez-le et choisissez Partager pour obtenir un lien web.",
-      "notShareable": "Non partagé. Seuls les pages web et les documents Markdown peuvent être partagés sous forme de lien.",
+      "notShareable": "Non partagé. Les pages web, documents, feuilles de calcul, présentations, PDF, CSV et fichiers texte peuvent être partagés sous forme de lien ; ce type de fichier, non.",
       "orgRestricted": "Restreint. Ouvrez Partager pour voir qui peut ouvrir le lien.",
       "ownerOnly": "Partagé, mais vous seul pouvez ouvrir le lien.",
       "password": "Toute personne disposant du lien et du mot de passe peut l’ouvrir.",
@@ -65,10 +65,7 @@
       "sharedWith": "Partagé avec {names}",
       "sharedWithMore": "Partagé avec {names} et {count} autres"
     },
-    "sharingFailed": "Échec du partage",
-    "couldNotShare": "Impossible de partager.",
     "tryAgain": "Réessayer",
-    "sharing": "Partage…",
     "updating": "Mise à jour…",
     "stoppingSharing": "Arrêt du partage…",
     "deleting": "Suppression…",
@@ -135,6 +132,8 @@
       "hoursAgo": "{count, plural, one {il y a # heure} other {il y a # heures}}",
       "daysAgo": "{count, plural, one {il y a # jour} other {il y a # jours}}",
       "replies": "{count, plural, one {# réponse} other {# réponses}}",
+      "replyPlaceholder": "Répondre…",
+      "replyAriaLabel": "Répondre à ce commentaire",
       "edited": "(modifié)",
       "unattachedTip": "La partie de l’artefact à laquelle ce commentaire faisait référence n’est plus disponible.",
       "generalTip": "Retour général sur l’ensemble de l’artefact.",
@@ -343,6 +342,8 @@
       "websiteDesc": "Sa propre adresse web, ouverte à tous sur Internet"
     },
     "whoCanAccess": "Qui peut accéder à votre application",
+    "whoCanAccessDoc": "Qui peut accéder à votre document",
+    "updatesAsYouEdit": "Mis à jour à chaque modification",
     "addPassword": "Ajouter un mot de passe",
     "hide": "Masquer",
     "show": "Afficher",
@@ -363,7 +364,6 @@
     "makeLive": "Mettre en ligne",
     "shared": "Partagé",
     "share": "Partager",
-    "shareToWeb": "Partager sur le Web",
     "sharingBusy": "Partage en cours",
     "websiteUrl": "URL du site web",
     "change": "Modifier",
@@ -482,6 +482,7 @@
     "backendFailed": "Le backend n’a pas pu démarrer",
     "proxyUnavailable": "Proxy d’aperçu indisponible",
     "noMountUrl": "Le montage de l’aperçu n’a renvoyé aucune URL",
+    "appNotPublishedYet": "Cette app s'affiche ici dès qu'elle est publiée, juste après sa création. Réessayez dans un instant.",
     "loadFailed": "Impossible de charger l’artefact",
     "portNotReady": "Le port du backend n’est pas encore disponible — l’aperçu est toujours en cours de chargement.",
     "remoteNoUrl": "Cet artefact est servi par un serveur distant et n’a pas encore d’URL à ouvrir.",
@@ -522,8 +523,6 @@
       "title": "Titre (A–Z)",
       "type": "Type"
     },
-    "shareProtected": "Partage protégé",
-    "shareRestricted": "Partage restreint",
     "downloadFailed": "Impossible de télécharger cet artefact.",
     "menu": "Menu de l’artefact",
     "openProject": "Ouvrir {project}",
@@ -531,9 +530,7 @@
     "openViewer": "Ouvrir la visionneuse",
     "showInExplorer": "Afficher dans l’Explorateur",
     "deleteItem": "Supprimer l’artefact",
-    "onlyHtmlMd": "Seuls les artefacts HTML et Markdown peuvent être partagés.",
-    "sharedToast": "{mode, select, password {Partagé (protégé par mot de passe) — {url}} restricted {Partagé (restreint) — {url}} other {Partagé — {url}}}",
-    "mindsApiKey": "Définissez votre clé API Minds dans Paramètres pour partager des artefacts.",
+    "onlyHtmlMd": "Seuls les pages web, documents, feuilles de calcul, présentations, PDF, CSV et fichiers texte peuvent être partagés.",
     "stoppedOnMindsHub": "Partage arrêté sur MindsHub.",
     "stopped": "Partage arrêté.",
     "updated": "Version partagée mise à jour.",
@@ -933,7 +930,15 @@
     "sourceHint": "Modifier le texte et la mise en page",
     "commentsHint": "Laisser et consulter des retours",
     "statsHint": "Qui l’a consulté et combien de temps",
-    "commentsOpen": "Commentaires, {count} ouverts"
+    "commentsOpen": "Commentaires, {count} ouverts",
+    "openChat": "Ouvrir le chat",
+    "openChatHint": "Fermer l’aperçu et aller au chat où cela a été créé",
+    "openChatUnavailable": {
+      "noOrigin": "Pas créé dans un chat, ou créé avant l’enregistrement des chats",
+      "deleted": "Le chat où cela a été créé a été supprimé",
+      "colleague": "Créé dans le chat d’un collègue, que seule cette personne peut ouvrir",
+      "unreachable": "Le chat où cela a été créé est inaccessible pour le moment"
+    }
   },
   "liveEditPanel": {
     "close": "Fermer le panneau de modification en direct",

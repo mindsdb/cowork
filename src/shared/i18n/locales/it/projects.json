@@ -24,10 +24,6 @@
         "untilMobile": "MindsHub Air gratuito è sospeso per tutti fino alle {until}. La tua quota non viene consumata.",
         "dailyResetMobile": "MindsHub Air gratuito è sospeso per tutti fino al rinnovo del budget giornaliero. La tua quota non viene consumata."
       },
-      "resting": {
-        "resetsAt": "Si rinnova alle {time}.",
-        "noReset": "Air li usa finché non si esauriscono."
-      },
       "balanceEmptySentence": "Il tuo saldo è a zero.",
       "percentLeft": "Ti resta il {percent} della quota gratuita",
       "autoTopUpFailed": {
@@ -46,8 +42,6 @@
       },
       "balanceLow": {
         "title": "Saldo in esaurimento",
-        "autoRefills": "Restano {usd}. Quando il saldo scende sotto {floor}, la ricarica automatica lo riporta a {target}.",
-        "autoCovers": "Restano {usd}. Ci penserà la ricarica automatica.",
         "autoPending": "Restano {usd}. La ricarica automatica è in attesa della tua banca.",
         "autoCapReached": "Restano {usd} e la ricarica automatica è sospesa per non superare il limite mensile. Aggiungi fondi per continuare.",
         "body": "Restano {usd}. Aggiungi fondi o attiva la ricarica automatica.",
@@ -83,7 +77,8 @@
         "lowThenWalletWithTime": "Dopo, le attività usano il tuo saldo a tariffe API fino al rinnovo alle {time}.",
         "lowThenPause": "Dopo, le attività vanno in pausa fino al rinnovo.",
         "lowThenPauseWithTime": "Dopo, le attività vanno in pausa fino alle {time}."
-      }
+      },
+      "resetsAt": "Si rinnova alle {time}."
     },
     "scheduleWhen": {
       "timeZone": "ora di {city}",
@@ -95,7 +90,14 @@
       "daily": "Ogni giorno alle {time}",
       "weekdays": "Ogni giorno feriale alle {time}",
       "weekly": "Ogni {weekday} alle {time}",
-      "weeklyNoDay": "Ogni settimana alle {time}"
+      "weeklyNoDay": "Ogni settimana alle {time}",
+      "monthlyDay": "Ogni mese il giorno {day} alle {time}",
+      "monthlyDayOrLast": "Ogni mese il giorno {day}, o l’ultimo giorno di un mese più breve, alle {time}",
+      "monthlyFirst": "Ogni mese il primo {weekday} alle {time}",
+      "monthlySecond": "Ogni mese il secondo {weekday} alle {time}",
+      "monthlyThird": "Ogni mese il terzo {weekday} alle {time}",
+      "monthlyFourth": "Ogni mese il quarto {weekday} alle {time}",
+      "monthlyLast": "Ogni mese l’ultimo {weekday} alle {time}"
     },
     "scheduleCopy": {
       "missedOnceServer": "Se a quell’ora il server non è attivo, l’attività viene eseguita quando torna disponibile, entro un’ora. Dopo viene segnata come mancata e puoi eseguirla tu.",
@@ -468,6 +470,13 @@
         "pendingDetail": "Le tue credenziali sono archiviate in forma crittografata. Questa pagina si aggiorna al termine della verifica."
       }
     },
+    "httpRefusal": {
+      "uploadTooLarge": "Questo caricamento supera il limite di dimensione. Scegli un file più piccolo o carica meno file alla volta.",
+      "requestTooLarge": "Questa richiesta supera il limite di dimensione. Prova a inviare meno contenuti."
+    },
+    "projectUploads": {
+      "notUploaded": "File non caricati: {files}."
+    },
     "fileDrop": {
       "uploading": "Caricamento…"
     },
@@ -603,7 +612,8 @@
       "hourly": "Ogni ora",
       "daily": "Ogni giorno",
       "weekdays": "Giorni feriali",
-      "weekly": "Ogni settimana"
+      "weekly": "Ogni settimana",
+      "monthly": "Mensile"
     },
     "openProject": "Apri {project}",
     "descriptionWithNext": "{sentence} · prossima {next}",
@@ -639,7 +649,12 @@
     "succeededTitle": "Attività pianificata completata",
     "succeededBody": "“{title}” ha completato un’esecuzione. Fai clic per aprirla.",
     "succeededToast": "L’attività pianificata “{title}” ha completato un’esecuzione.",
-    "openAction": "Apri attività"
+    "openAction": "Apri attività",
+    "stoppedTitle": "Attività pianificata interrotta",
+    "stoppedBody": "“{title}” si è fermata al limite prima di finire. Fai clic per controllare.",
+    "stoppedToast": "L’attività pianificata “{title}” si è fermata al limite prima di finire.",
+    "genericTitle": "Nuova notifica",
+    "genericLine": "Nuova notifica: {subject}"
   },
   "scheduleNotifyMenu": {
     "label": "Notifiche",
@@ -655,11 +670,13 @@
       "hourly": "Ogni ora",
       "daily": "Ogni giorno",
       "weekdays": "Ogni giorno feriale",
-      "weekly": "Ogni settimana"
+      "weekly": "Ogni settimana",
+      "monthly": "Ogni mese"
     },
     "errorNoPrompt": "Di’ a {agent} cosa fare.",
     "errorPickFutureTime": "Scegli un orario futuro.",
     "errorPickTime": "Scegli un orario.",
+    "errorPickDays": "Scegli almeno un giorno della settimana.",
     "errorSave": "Impossibile salvare la pianificazione.",
     "editTitle": "Modifica attività pianificata",
     "createTitle": "Pianifica un’attività",
@@ -671,6 +688,17 @@
     "when": "Quando",
     "howOften": "Frequenza",
     "dayOfWeek": "Giorno della settimana",
+    "daysOfWeek": "Giorni della settimana",
+    "dayOfMonth": "Giorno del mese",
+    "monthBy": {
+      "label": "Quale giorno del mese",
+      "day": "Giorno",
+      "week1": "Primo",
+      "week2": "Secondo",
+      "week3": "Terzo",
+      "week4": "Quarto",
+      "weekLast": "Ultimo"
+    },
     "date": "Data",
     "atMinute": "al minuto",
     "at": "alle",
@@ -682,6 +710,7 @@
     "namePlaceholder": "Ricavato dal prompt",
     "project": "Progetto",
     "model": "Modello",
+    "connections": "Connessioni",
     "accountDefault": "Predefinito dell’account",
     "cancel": "Annulla",
     "saveAndRunOnce": "Salva ed esegui una volta",
@@ -804,6 +833,9 @@
     "folderUnsupported": "Questo server non consente di associare un progetto a una cartella. Ha creato «{name}» come progetto normale e ha annullato la selezione della cartella. Aggiorna Cowork per usare la tua cartella, oppure elimina quel progetto se non ti serve.",
     "couldNotCreate": "Impossibile creare il progetto.",
     "couldNotOpenPicker": "Impossibile aprire la selezione della cartella.",
+    "filesNotUploaded": "«{name}» è stato creato, ma i suoi file non sono stati caricati.",
+    "someFilesNotUploaded": "«{name}» è stato creato, ma non tutti i suoi file sono stati caricati.",
+    "filesUploadUnconfirmed": "«{name}» è stato creato. Controlla i file del progetto prima di riprovare a caricarli.",
     "title": "Avvia un nuovo progetto",
     "nameLabel": "Nome del progetto",
     "instructionsLabel": "Istruzioni",

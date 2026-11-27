@@ -581,7 +581,6 @@ describe('electron mode (bridge present)', () => {
     const host = await importHost();
     expect(host.getPlatform()).toBe('web');
     await expect(host.serverStart()).resolves.toEqual({ running: false, error: 'unsupported' });
-    await expect(host.getKeychainPref()).resolves.toBe(false);
     await expect(host.mindshubGetCachedToken()).resolves.toBeNull();
   });
 
@@ -1586,6 +1585,30 @@ describe('checkConfigured() on web reads draft_links from /health', () => {
     stubHealth({ config_ready: true, ...flag });
     const host = await importHost();
     await expect(host.checkConfigured()).resolves.toMatchObject({ draftLinks: false });
+  });
+});
+
+describe('checkConfigured() on web reads docs_enabled from /health', () => {
+  function stubHealth(body: Record<string, unknown>) {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => body })));
+  }
+
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it.each([true, false])('reports docs_enabled=%s as the server said it', async (value) => {
+    stubHealth({ config_ready: true, provider: 'minds_cloud', org_mode: true, docs_enabled: value });
+    const host = await importHost();
+    await expect(host.checkConfigured()).resolves.toMatchObject({ orgMode: true, docsEnabled: value });
+  });
+
+  // An old server: boot resolves the missing value against the org mode.
+  it.each([
+    ['absent', {}],
+    ['a string', { docs_enabled: 'true' }],
+  ])('reports nothing when the flag is %s', async (_label, flag) => {
+    stubHealth({ config_ready: true, org_mode: true, ...flag });
+    const host = await importHost();
+    expect(await host.checkConfigured()).not.toHaveProperty('docsEnabled');
   });
 });
 

@@ -24,10 +24,6 @@
         "untilMobile": "Free MindsHub Air is paused for everyone until {until}. This doesn't use your allowance.",
         "dailyResetMobile": "Free MindsHub Air is paused for everyone until the daily budget resets. This doesn't use your allowance."
       },
-      "resting": {
-        "resetsAt": "Resets at {time}.",
-        "noReset": "Air runs on these until they are used up."
-      },
       "balanceEmptySentence": "Your balance is empty.",
       "percentLeft": "{percent} of your free allowance left",
       "autoTopUpFailed": {
@@ -46,8 +42,6 @@
       },
       "balanceLow": {
         "title": "Balance running low",
-        "autoRefills": "{usd} left. Auto top up refills it to {target} when it drops below {floor}.",
-        "autoCovers": "{usd} left. Auto top up will cover it.",
         "autoPending": "{usd} left. Auto top up is waiting on your bank.",
         "autoCapReached": "{usd} left and auto top up is paused to stay within its monthly cap. Add funds to keep going.",
         "body": "{usd} left. Add funds or turn on auto top up.",
@@ -83,7 +77,8 @@
         "lowThenWalletWithTime": "After that, tasks continue from your wallet at API rates until it resets at {time}.",
         "lowThenPause": "After that, tasks pause until it resets.",
         "lowThenPauseWithTime": "After that, tasks pause until {time}."
-      }
+      },
+      "resetsAt": "Resets at {time}."
     },
     "scheduleWhen": {
       "timeZone": "{city} time",
@@ -95,7 +90,14 @@
       "daily": "Every day at {time}",
       "weekdays": "Every weekday at {time}",
       "weekly": "Every {weekday} at {time}",
-      "weeklyNoDay": "Every week at {time}"
+      "weeklyNoDay": "Every week at {time}",
+      "monthlyDay": "Every month on day {day} at {time}",
+      "monthlyDayOrLast": "Every month on day {day}, or the last day of a shorter month, at {time}",
+      "monthlyFirst": "Every month on the first {weekday} at {time}",
+      "monthlySecond": "Every month on the second {weekday} at {time}",
+      "monthlyThird": "Every month on the third {weekday} at {time}",
+      "monthlyFourth": "Every month on the fourth {weekday} at {time}",
+      "monthlyLast": "Every month on the last {weekday} at {time}"
     },
     "scheduleCopy": {
       "missedOnceServer": "If the server is down at this time, the task runs when it’s back within the hour. After that it’s marked missed, and you can run it yourself.",
@@ -468,6 +470,13 @@
         "pendingDetail": "Your credentials are stored encrypted. This page updates when the check finishes."
       }
     },
+    "httpRefusal": {
+      "uploadTooLarge": "This upload is over the size limit. Pick a smaller file, or fewer files at once.",
+      "requestTooLarge": "This request is over the size limit. Try sending less content."
+    },
+    "projectUploads": {
+      "notUploaded": "Files not uploaded: {files}."
+    },
     "fileDrop": {
       "uploading": "Uploading…"
     },
@@ -603,7 +612,8 @@
       "hourly": "Hourly",
       "daily": "Daily",
       "weekdays": "Weekdays",
-      "weekly": "Weekly"
+      "weekly": "Weekly",
+      "monthly": "Monthly"
     },
     "openProject": "Open {project}",
     "descriptionWithNext": "{sentence} · next {next}",
@@ -639,7 +649,12 @@
     "succeededTitle": "Scheduled task finished",
     "succeededBody": "“{title}” finished a run. Click to open it.",
     "succeededToast": "Scheduled task “{title}” finished a run.",
-    "openAction": "Open task"
+    "openAction": "Open task",
+    "stoppedTitle": "Scheduled task stopped",
+    "stoppedBody": "“{title}” stopped at its limit before finishing. Click to review.",
+    "stoppedToast": "Scheduled task “{title}” stopped at its limit before finishing.",
+    "genericTitle": "New notification",
+    "genericLine": "New notification: {subject}"
   },
   "scheduleNotifyMenu": {
     "label": "Notifications",
@@ -655,11 +670,13 @@
       "hourly": "Every hour",
       "daily": "Every day",
       "weekdays": "Every weekday",
-      "weekly": "Every week"
+      "weekly": "Every week",
+      "monthly": "Every month"
     },
     "errorNoPrompt": "Tell {agent} what to do.",
     "errorPickFutureTime": "Pick a time in the future.",
     "errorPickTime": "Pick a time.",
+    "errorPickDays": "Pick at least one day of the week.",
     "errorSave": "Could not save schedule.",
     "editTitle": "Edit scheduled task",
     "createTitle": "Schedule a task",
@@ -671,6 +688,17 @@
     "when": "When",
     "howOften": "How often",
     "dayOfWeek": "Day of the week",
+    "daysOfWeek": "Days of the week",
+    "dayOfMonth": "Day of the month",
+    "monthBy": {
+      "label": "Which day of the month",
+      "day": "Day",
+      "week1": "First",
+      "week2": "Second",
+      "week3": "Third",
+      "week4": "Fourth",
+      "weekLast": "Last"
+    },
     "date": "Date",
     "atMinute": "at minute",
     "at": "at",
@@ -682,6 +710,7 @@
     "namePlaceholder": "Named from the prompt",
     "project": "Project",
     "model": "Model",
+    "connections": "Connections",
     "accountDefault": "Account default",
     "cancel": "Cancel",
     "saveAndRunOnce": "Save and run once",
@@ -804,6 +833,9 @@
     "folderUnsupported": "This server does not support pointing a project at a folder. It created \"{name}\" as a normal project and cleared your folder selection. Update Cowork to use your folder, or delete that project if you do not want it.",
     "couldNotCreate": "Could not create project.",
     "couldNotOpenPicker": "Could not open the folder picker.",
+    "filesNotUploaded": "\"{name}\" was created, but its files didn't upload.",
+    "someFilesNotUploaded": "\"{name}\" was created, but not all of its files uploaded.",
+    "filesUploadUnconfirmed": "\"{name}\" was created. Check its files before trying the upload again.",
     "title": "Start a new project",
     "nameLabel": "Project name",
     "instructionsLabel": "Instructions",

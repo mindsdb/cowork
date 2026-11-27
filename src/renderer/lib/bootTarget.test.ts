@@ -282,6 +282,38 @@ describe('resolveBootTarget draftLinks', () => {
   });
 });
 
+describe('resolveBootTarget docsEnabled', () => {
+  it.each([true, false])('passes docsEnabled=%s through on every route', async (value) => {
+    const flag = async () => ({ ...CONFIGURED, orgMode: true, docsEnabled: value });
+    const terminal = makeHost({ readSettings: async () => ({ ANTON_TERMS_CONSENT: 'true' }), checkConfigured: flag });
+    const setup = makeHost({
+      readSettings: async () => ({ ANTON_TERMS_CONSENT: 'true' }),
+      checkConfigured: flag,
+      checkInstall: async () => ({ antonInstalled: false, serverDepsReady: true }),
+    });
+    const auth = makeHost({ readSettings: async () => ({}), checkConfigured: flag });
+
+    expect(await resolveBootTarget(terminal, true)).toMatchObject({ target: 'terminal', docsEnabled: value });
+    expect(await resolveBootTarget(setup, true)).toMatchObject({ target: 'setup', docsEnabled: value });
+    expect(await resolveBootTarget(auth, false)).toMatchObject({ target: 'auth', docsEnabled: value });
+  });
+
+  // The caller resolves a missing value after its orgMode fail-safe.
+  it('leaves docsEnabled unset when the server does not report it', async () => {
+    const absent = makeHost({ checkConfigured: async () => ({ ...CONFIGURED, orgMode: true }) });
+    expect((await resolveBootTarget(absent, true)).docsEnabled).toBeUndefined();
+  });
+
+  it('leaves docsEnabled unset when the health read failed', async () => {
+    const host = makeHost({
+      checkConfigured: async () => {
+        throw new Error('offline');
+      },
+    });
+    expect((await resolveBootTarget(host, true)).docsEnabled).toBeUndefined();
+  });
+});
+
 describe('resolveRegistrationConsent', () => {
   // The keycloak module is imported dynamically at every call site precisely so
   // keycloak-js never loads on Electron (see the auto-finalize effect in

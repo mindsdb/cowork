@@ -33,16 +33,19 @@ function asCall(call) {
 
 /**
  * Resolves with what to say. `snapshot()` describes the screen now; it is read
- * every round, so it sees what the previous round's actions changed.
+ * every round, so it sees what the previous round's actions changed. So is
+ * `widgets()`, when given: the inline artifacts and widgets live on screen
+ * (screenWidgets.js), sent beside the snapshot.
  */
-export async function runOperator({ request, history, snapshot, actions, operate = voiceOperate, maxRounds = MAX_ROUNDS }) {
+export async function runOperator({ request, history, snapshot, widgets = null, actions, operate = voiceOperate, maxRounds = MAX_ROUNDS }) {
   const exchange = [{ role: 'user', content: fitRequest(request) }];
   const settle = (said) => {
     history.push(...exchange, { role: 'assistant', content: said });
     return said;
   };
   for (let round = 0; round < maxRounds; round += 1) {
-    const turn = await operate([...history, ...exchange].slice(-MAX_HISTORY), snapshot());
+    const messages = [...history, ...exchange].slice(-MAX_HISTORY);
+    const turn = await (widgets ? operate(messages, snapshot(), widgets()) : operate(messages, snapshot()));
     const calls = turn?.tool_calls || [];
     if (!calls.length) return settle(String(turn?.content || '').trim() || 'Done.');
     exchange.push({ role: 'assistant', content: turn.content || '', tool_calls: calls.map(asCall) });

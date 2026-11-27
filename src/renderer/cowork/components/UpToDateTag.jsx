@@ -34,9 +34,10 @@ export function useSaveStatus(busy, failed = false) {
   return saved ? 'saved' : null;
 }
 
-export function UpToDateTag({ state = null }) {
+// `label` replaces the idle wording, as a doc's "Updates as you edit" does.
+export function UpToDateTag({ state = null, label: idleLabel } = {}) {
   const { t } = useTranslation('shell');
-  const label = state === 'saving' ? t('upToDateSaving') : state === 'saved' ? t('upToDateSaved') : t('upToDate');
+  const label = state === 'saving' ? t('upToDateSaving') : state === 'saved' ? t('upToDateSaved') : (idleLabel ?? t('upToDate'));
   return (
     <span
       key={state || 'idle'}

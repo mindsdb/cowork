@@ -240,10 +240,6 @@
   "upToDate": "最新の状態です",
   "upToDateSaving": "保存中…",
   "upToDateSaved": "保存済み",
-  "usageBar": {
-    "hideAllowance": "無料枠を非表示",
-    "hide": "非表示"
-  },
   "diagnostics": {
     "copy": "診断情報をコピー",
     "copied": "コピーしました",
@@ -468,7 +464,8 @@
       "fromDesktop": "アカウントの準備ができました。ここからすぐに始めるか、{product} アプリに戻ってサインインしてください。",
       "dismiss": "閉じる"
     },
-    "ownWorkHeading": "{product}に何をしてもらいますか？"
+    "ownWorkHeading": "{product}に何をしてもらいますか？",
+    "galleryHint": "例「{title}」から。自由に変更してから送信を押してください。"
   },
   "logout": {
     "title": "{product}からサインアウトしますか？",
@@ -481,7 +478,53 @@
     "failed": "サインアウトを完了できませんでした。もう一度お試しください。",
     "waitNote": "サインアウト処理中です。この画面は閉じても構いません。処理は自動的に完了します。"
   },
+  "notices": {
+    "title": "通知",
+    "ariaLabel": "{count, plural, =0 {通知} other {通知、未読 # 件}}",
+    "unread": "未読:",
+    "markAllRead": "すべて既読にする",
+    "emptyTitle": "通知はありません",
+    "emptyDescription": "対応が必要なスケジュール実行がここに表示されます。",
+    "loadFailed": "通知を読み込めませんでした。"
+  },
   "shortcuts": {
     "showBrowser": "ブラウザを表示"
+  },
+  "gallery": {
+    "open": "ユースケースギャラリー",
+    "title": "ユースケースギャラリー",
+    "welcomeTitle": "{product}へようこそ",
+    "welcomeIntro": "何から始めればよいか迷ったら、{product}がひとつのメッセージから作ったものを見てみましょう。開いて結果を確認し、そこから始められます。",
+    "intro": "アイデアに困ったら、{product}がひとつのメッセージから作ったものを見てみましょう。開いて結果を確認し、そこから始められます。",
+    "hide": "ギャラリーを閉じる",
+    "searchLabel": "例を検索",
+    "searchPlaceholder": "検索: スライド、スプレッドシート、学習…",
+    "tabsLabel": "カテゴリ",
+    "all": "すべて",
+    "startHere": "ここから始める",
+    "allExamples": "すべての例",
+    "results": "{count, plural, other {#件の例が一致}}",
+    "noResults": "一致するものがありません。入力欄に必要なことを書くと、{product}がそこから始めます。",
+    "loading": "例を読み込んでいます…",
+    "unavailable": "現在、例を読み込めません。",
+    "retry": "再試行",
+    "minutes": "{count, plural, other {約#分}}",
+    "builtWith": "{model}で作成",
+    "needs": "必要なもの: {needs}",
+    "backToAll": "すべての例",
+    "backToResults": "「{query}」の結果",
+    "position": "{current} / {total}",
+    "previous": "前の例",
+    "next": "次の例",
+    "breadcrumb": "パンくずリスト",
+    "whatItMade": "{product}が作ったもの",
+    "download": "ダウンロード",
+    "sampleInput": "渡したサンプル",
+    "playInBrowser": "ブラウザで開く",
+    "start": "この例から始める",
+    "tryIt": "この例を試す",
+    "startNote": "メッセージを入力欄に入れます。送信を押すまで何も実行されません。",
+    "tryItNote": "サンプルデータで新しいタスクとして今すぐ実行します。",
+    "ownFile": "自分のファイルを使う"
   }
 }

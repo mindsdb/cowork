@@ -56,7 +56,7 @@
     },
     "hint": {
       "notSharedYet": "Ainda não compartilhado. Abra e escolha Compartilhar para obter um link da web.",
-      "notShareable": "Não compartilhado. Só páginas web e documentos Markdown podem ser compartilhados como link.",
+      "notShareable": "Não compartilhado. Páginas web, documentos, planilhas, apresentações, PDFs, CSV e arquivos de texto podem ser compartilhados como link; este tipo de arquivo não.",
       "orgRestricted": "Restrito. Abra Compartilhar para ver quem pode abrir o link.",
       "ownerOnly": "Compartilhado, mas só você pode abrir o link.",
       "password": "Qualquer pessoa com o link e a senha pode abrir.",
@@ -65,10 +65,7 @@
       "sharedWith": "Compartilhado com {names}",
       "sharedWithMore": "Compartilhado com {names} e mais {count}"
     },
-    "sharingFailed": "Falha ao compartilhar",
-    "couldNotShare": "Não foi possível compartilhar.",
     "tryAgain": "Tentar novamente",
-    "sharing": "Compartilhando…",
     "updating": "Atualizando…",
     "stoppingSharing": "Parando de compartilhar…",
     "deleting": "Excluindo…",
@@ -135,6 +132,8 @@
       "hoursAgo": "{count, plural, one {há # hora} other {há # horas}}",
       "daysAgo": "{count, plural, one {há # dia} other {há # dias}}",
       "replies": "{count, plural, one {# resposta} other {# respostas}}",
+      "replyPlaceholder": "Responder…",
+      "replyAriaLabel": "Responder a este comentário",
       "edited": "(editado)",
       "unattachedTip": "A parte do artefato a que este comentário se referia não está mais disponível.",
       "generalTip": "Comentário geral sobre o artefato inteiro.",
@@ -343,6 +342,8 @@
       "websiteDesc": "Um endereço próprio na web, aberto a qualquer pessoa na internet"
     },
     "whoCanAccess": "Quem pode acessar seu app",
+    "whoCanAccessDoc": "Quem pode acessar seu documento",
+    "updatesAsYouEdit": "Atualiza conforme você edita",
     "addPassword": "Adicione uma senha",
     "hide": "Ocultar",
     "show": "Mostrar",
@@ -363,7 +364,6 @@
     "makeLive": "Colocar no ar",
     "shared": "Compartilhado",
     "share": "Compartilhar",
-    "shareToWeb": "Compartilhar na web",
     "sharingBusy": "Compartilhando",
     "websiteUrl": "URL do site",
     "change": "Alterar",
@@ -482,6 +482,7 @@
     "backendFailed": "O backend não conseguiu iniciar",
     "proxyUnavailable": "O proxy da visualização não está disponível",
     "noMountUrl": "A montagem da visualização não retornou nenhuma URL",
+    "appNotPublishedYet": "Este app aparece aqui quando é publicado, logo depois de ser criado. Tente de novo em instantes.",
     "loadFailed": "Não foi possível carregar o artefato",
     "portNotReady": "A porta do backend ainda não está disponível: a visualização ainda está carregando.",
     "remoteNoUrl": "Este artefato é servido por um servidor remoto e ainda não tem uma URL para abrir.",
@@ -522,8 +523,6 @@
       "title": "Título (A–Z)",
       "type": "Tipo"
     },
-    "shareProtected": "Compartilhar com senha",
-    "shareRestricted": "Compartilhar restrito",
     "downloadFailed": "Não foi possível baixar este artefato.",
     "menu": "Menu do artefato",
     "openProject": "Abrir {project}",
@@ -531,9 +530,7 @@
     "openViewer": "Abrir visualizador",
     "showInExplorer": "Mostrar no Explorador",
     "deleteItem": "Excluir artefato",
-    "onlyHtmlMd": "Só artefatos HTML e Markdown podem ser compartilhados.",
-    "sharedToast": "{mode, select, password {Compartilhado (protegido por senha): {url}} restricted {Compartilhado (restrito): {url}} other {Compartilhado: {url}}}",
-    "mindsApiKey": "Defina sua chave de API do Minds em Configurações para compartilhar artefatos.",
+    "onlyHtmlMd": "Só páginas web, documentos, planilhas, apresentações, PDFs, CSV e arquivos de texto podem ser compartilhados.",
     "stoppedOnMindsHub": "Compartilhamento interrompido no MindsHub.",
     "stopped": "Compartilhamento interrompido.",
     "updated": "A versão compartilhada foi atualizada.",
@@ -933,7 +930,15 @@
     "sourceHint": "Altere o texto e o layout da página",
     "commentsHint": "Deixe e revise feedback",
     "statsHint": "Quem viu e por quanto tempo",
-    "commentsOpen": "Comentários, {count} abertos"
+    "commentsOpen": "Comentários, {count} abertos",
+    "openChat": "Abrir chat",
+    "openChatHint": "Feche a pré-visualização e vá para o chat em que isto foi criado",
+    "openChatUnavailable": {
+      "noOrigin": "Não foi criado em um chat, ou foi criado antes de os chats serem registrados",
+      "deleted": "O chat em que isto foi criado foi excluído",
+      "colleague": "Criado no chat de um colega, que só essa pessoa pode abrir",
+      "unreachable": "Não é possível acessar agora o chat em que isto foi criado"
+    }
   },
   "liveEditPanel": {
     "close": "Fechar o painel de edição ao vivo",

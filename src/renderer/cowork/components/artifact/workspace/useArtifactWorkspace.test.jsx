@@ -794,31 +794,68 @@ describe('useArtifactWorkspace addressWithAgent preview errors', () => {
 /* An .xlsx, .docx, .pptx or .pdf file previews read-only. The server can still
    answer the source request with a text sibling of the primary file, which the
    editor would otherwise open. */
+// A document (ENG-4687) loads its workspace like any artifact: capabilities,
+// revisions and the shared revision, with a binary source it never edits.
 describe('useArtifactWorkspace previewOnly', () => {
-  const sibling = { ...source, path: 'notes.md', content: '# notes' };
+  const documentSource = {
+    path: 'report.docx',
+    binary: true,
+    contentType: 'docx',
+    revision: { id: 'rev-2' },
+    revisions: [{ id: 'rev-2', number: 2 }, { id: 'rev-1', number: 1 }],
+    publishedRevision: { id: 'rev-1' },
+    capabilities: { role: 'owner', canEdit: true, canQuickEdit: true, quickEditDirect: true },
+  };
 
-  it.each([false, true])('loads no editable source and names the preview-only reason (web: %s)', async (isWeb) => {
+  it.each([false, true])('loads a document\'s workspace with its revisions, never dirty, no comments (web: %s)', async (isWeb) => {
     platform.isWeb = isWeb;
-    api.loadArtifactSource.mockResolvedValue(sibling);
+    api.loadArtifactSource.mockResolvedValue(documentSource);
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true, previewOnly: true }));
+
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(result.current.source).toMatchObject({ path: 'report.docx', binary: true });
+    expect(result.current.currentRevision).toEqual({ id: 'rev-2' });
+    expect(result.current.revisions).toHaveLength(2);
+    expect(result.current.publishedRevision).toEqual({ id: 'rev-1' });
+    expect(result.current.capabilities).toMatchObject({ canQuickEdit: true });
+    expect(result.current.dirty).toBe(false);
+    // Comments are off for a document, so nothing provisions them.
+    expect(api.enableDraftComments).not.toHaveBeenCalled();
+    expect(result.current.commentsReady).toBe(false);
+  });
+
+  it('never saves a document as text', async () => {
+    api.loadArtifactSource.mockResolvedValue(documentSource);
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true, previewOnly: true }));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    await act(async () => { await result.current.save('Edited', 'some text'); });
+    expect(api.saveArtifactSource).not.toHaveBeenCalled();
+  });
+
+  it('compares a document\'s revisions by id, for the URL each side\'s preview loads', async () => {
+    api.loadArtifactSource.mockResolvedValue(documentSource);
+    api.loadArtifactRevision.mockImplementation(async (_artifact, id) => ({
+      id, number: Number(id.slice(-1)), path: 'report.docx', binary: true, contentUrl: `/content/${id}`,
+    }));
+    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true, previewOnly: true }));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    await act(async () => { await result.current.compareRevision('rev-1'); });
+    expect(result.current.comparison).toMatchObject({
+      kind: 'revision',
+      before: { id: 'rev-1', contentUrl: '/content/rev-1' },
+      after: { id: 'rev-2', contentUrl: '/content/rev-2' },
+    });
+  });
+
+  it.each([404, 422])('names the preview-only reason when the server keeps no workspace for it (%s)', async (status) => {
+    api.loadArtifactSource.mockRejectedValue(Object.assign(new Error('no'), { status }));
     const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true, previewOnly: true }));
 
     await waitFor(() => expect(result.current.status).toBe('unsupported'));
     expect(result.current.unsupportedReason).toBe(PREVIEW_ONLY);
-    expect(result.current.previewOnly).toBe(true);
     expect(result.current.source).toBeNull();
-    expect(result.current.currentRevision).toBeNull();
-    await act(() => result.current.load());
-    expect(result.current.source).toBeNull();
-    expect(api.loadArtifactSource).not.toHaveBeenCalled();
-    expect(api.loadArtifactReview).not.toHaveBeenCalled();
-    expect(api.enableDraftComments).not.toHaveBeenCalled();
-  });
-
-  it('returns previewOnly false for an editable artifact', async () => {
-    const { result } = renderHook(() => useArtifactWorkspace(artifact, { open: true }));
-
-    await waitFor(() => expect(result.current.status).toBe('ready'));
-    expect(result.current.previewOnly).toBe(false);
   });
 
   it('reads Preview only: Cowork can\'t edit this file type.', () => {

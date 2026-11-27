@@ -1,8 +1,8 @@
 import type { BootHost } from './bootTarget';
 
 export type ServiceReadiness =
-  | { state: 'ready' | 'unconfigured'; orgMode: boolean; liveApps: boolean; draftLinks: boolean; artifactWebsites: boolean }
-  | { state: 'unavailable'; orgMode: null; liveApps: false; draftLinks: false; artifactWebsites: false };
+  | { state: 'ready' | 'unconfigured'; orgMode: boolean; liveApps: boolean; draftLinks: boolean; artifactWebsites: boolean; docsEnabled?: boolean }
+  | { state: 'unavailable'; orgMode: null; liveApps: false; draftLinks: false; artifactWebsites: false; docsEnabled?: undefined };
 
 export async function checkServiceReady(
   checkConfigured: BootHost['checkConfigured'],
@@ -15,6 +15,8 @@ export async function checkServiceReady(
       liveApps: result.liveApps === true,
       draftLinks: result.draftLinks === true,
       artifactWebsites: result.artifactWebsites === true,
+      // Passed as reported; App.tsx resolves a missing value after the orgMode fail-safe.
+      docsEnabled: typeof result.docsEnabled === 'boolean' ? result.docsEnabled : undefined,
     };
   } catch {
     return { state: 'unavailable', orgMode: null, liveApps: false, draftLinks: false, artifactWebsites: false };

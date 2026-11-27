@@ -9,6 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useRef } from 'react';
 
 const commentsPanel = vi.hoisted(() => ({ props: null }));
 const workspaceMock = vi.hoisted(() => ({
@@ -43,6 +44,10 @@ const workspaceApi = vi.hoisted(() => ({
   streamQuickEdit: vi.fn(),
   undoQuickEdit: vi.fn(),
   loadArtifactRevisions: vi.fn(async () => ({ revisions: [{ id: 'r1' }] })),
+  // The inline state bridge (an inline artifact only).
+  canUseArtifactWorkspace: (a) => !!a?.id,
+  loadArtifactSource: vi.fn(async () => { throw Object.assign(new Error('missing'), { status: 404 }); }),
+  saveArtifactSource: vi.fn(async () => ({ revision: { id: 's1' } })),
 }));
 const answerArtifactCheck = vi.hoisted(() => vi.fn(async () => true));
 
@@ -136,6 +141,7 @@ vi.mock('../ConfirmModal', () => ({
 }));
 
 import { ArtifactViewer } from './ArtifactViewer';
+import { clearInlineStateCache, useInlineArtifactState } from './useInlineArtifactState';
 import { ChatTranscriptContext, ConversationTranscriptsContext, transcriptLookup } from '../../lib/chatTranscriptContext';
 import { ModelPickerContext } from '../../lib/modelPickerContext';
 
@@ -1254,6 +1260,64 @@ describe('ArtifactViewer quick edit bar', () => {
     };
     const previewShown = () => waitFor(() => expect(document.querySelector('iframe[title="Launch brief"]')).not.toBeNull());
     afterEach(() => { vi.restoreAllMocks(); });
+
+    // ENG-4684: Preview on a live inline card opens on the card's place.
+    it('opens on the place a live inline card was at', async () => {
+      renderViewer({ viewRequest: { view: PLACE } });
+      await previewShown();
+      expect(restoresAfterReload()).toEqual([
+        { source: 'anton-preview-parent', type: 'restore', view: PLACE },
+      ]);
+    });
+
+    it('opens an inline artifact on the state its card holds, and again after the replay', async () => {
+      clearInlineStateCache();
+      const inline = { ...artifact, display: 'inline' };
+      // The card's frame set a state that is still waiting out its quiet spell.
+      function Card() {
+        const ref = useRef(null);
+        useInlineArtifactState(ref, inline, { enabled: true });
+        return <iframe ref={ref} title="card" srcDoc="<p></p>" />;
+      }
+      render(<Card />);
+      fireEvent(window, new MessageEvent('message', {
+        source: document.querySelector('iframe[title="card"]').contentWindow,
+        data: { source: 'anton-preview', type: 'state', state: { picked: ['b'] } },
+      }));
+      renderViewer({ artifact: inline, viewRequest: { view: PLACE } });
+      await previewShown();
+      // The state can follow the restore once state.json's read settles
+      // (useInlineArtifactState), so wait for both rather than read once.
+      await waitFor(() => expect(restoresAfterReload()).toHaveLength(2));
+      const sent = restoresAfterReload();
+      expect(sent).toEqual(expect.arrayContaining([
+        { source: 'anton-preview-parent', type: 'state', state: { picked: ['b'] } },
+        { source: 'anton-preview-parent', type: 'restore', view: PLACE },
+      ]));
+      const frame = document.querySelector('iframe[title="Launch brief"]');
+      frame.contentWindow.postMessage.mockClear();
+      fromPreview({ type: 'view-restored', status: 'ok' });
+      expect(frame.contentWindow.postMessage).toHaveBeenCalledWith(
+        { source: 'anton-preview-parent', type: 'state', state: { picked: ['b'] } }, '*',
+      );
+      clearInlineStateCache();
+    });
+
+    it("sends an inline page's Submit to the chat and closes, as the card's frame does", async () => {
+      clearInlineStateCache();
+      const inline = { ...artifact, display: 'inline' };
+      const onInlineSubmit = vi.fn();
+      const onClose = vi.fn();
+      renderViewer({ artifact: inline, onInlineSubmit, onClose });
+      await previewShown();
+      fromPreview({ type: 'submit', state: { picked: ['b'] }, message: 'Go' });
+      expect(onInlineSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ display: 'inline' }),
+        { state: { picked: ['b'] }, message: 'Go' },
+      );
+      expect(onClose).toHaveBeenCalled();
+      clearInlineStateCache();
+    });
 
     it('sends the preview back to its slide after an applied quick edit', async () => {
       workspaceApi.streamQuickEdit.mockImplementation(plays(applied));

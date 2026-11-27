@@ -240,10 +240,6 @@
   "upToDate": "Auf dem neuesten Stand",
   "upToDateSaving": "Wird gespeichert…",
   "upToDateSaved": "Gespeichert",
-  "usageBar": {
-    "hideAllowance": "Kontingent ausblenden",
-    "hide": "Ausblenden"
-  },
   "diagnostics": {
     "copy": "Diagnosedaten kopieren",
     "copied": "Kopiert",
@@ -468,7 +464,8 @@
       "fromDesktop": "Ihr Konto ist bereit. Sie können direkt hier loslegen oder zur {product}-App zurückkehren und sich anmelden.",
       "dismiss": "Schließen"
     },
-    "ownWorkHeading": "Woran soll {product} arbeiten?"
+    "ownWorkHeading": "Woran soll {product} arbeiten?",
+    "galleryHint": "Aus dem Beispiel {title}. Ändere, was du willst, und drücke dann Senden."
   },
   "logout": {
     "title": "Von {product} abmelden?",
@@ -481,7 +478,53 @@
     "failed": "Die Abmeldung konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.",
     "waitNote": "Die Abmeldung läuft noch. Sie können dieses Fenster schließen, der Vorgang wird automatisch abgeschlossen."
   },
+  "notices": {
+    "title": "Benachrichtigungen",
+    "ariaLabel": "{count, plural, =0 {Benachrichtigungen} one {Benachrichtigungen, # ungelesen} other {Benachrichtigungen, # ungelesen}}",
+    "unread": "Ungelesen:",
+    "markAllRead": "Alle als gelesen markieren",
+    "emptyTitle": "Keine Benachrichtigungen",
+    "emptyDescription": "Geplante Ausführungen, die deine Aufmerksamkeit brauchen, erscheinen hier.",
+    "loadFailed": "Benachrichtigungen konnten nicht geladen werden."
+  },
   "shortcuts": {
     "showBrowser": "Browser anzeigen"
+  },
+  "gallery": {
+    "open": "Anwendungsgalerie",
+    "title": "Anwendungsgalerie",
+    "welcomeTitle": "Willkommen bei {product}",
+    "welcomeIntro": "Du weißt nicht, wo du anfangen sollst? Das hat {product} aus einer einzigen Nachricht gemacht. Öffne ein Beispiel, sieh dir das Ergebnis an und starte davon aus.",
+    "intro": "Dir gehen die Ideen aus? Das hat {product} aus einer einzigen Nachricht gemacht. Öffne ein Beispiel, sieh dir das Ergebnis an und starte davon aus.",
+    "hide": "Galerie ausblenden",
+    "searchLabel": "Beispiele suchen",
+    "searchPlaceholder": "Suchen: Folien, Tabelle, Lernen…",
+    "tabsLabel": "Kategorien",
+    "all": "Alle",
+    "startHere": "Hier anfangen",
+    "allExamples": "Alle Beispiele",
+    "results": "{count, plural, one {# Beispiel passt} other {# Beispiele passen}}",
+    "noResults": "Nichts passt. Beschreibe im Feld, was du brauchst, und {product} fängt dort an.",
+    "loading": "Beispiele werden geladen…",
+    "unavailable": "Die Beispiele können gerade nicht geladen werden.",
+    "retry": "Erneut versuchen",
+    "minutes": "{count, plural, one {Etwa # Minute} other {Etwa # Minuten}}",
+    "builtWith": "Erstellt mit {model}",
+    "needs": "Benötigt: {needs}",
+    "backToAll": "Alle Beispiele",
+    "backToResults": "Ergebnisse für „{query}“",
+    "position": "{current} von {total}",
+    "previous": "Vorheriges Beispiel",
+    "next": "Nächstes Beispiel",
+    "breadcrumb": "Brotkrumen",
+    "whatItMade": "Was {product} gemacht hat",
+    "download": "Herunterladen",
+    "sampleInput": "Das Beispiel, das wir ihm gegeben haben",
+    "playInBrowser": "Im Browser öffnen",
+    "start": "Mit diesem Beispiel starten",
+    "tryIt": "Dieses Beispiel ausprobieren",
+    "startNote": "Setzt die Nachricht ins Feld. Nichts läuft, bis du auf Senden drückst.",
+    "tryItNote": "Führt es jetzt mit Beispieldaten als neue Aufgabe aus.",
+    "ownFile": "Eigene Datei verwenden"
   }
 }

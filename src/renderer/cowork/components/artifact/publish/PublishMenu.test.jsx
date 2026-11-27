@@ -32,7 +32,7 @@ describe('PublishMenu — outside-click dismiss', () => {
     render(<PublishMenu controller={makeController()} />);
 
     fireEvent.click(screen.getByText('Share'));
-    expect(screen.getByText('Share to the Web')).toBeInTheDocument();
+    expect(screen.getByTestId('publish-menu-body')).toBeInTheDocument();
 
     // The artifact preview renders as an <iframe>; a real click there would
     // hit-test to this overlay div (it visually covers the whole viewport),
@@ -40,7 +40,7 @@ describe('PublishMenu — outside-click dismiss', () => {
     // directly on the overlay simulates that real-world hit-test.
     fireEvent.mouseDown(screen.getByTestId('publish-menu-outside-dismiss'));
 
-    expect(screen.queryByText('Share to the Web')).toBeNull();
+    expect(screen.queryByTestId('publish-menu-body')).toBeNull();
   });
 
   it('does not render the dismiss overlay when the popover is closed', () => {
@@ -212,6 +212,8 @@ describe('PublishMenu — a first share with the platform UI on', () => {
     render(<PublishMenu controller={makeController()} />);
     fireEvent.click(screen.getByText('Share'));
 
+    expect(screen.getByTestId('access-dropdown')).toHaveAccessibleName('Who can access your app: Only me');
+    fireEvent.click(screen.getByTestId('access-dropdown'));
     expect(screen.getByRole('radio', { name: /Only me/ })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('radio', { name: /Public/ })).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByText('Anyone on the internet with the URL')).toBeInTheDocument();
@@ -277,16 +279,44 @@ describe('PublishMenu — fits a short window', () => {
   });
 });
 
-// The password field unfolds under its own option on a first share, and under
-// the access dropdown on a change; it must still be the one the share is saved
-// with.
+describe('PublishMenu — a doc that follows its edits', () => {
+  const SHARED_AND_CHANGED = {
+    publishedUrl: 'https://share/doc',
+    modified: true,
+    versions: [{ md5: 'a' }, { md5: 'b' }],
+  };
+
+  it('has nothing to update by hand and no versions to pick', () => {
+    const controller = makeController(SHARED_AND_CHANGED);
+    render(<PublishMenu controller={controller} noun="doc" followsEdits />);
+    fireEvent.click(screen.getByText('Shared'));
+
+    expect(screen.getByText('Updates as you edit')).toBeInTheDocument();
+    expect(screen.getByText('Who can access your doc')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Update' })).toBeNull();
+    expect(screen.queryByText(/Version history/)).toBeNull();
+    expect(controller.loadVersions).not.toHaveBeenCalled();
+  });
+
+  it('still offers Update for an app whose shared copy is behind', () => {
+    render(<PublishMenu controller={makeController(SHARED_AND_CHANGED)} />);
+    fireEvent.click(screen.getByText('Shared'));
+
+    expect(screen.getByRole('button', { name: 'Update' })).toBeInTheDocument();
+    expect(screen.getByText('Version history (2)')).toBeInTheDocument();
+  });
+});
+
+// The password field unfolds under the access dropdown, on a first share as on
+// a change; it must still be the one the share is saved with.
 describe('PublishMenu — password share', () => {
   it('publishes a new share with the typed password', async () => {
     const ctrl = makeController({ publish: vi.fn(async () => true) });
     render(<PublishMenu controller={ctrl} />);
     fireEvent.click(screen.getByText('Share'));
-    fireEvent.click(screen.getByText('Password protected'));
-    await userEvent.type(screen.getByPlaceholderText('Add a password'), 'hunter2');
+    fireEvent.click(screen.getByTestId('access-dropdown'));
+    fireEvent.click(screen.getByRole('radio', { name: /^Password protected/ }));
+    await userEvent.type(within(screen.getByTestId('access-editor')).getByPlaceholderText('Add a password'), 'hunter2');
     const buttons = screen.getAllByRole('button').filter((b) => /publish|share|save/i.test(b.textContent) && !b.disabled);
     fireEvent.click(buttons.at(-1));
     expect(ctrl.publish).toHaveBeenCalledWith(expect.objectContaining({ mode: 'password', password: 'hunter2' }), expect.anything());

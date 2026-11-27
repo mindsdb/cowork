@@ -20,7 +20,8 @@
       "deleting": "Eliminando…",
       "copyMessage": "Copiar mensaje",
       "copyResponse": "Copiar respuesta",
-      "agentFallback": "Agente"
+      "agentFallback": "Agente",
+      "submittedData": "Datos enviados"
     },
     "incomplete": {
       "spendCeiling": "Se detuvo antes: esta tarea alcanzó su presupuesto de tokens.",
@@ -74,7 +75,13 @@
       "liveArtifact": "artefacto en vivo",
       "deletedBadge": "Eliminado",
       "share": "Compartir",
-      "shareTooltip": "Elige quién puede abrirlo"
+      "shareTooltip": "Elige quién puede abrirlo",
+      "goToLatestTooltip": "Ir a la versión más reciente",
+      "openLink": "Abrir enlace",
+      "openLinkTooltip": "Abrir el enlace del artefacto en una pestaña nueva",
+      "updatedSeeBelow": "Se actualizó. Consulta la versión más reciente abajo.",
+      "previewThisVersion": "Previsualizar esta versión",
+      "hideVersionPreview": "Ocultar esta versión"
     },
     "kinds": {
       "provider": "Proveedor",
@@ -286,11 +293,17 @@
     },
     "dropFiles": "Suelta archivos para adjuntarlos",
     "addContext": "Agregar contexto",
+    "docOutput": {
+      "chip": "Documento",
+      "remove": "Salida: documento. Quitar",
+      "title": "La respuesta se escribirá como documento. Haz clic para quitar."
+    },
     "menu": {
       "attachFiles": "Adjuntar archivos o fotos",
       "openingGoogleDrive": "Abriendo Google Drive…",
       "addFromGoogleDrive": "Agregar archivos de Google Drive",
       "addFromSharePoint": "Agregar archivos de SharePoint",
+      "writeAsDoc": "Escribirlo como documento",
       "browserTitle": "{agent} puede usar el modo navegador en esta tarea. Desactivarlo se aplica desde tu próximo mensaje.",
       "browser": "Navegador",
       "browserOff": "Desactivar el navegador para esta tarea",
@@ -500,7 +513,19 @@
       "missingType": "Falta el tipo de gráfico",
       "unsupportedType": "Tipo de gráfico no compatible: \"{type}\". Compatibles: {supported}.",
       "invalidJson": "JSON no válido en la especificación del gráfico",
-      "error": "ERROR: {error}"
+      "error": "ERROR: {error}",
+      "loading": "Dibujando gráfico…",
+      "chartLabel": "Gráfico",
+      "diagramLabel": "Diagrama",
+      "copyImage": "Copiar como imagen",
+      "downloadPng": "Descargar PNG",
+      "showSource": "Ver código",
+      "hideSource": "Ocultar código",
+      "tooLarge": "La especificación supera los {limit} KB",
+      "tooManyDatasets": "Demasiadas series de datos ({count}); el límite es {limit}",
+      "tooManyPoints": "Demasiados puntos de datos ({count}); el límite es {limit}",
+      "tooManyNodes": "Demasiados nodos ({count}); el límite es {limit}",
+      "emptyDiagram": "El diagrama está vacío"
     }
   },
   "taskModes": {
@@ -754,6 +779,10 @@
     "phoneWorking": "Trabajando en ello…",
     "phoneDone": "Listo. Minimiza para ver la respuesta.",
     "phoneMinimize": "Minimizar",
+    "overlayQuestion": "{agent} tiene una pregunta esperando en el chat.",
+    "overlayHandOver": "Es tu turno en {site}: {reason}.",
+    "overlayHandOverWatching": "Es tu turno en {site}: {reason}. {agent} sigue solo cuando esté hecho.",
+    "overlayGoToQuestion": "Ir a la pregunta",
     "talkTo": "Hablar con {agent}"
   },
   "voiceCall": {

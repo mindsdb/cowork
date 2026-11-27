@@ -20,7 +20,8 @@
       "deleting": "削除中…",
       "copyMessage": "メッセージをコピー",
       "copyResponse": "回答をコピー",
-      "agentFallback": "エージェント"
+      "agentFallback": "エージェント",
+      "submittedData": "送信したデータ"
     },
     "incomplete": {
       "spendCeiling": "途中で停止しました：このタスクはトークン予算の上限に達しました。",
@@ -74,7 +75,13 @@
       "liveArtifact": "ライブアーティファクト",
       "deletedBadge": "削除済み",
       "share": "共有",
-      "shareTooltip": "開けるユーザーを選択"
+      "shareTooltip": "開けるユーザーを選択",
+      "goToLatestTooltip": "最新バージョンへスクロール",
+      "openLink": "リンクを開く",
+      "openLinkTooltip": "アーティファクトのリンクを新しいタブで開きます",
+      "updatedSeeBelow": "更新されました。最新バージョンは下にあります。",
+      "previewThisVersion": "このバージョンをプレビュー",
+      "hideVersionPreview": "このバージョンを隠す"
     },
     "kinds": {
       "provider": "プロバイダー",
@@ -286,11 +293,17 @@
     },
     "dropFiles": "ドロップしてファイルを添付",
     "addContext": "コンテキストを追加",
+    "docOutput": {
+      "chip": "ドキュメント",
+      "remove": "出力：ドキュメント。削除",
+      "title": "回答はドキュメントとして作成されます。クリックすると解除されます。"
+    },
     "menu": {
       "attachFiles": "ファイルや写真を添付",
       "openingGoogleDrive": "Google Driveを開いています…",
       "addFromGoogleDrive": "Google Driveからファイルを追加",
       "addFromSharePoint": "SharePointからファイルを追加",
+      "writeAsDoc": "ドキュメントとして作成",
       "browserTitle": "このタスクでは、{agent}がブラウザモードを使用できます。オフにすると次のメッセージから適用されます。",
       "browser": "ブラウザ",
       "browserOff": "このタスクのブラウザをオフにする",
@@ -500,7 +513,19 @@
       "missingType": "グラフの種類が指定されていません",
       "unsupportedType": "サポートされていないグラフの種類です：「{type}」。サポートされている種類：{supported}。",
       "invalidJson": "グラフの仕様のJSONが無効です",
-      "error": "エラー：{error}"
+      "error": "エラー：{error}",
+      "loading": "グラフを描画中…",
+      "chartLabel": "グラフ",
+      "diagramLabel": "図",
+      "copyImage": "画像としてコピー",
+      "downloadPng": "PNG をダウンロード",
+      "showSource": "ソースを表示",
+      "hideSource": "ソースを隠す",
+      "tooLarge": "仕様が {limit} KB を超えています",
+      "tooManyDatasets": "データセットが多すぎます（{count}）。上限は {limit} です",
+      "tooManyPoints": "データポイントが多すぎます（{count}）。上限は {limit} です",
+      "tooManyNodes": "ノードが多すぎます（{count}）。上限は {limit} です",
+      "emptyDiagram": "図が空です"
     }
   },
   "taskModes": {
@@ -754,6 +779,10 @@
     "phoneWorking": "対応中…",
     "phoneDone": "完了しました。最小化して回答を確認してください。",
     "phoneMinimize": "最小化",
+    "overlayQuestion": "{agent} からの質問がチャットで待っています。",
+    "overlayHandOver": "{site}であなたの操作が必要です：{reason}。",
+    "overlayHandOverWatching": "{site}であなたの操作が必要です：{reason}。完了すると {agent} が自動で再開します。",
+    "overlayGoToQuestion": "質問に移動",
     "talkTo": "{agent} と話す"
   },
   "voiceCall": {

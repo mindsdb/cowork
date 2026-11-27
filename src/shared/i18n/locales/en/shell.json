@@ -240,10 +240,6 @@
   "upToDate": "Up to date",
   "upToDateSaving": "Saving…",
   "upToDateSaved": "Saved",
-  "usageBar": {
-    "hideAllowance": "Hide allowance",
-    "hide": "Hide"
-  },
   "diagnostics": {
     "copy": "Copy diagnostics",
     "copied": "Copied",
@@ -468,7 +464,8 @@
       "fromDesktop": "Your account is ready. You can start right here, or go back to the {product} app and sign in.",
       "dismiss": "Dismiss"
     },
-    "ownWorkHeading": "What should {product} work on?"
+    "ownWorkHeading": "What should {product} work on?",
+    "galleryHint": "From the example {title}. Change anything, then press Send."
   },
   "logout": {
     "title": "Sign out of {product}?",
@@ -481,7 +478,53 @@
     "failed": "Could not finish signing out. Please try again.",
     "waitNote": "Still signing you out. You can close this — it finishes on its own."
   },
+  "notices": {
+    "title": "Notifications",
+    "ariaLabel": "{count, plural, =0 {Notifications} one {Notifications, # unread} other {Notifications, # unread}}",
+    "unread": "Unread:",
+    "markAllRead": "Mark all read",
+    "emptyTitle": "No notifications",
+    "emptyDescription": "Scheduled runs that need your attention show up here.",
+    "loadFailed": "Couldn’t load notifications."
+  },
   "shortcuts": {
     "showBrowser": "Show browser"
+  },
+  "gallery": {
+    "open": "Use Case Gallery",
+    "title": "Use Case Gallery",
+    "welcomeTitle": "Welcome to {product}",
+    "welcomeIntro": "Not sure where to start? Here are things {product} made from one message. Open one to see the result, then start from it.",
+    "intro": "Running out of ideas? Here are things {product} made from one message. Open one to see the result, then start from it.",
+    "hide": "Hide the gallery",
+    "searchLabel": "Search examples",
+    "searchPlaceholder": "Search: slides, spreadsheet, study…",
+    "tabsLabel": "Categories",
+    "all": "All",
+    "startHere": "Start here",
+    "allExamples": "All examples",
+    "results": "{count, plural, one {# example matches} other {# examples match}}",
+    "noResults": "Nothing matches. Describe what you need in the box and {product} will start from there.",
+    "loading": "Loading examples…",
+    "unavailable": "The examples can't load right now.",
+    "retry": "Try again",
+    "minutes": "{count, plural, one {About # minute} other {About # minutes}}",
+    "builtWith": "Built with {model}",
+    "needs": "Needs: {needs}",
+    "backToAll": "All examples",
+    "backToResults": "Results for “{query}”",
+    "position": "{current} of {total}",
+    "previous": "Previous example",
+    "next": "Next example",
+    "breadcrumb": "Breadcrumb",
+    "whatItMade": "What {product} made",
+    "download": "Download",
+    "sampleInput": "The sample we gave it",
+    "playInBrowser": "Open it in your browser",
+    "start": "Start from this example",
+    "tryIt": "Try this example",
+    "startNote": "Puts the message in the box. Nothing runs until you press Send.",
+    "tryItNote": "Runs it now on sample data, as a new task.",
+    "ownFile": "Use my own file"
   }
 }

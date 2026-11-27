@@ -20,8 +20,8 @@ import { Button, Tooltip } from '../components/ui';
 import { badgeVariants } from '../components/ui/Badge';
 import { cn } from '../lib/cn';
 import {
-  revealArtifact, publishArtifact, unpublishArtifact, updateArtifact,
-  publishTargetPath, artifactServeUrl, openArtifactFile, fetchPendingDatasources,
+  revealArtifact, unpublishArtifact, updateArtifact,
+  publishTargetPath, artifactServeUrl, openArtifactFile,
 } from '../api';
 import { copyText } from '../lib/clipboard';
 import { projectNameOf } from '../lib/artifactProject';
@@ -41,31 +41,25 @@ import { SharedLiveAppsSection } from '../components/artifacts/SharedLiveAppsSec
 import { downloadArtifactFile } from '../lib/artifactDownload';
 import {
   canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, canShowInBrowserTab,
-  isHtmlArtifact, isPublishableArtifact, isBackendArtifact, isInlinePreviewable,
+  isHtmlArtifact, isPublishableArtifact, isBackendArtifact, isInlinePreviewable, isWidgetArtifact,
 } from '../lib/artifactKinds';
 import { canPreviewDocument } from '../preview/kinds';
-import { trackArtifactPublished } from '../lib/analytics';
-import { Modal, ModalHeader, ModalBody, ModalFooter } from '../components/ui/Modal';
+import { askAgentAbout } from '../lib/docViewContext';
 import { ArtifactViewer } from '../components/artifact';
-import {
-  AccessChooser,
-  accessDraftFromArtifact,
-  isAccessDraftValid,
-  buildAccessPayload,
-} from '../components/artifact/publish/AccessChooser';
+import DocModal from '../components/doc/DocModal';
+import { docPageTarget, isDocArtifact } from '../components/doc/docArtifact';
 import {
   ARTIFACT_AUDIENCE_ORDER, AUDIENCE_CHOICE, artifactAudienceChoice, groupArtifactsBySection, isOrgSharingOn,
 } from '../lib/orgSharing';
 import { useArtifactAudiencesState } from '../hooks/useArtifactAudiences';
 import { useKnownPeople, useMindsHubTeams, useSharingCapabilities, useSharingOrgName } from '../hooks/useOrgSharing';
 import { artifactOwnerUserId } from '../lib/artifactAuthorship';
-import { LOAD_STATUS, readAudienceAnswer, readAudienceRequest } from '../lib/sharingContract';
+import { LOAD_STATUS } from '../lib/sharingContract';
 import {
-  isDatasourceApprovalError, pendingDatasourcesFromError, publishFailureReason, publishRefusalMessage, unapprovedDatasourcesNotice,
+  publishRefusalMessage, unapprovedDatasourcesNotice,
 } from '../components/artifact/publish/publishErrors';
-import { DatasourceApprovalNotice } from '../components/artifact/publish/DatasourceApprovalNotice';
 import {
-  publishedPageId, reportAccessChangeFailed, reportAccessChanged, reportLinkCopied, reportShareOpened, reportWithdrawal,
+  reportLinkCopied, reportWithdrawal,
   shareSnapshot,
 } from '../lib/artifactShareAnalytics';
 import { republishNotice, stopSharingNotice } from '../components/artifact/publish/linkLeftLive';
@@ -211,57 +205,6 @@ export function titleCompare(a, b) {
   return NAME_COLLATOR.compare(fileNameOf(a), fileNameOf(b));
 }
 
-// Publish visibility chooser — a thin wrapper over the shared
-// <AccessChooser>. Owns only the draft + dialog chrome; the Public /
-// Password / Restricted UI and its validation live in one place now.
-// On confirm it hands back the access payload. Re-publishing pre-fills
-// the existing selection.
-function PublishDialog({ artifact, initialDraft, initialPending, onCancel, onConfirm }) {
-  const { t } = useTranslation('artifacts');
-  const [draft, setDraft] = useState(() => initialDraft || accessDraftFromArtifact(artifact));
-  const [pending, setPending] = useState(() => initialPending || []);
-  useEffect(() => {
-    let live = true;
-    // A dialog reopened after a 409 already holds the server's newest list.
-    if (artifact?.path && !initialPending) {
-      // Inside the promise chain, so a call that throws synchronously cannot
-      // escape the effect.
-      Promise.resolve()
-        .then(() => fetchPendingDatasources(publishTargetPath(artifact)))
-        .then((list) => { if (live) setPending(Array.isArray(list) ? list : []); })
-        .catch(() => { if (live) setPending([]); });
-    }
-    return () => { live = false; };
-  }, [artifact, initialPending]);
-  if (!artifact) return null;
-  const canConfirm = isAccessDraftValid(draft);
-  const submit = () => { if (canConfirm) onConfirm(buildAccessPayload(draft), pending, draft); };
-
-  return (
-    <Modal open onClose={onCancel} size="sm" width="min(440px, 94vw)" maxHeight="min(600px, 90vh)" labelledBy="publish-dialog-title">
-      <ModalHeader
-        id="publish-dialog-title"
-        title={t('publish.shareToWeb')}
-        subtitle={artifact.title || artifact.path?.split('/').pop()}
-        onClose={onCancel}
-      />
-      <ModalBody>
-        <div className="font-[family-name:var(--font-body)] font-semibold text-sm text-ink mb-2">
-          {t('publish.whoCanAccess')}
-        </div>
-        <AccessChooser value={draft} onChange={setDraft} onSubmit={submit} />
-        <DatasourceApprovalNotice pending={pending} className="mt-3" />
-      </ModalBody>
-      <ModalFooter cancel={<Button variant="subtle" onClick={onCancel}>{t('common.cancel')}</Button>}>
-        <Button variant="primary" onClick={submit} disabled={!canConfirm}>
-          {draft.mode === AUDIENCE_CHOICE.PASSWORD ? t('artifactsView.shareProtected')
-            : draft.mode === AUDIENCE_CHOICE.SPECIFIC ? t('artifactsView.shareRestricted') : t('publish.share')}
-        </Button>
-      </ModalFooter>
-    </Modal>
-  );
-}
-
 // ─── Card / Bubble (grid view) ───────────────────────────────────────────
 
 // Ghost icon button for the card header (open ↗ / ⋯). forwardRef so the
@@ -344,7 +287,7 @@ function OpenCommentsCounter({ count, onOpen }) {
   );
 }
 
-function ArtifactBubble({ artifact, projects = [], onOpenViewer, onOpenComments, openComments = null, onMenuOpen, isMenuOpen, phase, onRetry, onOpenProject, liveLines = null, liveAppCard = false, liveAppAddress = '' }) {
+function ArtifactBubble({ artifact, projects = [], onOpenViewer, onOpenComments, openComments = null, onMenuOpen, isMenuOpen, phase, onOpenProject, liveLines = null, liveAppCard = false, liveAppAddress = '' }) {
   /* Same open rules as the list row: the body opens the best destination, and
      ↗ opens the artifact outside the app. */
   const { target, openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer, { liveAppCard, liveAppAddress });
@@ -376,10 +319,11 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onOpenComments,
     onMenuOpen?.(artifact, kebabRef.current.getBoundingClientRect());
   };
 
-  // Publishable = HTML + Markdown (isPublishableArtifact — the same predicate
-  // the Publish action + backend use); those show "Unpublished", everything
-  // else "Draft". Distinct from isWebAppArtifact (icon / name-only), so a .md
-  // is a "file" (shows its extension) yet still publishable. The name renders
+  // Publishable = HTML, Markdown and files shared as a page of their own
+  // (isPublishableArtifact, the same predicate the Share action and the
+  // backend use); the badge's hover says whether an unshared one can be
+  // shared. Distinct from isWebAppArtifact (icon / name-only), so a .md is a
+  // "file" (shows its extension) yet still publishable. The name renders
   // base-truncated with the extension always visible.
   const publishable = isPublishableArtifact(artifact);
   // The owner's name, "Another member" or "Unknown owner" (ENG-2979,
@@ -455,7 +399,6 @@ function ArtifactBubble({ artifact, projects = [], onOpenViewer, onOpenComments,
             artifact={artifact}
             phase={phase}
             publishable={publishable}
-            onRetry={onRetry}
             authorship={authorship}
             orgMode={orgMode}
             // A live app has no page link to report; its state line says what matters.
@@ -511,6 +454,9 @@ async function openUrl(url) {
   try { await host.openExternal(url); } catch {}
 }
 
+// The file to hand the OS for an artifact: a doc's is its page.
+const fileToOpen = (artifact) => docPageTarget(artifact) || artifact;
+
 // How a row or a grid card opens. `liveAppAddress` is where an unpublished
 // live app runs (liveAppOpenAddress), '' while it isn't running.
 function useArtifactOpen(artifact, onOpenViewer, { liveAppCard = false, liveAppAddress = '' } = {}) {
@@ -519,7 +465,7 @@ function useArtifactOpen(artifact, onOpenViewer, { liveAppCard = false, liveAppA
   const published = !!artifact.publishedUrl;
   // In the browser the artifact's address is its HTTP serve URL, not a local
   // OS path the user can't reach — open that "private" URL instead.
-  const privateUrl = !orgMode && host.isWeb ? artifactServeUrl(artifact) : '';
+  const privateUrl = !orgMode && host.isWeb ? artifactServeUrl(fileToOpen(artifact)) : '';
   /*
    * A click means "show me this artifact" in both deployments: Desktop renders
    * the local bytes, org mode renders the authenticated draft. What org mode
@@ -527,15 +473,16 @@ function useArtifactOpen(artifact, onOpenViewer, { liveAppCard = false, liveAppA
    * page, then to a download. Desktop hands an image to the default app; with
    * no shell to hand it to, the viewer shows it, as the chat card does. The
    * document types join both previews wherever the shared document gate
-   * allows them.
+   * allows them. A doc opens in the doc editor in both deployments.
    */
   const hasBridge = host.isElectron;
-  const canPreviewDoc = canPreviewDocument(artifact, host);
+  const canPreviewDoc = canPreviewDocument(artifact, host) || isDocArtifact(artifact);
   const target = artifactOpenTarget({
     orgMode,
     published,
     canPreviewInline: (hasBridge ? isInlinePreviewable(artifact) : canPreviewLocally(artifact)) || canPreviewDoc,
     canPreviewDraft: canPreviewOrgDraft(artifact) || canPreviewDoc,
+    canPreviewPublished: isBackendArtifact(artifact),
     hasBridge,
     hasDraft: canDownloadOrgDraft(artifact),
     canDownload: canDownloadArtifact(artifact),
@@ -550,7 +497,7 @@ function useArtifactOpen(artifact, onOpenViewer, { liveAppCard = false, liveAppA
     if (target === 'preview') onOpenViewer?.(artifact);
     else if (target === 'download') downloadWithFeedback(artifact, toastManager, { note: noPreviewDownloadedNote() });
     else if (published) openUrl(artifact.publishedUrl);
-    else if (target === 'os') openArtifactFile(artifact);
+    else if (target === 'os') openArtifactFile(fileToOpen(artifact));
   };
   /* ↗ skips the viewer: the shared page, else the serve URL, else the file.
      Org mode has no serve URL and no local file, so there ↗ opens only the
@@ -563,7 +510,7 @@ function useArtifactOpen(artifact, onOpenViewer, { liveAppCard = false, liveAppA
     }
     const url = published ? artifact.publishedUrl : privateUrl;
     if (url) await openUrl(url);
-    else if (!orgMode) openArtifactFile(artifact);
+    else if (!orgMode) openArtifactFile(fileToOpen(artifact));
   };
   /* Org mode offers ↗ only once a shared link exists, the same rule as its
      "Open shared link" menu item; an unshared file saves from the menu's
@@ -573,7 +520,7 @@ function useArtifactOpen(artifact, onOpenViewer, { liveAppCard = false, liveAppA
   const canOpenOutside = liveAppCard
     ? Boolean(liveAppAddress)
     : isArtifactActionAvailable('open', { orgMode, published })
-      && (!host.isWeb || canShowInBrowserTab(artifact));
+      && (!host.isWeb || canShowInBrowserTab(fileToOpen(artifact)));
   return { orgMode, toastManager, published, target, openBest, openOutside, canOpenOutside };
 }
 
@@ -628,7 +575,7 @@ function ArtifactProject({ artifact, projects, onOpenProject }) {
 
 // Status badges carry tooltips and a Try again link, so they sit above the
 // stretched open button.
-function ArtifactStatusSlot({ artifact, phase, onRetry, inlineChanges = false, pageBadge = true }) {
+function ArtifactStatusSlot({ artifact, phase, inlineChanges = false, pageBadge = true }) {
   const orgMode = useOrgMode();
   const authorship = useArtifactAuthorship(artifact.capabilities);
   return (
@@ -637,11 +584,10 @@ function ArtifactStatusSlot({ artifact, phase, onRetry, inlineChanges = false, p
         orgMode={orgMode}
         artifact={artifact}
         phase={phase}
-        // Publishable = HTML + Markdown (isPublishableArtifact — the same
-        // predicate the Share action + backend use); those show "Not shared",
-        // everything else "Draft".
+        // Publishable = HTML, Markdown and files shared as a page of their own
+        // (isPublishableArtifact, the same predicate the Share action and the
+        // backend use); the badge's hover says whether an unshared one can be.
         publishable={isPublishableArtifact(artifact)}
-        onRetry={onRetry}
         inlineChanges={inlineChanges}
         pageBadge={pageBadge}
         // The owner's name, "Another member" or "Unknown owner" (ENG-2979,
@@ -782,7 +728,7 @@ function rowMenuItems({ artifact, orgMode, liveApps = false, onOpen, onOpenShare
     }));
 }
 
-function ArtifactRow({ artifact, projects, onOpenViewer, onOpenComments, openComments = null, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onShareLiveApp: doShareLiveApp, onLaunchLiveApp: doLaunchLiveApp, onDelete: doDelete, onOpenProject, phase, onRetry, isMacPlatform, liveLines = null, liveAppCard = false, liveAppAddress = '' }) {
+function ArtifactRow({ artifact, projects, onOpenViewer, onOpenComments, openComments = null, onPublish: doPublish, onUnpublish: doUnpublish, onUpdate: doUpdate, onShareLiveApp: doShareLiveApp, onLaunchLiveApp: doLaunchLiveApp, onDelete: doDelete, onOpenProject, phase, isMacPlatform, liveLines = null, liveAppCard = false, liveAppAddress = '' }) {
   const { orgMode, toastManager, published, target, openBest, openOutside, canOpenOutside } = useArtifactOpen(artifact, onOpenViewer, { liveAppCard, liveAppAddress });
   const liveApps = useLiveApps();
   const menuItems = rowMenuItems({
@@ -824,7 +770,6 @@ function ArtifactRow({ artifact, projects, onOpenViewer, onOpenComments, openCom
           <ArtifactStatusSlot
             artifact={artifact}
             phase={phase}
-            onRetry={onRetry}
             inlineChanges
             pageBadge={!liveAppCard}
           />
@@ -855,6 +800,8 @@ export default function ArtifactsView({
   onOpenProject,
   onAddressWithAgent,
   resolveRepairConversation,
+  // "Edit with agent" in a doc opened here: `{ artifact, message, docRequest }`.
+  onEditDocWithAgent,
   onOpenConversation,
   agentLabel = 'the agent',
   // True until the app's first artifacts fetch settles; shows skeletons.
@@ -866,7 +813,10 @@ export default function ArtifactsView({
   const orgMode = useOrgMode();
   // In MindsHub mode a restricted card doesn't say who it reaches; read it,
   // so its badge, hover and Access filter say (useArtifactAudiences).
-  const { list } = useArtifactAudiencesState(cards, { enabled: orgMode });
+  // A widget (ENG-4684) is input collected in the chat, not a deliverable:
+  // cowork-server leaves it out of the list, and so does the page.
+  const deliverables = useMemo(() => cards.filter((a) => !isWidgetArtifact(a)), [cards]);
+  const { list } = useArtifactAudiencesState(deliverables, { enabled: orgMode });
   // Sections, where the org shares (as on the Skills page); one list elsewhere.
   // The teams tell an artifact shared with the org's default team, which
   // reaches everyone there.
@@ -901,8 +851,12 @@ export default function ArtifactsView({
   // its Comments panel then (ArtifactViewer's commentsRequest), and as it
   // remembers otherwise.
   const [commentsRequest, setCommentsRequest] = useState(null);
-  const openViewer = (artifact, { comments = false } = {}) => {
+  // The same for Share: the page's Share opens the viewer's own Share menu
+  // (ENG-4687), as the chat card does, rather than a dialog of its own.
+  const [shareRequest, setShareRequest] = useState(null);
+  const openViewer = (artifact, { comments = false, share = false } = {}) => {
     setCommentsRequest(comments ? {} : null);
+    setShareRequest(share ? {} : null);
     setViewerPath(artifact?.path || null);
   };
   const openComments = (artifact) => openViewer(artifact, { comments: true });
@@ -913,6 +867,7 @@ export default function ArtifactsView({
     if (viewer) forgetOpenCommentCount(viewer);
     setViewerPath(null);
     setCommentsRequest(null);
+    setShareRequest(null);
     setCommentsRefresh((n) => n + 1);
   };
   // Phones always get the grid (list rows are 5 columns); see ViewToggle.
@@ -922,21 +877,6 @@ export default function ArtifactsView({
   // Per-artifact-path "in flight" set so multiple cards can publish
   // independently without freezing the whole grid.
   const [busyPaths, setBusyPaths] = useState(() => new Set());
-  // Artifact awaiting the publish visibility choice (public vs password).
-  // Null when the chooser is closed.
-  const [publishTarget, setPublishTarget] = useState(null);
-  // The choice and connection list to restore when the dialog reopens after
-  // the server asked for connection approval.
-  const [publishRetry, setPublishRetry] = useState(null);
-  // Resolver for the promise returned by `handlePublish`, so a delegated
-  // caller (the preview's Publish button) can await the whole dialog +
-  // POST flow for its busy state. Settled when the chooser confirms,
-  // cancels, or errors — exactly once per flow.
-  const publishResolveRef = useRef(null);
-  const settlePublish = () => {
-    publishResolveRef.current?.();
-    publishResolveRef.current = null;
-  };
   // Page-level state for the shared HoverMenu — mounting the menu at
   // the parent (and not inside a card) is required because cards
   // apply `transform` on hover, which would re-anchor a position:fixed
@@ -973,10 +913,10 @@ export default function ArtifactsView({
     });
   };
 
-  // Per-path transient status the status pills read: 'publishing' |
-  // 'updating' | 'unpublishing' | 'failed'. Cleared (idle) when the action
-  // settles successfully; 'failed' sticks until the user retries. Pure map
-  // → the pill is whatever's here, so the status can't get stuck.
+  // Per-path transient status the status pills read: 'updating' |
+  // 'unpublishing' | 'deleting', cleared (idle) when the action settles. Pure
+  // map → the pill is whatever's here, so the status can't get stuck. Sharing
+  // happens in the viewer's Share menu, which shows its own progress.
   const [statusByPath, setStatusByPath] = useState({});
   const setPhase = (path, phase) => setStatusByPath((prev) => {
     if (!phase) {
@@ -987,106 +927,17 @@ export default function ArtifactsView({
     return { ...prev, [path]: phase };
   });
 
-  // Centralized publish — single source of truth for state updates,
-  // toast dispatch, and busy bookkeeping. Mirrors anton's /publish
-  // command flow: POST → server zips, scrubs credentials, uploads to
-  // MindsHub, persists report_id in `.published.json`. We then reflect
-  // the returned URL into App's list so the UI flips to "Published"
-  // without a refetch.
-  // Publishing is two steps: choose visibility (public / password) in a
-  // small dialog, then confirmPublish does the actual POST. Re-publishing
-  // a protected artifact pre-fills its existing password.
+  // Share opens the viewer on its Share menu (ENG-4687): the one place an
+  // artifact is shared from, with the same panel the chat card and the
+  // viewer's own button open. It publishes, reports and updates the card
+  // (the viewer's onChange) itself.
   const handlePublish = (artifact) => {
-    if (!artifact?.path || busyPaths.has(artifact.path)) return Promise.resolve();
+    if (!artifact?.path) return;
     if (!isPublishableArtifact(artifact)) {
       showToast({ kind: 'error', message: t('artifactsView.onlyHtmlMd') });
-      return Promise.resolve();
+      return;
     }
-    // Settle any prior unresolved flow before starting a new one so a
-    // delegated awaiter is never left hanging.
-    settlePublish();
-    setPublishRetry(null);
-    setPublishTarget(artifact);
-    reportShareOpened(artifact, { entry: 'list', isShared: shareSnapshot(artifact).shared });
-    return new Promise((resolve) => { publishResolveRef.current = resolve; });
-  };
-
-  const confirmPublish = async (access, approvedDatasources = [], draft = null) => {
-    const artifact = publishTarget;
-    let reopened = false;
-    setPublishTarget(null);
-    setPublishRetry(null);
-    if (!artifact?.path || busyPaths.has(artifact.path)) { settlePublish(); return; }
-    setBusy(artifact.path, true);
-    setPhase(artifact.path, 'publishing');
-    try {
-      const r = await publishArtifact(publishTargetPath(artifact), access, { approvedDatasources });
-      if (r?.url) {
-        // Server is authoritative (it degrades an empty restricted/password
-        // selection back to public); fall back to the requested access.
-        const m = r.accessMode || access?.mode || 'public';
-        // Each audience field the answer leaves out is the request's
-        // (lib/sharingContract reads both).
-        const answered = readAudienceAnswer(r);
-        const requested = readAudienceRequest(access);
-        const saved = {
-          ...artifact,
-          reportId: publishedPageId(r) || artifact.reportId || '',
-          publishedUrl: r.url,
-          accessMode: m,
-          accessProtected: m === 'password',
-          accessPassword: m === 'password' ? (access?.password || '') : '',
-          accessEmails: m === 'restricted' ? (answered.emails ?? requested.emails) : [],
-          orgAllowed: m === 'restricted' ? (answered.orgAllowed ?? requested.orgAllowed) : false,
-          ownerOnly: m === 'restricted' ? (answered.ownerOnly ?? requested.ownerOnly) : false,
-        };
-        updateOne(saved);
-        setPhase(artifact.path, null);
-        trackArtifactPublished(r.report_id || artifact.id || '', m);
-        reportAccessChanged(artifact, {
-          entry: 'list',
-          before: shareSnapshot(artifact),
-          after: shareSnapshot(saved),
-          reportId: publishedPageId(r),
-          access,
-        });
-        showToast({
-          kind: 'ok',
-          message: t('artifactsView.sharedToast', { mode: m === 'password' || m === 'restricted' ? m : 'other', url: r.url }),
-        });
-        const unapproved = unapprovedDatasourcesNotice(r);
-        if (unapproved) showToast({ kind: 'warning', message: unapproved });
-      } else {
-        setPhase(artifact.path, 'failed');
-        showToast({ kind: 'error', message: t('publish.errors.noUrl') });
-      }
-    } catch (e) {
-      reportAccessChangeFailed(artifact, { entry: 'list', reason: publishFailureReason(e) });
-      if (isDatasourceApprovalError(e)) {
-        // The dialog is open again with the new list, which says what to do,
-        // so no toast; the caller keeps waiting for the dialog.
-        reopened = true;
-        setPublishRetry({ draft, pending: pendingDatasourcesFromError(e) });
-        setPublishTarget(artifact);
-        setPhase(artifact.path, null);
-        return;
-      }
-      const msg = e?.message || String(e);
-      // Map the failures a user can act on to a clearer message.
-      const refusal = publishRefusalMessage(e);
-      let friendly = refusal ?? t('publish.errors.sharingFailed', { message: msg });
-      if (!refusal && (/minds_api_key/i.test(msg) || /minds api key/i.test(msg))) {
-        friendly = t('artifactsView.mindsApiKey');
-      }
-      /* A refused share (another owner's artifact, or a share with everyone
-         the caller may not make) is refused again, so the card keeps its
-         state and offers no Try again; the toast says why. */
-      setPhase(artifact.path, refusal ? null : 'failed');
-      showToast({ kind: 'error', message: friendly });
-    } finally {
-      setBusy(artifact.path, false);
-      if (!reopened) settlePublish();
-    }
+    openViewer(artifact, { share: true });
   };
 
   const handleUnpublish = async (artifact) => {
@@ -1337,7 +1188,6 @@ export default function ArtifactsView({
       )}
       isMenuOpen={menuFor?.artifact?.path === a.path}
       phase={statusByPath[a.path]}
-      onRetry={() => handlePublish(a)}
       onOpenProject={onOpenProject}
       liveLines={linesOf(a)}
       liveAppCard={isLiveAppCard(a, liveApps)}
@@ -1360,7 +1210,6 @@ export default function ArtifactsView({
       onDelete={handleTrash}
       onOpenProject={onOpenProject}
       phase={statusByPath[a.path]}
-      onRetry={() => handlePublish(a)}
       isMacPlatform={isMacPlatform}
       liveLines={linesOf(a)}
       liveAppCard={isLiveAppCard(a, liveApps)}
@@ -1505,16 +1354,35 @@ export default function ArtifactsView({
       </ArtifactStatusTeams.Provider>
       </ArtifactStatusOrgName.Provider>
 
+      {/* A doc opens in the doc editor; every other artifact in the file viewer. */}
+      {viewer && isDocArtifact(viewer) && (
+        <DocModal
+          artifact={viewer}
+          onClose={() => setViewerPath(null)}
+          onAskAgent={onEditDocWithAgent ? (ask) => {
+            // Sent as the doc beside a chat sends it: the host takes it to the
+            // doc's chat (or a new one) with the doc docked there.
+            // The preview's bar also brings the images pasted into it.
+            setViewerPath(null);
+            return onEditDocWithAgent({
+              artifact: viewer,
+              ...askAgentAbout({ artifactId: viewer.id, projectId: viewer.projectId || 'local' }, ask),
+              attachments: ask.attachments || [],
+            });
+          } : undefined}
+        />
+      )}
       <ArtifactViewer
-        open={!!viewer}
+        open={!!viewer && !isDocArtifact(viewer)}
         artifact={viewer}
         onClose={closeViewer}
         commentsRequest={commentsRequest}
+        shareRequest={shareRequest}
+        shareEntry={shareRequest ? 'list' : 'viewer'}
         onChange={updateOne}
         // The viewer closes once its card leaves the list, so a link the
         // delete left live is told here instead.
         onDelete={(_path, { notice } = {}) => { if (notice) showToast({ kind: 'warning', message: notice }); }}
-        onPublish={handlePublish}
         onAddressWithAgent={onAddressWithAgent}
         // No host chat here — the viewer asks which one a repair belongs to.
         resolveRepairConversation={resolveRepairConversation}
@@ -1525,17 +1393,6 @@ export default function ArtifactsView({
 
       {shareTarget && (
         <LiveAppShareDialog artifact={shareTarget} onClose={() => setShareTarget(null)} />
-      )}
-
-      {publishTarget && (
-        <PublishDialog
-          key={publishTarget.path}
-          artifact={publishTarget}
-          initialDraft={publishRetry?.draft}
-          initialPending={publishRetry?.pending}
-          onCancel={() => { setPublishTarget(null); setPublishRetry(null); settlePublish(); }}
-          onConfirm={confirmPublish}
-        />
       )}
 
       {/* Single shared menu for the whole grid — anchored to whichever
@@ -1574,7 +1431,7 @@ export default function ArtifactsView({
             // A live app shares through "Share with…": cowork-server refuses it as a page.
             items.push({
               id: 'publish',
-              label: busyA ? t('status.sharing') : t('publish.share'),
+              label: t('publish.share'),
               icon: Ico.power(14),
               onClick: () => handlePublish(a),
             });
@@ -1618,7 +1475,7 @@ export default function ArtifactsView({
                 if (a.publishedUrl) {
                   try { await host.openExternal(a.publishedUrl); } catch {}
                 } else {
-                  openArtifactFile(a);
+                  openArtifactFile(fileToOpen(a));
                 }
               },
             });

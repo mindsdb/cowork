@@ -65,13 +65,21 @@ describe('Public website: the draft helpers', () => {
 });
 
 describe('Public website: the card', () => {
-  it('is not offered unless the caller offers it', () => {
+  // The options live in the access dropdown; open it to list them.
+  const openChoices = async (user) => user.click(screen.getByTestId('access-dropdown'));
+
+  it('is not offered unless the caller offers it', async () => {
+    const user = userEvent.setup();
     render(<AccessChooser value={draft('public')} onChange={() => {}} />);
+    await openChoices(user);
+    expect(cards().length).toBeGreaterThan(0);
     expect(websiteCard()).toBeNull();
   });
 
-  it('comes right after Public when offered', () => {
+  it('comes right after Public when offered', async () => {
+    const user = userEvent.setup();
     render(<AccessChooser value={draft('public')} onChange={() => {}} website />);
+    await openChoices(user);
     const titles = cards();
     expect(titles.at(-2)).toMatch(/^Public(?! website)/);
     expect(titles.at(-1)).toMatch(/^Public website/);
@@ -81,19 +89,22 @@ describe('Public website: the card', () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     render(<AccessChooser value={draft('public')} onChange={onChange} website />);
+    await openChoices(user);
     await user.click(websiteCard());
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ mode: 'website' }));
   });
 
   // A deployment that stops offering websites still shows an artifact that
   // is one; once the person picks another card, it is gone.
-  it('stays listed, checked, for an artifact that already is a website', () => {
+  it('stays listed, checked, for an artifact that already is a website', async () => {
+    const user = userEvent.setup();
     render(<AccessChooser value={draft('website')} onChange={() => {}} />);
+    await openChoices(user);
     expect(websiteCard()).toHaveAttribute('aria-checked', 'true');
   });
 
   it('shows the website as the chosen card of the dropdown', () => {
-    render(<AccessChooser layout="dropdown" value={draft('website')} onChange={() => {}} website />);
+    render(<AccessChooser value={draft('website')} onChange={() => {}} website />);
     expect(screen.getByTestId('access-dropdown')).toHaveAccessibleName('Who can access your app: Public website');
   });
 });
