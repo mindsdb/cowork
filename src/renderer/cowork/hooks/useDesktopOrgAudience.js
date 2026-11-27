@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   isElectron, mindshubArtifactSharePermission, onMindsHubAuthChanged, onMindsHubCredentialChanged,
 } from '../../platform/host';
@@ -21,6 +21,7 @@ import { useSharingOrgName } from './useOrgSharing';
 
 const OFF = Object.freeze({ status: LOAD_STATUS.IDLE, capabilities: SHARING_OFF, orgName: null });
 const LOADING = Object.freeze({ status: LOAD_STATUS.LOADING, capabilities: SHARING_OFF, orgName: null });
+const READY_OFF = Object.freeze({ status: LOAD_STATUS.READY, capabilities: SHARING_OFF, orgName: null });
 const NO_ANSWER = Object.freeze({ key: null, value: null });
 
 /**
@@ -58,35 +59,38 @@ export function useDesktopOrgAudience(active) {
       return undefined;
     }
     let live = true;
-    Promise.resolve()
-      .then(() => mindshubArtifactSharePermission())
-      .catch(() => null)
-      .then((value) => { if (live) setAnswer({ key, value }); });
+    // The host call never rejects: a failed IPC reads as an unknown answer.
+    mindshubArtifactSharePermission().then((value) => { if (live) setAnswer({ key, value }); });
     return () => { live = false; };
   }, [key, credentialVersion]);
 
   const value = answer.key === key ? answer.value : null;
   const on = !!key && !!value && value.sessionCredential !== false;
-  // The name can lag main's answer: none until the token is read, then the
-  // token's organization name, then the list's display name, as on Web.
-  const orgName = useSharingOrgName(on);
+  // Read alongside main's answer rather than after it. The name can still
+  // lag: none until the token is read, then the token's organization name,
+  // then the list's display name, as on Web.
+  const orgName = useSharingOrgName(!!key);
+  const canShare = value?.canShareArtifactsOrg === true;
+  const known = value?.known === true;
 
-  if (!key) return OFF;
-  if (answer.key !== key) return LOADING;
-  if (!on) return { status: LOAD_STATUS.READY, capabilities: SHARING_OFF, orgName: null };
-  return {
+  // One object per answer and name, so consumers see a stable identity.
+  const ready = useMemo(() => ({
     status: LOAD_STATUS.READY,
     capabilities: {
       enabled: false,
       orgAudience: true,
       canShareSkillsOrg: false,
       canWriteSkillsOrg: false,
-      canShareArtifactsOrg: value.canShareArtifactsOrg === true,
-      permissionsKnown: value.known === true,
+      canShareArtifactsOrg: canShare,
+      permissionsKnown: known,
       teamsKnown: true,
     },
     orgName,
-  };
+  }), [canShare, known, orgName]);
+
+  if (!key) return OFF;
+  if (answer.key !== key) return LOADING;
+  return on ? ready : READY_OFF;
 }
 
 export default useDesktopOrgAudience;

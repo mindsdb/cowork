@@ -15,6 +15,7 @@ import { diagnostic } from '../../shared/diagnostics';
 // so call sites can branch / hide affordances.
 
 import type { MindsOrg } from '../../shared/minds-orgs';
+import type { ArtifactSharePermission } from '../../shared/artifact-share-permission';
 import type { InAppBrowserBridge } from '../../shared/browser-contract';
 import type { ServerStartErrorKind } from '../../shared/server-status';
 import type { UpdateCheckSummary } from '../../shared/update-types';
@@ -1839,11 +1840,7 @@ export async function mindshubOrgIconUris(urls: Record<string, string>): Promise
   }
 }
 
-export interface ArtifactSharePermission {
-  sessionCredential: boolean;
-  known: boolean;
-  canShareArtifactsOrg: boolean;
-}
+export type { ArtifactSharePermission };
 
 /**
  * Desktop only: whether the active organization lets this person share an

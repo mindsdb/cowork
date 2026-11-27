@@ -372,7 +372,7 @@ export function PublishMenu({
   // Which reads the panel waits on, and whether it may claim "Shared"
   // (useArtifactShareState).
   const {
-    orgMode, sharing, orgAudience, orgName, sharingStatus, sharingReady, accessStatus, shareState, isSharedWithSomeone,
+    orgMode, sharing, orgAudience, chooserSharing, orgName, sharingStatus, sharingReady, accessStatus, shareState, isSharedWithSomeone,
     permissionsUnreachable,
   } = useArtifactShareState(pub);
   // "Public website": MindsHub mode, a deployment that allows it (/health's
@@ -628,7 +628,7 @@ export function PublishMenu({
                     {sharingSettingsStatus || (
                       <>
                         {permissionsNotice}
-                        <AccessChooser value={draft} onChange={editDraft} onSubmit={doPublish} sharing={sharing ?? orgAudience} ariaLabel={whoCanAccess} website={offerWebsite} />
+                        <AccessChooser value={draft} onChange={editDraft} onSubmit={doPublish} sharing={chooserSharing} ariaLabel={whoCanAccess} website={offerWebsite} />
                       </>
                     )}
                   </div>
@@ -686,7 +686,7 @@ export function PublishMenu({
                                   chosenDesc={desc}
                                   ariaLabel={whoCanAccess}
                                   value={current}
-                                  sharing={sharing ?? orgAudience}
+                                  sharing={chooserSharing}
                                   website={offerWebsite}
                                   onChange={(d) => {
                                     if (d.mode === current.mode) return;
@@ -719,7 +719,7 @@ export function PublishMenu({
                           {sharingSettingsStatus || accessLoadStatus || (
                             <>
                               {permissionsNotice}
-                              <AccessChooser value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing ?? orgAudience} ariaLabel={whoCanAccess} website={offerWebsite} />
+                              <AccessChooser value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={chooserSharing} ariaLabel={whoCanAccess} website={offerWebsite} />
                               {draft.mode === AUDIENCE_CHOICE.WEBSITE && analytics.data?.require_email === true && (
                                 <Alert variant="info" className="mt-2">{t('publish.websiteEmailGateNotice')}</Alert>
                               )}

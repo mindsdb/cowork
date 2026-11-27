@@ -52,6 +52,8 @@ export function useArtifactShareState(pub) {
     orgMode,
     sharing,
     orgAudience,
+    // What the access chooser reads: cloud sharing, else Desktop's audience.
+    chooserSharing: sharing ?? orgAudience,
     orgName,
     sharingStatus,
     sharingReady: sharingStatus === LOAD_STATUS.READY,

@@ -29,6 +29,7 @@ describe('useArtifactShareState on Desktop', () => {
     const { result } = renderHook(() => useArtifactShareState(desktopPub()));
     expect(result.current.sharing).toBeNull();
     expect(result.current.orgAudience).toBe(ORG_AUDIENCE);
+    expect(result.current.chooserSharing).toBe(ORG_AUDIENCE);
     expect(result.current.orgName).toBe('Acme');
     expect(result.current.shareState).toMatchObject({ shared: true, kind: 'org' });
     expect(result.current.permissionsUnreachable).toBe(false);

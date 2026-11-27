@@ -1,5 +1,8 @@
 import { diagnostic } from '../shared/diagnostics';
+import type { ArtifactSharePermission } from '../shared/artifact-share-permission';
 import { accountIdFromToken, activeOrgIdFromToken } from './jwt';
+
+export type { ArtifactSharePermission };
 
 /*
  * Whether the signed-in person may share an artifact with everyone in their
@@ -11,13 +14,6 @@ import { accountIdFromToken, activeOrgIdFromToken } from './jwt';
 
 export const ARTIFACTS_SHARE_ORG = 'artifacts.share_org';
 
-export interface ArtifactSharePermission {
-  /** The sidecar publishes with the session token, not a key the person pasted. */
-  sessionCredential: boolean;
-  /** auth answered with the caller's standing in the organization. */
-  known: boolean;
-  canShareArtifactsOrg: boolean;
-}
 
 export interface ArtifactSharePermissionDeps {
   userSuppliedCredential: () => Promise<boolean>;
