@@ -984,6 +984,8 @@ funds", the automatic tab for "Set up auto top up". Anyone else gets the billing
 page, because every wallet control the console offers is owner-only and a member
 following a deep link would reach a dialog they cannot submit.
 
+Each Get Plus or Upgrade control opens the console's plan confirmation through `useUpgradeOffer`, with `?upgrade=<tier>&start_surface=cowork_<placement>` on the link. The same click records `upgrade_clicked` with `placement`, `start_surface`, `tier` and `from_tier`, and `surface` stays `desktop` or `web`, as on every event. The placements live in `UPGRADE_PLACEMENTS` in `src/renderer/lib/startSurface.ts`. A placement outside that list gets no start surface on the link or the event, and a click with no placement records `placement: 'unknown'`. The Manage link and the Add funds and auto top up links carry no start surface.
+
 Settings carries the same figures under Usage, on desktop and on the hosted web
 build alike: the free grant with its reset date, the balance, the spend for the
 period and auto top up state. The web nav drops the sections a hosted user cannot
