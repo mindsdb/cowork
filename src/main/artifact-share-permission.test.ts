@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createArtifactSharePermissionReader, type ArtifactSharePermissionDeps } from './artifact-share-permission';
+import { KEEP_ANSWER_MS, createArtifactSharePermissionReader, type ArtifactSharePermissionDeps } from './artifact-share-permission';
 
 const AUTH = 'https://auth.example/v1';
 
@@ -147,5 +147,19 @@ describe('createArtifactSharePermissionReader', () => {
     pasted = true;
     await expect(reader.read()).resolves.toEqual({ sessionCredential: false, known: false, canShareArtifactsOrg: false });
     expect(d.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks again once the kept answer is older than its lifetime, so a role change shows up', async () => {
+    let clock = 1_000;
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ org_role: 'member', permissions: [] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ org_role: 'member', permissions: ['artifacts.share_org'] }), { status: 200 }));
+    const reader = createArtifactSharePermissionReader(deps({ fetch, now: () => clock }));
+    await expect(reader.read()).resolves.toMatchObject({ canShareArtifactsOrg: false });
+    clock += KEEP_ANSWER_MS - 1;
+    await expect(reader.read()).resolves.toMatchObject({ canShareArtifactsOrg: false });
+    clock += 1;
+    await expect(reader.read()).resolves.toMatchObject({ canShareArtifactsOrg: true });
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 });

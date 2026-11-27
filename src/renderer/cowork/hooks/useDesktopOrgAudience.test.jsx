@@ -6,8 +6,12 @@ const hostMock = vi.hoisted(() => ({
   mindshubListOrgs: vi.fn(),
   mindshubSwitchOrg: vi.fn(),
   mindshubArtifactSharePermission: vi.fn(),
+  onMindsHubCredentialChanged: vi.fn(),
+  onMindsHubAuthChanged: vi.fn(),
   isElectron: true,
 }));
+// The listeners the hook registers, so a test can fire them.
+const listeners = vi.hoisted(() => ({ credential: new Set(), auth: new Set() }));
 // A getter, so a test can flip `isElectron` after the mock is built.
 vi.mock('../../platform/host', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -34,6 +38,16 @@ beforeEach(() => {
     activeOrgId: 'org-acme', reachable: true,
   });
   hostMock.mindshubArtifactSharePermission.mockReset().mockResolvedValue(ALLOWED);
+  listeners.credential.clear();
+  listeners.auth.clear();
+  hostMock.onMindsHubCredentialChanged.mockReset().mockImplementation((cb) => {
+    listeners.credential.add(cb);
+    return () => listeners.credential.delete(cb);
+  });
+  hostMock.onMindsHubAuthChanged.mockReset().mockImplementation((cb) => {
+    listeners.auth.add(cb);
+    return () => listeners.auth.delete(cb);
+  });
 });
 
 describe('useDesktopOrgAudience', () => {
@@ -134,5 +148,35 @@ describe('useDesktopOrgAudience', () => {
     await act(async () => { notifyOrganizationChanged('user-1'); });
     await waitFor(() => expect(result.current.capabilities.canShareArtifactsOrg).toBe(false));
     expect(hostMock.mindshubArtifactSharePermission).toHaveBeenCalledTimes(2);
+  });
+
+  it('takes the card away when a key is pasted while the viewer stays open', async () => {
+    const seen = [];
+    const { result } = renderHook(() => { const r = useDesktopOrgAudience(true); seen.push(r); return r; });
+    await waitFor(() => expect(isOrgAudienceOn(result.current.capabilities)).toBe(true));
+    hostMock.mindshubArtifactSharePermission.mockResolvedValue({ sessionCredential: false, known: false, canShareArtifactsOrg: false });
+    const from = seen.length;
+    await act(async () => { listeners.credential.forEach((cb) => cb()); });
+    await waitFor(() => expect(hostMock.mindshubArtifactSharePermission).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(seen.slice(from + 1).every((r) => !isOrgAudienceOn(r.capabilities))).toBe(true);
+  });
+
+  it('asks again when the sign-in changes', async () => {
+    const { result } = renderHook(() => useDesktopOrgAudience(true));
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    hostMock.mindshubArtifactSharePermission.mockResolvedValue({ sessionCredential: true, known: false, canShareArtifactsOrg: false });
+    await act(async () => { listeners.auth.forEach((cb) => cb({ authenticated: false })); });
+    await waitFor(() => expect(result.current.capabilities.permissionsKnown).toBe(false));
+    expect(hostMock.mindshubArtifactSharePermission).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops listening once inactive', async () => {
+    const { result, rerender } = renderHook(({ on }) => useDesktopOrgAudience(on), { initialProps: { on: true } });
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(listeners.credential.size).toBe(1);
+    rerender({ on: false });
+    expect(listeners.credential.size).toBe(0);
+    expect(listeners.auth.size).toBe(0);
   });
 });

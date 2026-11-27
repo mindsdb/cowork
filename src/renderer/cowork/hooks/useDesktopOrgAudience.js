@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { isElectron, mindshubArtifactSharePermission } from '../../platform/host';
+import {
+  isElectron, mindshubArtifactSharePermission, onMindsHubAuthChanged, onMindsHubCredentialChanged,
+} from '../../platform/host';
 import { SHARING_OFF } from '../lib/orgSharing';
 import { LOAD_STATUS } from '../lib/sharingContract';
 import { useAccountUser } from './useAccountUser';
@@ -11,8 +13,10 @@ import { useSharingOrgName } from './useOrgSharing';
  * one card (`orgAudience`) and never `enabled`, which would also turn on
  * teams, people and skill sharing.
  *
- * Main keeps auth's answer per person and organization, and checks for a
- * pasted key on every call, so this asks once per mount and organization.
+ * Main keeps auth's answer per person and organization for a few minutes,
+ * and checks for a pasted key on every call. This asks once per mount and
+ * organization, and again whenever the credential or the sign-in changes
+ * while a viewer stays open: a key pasted meanwhile must take the card away.
  */
 
 const OFF = Object.freeze({ status: LOAD_STATUS.IDLE, capabilities: SHARING_OFF, orgName: null });
@@ -32,6 +36,19 @@ export function useDesktopOrgAudience(active) {
   const eligible = reading && !!accountUser?.org && !accountUser.orgIsPersonal;
   const key = eligible ? `${accountUser.sub}:${accountUser.orgId}` : null;
   const [answer, setAnswer] = useState(NO_ANSWER);
+  const [credentialVersion, setCredentialVersion] = useState(0);
+
+  useEffect(() => {
+    if (!key) return undefined;
+    // A new credential may be a pasted key: drop the answer so the card is
+    // off until main answers for it. A sign-in change only asks again.
+    const offCredential = onMindsHubCredentialChanged(() => {
+      setAnswer(NO_ANSWER);
+      setCredentialVersion((n) => n + 1);
+    });
+    const offAuth = onMindsHubAuthChanged(() => setCredentialVersion((n) => n + 1));
+    return () => { offCredential(); offAuth(); };
+  }, [key]);
 
   useEffect(() => {
     // Forget the answer once there is no key, so coming back to the same
@@ -46,7 +63,7 @@ export function useDesktopOrgAudience(active) {
       .catch(() => null)
       .then((value) => { if (live) setAnswer({ key, value }); });
     return () => { live = false; };
-  }, [key]);
+  }, [key, credentialVersion]);
 
   const value = answer.key === key ? answer.value : null;
   const on = !!key && !!value && value.sessionCredential !== false;

@@ -53,6 +53,7 @@ exports[`IPC channel contract > locks the full channel map (a rename here is a b
   "INSTALL_PROGRESS": "install:progress",
   "INSTALL_START": "install:start",
   "KEYCHAIN_REVOKE": "keychain:revoke",
+  "MINDSHUB_ARTIFACT_SHARE_PERMISSION": "mindshub:artifact-share-permission",
   "MINDSHUB_AUTH_CHANGED": "mindshub:auth-changed",
   "MINDSHUB_BRAND_IMAGES": "mindshub:brand-images",
   "MINDSHUB_CREDENTIAL_CHANGED": "mindshub:credential-changed",

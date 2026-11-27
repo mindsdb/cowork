@@ -164,11 +164,15 @@ export function AccessSummaryCard({ pub, sharing, orgAudience = null, orgName, p
       : summary;
   const draft = accessDraftFromArtifact(pub, { orgSharing, orgAudience: !!orgAudience, teams: sharing?.teams?.teams || [] });
   const listed = draft.mode === AUDIENCE_CHOICE.SPECIFIC;
-  const emails = listed ? parseEmailList(draft.emailsText).valid : [];
+  // Desktop reads org_allowed with emails as Everyone (an earlier checkbox
+  // allowed both). Those addresses still open the link until the access is
+  // saved again, so the card keeps listing them under Everyone.
+  const orgWithEmails = !orgSharing && draft.mode === AUDIENCE_CHOICE.ORG;
+  const emails = listed || orgWithEmails ? parseEmailList(draft.emailsText).valid : [];
   const teamIds = listed && orgSharing ? draft.teamIds : [];
   const userIds = listed && orgSharing ? draft.userIds : [];
   const count = emails.length + teamIds.length + userIds.length;
-  const desc = count > 0
+  const desc = count > 0 && listed
     ? recipientSummary({ teamIds, userIds, emails }, { orgName, emailsOnly: !orgSharing })
     : m.desc;
   const list = count > 0 && (
@@ -444,7 +448,7 @@ export function PublishMenu({
 
   const current = seedDraft();
   const draftValid = (d) => isAccessDraftValid(d, { orgSharing: !!sharing });
-  const accessPayload = (d, notify) => buildAccessPayload(d, { orgMode, notify });
+  const accessPayload = (d, notify) => buildAccessPayload(d, { orgMode, orgAudience: !!orgAudience, notify });
 
   // Saves `d`, first asking whether to email the individuals it adds over
   // `saved` (none added: saved without asking, nobody notified).

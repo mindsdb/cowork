@@ -68,8 +68,14 @@ describe('isAccessDraftValid with a kept organization', () => {
 
 describe('buildAccessPayload on Desktop', () => {
   it('sends Everyone as org_allowed with no emails', () => {
-    expect(buildAccessPayload({ mode: AUDIENCE_CHOICE.ORG })).toEqual({
+    expect(buildAccessPayload({ mode: AUDIENCE_CHOICE.ORG }, { orgAudience: true })).toEqual({
       mode: 'restricted', emails: [], org_allowed: true, owner_only: false,
+    });
+  });
+
+  it('saves a stale Everyone draft as Only me when the panel does not offer Everyone', () => {
+    expect(buildAccessPayload({ mode: AUDIENCE_CHOICE.ORG })).toEqual({
+      mode: 'restricted', emails: [], org_allowed: false, owner_only: true,
     });
   });
 

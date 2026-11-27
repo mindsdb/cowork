@@ -180,9 +180,15 @@ export function isAccessDraftValid(draft, { orgSharing = false } = {}) {
 // listed.
 //
 // A mode this chooser doesn't know saves as Only me, never as Public: an
-// unexpected value must not widen who can open the link.
-export function buildAccessPayload(draft, { orgMode = false, notify } = {}) {
-  return withNotifyRequest(orgMode ? buildOrgAccessPayload(draft) : buildBaseAccessPayload(draft), notify);
+// unexpected value must not widen who can open the link. On Desktop that
+// includes Everyone at ‹org› unless the panel offers it (`orgAudience`): a
+// stale draft must not open the artifact to an organization the person
+// can't see, such as a pasted key's.
+export function buildAccessPayload(draft, { orgMode = false, orgAudience = false, notify } = {}) {
+  return withNotifyRequest(
+    orgMode ? buildOrgAccessPayload(draft) : buildBaseAccessPayload(draft, { orgAudience }),
+    notify,
+  );
 }
 
 /**
@@ -235,8 +241,9 @@ function buildOrgAccessPayload(draft) {
   }
 }
 
-function buildBaseAccessPayload(draft) {
-  switch (draft?.mode) {
+function buildBaseAccessPayload(draft, { orgAudience = false } = {}) {
+  const mode = draft?.mode === AUDIENCE_CHOICE.ORG && !orgAudience ? AUDIENCE_CHOICE.PRIVATE : draft?.mode;
+  switch (mode) {
     case AUDIENCE_CHOICE.PUBLIC:
       return { mode: 'public' };
     case AUDIENCE_CHOICE.PASSWORD:

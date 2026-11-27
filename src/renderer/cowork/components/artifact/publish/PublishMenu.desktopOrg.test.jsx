@@ -41,6 +41,15 @@ describe('PublishMenu on Desktop with an organization', () => {
     expect(await screen.findByText('Everyone at Acme')).toBeInTheDocument();
   });
 
+  it('still lists the emails an organization-wide artifact names', async () => {
+    const user = userEvent.setup();
+    render(<PublishMenu controller={makeController({ orgAllowed: true, ownerOnly: false, accessEmails: ['zed@partner.io'] })} />);
+    await user.click(trigger());
+    const summary = await screen.findByTestId('access-summary');
+    expect(summary).toHaveTextContent('Everyone at Acme');
+    expect(summary).toHaveTextContent('zed@partner.io');
+  });
+
   it('saves Everyone as org_allowed through /publish', async () => {
     const user = userEvent.setup();
     const pub = makeController();

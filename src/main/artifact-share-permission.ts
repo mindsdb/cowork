@@ -25,11 +25,17 @@ export interface ArtifactSharePermissionDeps {
   fetch: (url: string, init: RequestInit) => Promise<Response>;
   /** auth's base URL, already ending in /v1. */
   authServiceUrl: string;
+  /** Milliseconds since the epoch; injectable for tests. */
+  now?: () => number;
 }
 
 export interface ArtifactSharePermissionReader {
   read: () => Promise<ArtifactSharePermission>;
 }
+
+// A role change in auth (the permission granted or withdrawn) shows up within
+// this long, without a restart or an organization switch.
+export const KEEP_ANSWER_MS = 5 * 60 * 1000;
 
 const UNKNOWN: ArtifactSharePermission = Object.freeze({
   sessionCredential: true, known: false, canShareArtifactsOrg: false,
@@ -65,11 +71,13 @@ async function askAuth(deps: ArtifactSharePermissionDeps, token: string): Promis
 
 /**
  * Reads the permission, keeping a known answer per person and active
- * organization: the Share button asks whenever a viewer opens. Only a known
- * answer is kept, so one auth couldn't give is asked again next time.
+ * organization for KEEP_ANSWER_MS: the Share button asks whenever a viewer
+ * opens. Only a known answer is kept, so one auth couldn't give is asked
+ * again next time.
  */
 export function createArtifactSharePermissionReader(deps: ArtifactSharePermissionDeps): ArtifactSharePermissionReader {
-  let kept: { key: string; answer: ArtifactSharePermission } | null = null;
+  const now = deps.now ?? Date.now;
+  let kept: { key: string; answer: ArtifactSharePermission; at: number } | null = null;
 
   return {
     async read() {
@@ -95,9 +103,9 @@ export function createArtifactSharePermissionReader(deps: ArtifactSharePermissio
       const sub = accountIdFromToken(token);
       const orgId = activeOrgIdFromToken(token);
       const key = sub && orgId ? JSON.stringify([sub, orgId]) : null;
-      if (key && kept?.key === key) return kept.answer;
+      if (key && kept?.key === key && now() - kept.at < KEEP_ANSWER_MS) return kept.answer;
       const answer = await askAuth(deps, token);
-      if (key && answer.known) kept = { key, answer };
+      if (key && answer.known) kept = { key, answer, at: now() };
       return answer;
     },
   };
