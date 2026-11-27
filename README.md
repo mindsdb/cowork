@@ -1403,14 +1403,14 @@ npm run inspectable-copy -- "/Applications/MindsHub Cowork (Staging).app" ~/cowo
 
 On Windows, pass the installed `.exe`, for example `"$env:LOCALAPPDATA\Programs\anton\MindsHub Cowork (Staging).exe"`.
 
-The script (`scripts/inspectable-copy.mjs`, the same code the setup smokes run) checks that the installed app carries the release fuses. It copies the app into `<folder>/app` and turns the inspector fuse back on in the copy alone, and on macOS it signs the copy again ad hoc. It checks that the copy differs from the release in that one fuse, and it leaves the installed app as shipped. It also sets up a test profile in `<folder>/profile`, kept across runs, whose `.env` turns off shell auto-update and pins the UI version, so the build under test stays the same during a run. It prints the copy's executable, its build kind, and the environment and arguments that run it in that profile:
+The script (`scripts/inspectable-copy.mjs`, the same code the setup smokes run) checks that the installed app carries the release fuses. It copies the app into `<folder>/app` and turns the inspector fuse back on in the copy alone, and on macOS it signs the copy again ad hoc. It checks that the copy differs from the release in that one fuse, and it leaves the installed app as shipped. It also sets up a test profile in `<folder>/profile`, kept across runs. In the `.env` of every account the profile holds, it turns off shell auto-update and pins the UI version, so the build under test stays the same during a run. The app reads `.env` from the signed-in account's own folder, so run the script again after a new test account first signs in. It prints the copy's executable, its build kind, and the environment and arguments that run it in that profile:
 
 ```js
 const { executable, env, args } = JSON.parse(printed);
 const app = await _electron.launch({ executablePath: executable, env: { ...process.env, ...env }, args });
 ```
 
-To refresh the copy after an update, delete `<folder>/app` and run the script again. A harness that starts the copy itself and attaches with `connectOverCDP` adds `--inspect=0` beside `--remote-debugging-port`. Without it, the copy refuses the switch as the installed app does. DevTools listens on `127.0.0.1` only.
+Pass `env` as printed. It points the copy's home and temp folders into the profile and fixes the copy's build kind, so a `COWORK_BUILD_KIND` in your shell can't move it to another data home. Without it, the copy runs in your real profile and asks for the installed app's Keychain items, so deny those prompts. To refresh the copy after an update, delete `<folder>/app` and run the script again. A harness that starts the copy itself and attaches with `connectOverCDP` adds `--inspect=0` beside `--remote-debugging-port`. Without it, the copy refuses the switch as the installed app does. DevTools listens on `127.0.0.1` only.
 
 The copy can't stand in for everything. On macOS it no longer carries MindsDB's Developer ID signature, so Keychain access, privacy permissions and auto-update don't behave as they do in the installed app. A test profile also has no connector OAuth client credentials, because the `.pkg` stages them under the user's real home. Test those on the installed app by hand. The script makes no copy on Linux.
 
