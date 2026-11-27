@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { BRAND_SCRIPT_PATH, BRAND_STYLESHEET_PATH, withDeploymentBrand } from './deployment-brand';
-import { DRAFT_LINK_ORIGINS, withDraftLinkFrameSources } from './draft-link-origins';
+import { ARTIFACT_HOST_FRAME_SOURCES, withDraftLinkFrameSources } from './draft-link-origins';
 
 const webPage = readFileSync(path.resolve(__dirname, '../renderer/index-web.html'), 'utf-8');
 const desktopPage = readFileSync(path.resolve(__dirname, '../renderer/index.html'), 'utf-8');
@@ -94,11 +94,11 @@ describe('withDeploymentBrand beside withDraftLinkFrameSources', () => {
     expect(withDeploymentBrand(withDraftLinkFrameSources(webPage))).toBe(brandFirst);
   });
 
-  it('keeps every brand tag and every draft host', () => {
+  it('keeps every brand tag and the artifact domain', () => {
     expect(brandFirst.split(start)).toHaveLength(2);
     expect(brandFirst).toContain(`<script src="${BRAND_SCRIPT_PATH}"></script>`);
     expect(brandFirst).toContain(`<link rel="stylesheet" href="${BRAND_STYLESHEET_PATH}" />`);
-    for (const origin of DRAFT_LINK_ORIGINS) {
+    for (const origin of ARTIFACT_HOST_FRAME_SOURCES) {
       expect(sources(brandFirst, 'frame-src')).toContain(origin);
       expect(sources(brandFirst, 'child-src')).toContain(origin);
     }

@@ -20,16 +20,16 @@
          the OS browser instead, so index.html needs none of them.
          Tighten per-deployment via reverse-proxy headers if needed.
 
-         The hosted build (web with the platform UI on) appends the draft
-         hosts to frame-src/child-src at build time: vite.config.ts applies
-         withDraftLinkFrameSources (shared/draft-link-origins.ts). A draft
-         preview frame loads a signed draft link there, and the draft then
-         follows that host's own policy, not this one. Production, staging and
-         dev all go in because one build serves every environment. This
-         template lists none of them because self-hosted and white-label
-         builds serve it too, and their pages must not name those hosts.
-         Published artifact hosts are never listed: this shell never frames
-         them.
+         The hosted build (web with the platform UI on) appends the artifact
+         domain (ARTIFACT_HOST_FRAME_SOURCES) to frame-src/child-src at build
+         time: vite.config.ts applies withDraftLinkFrameSources
+         (shared/draft-link-origins.ts). The preview frame loads a signed
+         draft link or a published full-stack app there, and that page then
+         follows its host's own policy, not this one. It is a wildcard because
+         one build serves every environment and a meta CSP can't name the
+         host of the artifact on screen. This template lists none of it,
+         because self-hosted and white-label builds serve it too and their
+         pages must not name those hosts.
 
          cdn.jsdelivr.net is not for this app's own code. It is for previews
          that still render through `srcdoc`, which inherits this policy: the

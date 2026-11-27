@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
 
-import { DRAFT_LINK_ORIGINS, withDraftLinkFrameSources } from '../shared/draft-link-origins';
+import { ARTIFACT_HOST_FRAME_SOURCES, DRAFT_LINK_ORIGINS, withDraftLinkFrameSources } from '../shared/draft-link-origins';
 import { withOrgBrandImageSources } from '../shared/org-brand-image-origins';
 import { withGalleryImageSources } from '../shared/gallery-image-origins';
 
@@ -93,6 +93,7 @@ describe('draft hosts in the web page CSP', () => {
     const html = await dev.transformIndexHtml('/index-web.html', page('index-web.html'));
     expect(cspOf(html)).toBe(cspOf(page('index-web.html')));
     for (const origin of DRAFT_LINK_ORIGINS) expect(html).not.toContain(origin);
+    for (const source of ARTIFACT_HOST_FRAME_SOURCES) expect(html).not.toContain(source);
   }, 30_000);
 
   it('stay out of the desktop build', async () => {

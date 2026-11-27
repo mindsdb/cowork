@@ -6,8 +6,9 @@
  * a preview renders or the panel sits blank. With draft links on, the web
  * preview is a frame navigated to a signed link on a draft host instead: the
  * draft follows that host's policy, and the page only has to let the frame
- * load. The hosted build (web with the platform UI on) appends the draft hosts
- * to frame-src/child-src at build time, through withDraftLinkFrameSources; the
+ * load. The hosted build (web with the platform UI on) appends the artifact
+ * domain, where draft links and published full-stack apps live, to
+ * frame-src/child-src at build time, through withDraftLinkFrameSources; the
  * template names none of them, because self-hosted and white-label pages are
  * built from it too.
  *
@@ -19,7 +20,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { DRAFT_LINK_ORIGINS, withDraftLinkFrameSources } from '../shared/draft-link-origins';
+import { ARTIFACT_HOST_FRAME_SOURCES, DRAFT_LINK_ORIGINS, withDraftLinkFrameSources } from '../shared/draft-link-origins';
 import { orgBrandImageOrigins, withOrgBrandImageSources } from '../shared/org-brand-image-origins';
 import { GALLERY_CONSOLE_ORIGINS, galleryImageOrigins, withGalleryImageSources } from '../shared/gallery-image-origins';
 
@@ -89,19 +90,21 @@ describe('shell CSP', () => {
    */
   it('keeps the web template free of the draft hosts and our domains', () => {
     for (const origin of DRAFT_LINK_ORIGINS) expect(webTemplate).not.toContain(origin);
+    expect(webTemplate).not.toContain('*.mindshub.co');
     expect(ourDomains(policy(webTemplate).flatMap((parts) => parts.slice(1)))).toEqual([]);
   });
 
   /*
-   * One build serves every environment, so all three draft hosts are listed,
-   * and nothing else on our domains: no wildcard, which would also admit every
-   * published artifact host, and never one of our app domains, which would let
-   * a frame load the console or cowork itself.
+   * The preview frames draft links and published full-stack apps, both on the
+   * artifact domain. One build serves every environment and a meta CSP can't
+   * name the host of the artifact on screen, so the page lists the artifact
+   * domain's wildcard and nothing else on our domains: never one of our app
+   * domains, which would let a frame load the console or cowork itself.
    */
-  it.each(['frame-src', 'child-src'])('lets the platform-UI web page frame exactly the draft hosts in %s', (name) => {
+  it.each(['frame-src', 'child-src'])('lets the platform-UI web page frame the artifact domain only in %s', (name) => {
     const sources = directive(platformWebPage, name);
-    expect(artifactWildcards(sources)).toEqual([]);
-    expect(ourDomains(sources)).toEqual([...DRAFT_LINK_ORIGINS]);
+    expect(artifactWildcards(sources)).toEqual([...ARTIFACT_HOST_FRAME_SOURCES]);
+    expect(ourDomains(sources)).toEqual([...ARTIFACT_HOST_FRAME_SOURCES]);
     expect(schemeSources(sources)).toEqual([]);
   });
 

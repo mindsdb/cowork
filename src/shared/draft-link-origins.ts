@@ -7,6 +7,13 @@ export const DRAFT_LINK_ORIGINS: readonly string[] = [
   'https://draft-dev.mindshub.co',
 ];
 
+// Where the hosted page's preview frame may load artifact content: every host
+// on the artifact domain. Draft links (above) and published full-stack apps
+// (<host_key>[-<env>].mindshub.co) both live there. A meta CSP can't name the
+// host of the artifact on screen: it is read once per page load, the SPA
+// switches artifacts without one, and one build serves every environment.
+export const ARTIFACT_HOST_FRAME_SOURCES: readonly string[] = ['https://*.mindshub.co'];
+
 const CSP_META = /(<meta\s+http-equiv="Content-Security-Policy"\s+content=")([^"]*)(")/i;
 const FRAME_DIRECTIVES = ['frame-src', 'child-src'];
 
@@ -15,24 +22,24 @@ function directiveName(part: string): string {
 }
 
 /**
- * Lets the web page's preview frame load the draft hosts: appends them to the
- * frame-src and child-src directives of the page's CSP meta tag and changes
- * nothing else. Only the hosted web build applies it (vite.config.ts), so the
+ * Lets the web page's preview frame load the artifact domain: appends
+ * ARTIFACT_HOST_FRAME_SOURCES to the frame-src and child-src directives of the
+ * page's CSP meta tag and changes nothing else. Only the hosted web build applies it (vite.config.ts), so the
  * self-hosted and white-label pages built from the same template never name
  * these hosts.
  *
- * Refuses a missing or duplicate meta tag or directive, and a draft host the
- * policy already lists, so a changed template fails the build instead of
- * shipping a page that cannot frame drafts.
+ * Refuses a missing or duplicate meta tag or directive, and a source the policy
+ * already lists, so a changed template fails the build instead of shipping a
+ * page that cannot frame artifacts.
  */
 export function withDraftLinkFrameSources(html: string): string {
   const metaTags = html.match(/http-equiv="Content-Security-Policy"/gi) ?? [];
   const meta = CSP_META.exec(html);
   if (metaTags.length !== 1 || !meta) {
-    throw new Error('The web page needs exactly one Content-Security-Policy meta tag to take the draft hosts.');
+    throw new Error('The web page needs exactly one Content-Security-Policy meta tag to take the artifact domain.');
   }
   const policy = meta[2];
-  for (const origin of DRAFT_LINK_ORIGINS) {
+  for (const origin of ARTIFACT_HOST_FRAME_SOURCES) {
     if (policy.includes(origin)) {
       throw new Error(`The web page's Content-Security-Policy already lists ${origin}.`);
     }
@@ -40,11 +47,11 @@ export function withDraftLinkFrameSources(html: string): string {
   const parts = policy.split(';');
   for (const name of FRAME_DIRECTIVES) {
     if (parts.filter((part) => directiveName(part) === name).length !== 1) {
-      throw new Error(`The web page's Content-Security-Policy needs exactly one ${name} directive to take the draft hosts.`);
+      throw new Error(`The web page's Content-Security-Policy needs exactly one ${name} directive to take the artifact domain.`);
     }
   }
 
-  const sources = DRAFT_LINK_ORIGINS.join(' ');
+  const sources = ARTIFACT_HOST_FRAME_SOURCES.join(' ');
   const widened = parts
     .map((part) => {
       if (!FRAME_DIRECTIVES.includes(directiveName(part))) return part;
