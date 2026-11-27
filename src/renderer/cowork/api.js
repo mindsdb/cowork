@@ -4087,6 +4087,42 @@ export async function fetchScheduleRuns(id, { limit = 100, strict = false } = {}
   }
 }
 
+// ─── Notices ────────────────────────────────────────────────────────────────
+//
+// The account's notification inbox: what happened while the user may not
+// have been looking, such as a scheduled run that ended. A server older than
+// these routes answers 404; the reads below return null then, so the caller
+// can hide the bell. Any other failure throws.
+
+async function noticesReq(path, options) {
+  try {
+    return await req(path, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS, ...options });
+  } catch (err) {
+    if (err?.status === 404) return null;
+    throw err;
+  }
+}
+
+// { notices: [{ id, kind, subject, target, createdAt, readAt }], unreadCount },
+// newest first, or null when the server has no notices.
+export async function fetchNotices({ limit = 50 } = {}) {
+  const data = await noticesReq(`/notices/?limit=${encodeURIComponent(limit)}`);
+  if (!data) return null;
+  return {
+    notices: Array.isArray(data.notices) ? data.notices : [],
+    unreadCount: Number.isFinite(data.unreadCount) ? data.unreadCount : 0,
+  };
+}
+
+// A 404 here means the notice is not the caller's (or is gone): nothing to mark.
+export async function markNoticeRead(id) {
+  return noticesReq(`/notices/${encodeURIComponent(id)}/read`, { method: 'POST' });
+}
+
+export async function markAllNoticesRead() {
+  return noticesReq('/notices/read-all', { method: 'POST' });
+}
+
 // ─── Mock data (used when server is offline) ──────────────────────────────────
 export const MOCK_DATA = {
   tasks: [

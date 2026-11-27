@@ -478,6 +478,15 @@
     "failed": "无法完成退出登录。请重试。",
     "waitNote": "仍在退出登录。你可以关闭此窗口，退出会自动完成。"
   },
+  "notices": {
+    "title": "通知",
+    "ariaLabel": "{count, plural, =0 {通知} other {通知，# 条未读}}",
+    "unread": "未读：",
+    "markAllRead": "全部标为已读",
+    "emptyTitle": "没有通知",
+    "emptyDescription": "需要你关注的计划运行会显示在这里。",
+    "loadFailed": "无法加载通知。"
+  },
   "shortcuts": {
     "showBrowser": "显示浏览器"
   },

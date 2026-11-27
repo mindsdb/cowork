@@ -478,6 +478,15 @@
     "failed": "Não foi possível concluir a saída. Tente novamente.",
     "waitNote": "Ainda estamos encerrando sua sessão. Você pode fechar isto: termina sozinho."
   },
+  "notices": {
+    "title": "Notificações",
+    "ariaLabel": "{count, plural, =0 {Notificações} one {Notificações, # não lida} other {Notificações, # não lidas}}",
+    "unread": "Não lida:",
+    "markAllRead": "Marcar todas como lidas",
+    "emptyTitle": "Nenhuma notificação",
+    "emptyDescription": "Execuções agendadas que precisam da sua atenção aparecem aqui.",
+    "loadFailed": "Não foi possível carregar as notificações."
+  },
   "shortcuts": {
     "showBrowser": "Mostrar navegador"
   },

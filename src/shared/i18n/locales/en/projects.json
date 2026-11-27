@@ -634,7 +634,12 @@
     "succeededTitle": "Scheduled task finished",
     "succeededBody": "“{title}” finished a run. Click to open it.",
     "succeededToast": "Scheduled task “{title}” finished a run.",
-    "openAction": "Open task"
+    "openAction": "Open task",
+    "stoppedTitle": "Scheduled task stopped",
+    "stoppedBody": "“{title}” stopped at its limit before finishing. Click to review.",
+    "stoppedToast": "Scheduled task “{title}” stopped at its limit before finishing.",
+    "genericTitle": "New notification",
+    "genericLine": "New notification: {subject}"
   },
   "scheduleNotifyMenu": {
     "label": "Notifications",

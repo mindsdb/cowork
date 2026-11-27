@@ -119,6 +119,7 @@ import { useSchedules } from './hooks/useSchedules';
 import { stopScheduleRun } from './lib/stopScheduleRun';
 import { useAutoPauseNotifications } from './hooks/useAutoPauseNotifications';
 import { useScheduleRunNotifications } from './hooks/useScheduleRunNotifications';
+import { useNotices } from './hooks/useNotices';
 import { shouldKeepAwake } from './lib/scheduleKeepAwake';
 import { fetchSessions, fetchSession, fetchSessionResult, fetchConversationStatus, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
@@ -7062,22 +7063,61 @@ function AppCore() {
     },
   );
 
-  // The same for a run that fails, or succeeds if the user asked to hear
-  // about those: a notification where the OS allows one, a toast otherwise.
-  // Clicking opens the task's page, which says why and offers the run.
+  const openScheduleRun = (sessionId) => {
+    if (!sessionId) return;
+    // Scheduled runs create real conversations on the
+    // server, but they may not be in our local recents list
+    // yet (e.g. the run fired while we were on another
+    // device or before this session's last fetch). Refresh
+    // tasks in parallel so currentTask resolves once the
+    // server response lands, and route immediately so the
+    // user sees the navigation happen.
+    fetchSessions().then((data) => {
+      if (Array.isArray(data)) {
+        setTasks((prev) =>
+          mergeTasksFromServer(data, prev)
+            .filter((t) => !deletedTaskIdsRef.current.has(t.id))
+        );
+      }
+    }).catch(() => {});
+    setActiveTaskId(sessionId);
+    setRoute('task');
+  };
+
+  // Which run endings post a notice: account settings, edited from the
+  // Scheduled Tasks page.
   const {
     prefs: scheduleNotifyPrefs,
     setPrefs: setScheduleNotifyPrefs,
     canEdit: canEditScheduleNotifyPrefs,
-  } = useScheduleRunNotifications(scheduled, {
-    settings,
-    settingsLoaded,
-    saveSettings,
-    onOpen: (schedule) => {
+  } = useScheduleRunNotifications({ settings, settingsLoaded, saveSettings });
+
+  // The sidebar bell: the account's notices, polled about once a minute and
+  // on every navigation. A notice that has just arrived also raises a
+  // notification where the OS allows one, a toast otherwise. A scheduled-run
+  // notice opens its run, or the schedule if no conversation was created.
+  const notices = useNotices({
+    routeKey: `${effectiveWorkspaceMode}:${route}:${activeTaskId || ''}:${selectedScheduleId || ''}`,
+    onOpen: (notice) => {
+      const destination = notice?.fallback?.destination;
+      const supported = typeof destination?.id === 'string'
+        && (destination.kind === 'schedule' || destination.kind === 'conversation');
+      const { conversationId, scheduleId } = supported
+        ? {
+          conversationId: destination.kind === 'conversation' ? destination.id : null,
+          scheduleId: destination.kind === 'schedule' ? destination.id : null,
+        }
+        : notice?.target || {};
+      if (!conversationId && !scheduleId) return;
       setWorkspaceMode('cowork');
-      setSelectedScheduleId(schedule.id);
+      if (conversationId) {
+        openScheduleRun(conversationId);
+        return;
+      }
+      setSelectedScheduleId(scheduleId);
       setRoute('schedule-detail');
     },
+    resolveSchedules: refreshSchedules,
     toast: (notice) => toastManager.add(notice),
     closeToast: (id) => toastManager.close(id),
   });
@@ -7400,6 +7440,7 @@ function AppCore() {
       >
         <Sidebar
           tasks={tasks}
+          notices={notices}
           showCompare={showCompare}
           tasksStatus={tasksStatus}
           onRetryTasks={refreshData}
@@ -7896,26 +7937,7 @@ function AppCore() {
             onReviewedAutoPause={markAutoPauseReviewed}
             onStopRun={handleStopScheduleRun}
             onOpenSettings={openSettings}
-            onOpenRunSession={(sessionId) => {
-              if (!sessionId) return;
-              // Scheduled runs create real conversations on the
-              // server, but they may not be in our local recents list
-              // yet (e.g. the run fired while we were on another
-              // device or before this session's last fetch). Refresh
-              // tasks in parallel so currentTask resolves once the
-              // server response lands, and route immediately so the
-              // user sees the navigation happen.
-              fetchSessions().then((data) => {
-                if (Array.isArray(data)) {
-                  setTasks((prev) =>
-                    mergeTasksFromServer(data, prev)
-                      .filter((t) => !deletedTaskIdsRef.current.has(t.id))
-                  );
-                }
-              }).catch(() => {});
-              setActiveTaskId(sessionId);
-              setRoute('task');
-            }}
+            onOpenRunSession={openScheduleRun}
           />
         )}
 

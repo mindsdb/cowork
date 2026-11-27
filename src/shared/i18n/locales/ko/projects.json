@@ -634,7 +634,12 @@
     "succeededTitle": "예약된 작업 완료",
     "succeededBody": "“{title}”의 실행이 완료되었습니다. 클릭하여 여세요.",
     "succeededToast": "예약된 작업 “{title}”의 실행이 완료되었습니다.",
-    "openAction": "작업 열기"
+    "openAction": "작업 열기",
+    "stoppedTitle": "예약된 작업이 중지됨",
+    "stoppedBody": "“{title}” 작업이 완료 전에 한도에 도달해 중지되었습니다. 클릭하여 확인하세요.",
+    "stoppedToast": "예약된 작업 “{title}”이(가) 완료 전에 한도에 도달해 중지되었습니다.",
+    "genericTitle": "새 알림",
+    "genericLine": "새 알림: {subject}"
   },
   "scheduleNotifyMenu": {
     "label": "알림",
