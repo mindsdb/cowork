@@ -7,16 +7,6 @@ function fakeResponse(ok: boolean, body: unknown = {}, status = ok ? 200 : 400):
 }
 
 describe('getPickedFiles', () => {
-  beforeEach(() => {
-    // authHeader() transitively calls cowork-home.ts's buildKind(), which
-    // touches Electron's `app.isPackaged` unless COWORK_BUILD_KIND short-
-    // circuits it first — `app` isn't available/mocked in this node-env
-    // test, so without this every call here throws (silently swallowed by
-    // getPickedFiles' own try/catch, masking the fetch-mock assertions
-    // below with a false-negative empty array).
-    process.env.COWORK_BUILD_KIND = 'dev';
-  });
-
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -67,10 +57,6 @@ describe('getPickedFiles', () => {
 });
 
 describe('savePickedFiles', () => {
-  beforeEach(() => {
-    process.env.COWORK_BUILD_KIND = 'dev';
-  });
-
   afterEach(() => {
     vi.unstubAllGlobals();
   });

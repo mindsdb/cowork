@@ -15,6 +15,13 @@ describe('commentFixMessage', () => {
     expect(commentFixMessage(thread(selector, 'Wrong number'))).toBe('Address this comment on the text “Q3 revenue”:\n> Wrong number');
   });
 
+  it('quotes the words a doc comment was made on, and says no more for one on whole blocks', () => {
+    const quoted = JSON.stringify({ type: 'doc-block', tab: 't_1', blocks: ['b_1'], quote: 'Acme  is the pick' });
+    expect(commentFixMessage(thread(quoted, 'Name a runner-up'))).toBe('Address this comment on the text “Acme is the pick”:\n> Name a runner-up');
+    const bare = JSON.stringify({ type: 'doc-block', tab: 't_1', blocks: ['b_1'], quote: '' });
+    expect(commentFixMessage(thread(bare, 'Shorter'))).toBe('Address this comment on the artifact:\n> Shorter');
+  });
+
   it('speaks of the whole artifact for a general comment', () => {
     expect(commentFixMessage(thread(null, 'Too long'))).toBe('Address this comment on the artifact:\n> Too long');
   });

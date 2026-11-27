@@ -1,5 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+
+import { hasWorkStarted, __resetWorkStartedForTests } from '../lib/documentWork';
 
 const hostMock = vi.hoisted(() => ({
   isElectron: true,
@@ -12,6 +14,7 @@ const hostMock = vi.hoisted(() => ({
 const deployment = vi.hoisted(() => ({ PLATFORM_UI: true }));
 vi.mock('../../lib/deployment', () => deployment);
 
+vi.mock('../hooks/useAccountUser', () => ({ useAccountUser: () => ({ orgId: 'org-1', sub: 'u1' }) }));
 vi.mock('../../platform/host', () => ({
   host: hostMock,
   getAccessToken: vi.fn(async () => null),
@@ -207,6 +210,20 @@ describe('CompareView', () => {
     expect(screen.queryByText('Comparisons')).toBeNull();
   });
 
+  it('protects work typed in either Compare composer from organization landing', async () => {
+    __resetWorkStartedForTests();
+    mockHistory([]);
+    const start = render(<CompareView models={models} projects={projects} />);
+    fireEvent.input(await screen.findByLabelText('Task for both models'), { target: { value: 'Compare costs' } });
+    expect(hasWorkStarted()).toBe(true);
+    start.unmount();
+
+    __resetWorkStartedForTests();
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    fireEvent.input(await screen.findByLabelText('Follow-up message'), { target: { value: 'Include shipping' } });
+    expect(hasWorkStarted()).toBe(true);
+  });
+
   // The card around a composer (border, radius, shadow, focus) is the shared
   // ComposerFrame's, as in chat; without it the box loses its outline.
   it('frames both the start prompt and the follow-up box like the chat composer', async () => {
@@ -302,6 +319,9 @@ describe('CompareView', () => {
     // Both the card's send arrow and the button below it.
     expect(screen.getAllByRole('button', { name: 'Start comparison' }).map((b) => b.disabled)).toEqual([true, true]);
     expect(screen.getAllByRole('button', { name: /Add funds/ }).length).toBeGreaterThan(0);
+    // The notice names the session's organization, so the console tops up this one (ENG-4333).
+    fireEvent.click(screen.getAllByRole('button', { name: /Add funds/ })[0]);
+    expect(new URL(hostMock.openExternal.mock.calls[0][0]).searchParams.get('organization')).toBe('org-1');
   });
 
   it('on a plan, will not start a side the plan does not cover and the wallet cannot pay for', async () => {
@@ -416,6 +436,8 @@ describe('CompareView', () => {
     expect(within(held).getByText('Qwen stopped because the balance ran out. Add funds to keep comparing.')).toBeTruthy();
     fireEvent.click(within(held).getByRole('button', { name: 'Add funds' }));
     expect(hostMock.openExternal).toHaveBeenCalledTimes(1);
+    // Names the session's organization, so the console tops up this one (ENG-4333).
+    expect(new URL(hostMock.openExternal.mock.calls[0][0]).searchParams.get('organization')).toBe('org-1');
     expect(screen.getByRole('status', { name: 'Side B status' }).textContent).toMatch(/^Out of credits/);
     expect(screen.getByText("Qwen ran out of credits before finishing, so this turn can't be judged.")).toBeTruthy();
     expect(screen.queryByRole('group', { name: 'Which answer was better?' })).toBeNull();
@@ -509,6 +531,67 @@ describe('CompareView', () => {
     expect(within(screen.getByRole('button', { name: 'Open comparison: Second task' })).getByLabelText('No winner yet')).toBeTruthy();
     // Few comparisons: no search box yet.
     expect(screen.queryByPlaceholderText('Search prompts and models')).toBeNull();
+  });
+
+  describe('history at a given width', () => {
+    // happy-dom has no layout: the observer reports the width the test sets.
+    function atWidth(width) {
+      vi.stubGlobal('ResizeObserver', class {
+        constructor(cb) { this.cb = cb; }
+        observe(el) { this.cb([{ target: el, contentRect: { width } }]); }
+        disconnect() {}
+      });
+    }
+    afterEach(() => vi.unstubAllGlobals());
+
+    function history() {
+      mockHistory([comparison({ verdict: 'b', sides: [
+        { ...comparison().sides[0], turnCount: 3 },
+        { ...comparison().sides[1], turnCount: 2 },
+      ] })]);
+      render(<CompareView models={models} projects={projects} />);
+      return screen.findByRole('button', { name: 'Open comparison: Build a dashboard' });
+    }
+
+    it('stacks each comparison on a phone, with the prompt, both models and labelled figures', async () => {
+      atWidth(334);
+      const row = await history();
+      // No columns to squeeze: the header row is gone and the row is not a grid.
+      expect(screen.queryByText('Prompt')).toBeNull();
+      expect(screen.queryByText('Models')).toBeNull();
+      expect(row.style.gridTemplateColumns).toBe('');
+      expect(within(row).getByText('Build a dashboard')).toBeTruthy();
+      expect(within(row).getByText('Kimi')).toBeTruthy();
+      // Qwen once as a model, once as the winner.
+      expect(within(row).getAllByText('Qwen')).toHaveLength(2);
+      // Without headers, each figure carries its own label.
+      expect(within(row).getByText('Turns')).toBeTruthy();
+      expect(within(row).getByText('3 / 2')).toBeTruthy();
+      expect(within(row).getByText('Winner')).toBeTruthy();
+    });
+
+    it('shows a read cost on the card, and leaves an unread one out', async () => {
+      atWidth(334);
+      const priced = comparison({ id: 'c-priced', title: 'Priced' });
+      priced.sides = priced.sides.map((side, i) => ({ ...side, usage: { estimatedCostUsd: i ? 0.5 : 0.04, tokens: 1000, partial: false } }));
+      mockHistory([priced, comparison({ id: 'c-unread', title: 'Unread', verdict: 'a' })]);
+      render(<CompareView models={models} projects={projects} />);
+      const pricedRow = await screen.findByRole('button', { name: 'Open comparison: Priced' });
+      expect(within(pricedRow).getByLabelText('Estimated cost $0.54').textContent).toBe('$0.54');
+      const unreadRow = screen.getByRole('button', { name: 'Open comparison: Unread' });
+      // With no column above it, a bare dash would read as a separator.
+      expect(within(unreadRow).queryByLabelText('Cost not read yet')).toBeNull();
+      expect(within(unreadRow).queryByText('—')).toBeNull();
+    });
+
+    it('keeps the table with its column headers when there is room', async () => {
+      atWidth(1000);
+      const row = await history();
+      for (const heading of ['Prompt', 'Models', 'Turns', 'Winner', 'Started']) {
+        expect(screen.getByText(heading)).toBeTruthy();
+      }
+      expect(row.style.gridTemplateColumns).toMatch(/^minmax/);
+    });
   });
 
   it("shows each model's own logo, not the generic mark", async () => {

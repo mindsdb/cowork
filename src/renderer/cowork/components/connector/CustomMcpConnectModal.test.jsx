@@ -148,6 +148,18 @@ describe('CustomMcpConnectModal', () => {
     expect(await screen.findByText("The login didn't finish: cancelled")).toBeTruthy();
   });
 
+  it('says Cancel only stopped the wait, not that the sign-in failed', async () => {
+    const user = userEvent.setup();
+    customMcpConnect.mockResolvedValue({ ok: false, code: 'stopped_waiting', reason: '' });
+    renderModal();
+
+    await fill(user);
+    await user.click(screen.getByRole('button', { name: 'Connect' }));
+
+    expect(await screen.findByText(/^Stopped waiting for the sign-in\. If you already finished it/)).toBeTruthy();
+    expect(screen.queryByText(/didn't finish/)).toBeNull();
+  });
+
   it('on the web offers Cancel only once the login hosts are confirmed', async () => {
     const user = userEvent.setup();
     shell.isWeb = true;

@@ -14,13 +14,16 @@ import { useTranslation } from '../../../lib/i18n';
    header alone instead of closing it, and the minimized header expands it
    again: `dock` is {collapsed, onToggle}. Expanded, it covers the top of
    the screen (browser-panel.css) with no header of its own: the page's own
-   address row, and a Minimize button floating at its right end. */
+   address row, and a Minimize button floating at its right end.
+
+   `below` sits above the stage; `footer` sits below it. */
 
 /**
  * @param {{
  *   hint: import('react').ReactNode,
  *   actions?: import('react').ReactNode,
  *   below?: import('react').ReactNode,
+ *   footer?: import('react').ReactNode,
  *   stageRef?: import('react').Ref<HTMLDivElement>,
  *   onClose: () => void,
  *   floating?: boolean,
@@ -29,7 +32,7 @@ import { useTranslation } from '../../../lib/i18n';
  *   children?: import('react').ReactNode,
  * }} props
  */
-export function BrowserFrame({ hint, actions = null, below = null, stageRef, onClose, floating = false, extraActions = null, dock = null, children }) {
+export function BrowserFrame({ hint, actions = null, below = null, footer = null, stageRef, onClose, floating = false, extraActions = null, dock = null, children }) {
   const close = dock ? (dock.collapsed ? () => {} : dock.onToggle) : onClose;
   const { t } = useTranslation('chat');
   useEffect(() => {
@@ -95,6 +98,7 @@ export function BrowserFrame({ hint, actions = null, below = null, stageRef, onC
           <div className="browser-panel__stage" ref={stageRef}>
             {children}
           </div>
+          {footer}
         </div>
       </aside>
     </>

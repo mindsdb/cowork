@@ -13,7 +13,7 @@ import * as http from 'http';
 import { installHideOnClose, shouldQuitWhenAllWindowsClosed } from './window-close';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
-import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, activeStoreRoot, activeAccountDataRoot, runningServerPort, serverClearsPendingCredentials, SERVER_STOP_CEILING_MS } from './server-process';
+import { ensureSidecarOnCurrentAccountRoot, startServer, stopServer, forceReapServer, isServerRunning, isServerStarting, getServerPort, getServerDiagnostics, getServerLogPath, resolveServerPort, fetchServerVersions, setServerStartedHook, activeStoreRoot, activeAccountDataRoot, runningServerPort, serverClearsPendingCredentials, SERVER_STOP_CEILING_MS, untilServerStartSettles } from './server-process';
 import { markStoresForSignOut, storesToClearAtSignOut } from './pending-credential-clear';
 import { setUpdateNotifier, recreateVenvIfUnsupportedPython, repairServerInstall } from './server-updater';
 import { recordUpdatePhase, registerUpdateJournalHandlers } from './update-journal';
@@ -28,6 +28,7 @@ import { hasRequiredTokens } from './oauth-connect-result';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
 import { serverMayReceiveTokens, serverTrust } from './app-secret';
 import { fetchNotionPage as fetchNotionPageInMain, searchNotionPages as searchNotionPagesInMain } from './notion-pages';
+import { publishWithApproval as publishWithApprovalInMain } from './publish-approval';
 import { forgetAccessMode, handOverAfterConnect, isAccessMode, setConnectionAccessMode, syncAppHeldMcpConnections } from './mcp-app-held';
 import { cancelCustomMcpConnects, connectCustomMcp } from './custom-mcp-connect';
 import { customMcpAvailable, customSummary, disconnectCustom, listCustomTools, reconnectCustom, setCustomTools } from './custom-mcp-manage';
@@ -64,8 +65,9 @@ import {
   validateOpenAICompatible,
 } from './provider-validation';
 import { sendEvent } from './analytics';
-import { getRendererPath, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, isServingOta, rollbackUI } from './ui-updater';
+import { resolveRendererLoad, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, rollbackUI } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
+import { trustSystemCertificates } from './system-trust';
 import {
   accountDataHome,
   adoptDefaultRootAsIncumbent,
@@ -85,17 +87,17 @@ import { loadDesktopBrandImages, loadOrgIconDataUris } from './org-branding';
 import { resolveChannelIconPath } from './app-icon';
 import { applyChannelUvIsolation, primeLoginShellPath } from './uv-paths';
 import { shellAutoUpdateEnabledFor } from './shell-auto-update-rollout';
-import { getServerAuthToken, authHeader, resetServerAuthTokenCache } from './server-auth';
+import { getServerAuthToken, getWindowProof, authHeader, envForRenderer } from './server-auth';
 import { getAppDisplayVersion } from './server-source';
 import { unifiedVersion, SKEW_WARN_DAYS } from '../shared/version';
 import { detectClaudeCode } from './coding-mode';
 import { folderPickerDefaultPath } from './folder-picker';
-import { isSelfReload, normalizeExternalBrowserUrl } from './external-url';
+import { isDevServerNavigation, isSelfReload, normalizeExternalBrowserUrl } from './external-url';
 import { registerRendererPermissions } from './renderer-permissions';
 import { guardDocumentPreviewFrames } from './document-preview-guard';
 import { mainWindowWebPreferences } from './main-window-preferences';
 import { addRedoOnCmdY, EDIT_MENU_ID } from './edit-menu';
-import { serverTokenListener } from './server-token-listener';
+import { gatesInOrder, holdWhileServerStarts, serverTokenListener } from './server-token-listener';
 import {
   startCodingTerminal,
   writeToCodingTerminal,
@@ -479,6 +481,10 @@ function createWindow() {
   // anything, so no frame is created unseen.
   const previewGuard = guardDocumentPreviewFrames(mainWindow.webContents);
 
+  /* The window the listener below gives the window proof to. Captured here, so
+     a listener registered for this window never proves a later one's requests. */
+  const proofWindow = mainWindow;
+
   // Inject the server's bearer token into every request the renderer makes to
   // the loopback API — including browser-initiated loads (images, iframes and
   // their relative sub-resources, downloads) that can't carry an Authorization
@@ -486,30 +492,40 @@ function createWindow() {
   // redirect (Chromium strips the header on those; this re-adds it on the
   // redirected request). Done at the network layer so it's uniform and the
   // token never reaches the renderer. Scoped to our loopback server's origin
-  // so it can't leak elsewhere. No-op when the server runs without auth.
+  // so it can't leak elsewhere. The window proof goes only on this window's
+  // own top-level fetches, the same way.
   mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
     { urls: ['http://127.0.0.1/*', 'http://localhost/*'] },
     // The document preview frame, any frame inside it and a request with no
     // frame get no token (server-token-listener.ts, document-preview-guard.ts).
-    // The Minds gate holds response-creation requests until the resumed
-    // credential is ready, and cancels them when it never is.
+    // Only a fetch from this window's top-level frame gets the proof. While a
+    // server start is pending, every request to the server's address waits
+    // until the start publishes the launch's values or ends without them
+    // (untilServerStartSettles in server-process.ts). Then the Minds gate
+    // holds response-creation requests until the resumed credential is ready,
+    // and cancels them when it never is.
     serverTokenListener({
       guard: previewGuard,
       serverPort: getServerPort,
       token: getServerAuthToken,
+      windowProof: getWindowProof,
+      mainWindow: () => (proofWindow.isDestroyed() ? null : proofWindow.webContents),
       viteDevPort,
-      gate: (details, settle) => gateMindsResponseCreationRequest(
-        details,
-        getServerPort(),
-        isMindsResumeCredentialGateActive(),
-        runtimeMindsCredentialRequirement,
-        waitForMindsResumeCredential,
-        (ready) => {
-          if (!ready) {
-            diagnostic("main.app", "WARNING", "minds_auth_response_creation_aborted_while_the_resumed_credential_remained_unavailable", '[minds-auth] response creation aborted while the resumed credential remained unavailable');
-          }
-          settle(ready);
-        },
+      gate: gatesInOrder(
+        holdWhileServerStarts(getServerPort, untilServerStartSettles),
+        (details, settle) => gateMindsResponseCreationRequest(
+          details,
+          getServerPort(),
+          isMindsResumeCredentialGateActive(),
+          runtimeMindsCredentialRequirement,
+          waitForMindsResumeCredential,
+          (ready) => {
+            if (!ready) {
+              diagnostic("main.app", "WARNING", "minds_auth_response_creation_aborted_while_the_resumed_credential_remained_unavailable", '[minds-auth] response creation aborted while the resumed credential remained unavailable');
+            }
+            settle(ready);
+          },
+        ),
       ),
     }),
   );
@@ -529,13 +545,14 @@ function createWindow() {
     diagnostic("main.app", "INFO", "main_dev_mode_full_using_bundled_renderer_skipping_ota_cache", '[main] DEV_MODE=full — using bundled renderer, skipping OTA cache');
     mainWindow.loadFile(getBundledPath());
   } else {
-    const rendererPath = getRendererPath();
-    diagnostic("main.app", "INFO", "main_loading_renderer_from", `[main] loading renderer from ${rendererPath}`);
+    // One decision per load: the folder check runs here, right before the load.
+    const renderer = resolveRendererLoad();
+    diagnostic("main.app", "INFO", "main_loading_renderer_from", `[main] loading renderer from ${renderer.path}`);
     // Boot self-heal: arm BEFORE the load (so the result can't be missed) when
     // serving an activated OTA bundle. A bad hot-update rolls back to the
     // app-bundled renderer instead of re-loading the broken bundle every launch.
-    if (isServingOta()) armOtaBootSelfHeal(mainWindow);
-    mainWindow.loadFile(rendererPath);
+    if (renderer.kind === 'ota') armOtaBootSelfHeal(mainWindow);
+    mainWindow.loadFile(renderer.path);
   }
 
   // DevTools no longer auto-open on launch. Still reachable on demand
@@ -578,8 +595,8 @@ function createWindow() {
   });
 
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    // Allow dev server reloads
-    if (!app.isPackaged && url.startsWith('http://localhost')) return;
+    // Allow dev server reloads, to Vite's own origin only
+    if (!app.isPackaged && isDevServerNavigation(url, viteDevPort)) return;
     // And a packaged document reloading ITSELF, which arrives here too: the
     // account switch, the organization switch and the sign-out all replace the
     // document rather than trying to scrub it, and blocking that is silent —
@@ -1158,6 +1175,8 @@ function setupIPC() {
   // Desktop only, for the same reason: these read pages with the app-held token.
   ipcMain.handle(IPC.NOTION_SEARCH_PAGES, (_event, opts) => searchNotionPagesInMain(opts?.name, opts?.query));
   ipcMain.handle(IPC.NOTION_FETCH_PAGE, (_event, opts) => fetchNotionPageInMain(opts?.name, opts?.page));
+  // Desktop only: an approval to send connections' credentials needs the app secret.
+  ipcMain.handle(IPC.PUBLISH_WITH_APPROVAL, (_event, opts) => publishWithApprovalInMain(opts));
 
   // ── MindsHub onboarding ──────────────────────────────────────
   // Logging in via Keycloak doesn't yet decide the user's LLM —
@@ -1470,8 +1489,7 @@ function setupIPC() {
     // The stores are process environment, so the sidecar must restart to read
     // the root it now owns. Through the same helper as the decline branch:
     // adopting moves this account's dotenv from its own subtree to the shared
-    // home, and the cached bearer token has to be dropped with it or every
-    // request from the reloaded renderer carries one the new sidecar refuses.
+    // home, and the restarted sidecar is a new launch with its own bearer token.
     await ensureSidecarOnCurrentAccountRoot();
     return { ok: true, keptExisting: true };
   });
@@ -1485,16 +1503,14 @@ function setupIPC() {
   ipcMain.handle(IPC.SETTINGS_READ, async () => {
     // No account gate: readEnvFile now resolves to the signed-in account's own
     // dotenv, so there is nothing here belonging to anyone else. Redacting would
-    // strip this account's own keys from its own file.
-    return readEnvFile();
+    // strip this account's own keys from its own file. The one exception is a
+    // COWORK_AUTH_TOKEN line, which is the server's and never the renderer's.
+    return envForRenderer(readEnvFile());
   });
 
   ipcMain.handle(IPC.SERVER_RESTART, async () => {
     diagnostic("main.app", "INFO", "server_restart_requested", '[server] restart requested');
     await stopServer();
-    // A restarted server may have generated a fresh COWORK_AUTH_TOKEN; drop
-    // the cache so the webRequest hook re-reads it on the next request.
-    resetServerAuthTokenCache();
     const result = await startServer({});
     if (result.ok) {
       diagnostic("main.app", "INFO", "server_restarted_on_http_127_0_0_1", `[server] restarted on http://127.0.0.1:${result.port}`);
@@ -1946,6 +1962,8 @@ app.whenReady().then(async () => {
   // instead of hardcoding 26866. Best-effort + bounded — never blocks boot.
   await resolveServerPort();
   createWindow();
+  // After the window starts loading, so reading the trust store doesn't delay it.
+  setImmediate(trustSystemCertificates);
 
   // Capture renderer readiness NOW, before the async server start —
   // did-finish-load fires quickly (especially with Vite dev server)

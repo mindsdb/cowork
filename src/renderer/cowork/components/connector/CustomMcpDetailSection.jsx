@@ -157,7 +157,7 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
 
   async function disconnect() {
     if (!(await confirm({
-      title: t('customMcp.detail.disconnectTitle', { name: summary?.label || connection.name }),
+      title: t('customMcp.detail.disconnectTitle', { name: summary?.label || connection.user_label || connection.name }),
       message: t(host.isWeb ? 'customMcp.detail.disconnectMessageWeb' : 'customMcp.detail.disconnectMessage'),
       confirmLabel: t('customMcp.detail.disconnect'),
       destructive: true,
@@ -224,15 +224,18 @@ export default function CustomMcpDetailSection({ connection, onDisconnect, confi
         {reconnect.status === 'error' && <Alert variant="danger">{reconnect.message}</Alert>}
         {reconnect.status === 'done' && <Alert variant="success">{t('customMcp.detail.reconnected')}</Alert>}
         <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            onClick={() => void runReconnect(loginHosts ?? undefined)}
-            disabled={reconnect.status === 'working'}
-          >
-            {reconnect.status === 'working'
-              ? t('customMcp.connecting')
-              : loginHosts ? t('customMcp.continue') : t('customMcp.detail.reconnect')}
-          </Button>
+          {/* The mobile app's webview opens no sign-in pop-up; a reconnect is done on the web or desktop. */}
+          {!host.isMobileShell && (
+            <Button
+              size="sm"
+              onClick={() => void runReconnect(loginHosts ?? undefined)}
+              disabled={reconnect.status === 'working'}
+            >
+              {reconnect.status === 'working'
+                ? t('customMcp.connecting')
+                : loginHosts ? t('customMcp.continue') : t('customMcp.detail.reconnect')}
+            </Button>
+          )}
           <Button size="sm" variant="danger" onClick={() => void disconnect()} disabled={reconnect.status === 'working'}>
             {t('customMcp.detail.disconnect')}
           </Button>

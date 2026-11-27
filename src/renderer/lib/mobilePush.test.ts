@@ -124,9 +124,19 @@ describe('actionForNotification (tap routing)', () => {
       .toEqual({ type: 'navigate', path: '/c/1' });
   });
 
-  it('opens a shared artifact url in the system browser', () => {
+  it('opens shared notifications by stable reference', () => {
+    const ref = '22222222-2222-4222-8222-222222222222/11111111111141118111111111111111';
+    expect(actionForNotification({ kind: 'artifact_shared', artifact_ref: ref }))
+      .toEqual({ type: 'navigate', path: '/artifacts#' + new URLSearchParams({ shared: '', ref }) });
+  });
+
+  it('keeps a shared notification without a valid reference inside the app', () => {
     expect(actionForNotification({ kind: 'artifact_shared', url: 'https://view.mindshub.ai/a/xyz' }))
-      .toEqual({ type: 'open-url', url: 'https://view.mindshub.ai/a/xyz' });
+      .toEqual({ type: 'navigate', path: '/artifacts#shared=' });
+  });
+
+  it('keeps the path cap for a raw shared-artifact path', () => {
+    expect(safeInAppPath('/artifacts#shared=' + 'x'.repeat(3000))).toBeNull();
   });
 
   it('falls back to just opening the app for anything unsafe or missing', () => {
@@ -299,7 +309,7 @@ describe('createMobilePush', () => {
 
     const listener = vi.fn();
     controller.subscribe(listener);
-    controller.noteTaskStarted();
+    controller.offerForTask();
     expect(controller.getSoftPrompt().visible).toBe(true);
     expect(listener).toHaveBeenCalledTimes(1);
   });
@@ -307,15 +317,15 @@ describe('createMobilePush', () => {
   it('offers once per session', async () => {
     const { controller } = setup({ permission: 'prompt' });
     await controller.signedIn('user-1');
-    controller.noteTaskStarted();
+    controller.offerForTask();
     controller.dismissSoftPrompt();
-    controller.noteTaskStarted();
+    controller.offerForTask();
     expect(controller.getSoftPrompt().visible).toBe(false);
   });
 
   it('offers after sign-in when the task started first', async () => {
     const { controller } = setup({ permission: 'prompt' });
-    controller.noteTaskStarted();
+    controller.offerForTask();
     expect(controller.getSoftPrompt().visible).toBe(false);
     await controller.signedIn('user-1');
     expect(controller.getSoftPrompt().visible).toBe(true);
@@ -324,7 +334,7 @@ describe('createMobilePush', () => {
   it('"Turn on" asks the OS and registers when allowed', async () => {
     const { controller, plugin } = setup({ permission: 'prompt' });
     await controller.signedIn('user-1');
-    controller.noteTaskStarted();
+    controller.offerForTask();
     plugin.permission = 'granted';
     await controller.acceptSoftPrompt();
     expect(plugin.requestPermissions).toHaveBeenCalledTimes(1);
@@ -335,7 +345,7 @@ describe('createMobilePush', () => {
   it('"Turn on" then an OS "Don\'t Allow" registers nothing', async () => {
     const { controller, plugin } = setup({ permission: 'prompt' });
     await controller.signedIn('user-1');
-    controller.noteTaskStarted();
+    controller.offerForTask();
     plugin.permission = 'denied';
     await controller.acceptSoftPrompt();
     expect(plugin.register).not.toHaveBeenCalled();
@@ -344,20 +354,20 @@ describe('createMobilePush', () => {
   it('"Not now" snoozes, and a snoozed offer stays hidden next session', async () => {
     const first = setup({ permission: 'prompt' });
     await first.controller.signedIn('user-1');
-    first.controller.noteTaskStarted();
+    first.controller.offerForTask();
     first.controller.dismissSoftPrompt();
     expect(first.storage.data.get(SOFT_PROMPT_SNOOZE_KEY)).toBe(String(NOW));
 
     const next = setup({ permission: 'prompt', storage: first.storage });
     await next.controller.signedIn('user-1');
-    next.controller.noteTaskStarted();
+    next.controller.offerForTask();
     expect(next.controller.getSoftPrompt().visible).toBe(false);
   });
 
   it('never offers when the OS already said no', async () => {
     const { controller, plugin } = setup({ permission: 'denied' });
     await controller.signedIn('user-1');
-    controller.noteTaskStarted();
+    controller.offerForTask();
     expect(controller.getSoftPrompt().visible).toBe(false);
     expect(plugin.register).not.toHaveBeenCalled();
   });
@@ -388,7 +398,7 @@ describe('createMobilePush', () => {
     const { controller, api } = setup({ getPlugin: () => null });
     controller.start();
     await controller.signedIn('user-1');
-    controller.noteTaskStarted();
+    controller.offerForTask();
     expect(controller.getSoftPrompt().visible).toBe(false);
     await controller.unregisterOnSignOut();
     expect(api.unregister).not.toHaveBeenCalled();
@@ -457,11 +467,15 @@ describe('createMobilePush', () => {
       expect(second).toHaveBeenCalledWith('/c/3');
     });
 
-    it('opens a shared artifact in the system browser, router or not', () => {
+    it('queues a shared artifact until the signed-in router mounts', () => {
       const { controller, plugin, openExternal } = setup();
       controller.start();
-      plugin.emit('pushNotificationActionPerformed', tap({ kind: 'artifact_shared', url: 'https://view.mindshub.ai/a/1' }));
-      expect(openExternal).toHaveBeenCalledWith('https://view.mindshub.ai/a/1');
+      const ref = '22222222-2222-4222-8222-222222222222/11111111111141118111111111111111';
+      plugin.emit('pushNotificationActionPerformed', tap({ kind: 'artifact_shared', artifact_ref: ref }));
+      const navigate = vi.fn();
+      controller.setNavigator(navigate);
+      expect(navigate).toHaveBeenCalledWith('/artifacts#' + new URLSearchParams({ shared: '', ref }));
+      expect(openExternal).not.toHaveBeenCalled();
     });
 
     it('ignores a dismiss and a payload with nowhere to go', () => {
@@ -598,7 +612,7 @@ describe('createMobilePush', () => {
     it('hides an open soft prompt', async () => {
       const { controller } = setup({ permission: 'prompt' });
       await controller.signedIn('user-1');
-      controller.noteTaskStarted();
+      controller.offerForTask();
       await controller.unregisterOnSignOut();
       expect(controller.getSoftPrompt().visible).toBe(false);
     });

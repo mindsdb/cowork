@@ -767,4 +767,119 @@ describe("ChatView shared browser pane, shown only when the person is needed (th
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Show browser' })); });
     expect(pane()).not.toBeNull();
   });
+
+  // HAND_OVER's own prompt ('Your turn') isn't the two-paragraph shape
+  // isHandOverCard requires (browserHandOverPrompt.js), so the overlay strip
+  // cases below build their own hand-over card with a real prompt.
+  const HAND_OVER_REAL = {
+    ...HAND_OVER,
+    data: {
+      ...HAND_OVER.data,
+      prompt: "Your turn on example.com: sign in\n\nUse the browser beside the chat, and click Done in the browser when you're finished.",
+    },
+  };
+  const waitStrip = () => pane().querySelector('.browser-panel__wait-strip');
+
+  it('at 800px the overlay strip says a question is waiting, and its button closes the pane', async () => {
+    setWidth(800);
+    const { rerender } = render(<ChatView task={task('ov-1', [asked, live()])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    rerender(<ChatView task={task('ov-1', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    expect(waitStrip()?.querySelector('p')?.textContent).toBe('Anton has a question waiting in the chat.');
+    fireEvent.click(within(waitStrip()).getByRole('button', { name: 'Go to the question' }));
+    expect(pane()).toBeNull();
+  });
+
+  it('at 800px a hand-over card raises the message and no button', async () => {
+    setWidth(800);
+    render(<ChatView task={task('ov-2', [asked, live(HAND_OVER_REAL)])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    expect(waitStrip()?.querySelector('p')?.textContent).toBe('Your turn on example.com: sign in.');
+    expect(within(waitStrip()).queryByRole('button')).toBeNull();
+  });
+
+  /* A hand-over whose prompt doesn't match the two-paragraph shape anton
+     writes (changed wording, a blank reason line) still carries the
+     `browser:` id: the message and the button must agree it is a hand-over,
+     or the strip would send the person to a chat with nothing for them. */
+  it("at 800px a hand-over card whose prompt doesn't parse still gets the hand-over message, with no button", async () => {
+    const HAND_OVER_UNPARSEABLE = { ...HAND_OVER, data: { ...HAND_OVER.data, prompt: 'Your turn on example.com' } };
+    setWidth(800);
+    render(<ChatView task={task('ov-2c', [asked, live(HAND_OVER_UNPARSEABLE)])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    expect(waitStrip()?.querySelector('p')?.textContent).toBe('Your turn on a new tab: Your turn on example.com.');
+    expect(within(waitStrip()).queryByRole('button')).toBeNull();
+  });
+
+  it('at 800px a watching hand-over card says the agent carries on by itself', async () => {
+    const HAND_OVER_WATCHING = {
+      ...HAND_OVER,
+      data: {
+        ...HAND_OVER.data,
+        prompt: "Your turn on example.com: sign in\n\nUse the browser beside the chat. I'll carry on by myself once that's done, or click Done in the browser.",
+      },
+    };
+    setWidth(800);
+    render(<ChatView task={task('ov-2b', [asked, live(HAND_OVER_WATCHING)])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    expect(waitStrip()?.querySelector('p')?.textContent).toBe("Your turn on example.com: sign in. Anton carries on by itself once it's done.");
+    expect(within(waitStrip()).queryByRole('button')).toBeNull();
+  });
+
+  it('an auto-answered held step (ask to approve off) raises no strip', async () => {
+    syncBrowserPrefs({ browserApproveSteps: false, browserApproveStepsOffAt: 1000 });
+    setWidth(800);
+    const heldAutoApproved = { ...HELD, data: { ...HELD.data, held_at_ms: 2000 } };
+    const { rerender } = render(<ChatView task={task('ov-3', [asked, live()])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    await act(async () => { fireEvent.click(screen.getAllByRole('button', { name: 'Show browser' })[0]); });
+    expect(pane()).not.toBeNull();
+    rerender(<ChatView task={task('ov-3', [asked, live(heldAutoApproved)])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    expect(pane()).not.toBeNull();
+    expect(waitStrip()).toBeNull();
+  });
+
+  it('at 1400px there is no strip while a card waits', async () => {
+    setWidth(1400);
+    render(<ChatView task={task('ov-4', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    expect(pane()).not.toBeNull();
+    expect(waitStrip()).toBeNull();
+  });
+
+  it('at 480px the pane docks and carries no strip of its own', async () => {
+    setWidth(480);
+    render(<ChatView task={task('ov-5', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    expect(pane()).not.toBeNull();
+    expect(waitStrip()).toBeNull();
+  });
+
+  it('the Electron panel carries the overlay strip too, at 800px, and its button closes it', async () => {
+    shell.isWeb = false;
+    shell.inApp = true;
+    stageHasArea();
+    setWidth(800);
+    render(<ChatView task={task('ov-6', [asked, live(HELD)])} onSend={vi.fn()} browserOn />);
+    await act(async () => {});
+    expect(waitStrip()?.querySelector('p')?.textContent).toBe('Anton has a question waiting in the chat.');
+    fireEvent.click(within(waitStrip()).getByRole('button', { name: 'Go to the question' }));
+    expect(pane()).toBeNull();
+  });
+
+  /* The blank pane (no browser open yet) gets the same footer, with its own
+     close: a wrong-panel swap (the blank pane's button closing the real
+     pane's session instead of its own `blankBrowser` state) would leave this
+     pane open, since nothing here clears `blankBrowser`. */
+  it('the blank pane carries the overlay strip too, and its own button closes it', async () => {
+    setWidth(800);
+    render(<ChatView task={task('ov-7', [asked, live(HELD)])} onSend={vi.fn()} openBrowserSignal={1} />);
+    await act(async () => {});
+    expect(pane()).not.toBeNull();
+    expect(waitStrip()?.querySelector('p')?.textContent).toBe('Anton has a question waiting in the chat.');
+    fireEvent.click(within(waitStrip()).getByRole('button', { name: 'Go to the question' }));
+    expect(pane()).toBeNull();
+  });
 });

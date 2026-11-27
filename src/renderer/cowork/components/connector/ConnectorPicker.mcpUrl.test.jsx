@@ -14,12 +14,13 @@ vi.mock('../../api', () => ({
   fetchCanBuildCustomConnector: (...args) => fetchCanBuildCustomConnector(...args),
 }));
 const customMcpAvailable = vi.hoisted(() => vi.fn());
-const shell = vi.hoisted(() => ({ isWeb: false }));
+const shell = vi.hoisted(() => ({ isWeb: false, isMobileShell: false }));
 vi.mock('../../../platform/host', () => ({
   host: {
     openExternal: vi.fn(),
     customMcpAvailable,
     get isWeb() { return shell.isWeb; },
+    get isMobileShell() { return shell.isMobileShell; },
   },
 }));
 
@@ -44,6 +45,7 @@ beforeEach(() => {
 afterEach(() => {
   setOrgMode(false);
   shell.isWeb = false;
+  shell.isMobileShell = false;
   fetchConnectors.mockReset();
   fetchCanBuildCustomConnector.mockReset();
   customMcpAvailable.mockReset();
@@ -57,6 +59,17 @@ describe('ConnectorPicker add an MCP server by URL', () => {
 
     expect(onAddMcpUrl).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button', { name: /^Build a custom connector Connect/ })).toBeTruthy();
+  });
+
+  it('never asks or offers it in the mobile app, whose webview opens no sign-in pop-up', async () => {
+    shell.isWeb = true;
+    shell.isMobileShell = true;
+    setOrgMode(true);
+    await openWith();
+
+    await screen.findByRole('button', { name: /^Build a custom connector Connect/ });
+    expect(screen.queryByRole('button', { name: TILE })).toBeNull();
+    expect(customMcpAvailable).not.toHaveBeenCalled();
   });
 
   it('hides the tile when main says custom MCP is not available', async () => {

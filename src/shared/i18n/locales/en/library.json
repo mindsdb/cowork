@@ -378,7 +378,8 @@
     "custom": "Custom",
     "legacy": "Saved by an older version. Disconnect it and connect again.",
     "activateLabel": "{action, select, view {View} reconnect {Reconnect} other {Manage}} {title}: {subtitle}{hint}",
-    "removing": "Removing…"
+    "removing": "Removing…",
+    "settingsLabel": "Settings for {title}: {subtitle}"
   },
   "datasource": {
     "failed": "That did not work.",
@@ -701,6 +702,7 @@
       "needsClientId": "This server needs a client ID. Add one under Advanced.",
       "timeout": "The server took too long to answer. Try again.",
       "loginFailed": "The login didn't finish: {reason}",
+      "stoppedWaiting": "Stopped waiting for the sign-in. If you already finished it, the server shows in your connections.",
       "unavailable": "MCP servers by URL aren't available right now. Restart the app and try again.",
       "keychain": "The system keychain isn't available, so the connection can't be stored safely.",
       "serverChanged": "The app switched accounts or restarted during the login. Try again.",

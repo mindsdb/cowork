@@ -378,7 +378,8 @@
     "custom": "Personalizzata",
     "legacy": "Salvata da una versione precedente. Disconnettila e connettila di nuovo.",
     "activateLabel": "{action, select, view {Visualizza} reconnect {Riconnetti} other {Gestisci}} {title}: {subtitle}{hint}",
-    "removing": "Rimozione…"
+    "removing": "Rimozione…",
+    "settingsLabel": "Impostazioni di {title}: {subtitle}"
   },
   "datasource": {
     "failed": "Non ha funzionato.",
@@ -701,6 +702,7 @@
       "needsClientId": "Questo server richiede un ID client. Aggiungilo in Avanzate.",
       "timeout": "Il server ha impiegato troppo a rispondere. Riprova.",
       "loginFailed": "L'accesso non è stato completato: {reason}",
+      "stoppedWaiting": "L'attesa dell'accesso è stata interrotta. Se l'hai già completato, il server compare tra le tue connessioni.",
       "unavailable": "I server MCP tramite URL non sono disponibili al momento. Riavvia l'app e riprova.",
       "keychain": "Il portachiavi di sistema non è disponibile, quindi la connessione non può essere salvata in modo sicuro.",
       "serverChanged": "L'app ha cambiato account o si è riavviata durante l'accesso. Riprova.",

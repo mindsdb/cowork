@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, waitFor } from '@testing-library/react';
 
-const spies = vi.hoisted(() => ({ customs: [], databases: [] }));
+const spies = vi.hoisted(() => ({ customs: [], databases: [], connections: [] }));
 
 vi.mock('./api', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -17,7 +17,7 @@ vi.mock('./api', async (importOriginal) => ({
   fetchSettings: vi.fn(async () => ({})),
   fetchPins: vi.fn(async () => ({ pins: [] })),
   fetchSchedules: vi.fn(async () => []),
-  fetchDatasources: vi.fn(async () => ({ connections: [{ engine: 'gmail', name: 'Work mail' }] })),
+  fetchDatasources: vi.fn(async () => ({ connections: spies.connections })),
   listDatasourceConnections: vi.fn(async () => spies.databases),
   listCustomConnections: vi.fn(async () => spies.customs),
   fetchInFlightList: vi.fn(async () => []),
@@ -72,6 +72,7 @@ beforeEach(() => {
   setOrgMode(true);
   spies.customs = [QUOTES, { ...RATES, status: 'pending' }];
   spies.databases = [];
+  spies.connections = [{ engine: 'gmail', name: 'Work mail' }];
   vi.mocked(listCustomConnections).mockClear();
   vi.mocked(listDatasourceConnections).mockClear();
   window.history.replaceState(null, '', '/');
@@ -96,6 +97,16 @@ describe('the composer connection toggles in cloud', () => {
     await act(async () => { window.dispatchEvent(new CustomEvent('anton:connections-changed')); });
 
     await waitFor(() => expect(screen.getByTestId('toggles').textContent).toContain('acme_rates:Rates'));
+  });
+
+  it('pick up a custom MCP server a sign-in saved after its form stopped waiting', async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('toggles').textContent).toContain('gmail:Work mail'));
+
+    spies.connections = [...spies.connections, { engine: 'custom_mcp', name: 'cm-0123456789abcdef0123456789abcdef' }];
+    await act(async () => { window.dispatchEvent(new CustomEvent('anton:connections-changed')); });
+
+    await waitFor(() => expect(screen.getByTestId('toggles').textContent).toContain('custom_mcp:cm-0123456789abcdef'));
   });
 });
 

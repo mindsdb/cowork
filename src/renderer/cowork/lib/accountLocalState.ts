@@ -28,7 +28,7 @@ const LAST_ORGANIZATION_KEY = 'anton.lastOrganization';
 const ACCOUNT_SCOPED_PREFIXES = [
   'anton:conv-turns:', // conversationHistory.js — full step lists, per conversation
   'anton:conv-artifacts:', // conversationHistory.js — its legacy sibling
-  'anton.composerDrafts', // draftStore.js — unsent message text
+  'anton.composerDrafts', // draftStore.js + draftAttachments.js — unsent text and attachments
   'anton.settingsCache', // settingsCache.js — first-paint settings
   'anton.orgBrandingCache', // orgBrandingCache.js — first-paint org branding
   'anton:pinned-projects', // ProjectsView.jsx — which projects were pinned

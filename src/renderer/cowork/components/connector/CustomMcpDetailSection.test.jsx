@@ -8,8 +8,10 @@ const bridge = vi.hoisted(() => ({
   customMcpSetTools: vi.fn(),
   customMcpReconnect: vi.fn(),
 }));
-const shell = vi.hoisted(() => ({ isWeb: false }));
-vi.mock('../../../platform/host', () => ({ host: { ...bridge, get isWeb() { return shell.isWeb; } } }));
+const shell = vi.hoisted(() => ({ isWeb: false, isMobileShell: false }));
+vi.mock('../../../platform/host', () => ({
+  host: { ...bridge, get isWeb() { return shell.isWeb; }, get isMobileShell() { return shell.isMobileShell; } },
+}));
 
 import CustomMcpDetailSection from './CustomMcpDetailSection';
 
@@ -34,9 +36,19 @@ beforeEach(() => {
 afterEach(() => {
   for (const fn of Object.values(bridge)) fn.mockReset();
   shell.isWeb = false;
+  shell.isMobileShell = false;
 });
 
 describe('CustomMcpDetailSection', () => {
+  it('offers no Reconnect in the mobile app, whose webview opens no sign-in pop-up', async () => {
+    shell.isWeb = true;
+    shell.isMobileShell = true;
+    renderSection();
+
+    expect(await screen.findByRole('button', { name: 'Disconnect' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Reconnect' })).toBeNull();
+  });
+
   it('shows the held label and URL and every tool with its switch', async () => {
     renderSection();
 
@@ -394,5 +406,14 @@ describe('CustomMcpDetailSection', () => {
     expect(confirm).toHaveBeenLastCalledWith(expect.objectContaining({
       message: 'Anton stops using this server, its login is revoked where the server allows it, and its settings are deleted.',
     }));
+  });
+
+  it("names the server by its list label on the web, where there is no summary", async () => {
+    shell.isWeb = true;
+    bridge.customMcpSummary.mockResolvedValue({ ok: false, code: 'unavailable' });
+    const { confirm } = renderSection({ connection: { ...CONNECTION, user_label: 'Issues' } });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Disconnect' }));
+    expect(confirm).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Disconnect Issues?' }));
   });
 });

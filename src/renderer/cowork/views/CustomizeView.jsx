@@ -110,7 +110,7 @@ function MetaRow({ label, value }) {
   );
 }
 
-function ConnectionDetailPanel({ connection, onClose, onReconnect, onEditSharePoint, onDisconnect }) {
+function ConnectionDetailPanel({ connection, onClose, onReconnect, onEditSharePoint, onDisconnect, onAccessModeChanged }) {
   const { t } = useTranslation('library');
   const [confirm, confirmModal] = useConfirm();
   const [spec, setSpec] = useState(null);
@@ -229,6 +229,7 @@ function ConnectionDetailPanel({ connection, onClose, onReconnect, onEditSharePo
       if (accessModeAttemptRef.current !== attemptId) return; // superseded — a different connection is now open
       setSaved((prev) => (prev ? { ...prev, fields: { ...prev.fields, _access_mode: nextMode } } : prev));
       setAccessModeState({ status: 'idle' });
+      onAccessModeChanged?.(engine, name, nextMode);
     } catch (err) {
       if (accessModeAttemptRef.current !== attemptId) return;
       setAccessModeState({ status: 'error', reason: err?.message || String(err) });
@@ -442,8 +443,8 @@ function ConnectionDetailPanel({ connection, onClose, onReconnect, onEditSharePo
                   same field `handleDelete` above already reads it from. A
                   test double that leaves `_method` nested under `fields`
                   instead would pass without ever exercising the real shape. */}
-              {/* A custom MCP server keeps its tools and login in main;
-                  its own section replaces the access mode. */}
+              {/* A custom MCP server keeps its tools and login behind the host
+                  (main on desktop, auth on the web); its own section replaces the access mode. */}
               {isCustomMcp(connection.engine) && !managed && (
                 <CustomMcpDetailSection
                   // A new panel per connection: answers meant for the last one land nowhere.
@@ -668,6 +669,15 @@ export default function CustomizeView({
       retryCodes.current.delete(connection.datasourceId);
     }
     await refreshDatasources.current();
+  };
+
+  // The card shows the mode too, so it changes with the panel without a re-fetch.
+  const listRef = useRef(list);
+  listRef.current = list;
+  const handleAccessModeChanged = (engine, name, accessMode) => {
+    const next = listRef.current.map((c) => (c.engine === engine && c.name === name ? { ...c, access_mode: accessMode } : c));
+    setList(next);
+    onConnectionsSyncedRef.current?.(next);
   };
 
   /* Re-reads the list after a delete. Best effort: the connection is already
@@ -895,6 +905,7 @@ export default function CustomizeView({
           onClose={() => setSelectedConn(null)}
           onDisconnect={(conn) => handleDelete(conn)}
           onEditSharePoint={(conn) => setSharePointEditing(conn.name)}
+          onAccessModeChanged={handleAccessModeChanged}
           onReconnect={async (conn, spec, { shared = false } = {}) => {
             // SharePoint is edited in place: its key is checked before it
             // replaces the stored one, so nothing is deleted first.

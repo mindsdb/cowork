@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { isSelfReload, normalizeExternalBrowserUrl } from './external-url';
+import { isDevServerNavigation, isSelfReload, normalizeExternalBrowserUrl } from './external-url';
 
 describe('normalizeExternalBrowserUrl', () => {
   it.each([
@@ -67,5 +67,41 @@ describe('isSelfReload', () => {
     expect(source).toMatch(/isSelfReload\(url,\s*mainWindow\?\.webContents\.getURL\(\)\)/);
     const guard = source.slice(source.indexOf("on('will-navigate'"));
     expect(guard.indexOf('isSelfReload')).toBeLessThan(guard.indexOf('event.preventDefault()'));
+  });
+});
+
+// An unpackaged build lets the main window navigate to Vite's dev server, so
+// a dev reload works. Any other page there would run in the main window's
+// top-level frame, whose fetches to the server carry the window proof.
+describe('isDevServerNavigation', () => {
+  it.each([
+    'http://localhost:5173/',
+    'http://localhost:5173/x?y',
+  ])('allows Vite at %s', (url) => {
+    expect(isDevServerNavigation(url, '5173')).toBe(true);
+  });
+
+  it.each([
+    'http://localhost.evil.com/',
+    'http://localhost.evil.com:5173/',
+    'http://localhost@evil.com/',
+    'http://localhost:5173@evil.com:5173/',
+    'http://localhost:9999/',
+    'https://localhost:5173/',
+    'file:///Users/someone/index.html',
+    'not a url',
+  ])('refuses %s', (url) => {
+    expect(isDevServerNavigation(url, '5173')).toBe(false);
+  });
+
+  it('refuses everything when the renderer is not served from Vite', () => {
+    expect(isDevServerNavigation('http://localhost:5173/', null)).toBe(false);
+  });
+
+  it('is what the navigation guard checks, with the port the window loads Vite from', () => {
+    const source = fs.readFileSync(path.join(__dirname, 'app.ts'), 'utf-8');
+    const guard = source.slice(source.indexOf("on('will-navigate'"));
+    expect(guard).toMatch(/!app\.isPackaged && isDevServerNavigation\(url, viteDevPort\)\) return;/);
+    expect(guard).not.toContain("startsWith('http://localhost')");
   });
 });

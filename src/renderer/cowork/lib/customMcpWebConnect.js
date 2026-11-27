@@ -1,7 +1,8 @@
 // The web half of adding a custom MCP server by URL: the sign-in pop-up, the
-// status poll, and reading cowork-server's answers into the shapes the
-// desktop screens already use. No imports, so platform/host.ts can load it
-// statically and open the pop-up inside the click, before its first await.
+// finish page's report, the status poll, and reading cowork-server's answers
+// into the shapes the desktop screens already use. No imports, so
+// platform/host.ts can load it statically and open the pop-up inside the
+// click, before its first await.
 
 // Requests that can run a listing: cowork-server's worst case is 52 seconds.
 export const CUSTOM_MCP_LISTING_TIMEOUT_MS = 60_000;
@@ -14,9 +15,18 @@ export const CUSTOM_MCP_POLL_MS = 3000;
 // Inside auth's 20 minute pending sign-in, long enough for a slow login page.
 export const CUSTOM_MCP_SIGN_IN_MS = 10 * 60 * 1000;
 
-const CANCELLED = Object.freeze({ ok: false, code: 'login_failed', reason: 'The connection was cancelled.' });
+// Cancel only stops this tab waiting: a sign-in the finish page already saved still stands.
+const CANCELLED = Object.freeze({ ok: false, code: 'stopped_waiting', reason: '' });
 // Reading the status does not consume it, so a gateway or throttling answer is retried too.
 const TRANSIENT = new Set(['timeout', 'unreachable', 'http_429', 'http_502', 'http_503', 'http_504']);
+// The finish page nudges waiting tabs to read their own sign-in's status now, instead of at the
+// next poll; the pop-up's opener is cut. The nudge carries nothing: each tab's own status record
+// is the only source of its outcome, so a finish page for another sign-in costs one extra read.
+export const CUSTOM_MCP_SIGN_IN_CHANNEL = 'cowork:custom-mcp-sign-in';
+const NUDGE = 'finished';
+// The only names a custom MCP connection is given; nothing else goes into a request path.
+export const CUSTOM_MCP_CONNECTION_ID = /^cm-[0-9a-f]{32}$/;
+const NEVER = new Promise(() => {});
 
 /** @type {object | null} */
 let active = null;
@@ -26,15 +36,40 @@ function closePopup(popup) {
   try { popup.close(); } catch { /* already closed */ }
 }
 
+function openChannel(Channel) {
+  if (typeof Channel !== 'function') return null;
+  try { return new Channel(CUSTOM_MCP_SIGN_IN_CHANNEL); } catch { return null; }
+}
+
+/**
+ * Nudges every tab waiting on a sign-in to read its status now. Without the
+ * channel the tabs still read it at their next poll, so a failed post is left to that.
+ *
+ * @param {typeof BroadcastChannel | undefined} [Channel]
+ */
+export function nudgeCustomMcpSignIns(Channel = globalThis.BroadcastChannel) {
+  const channel = openChannel(Channel);
+  if (!channel) return;
+  try {
+    channel.postMessage(NUDGE);
+  } catch { /* the status poll still ends the wait */ } finally {
+    channel.close();
+  }
+}
+
 /**
  * Opens an empty pop-up for the sign-in. Call it inside the click, before any
  * await, or the browser blocks it. Its opener is cut at once, so the login
  * page gets no handle on this tab.
  *
+ * Listens for the finish page's nudge from now on.
+ *
  * @param {Window} [win]
- * @returns {{popup: Window | null, cancelled: boolean, whenCancelled: Promise<typeof CANCELLED>}}
+ * @param {typeof BroadcastChannel | undefined} [Channel]
+ * @returns {{popup: Window | null, cancelled: boolean, whenCancelled: Promise<typeof CANCELLED>,
+ *   nextNudge: () => Promise<void>, keepPopup: boolean}}
  */
-export function beginCustomMcpSignIn(win = window) {
+export function beginCustomMcpSignIn(win = window, Channel = globalThis.BroadcastChannel) {
   let popup = null;
   try { popup = win.open('', '_blank'); } catch { popup = null; }
   if (popup) {
@@ -42,10 +77,30 @@ export function beginCustomMcpSignIn(win = window) {
   }
   let cancel = () => {};
   const whenCancelled = new Promise((resolve) => { cancel = () => resolve(CANCELLED); });
-  const signIn = { popup, cancelled: false, whenCancelled, cancel };
+  let nudge = () => {};
+  let nudged = NEVER;
+  const arm = () => { nudged = new Promise((resolve) => { nudge = resolve; }); };
+  const channel = openChannel(Channel);
+  if (channel) {
+    arm();
+    channel.onmessage = (event) => {
+      if (event.data !== NUDGE) return;
+      const wake = nudge;
+      arm();
+      wake();
+    };
+  }
+  const nextNudge = () => nudged;
+  const signIn = { popup, cancelled: false, whenCancelled, cancel, nextNudge, channel, keepPopup: false };
   if (active) cancelCustomMcpSignIn();
   active = signIn;
   return signIn;
+}
+
+function stopListening(signIn) {
+  if (!signIn.channel) return;
+  try { signIn.channel.close(); } catch { /* already closed */ }
+  signIn.channel = null;
 }
 
 /** Cancels the sign-in running now: closes its pop-up and ends its wait. The
@@ -55,14 +110,17 @@ export function cancelCustomMcpSignIn() {
   if (!signIn) return;
   active = null;
   signIn.cancelled = true;
+  stopListening(signIn);
   closePopup(signIn.popup);
   signIn.cancel();
 }
 
-/** Closes the sign-in's pop-up once it is no longer needed. */
+/** Ends the sign-in: stops listening and closes its pop-up, unless the sign-in
+ *  failed and the pop-up shows why, which the member closes. */
 export function endCustomMcpSignIn(signIn) {
   if (!signIn) return;
-  closePopup(signIn.popup);
+  stopListening(signIn);
+  if (!signIn.keepPopup) closePopup(signIn.popup);
   if (active === signIn) active = null;
 }
 
@@ -125,19 +183,23 @@ export function unlessCancelled(signIn, request) {
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Polls the sign-in's status until it ends. Each request is sent only after
- * the previous one answered. A timed-out, unanswered or transiently refused
- * poll is retried until the overall deadline.
+ * Waits for the sign-in's status to end. It is read every poll interval, and
+ * at once when the finish page nudges. Each request is sent only after the
+ * previous one answered. A timed-out, unanswered or transiently refused read
+ * is retried until the overall deadline. A failure carries auth's code and
+ * sentence, and keeps the pop-up open on the page that says why.
  *
- * @param {{cancelled: boolean, whenCancelled: Promise<typeof CANCELLED>}} signIn
+ * @param {{cancelled: boolean, whenCancelled: Promise<typeof CANCELLED>,
+ *   nextNudge?: () => Promise<void>, keepPopup?: boolean}} signIn
  * @param {() => Promise<{ok: true, data: any} | {ok: false, code: string, reason: string}>} readStatus never rejects
  * @param {{sleep?: (ms: number) => Promise<void>, now?: () => number}} [options]
  * @returns {Promise<{ok: true, data: any} | {ok: false, code: string, reason: string}>}
  */
 export async function pollCustomMcpSignIn(signIn, readStatus, { sleep = wait, now = Date.now } = {}) {
   const deadline = now() + CUSTOM_MCP_SIGN_IN_MS;
+  const text = (value) => (typeof value === 'string' && value ? value : '');
   while (now() < deadline) {
-    await unlessCancelled(signIn, sleep(CUSTOM_MCP_POLL_MS));
+    await Promise.race([sleep(CUSTOM_MCP_POLL_MS), signIn.whenCancelled, signIn.nextNudge ? signIn.nextNudge() : NEVER]);
     if (signIn.cancelled) return CANCELLED;
     const answer = await unlessCancelled(signIn, readStatus());
     if (signIn.cancelled) return CANCELLED;
@@ -147,10 +209,13 @@ export async function pollCustomMcpSignIn(signIn, readStatus, { sleep = wait, no
     }
     const status = answer.data?.status;
     if (status === 'success') return answer;
-    if (status === 'refused') return { ok: false, code: 'refused', reason: '' };
+    if (status === 'refused') {
+      signIn.keepPopup = true;
+      return { ok: false, code: 'refused', reason: '' };
+    }
     if (status === 'error' || status === 'expired') {
-      const code = typeof answer.data.error === 'string' && answer.data.error ? answer.data.error : 'login_failed';
-      return { ok: false, code, reason: code };
+      signIn.keepPopup = true;
+      return { ok: false, code: text(answer.data.error) || 'login_failed', reason: text(answer.data.detail).slice(0, 500) };
     }
   }
   return { ok: false, code: 'timeout', reason: '' };

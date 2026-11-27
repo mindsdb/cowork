@@ -522,7 +522,7 @@ describe('CodeComposer drafts', () => {
     expect(screen.getByText('notes.md')).toBeInTheDocument();
   });
 
-  it('keeps the unsent text across a reload', async () => {
+  it('keeps the unsent text and attachments across a reload', async () => {
     const first = renderComposer(completed, [], { id: 1, item: attachment });
     fireEvent.change(screen.getByRole('textbox', { name: 'Follow-up instruction' }), { target: { value: 'survive a reload' } });
     first.unmount();
@@ -534,7 +534,7 @@ describe('CodeComposer drafts', () => {
     render(<Reloaded session={completed} busy={false} onSend={vi.fn(async () => {})} onStop={vi.fn(async () => {})}
       commands={commands} onClientCommand={vi.fn()} onPermissionChange={vi.fn(async () => {})} />);
     expect(screen.getByRole('textbox', { name: 'Follow-up instruction' })).toHaveValue('survive a reload');
-    expect(screen.queryByText('notes.md')).not.toBeInTheDocument();
+    expect(screen.getByText('notes.md')).toBeInTheDocument();
   });
 
   it('forgets the draft once it has been sent', async () => {

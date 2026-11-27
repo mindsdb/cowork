@@ -15,10 +15,10 @@ import { getRefreshToken, setRefreshToken } from './keychain-service';
 import { parseAppIdFromClientId, refreshAccessTokenNow, startRefreshLoop, stopAllRefreshLoops } from './token-refresh';
 import { APP_SECRET_HEADER, clearAppSecret, newAppSecret, setServerTrust } from './app-secret';
 
-// A legacy server is running unless a test says otherwise.
+// A server that proved the secret is running unless a test says otherwise.
 beforeEach(() => {
   newAppSecret();
-  setServerTrust('legacy');
+  setServerTrust('protected');
 });
 
 describe('parseAppIdFromClientId', () => {
@@ -317,17 +317,6 @@ describe('app-held secrets on the refresh path', () => {
     await vi.waitFor(() => expect(patches).toHaveLength(1));
     expect(patches[0].headers[APP_SECRET_HEADER]).toBe(secret);
     expect(patches[0].body.access_token).toBe('at-2');
-  });
-
-  it('sends no app secret in legacy mode', async () => {
-    newAppSecret();
-    setServerTrust('legacy');
-    const { patches } = rotatingProvider();
-
-    startRefreshLoop('notion', 'my-notion', 'user@example.com:ws-1', new Date().toISOString(), TOKEN_URL);
-
-    await vi.waitFor(() => expect(patches).toHaveLength(1));
-    expect(Object.keys(patches[0].headers)).not.toContain(APP_SECRET_HEADER);
   });
 
   it('runs a forced refresh after an in-flight tick, never reusing a rotated refresh token', async () => {

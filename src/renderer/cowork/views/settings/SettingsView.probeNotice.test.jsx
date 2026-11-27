@@ -26,6 +26,8 @@ const hostMock = vi.hoisted(() => ({
   getAccessToken: vi.fn(async () => ''),
 }));
 vi.mock('../../../platform/host', () => hostMock);
+const accountMock = vi.hoisted(() => ({ user: { orgId: 'org-1', sub: 'u1' } }));
+vi.mock('../../hooks/useAccountUser', () => ({ useAccountUser: () => accountMock.user }));
 
 const analyticsMock = vi.hoisted(() => ({
   resetDeviceIdentity: vi.fn(),
@@ -37,7 +39,10 @@ vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-st
 import SettingsView, { MindsProbeNotice, UnavailableModelHint } from './SettingsView';
 import { HubUsageContext } from '../../lib/hubUsageContext';
 import { formatResetTime, NO_FREE_GRANT_SENTENCE } from '../../lib/usageWarnings';
-import { MINDS_BILLING_URL, MINDS_BUDGETS_DENIAL_URL, MINDS_ADD_FUNDS_URL } from '../../../lib/mindsUrls';
+import { MINDS_BILLING_URL, MINDS_BUDGETS_DENIAL_URL, MINDS_ADD_FUNDS_URL, consoleUrlFor } from '../../../lib/mindsUrls';
+
+// Console links name the session's organization and account (ENG-4333).
+const forOrg = (url) => consoleUrlFor(url, { organizationId: 'org-1', subject: 'u1' });
 
 function Harness({ initialSettings, usage = null }) {
   const [settings, setSettings] = useState(initialSettings);
@@ -128,7 +133,7 @@ describe('SettingsView: probe notice follows the sidecar reason', () => {
 
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('free_air_paused_notice');
     // Not the billing owner, so the funds action opens the billing page itself.
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
   });
 
   it('a spent allowance names the refill time the gate sent when the org has a grant', async () => {
@@ -177,7 +182,7 @@ describe('SettingsView: probe notice follows the sidecar reason', () => {
     await user.click(screen.getAllByRole('button', { name: /View budgets/ })[0]);
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('budget_notice');
     // The test call was refused, so the console counts the visit as a denial's.
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(new URL(MINDS_BUDGETS_DENIAL_URL).toString());
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BUDGETS_DENIAL_URL));
   });
 
   it('a spent budget does not name Air when the org has no free grant', async () => {
@@ -302,7 +307,7 @@ describe('credit links open the add-credits dialog for a billing owner', () => {
 
     await user.click(screen.getByRole('button', { name: 'Top up balance →' }));
 
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(url);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(url));
   });
 
   it.each([
@@ -315,6 +320,6 @@ describe('credit links open the add-credits dialog for a billing owner', () => {
 
     await user.click(screen.getByRole('button', { name: 'Top up your balance' }));
 
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(url);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(url));
   });
 });

@@ -1,8 +1,9 @@
-// Custom MCP connections (desktop only) are removed through the app's main
-// process, which revokes the login and deletes the keychain entries before
-// the record; the generic delete would leave both behind.
+// Custom MCP connections are removed through the host: on desktop the app's
+// main process revokes the login and deletes the keychain entries before the
+// record, which the generic delete would leave behind; on the web, auth does.
 
 import { host } from '../../platform/host';
+import { CUSTOM_MCP_CONNECTION_ID } from './customMcpWebConnect';
 
 export const CUSTOM_MCP_ENGINE = 'custom_mcp';
 
@@ -15,8 +16,6 @@ export const CUSTOM_MCP_ENGINE = 'custom_mcp';
 export function isCustomMcp(engine) {
   return engine === CUSTOM_MCP_ENGINE;
 }
-
-const CONNECTION_ID = /^cm-[0-9a-f]{32}$/;
 
 /**
  * Removes a custom MCP connection through main, which revokes its login and
@@ -33,7 +32,7 @@ const CONNECTION_ID = /^cm-[0-9a-f]{32}$/;
  * @throws {Error} with main's reason when it refused or could not finish
  */
 export async function disconnectCustomMcp(name, genericDelete) {
-  if (!CONNECTION_ID.test(name)) {
+  if (!CUSTOM_MCP_CONNECTION_ID.test(name)) {
     await genericDelete();
     return;
   }

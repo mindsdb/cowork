@@ -378,7 +378,8 @@
     "custom": "Benutzerdefiniert",
     "legacy": "Von einer älteren Version gespeichert. Trennen Sie die Verbindung und verbinden Sie sie erneut.",
     "activateLabel": "{title} {action, select, view {anzeigen} reconnect {erneut verbinden} other {verwalten}}: {subtitle}{hint}",
-    "removing": "Wird entfernt…"
+    "removing": "Wird entfernt…",
+    "settingsLabel": "Einstellungen für {title}: {subtitle}"
   },
   "datasource": {
     "failed": "Das hat nicht funktioniert.",
@@ -701,6 +702,7 @@
       "needsClientId": "Dieser Server braucht eine Client-ID. Füge sie unter Erweitert hinzu.",
       "timeout": "Der Server hat zu lange nicht geantwortet. Versuche es erneut.",
       "loginFailed": "Die Anmeldung wurde nicht abgeschlossen: {reason}",
+      "stoppedWaiting": "Das Warten auf die Anmeldung wurde beendet. Wenn Sie sie schon abgeschlossen haben, erscheint der Server in Ihren Verbindungen.",
       "unavailable": "MCP-Server per URL sind gerade nicht verfügbar. Starte die App neu und versuche es erneut.",
       "keychain": "Der Systemschlüsselbund ist nicht verfügbar, daher kann die Verbindung nicht sicher gespeichert werden.",
       "serverChanged": "Die App hat während der Anmeldung das Konto gewechselt oder neu gestartet. Versuche es erneut.",

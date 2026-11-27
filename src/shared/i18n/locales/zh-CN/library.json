@@ -378,7 +378,8 @@
     "custom": "自定义",
     "legacy": "由旧版本保存。请断开后重新连接。",
     "activateLabel": "{action, select, view {查看} reconnect {重新连接} other {管理}} {title}：{subtitle}{hint}",
-    "removing": "正在移除…"
+    "removing": "正在移除…",
+    "settingsLabel": "{title} 的设置：{subtitle}"
   },
   "datasource": {
     "failed": "操作未成功。",
@@ -701,6 +702,7 @@
       "needsClientId": "此服务器需要客户端 ID。请在“高级”中添加。",
       "timeout": "服务器响应时间过长。请重试。",
       "loginFailed": "登录未完成：{reason}",
+      "stoppedWaiting": "已停止等待登录。如果你已完成登录，服务器会显示在你的连接中。",
       "unavailable": "目前无法使用通过 URL 添加的 MCP 服务器。请重启应用后重试。",
       "keychain": "系统钥匙串不可用，因此无法安全地保存此连接。",
       "serverChanged": "登录期间应用切换了账户或重新启动。请重试。",

@@ -24,6 +24,8 @@ const hostMock = vi.hoisted(() => ({
   getAccessToken: vi.fn(async () => ''),
 }));
 vi.mock('../../../platform/host', () => hostMock);
+const accountMock = vi.hoisted(() => ({ user: { orgId: 'org-1', sub: 'u1' } }));
+vi.mock('../../hooks/useAccountUser', () => ({ useAccountUser: () => accountMock.user }));
 
 const analyticsMock = vi.hoisted(() => ({
   resetDeviceIdentity: vi.fn(),
@@ -33,7 +35,10 @@ vi.mock('../../lib/analytics', () => analyticsMock);
 vi.mock('../ChannelsView', () => ({ default: () => <div data-testid="channels-stub" /> }));
 
 import SettingsView, { UnavailableModelHint } from './SettingsView';
-import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL } from '../../../lib/mindsUrls';
+import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, consoleUrlFor } from '../../../lib/mindsUrls';
+
+// Console links name the session's organization and account (ENG-4333).
+const forOrg = (url) => consoleUrlFor(url, { organizationId: 'org-1', subject: 'u1' });
 import { HubUsageContext } from '../../lib/hubUsageContext';
 
 const asBillingOwner = (ui) => (
@@ -102,7 +107,7 @@ describe('SettingsView — no-credits notice route (ENG-1533)', () => {
     await user.click(screen.getAllByRole('button', { name: /Top up balance/ })[0]);
 
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('no_credits_notice');
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
   });
 
   it('opens the add-credits dialog for a billing owner', async () => {
@@ -119,7 +124,7 @@ describe('SettingsView — no-credits notice route (ENG-1533)', () => {
     for (const button of buttons) await user.click(button);
 
     expect(hostMock.host.openExternal).toHaveBeenCalledTimes(buttons.length);
-    expect(hostMock.host.openExternal.mock.calls.every(([url]) => url === MINDS_ADD_FUNDS_URL)).toBe(true);
+    expect(hostMock.host.openExternal.mock.calls.every(([url]) => url === forOrg(MINDS_ADD_FUNDS_URL))).toBe(true);
   });
 });
 
@@ -146,7 +151,7 @@ describe('SettingsView — locked-model hint route (ENG-1533)', () => {
     await user.click(screen.getAllByRole('button', { name: 'Top up your balance' })[0]);
 
     expect(analyticsMock.trackBillingOpened).toHaveBeenCalledWith('locked_model_hint');
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
   });
 
   it('opens the add-credits dialog for a billing owner', async () => {
@@ -161,7 +166,7 @@ describe('SettingsView — locked-model hint route (ENG-1533)', () => {
     for (const button of buttons) await user.click(button);
 
     expect(hostMock.host.openExternal).toHaveBeenCalledTimes(buttons.length);
-    expect(hostMock.host.openExternal.mock.calls.every(([url]) => url === MINDS_ADD_FUNDS_URL)).toBe(true);
+    expect(hostMock.host.openExternal.mock.calls.every(([url]) => url === forOrg(MINDS_ADD_FUNDS_URL))).toBe(true);
   });
 
   it('shows no hint, and records nothing, when the model is payable', async () => {

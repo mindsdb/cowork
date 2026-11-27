@@ -29,6 +29,12 @@ export interface DraftPullRequestInput {
   folder_id: string;
   title: string;
   body: string;
+  // What the person confirmed. The server refuses a folder that has moved on
+  // since, rather than publishing a commit or destination nobody reviewed.
+  head_revision?: string | null;
+  base_branch?: string | null;
+  task_branch?: string | null;
+  remote_url?: string | null;
 }
 
 const NO_CONNECTIONS: ProjectConnection[] = [];
@@ -195,7 +201,12 @@ export function DraftPullRequestSection({
   const [overrides, setOverrides] = useState<Record<string, { title: string; body: string }>>({});
   const [error, setError] = useState('');
   const [lastAttempt, setLastAttempt] = useState<DeliveryRecord[]>([]);
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingDrafts, setPendingDrafts] = useState<{
+    title: string;
+    body: string;
+    connectionName: string;
+    drafts: DraftPullRequestInput[];
+  } | null>(null);
   const [pendingAction, setPendingAction] = useState<{ item: DeliveryPlanItem; action: 'ready' | 'merge' | 'resolve_thread'; threadId?: string } | null>(null);
   const [policy, setPolicy] = useState(deliveryPolicy);
   const requestGeneration = useRef(0);
@@ -251,7 +262,7 @@ export function DraftPullRequestSection({
     setBody('');
     setOverrides({});
     setLastAttempt([]);
-    setConfirmOpen(false);
+    setPendingDrafts(null);
     setPendingAction(null);
   }, [sessionId, taskTitle]);
   useEffect(() => setPolicy(deliveryPolicy), [deliveryPolicy]);
@@ -269,7 +280,7 @@ export function DraftPullRequestSection({
     return () => { window.clearInterval(timer); unsubscribeVisibility(); };
   }, [hasPublishedPullRequests, load]);
 
-  if (!loading && !plan?.items.length && !error) return null;
+  if (!loading && !plan?.items.length && !error && !pendingDrafts) return null;
   const items = plan?.items || [];
   const ready = items.filter((item) => item.status === 'ready');
   const needsCommit = items.filter((item) => item.status === 'needs_commit');
@@ -279,6 +290,23 @@ export function DraftPullRequestSection({
     ? githubStatuses.some((item) => item.status === 'connected')
     : githubConnections.length > 0;
   const selectedReady = ready.filter((item) => selectedFolders.includes(item.folder_id));
+  function reviewDrafts() {
+    if (!selectedReady.length || !connectionName || !title.trim()) return;
+    setPendingDrafts({
+      title: title.trim(),
+      body: body.trim(),
+      connectionName,
+      drafts: selectedReady.map((item) => ({
+        folder_id: item.folder_id,
+        title: overrides[item.folder_id]?.title || title.trim(),
+        body: overrides[item.folder_id]?.body ?? body.trim(),
+        head_revision: item.head_revision,
+        base_branch: item.base_branch,
+        task_branch: item.task_branch,
+        remote_url: item.remote_url,
+      })),
+    });
+  }
   const failures = lastAttempt.filter((item) => item.status === 'failed');
   const successes = lastAttempt.filter((item) => item.status === 'published');
   const allMerged = published.length > 0 && published.every((item) => item.pull_request_status?.state === 'merged');
@@ -374,28 +402,24 @@ export function DraftPullRequestSection({
               })}
             </Collapsible>
           )}
-          <Button size="sm" variant="primary" disabled={busy || !title.trim() || !connectionName || selectedReady.length === 0} onClick={() => setConfirmOpen(true)}>
+          <Button size="sm" variant="primary" disabled={busy || !title.trim() || !connectionName || selectedReady.length === 0} onClick={reviewDrafts}>
             {t('draftPullRequest.createDrafts', { count: selectedReady.length })}
           </Button>
         </div>
       )}
 
       <ConfirmModal
-        open={confirmOpen}
-        title={t('draftPullRequest.createConfirm.title', { count: selectedReady.length })}
+        open={pendingDrafts !== null}
+        title={t('draftPullRequest.createConfirm.title', { count: pendingDrafts?.drafts.length ?? 0 })}
         message={t('draftPullRequest.createConfirm.message')}
         confirmLabel={t('draftPullRequest.createConfirm.confirm')}
         busy={busy}
-        onClose={() => { if (!busy) setConfirmOpen(false); }}
+        onClose={() => { if (!busy) setPendingDrafts(null); }}
         onConfirm={async () => {
-          const drafts = selectedReady.map((item) => ({
-            folder_id: item.folder_id,
-            title: overrides[item.folder_id]?.title || title.trim(),
-            body: overrides[item.folder_id]?.body ?? body.trim(),
-          }));
-          const records = await onCreate(title.trim(), body.trim(), connectionName || null, drafts);
+          if (!pendingDrafts) return;
+          const records = await onCreate(pendingDrafts.title, pendingDrafts.body, pendingDrafts.connectionName, pendingDrafts.drafts);
           setLastAttempt(records);
-          setConfirmOpen(false);
+          setPendingDrafts(null);
           await load();
         }}
       />

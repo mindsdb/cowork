@@ -24,10 +24,6 @@
         "untilMobile": "Das kostenlose MindsHub Air ist für alle bis {until} pausiert. Ihr Kontingent wird dadurch nicht verbraucht.",
         "dailyResetMobile": "Das kostenlose MindsHub Air ist für alle pausiert, bis das Tagesbudget zurückgesetzt wird. Ihr Kontingent wird dadurch nicht verbraucht."
       },
-      "resting": {
-        "resetsAt": "Wird um {time} zurückgesetzt.",
-        "noReset": "Air nutzt diese, bis sie aufgebraucht sind."
-      },
       "balanceEmptySentence": "Ihr Guthaben ist aufgebraucht.",
       "percentLeft": "Noch {percent} Ihres Gratiskontingents übrig",
       "autoTopUpFailed": {
@@ -46,8 +42,6 @@
       },
       "balanceLow": {
         "title": "Guthaben wird knapp",
-        "autoRefills": "Noch {usd} übrig. Die automatische Aufladung füllt auf {target} auf, sobald es unter {floor} fällt.",
-        "autoCovers": "Noch {usd} übrig. Die automatische Aufladung übernimmt das.",
         "autoPending": "Noch {usd} übrig. Die automatische Aufladung wartet auf Ihre Bank.",
         "autoCapReached": "Noch {usd} übrig. Die automatische Aufladung ist pausiert, um im monatlichen Limit zu bleiben. Laden Sie Guthaben auf, um weiterzumachen.",
         "body": "Noch {usd} übrig. Laden Sie Guthaben auf oder aktivieren Sie die automatische Aufladung.",
@@ -83,7 +77,8 @@
         "lowThenWalletWithTime": "Danach nutzen Aufgaben bis zum Zurücksetzen um {time} Ihr Guthaben zu API-Preisen.",
         "lowThenPause": "Danach pausieren Aufgaben bis zum Zurücksetzen.",
         "lowThenPauseWithTime": "Danach pausieren Aufgaben bis {time}."
-      }
+      },
+      "resetsAt": "Wird um {time} zurückgesetzt."
     },
     "scheduleWhen": {
       "timeZone": "Ortszeit {city}",
@@ -105,7 +100,9 @@
       "missedLabelServer": "Wenn der Server zu diesem Zeitpunkt nicht erreichbar ist",
       "missedLabelApp": "Wenn MindsHub zu diesem Zeitpunkt geschlossen ist",
       "missedOnceTitleServer": "Der Termin dieser einmaligen Aufgabe ist verstrichen, während der Server nicht erreichbar war",
-      "missedOnceTitleApp": "Der Termin dieser einmaligen Aufgabe ist verstrichen, während MindsHub geschlossen war"
+      "missedOnceTitleApp": "Der Termin dieser einmaligen Aufgabe ist verstrichen, während MindsHub geschlossen war",
+      "lateRunApp": "Fällig {when}. MindsHub war geschlossen oder Ihr Computer im Ruhezustand.",
+      "lateRunServer": "Fällig {when}. Der Server war nicht erreichbar oder ausgelastet."
     },
     "stopScheduleRun": {
       "unreachable": "Der Server ist nicht erreichbar, die Ausführung konnte nicht gestoppt werden. Versuchen Sie es erneut.",
@@ -319,6 +316,7 @@
       "sections": {
         "mine": "Meine",
         "sharedWithMe": "Mit mir geteilt",
+        "sharedByOthers": "Von anderen geteilt",
         "team": "Meine Teams",
         "builtin": "Integriert"
       },
@@ -588,6 +586,7 @@
     "lastFailed": "Zuletzt fehlgeschlagen",
     "lastRunFailed": "Letzte Ausführung fehlgeschlagen",
     "stoppedAtLimit": "An Limit gestoppt",
+    "writesRefused": "Freigabe nötig",
     "done": "Fertig",
     "active": "Aktiv"
   },
@@ -619,6 +618,7 @@
     "partialNote": "Einige Aktionen wurden möglicherweise abgeschlossen. Prüfen Sie die Ausführung, bevor Sie sie wiederholen.",
     "limitTitle": "Die letzte Ausführung wurde an einem Limit gestoppt",
     "limitNote": "Ein Teil der Arbeit ist möglicherweise erledigt. Prüfen Sie die Ausführung, bevor Sie sie wiederholen.",
+    "approvalTitle": "Die Änderungen des letzten Laufs wurden nicht freigegeben",
     "failedTitle": "Die letzte Ausführung ist fehlgeschlagen",
     "resume": "Fortsetzen",
     "runNow": "Jetzt ausführen",
@@ -718,7 +718,8 @@
       "success": "Erfolgreich",
       "failed": "Fehlgeschlagen",
       "cancelled": "Gestoppt",
-      "stoppedAtLimit": "An Limit gestoppt"
+      "stoppedAtLimit": "An Limit gestoppt",
+      "writesRefused": "Nicht freigegeben"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "Läuft gerade",
@@ -735,6 +736,7 @@
     "scheduleAriaLabel": "Zeitplan",
     "accountDefaultModel": "Standardmodell des Kontos",
     "ranOnDefaultModel": "Standardmodell",
+    "ranLate": "Verspätet",
     "modelUnavailable": "{model} ist nicht verfügbar, daher wurde für diese Ausführung Ihr Standardmodell verwendet.",
     "succeededCount": "{total, plural, one {{succeeded} von # Ausführung erfolgreich} other {{succeeded} von # Ausführungen erfolgreich}}",
     "promptAriaLabel": "Prompt",

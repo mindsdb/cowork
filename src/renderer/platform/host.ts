@@ -34,6 +34,7 @@ import {
   beginCustomMcpSignIn,
   cancelCustomMcpSignIn,
   connectedFrom,
+  CUSTOM_MCP_CONNECTION_ID,
   CUSTOM_MCP_RELAY_TIMEOUT_MS,
   CUSTOM_MCP_LISTING_TIMEOUT_MS,
   CUSTOM_MCP_REQUEST_TIMEOUT_MS,
@@ -626,6 +627,9 @@ export async function checkConfigured(): Promise<{
   // Only a server that issues signed draft links reports them; the bridge
   // path never does.
   draftLinks?: boolean;
+  // Present only when /health reports it; lib/docsEnabled.ts decides what
+  // its absence (an older server, the bridge) means.
+  docsEnabled?: boolean;
 }> {
   if (isElectron && typeof bridge.checkConfigured === 'function') {
     return bridge.checkConfigured();
@@ -640,6 +644,7 @@ export async function checkConfigured(): Promise<{
     org_mode?: boolean;
     live_apps?: boolean;
     draft_links?: boolean;
+    docs_enabled?: unknown;
   };
   return {
     configured: Boolean(h.config_ready),
@@ -647,6 +652,7 @@ export async function checkConfigured(): Promise<{
     orgMode: Boolean(h.org_mode),
     liveApps: h.live_apps === true,
     draftLinks: h.draft_links === true,
+    ...(typeof h.docs_enabled === 'boolean' ? { docsEnabled: h.docs_enabled } : {}),
   };
 }
 
@@ -1296,19 +1302,33 @@ async function customMcpRequest(
   }
 }
 
-function connectionPath(id: string): string {
-  return `/connections/${encodeURIComponent(id)}`;
+// A name like `..` would leave the connection's path once fetch normalizes it.
+const NOT_A_CONNECTION = Object.freeze({ ok: false as const, code: 'not_found', reason: '' });
+
+function connectionPath(id: string): string | null {
+  return CUSTOM_MCP_CONNECTION_ID.test(id) ? `/connections/${id}` : null;
 }
 
+// A blocked pop-up is known at the click; refuse before auth stores a sign-in no page can finish.
+const POPUP_BLOCKED = Object.freeze({ ok: false as const, code: 'popup_blocked', reason: '' });
+
 /** The sign-in after a start or reconnect answered `pending`: the login page
- *  in the pop-up, then the status poll. Closes the pop-up whatever the end. */
+ *  in the pop-up, then the status poll. Closes the pop-up whatever the end.
+ *  After Cancel the status is read once more: a sign-in the finish page saved
+ *  before it is announced, so the connections list shows it as after a success. */
 async function customMcpWebSignIn(signIn: CustomMcpSignIn, started: { auth_url?: unknown; state?: unknown }): Promise<CustomMcpWebAnswer> {
   try {
     if (typeof started.state !== 'string' || !started.state) return { ok: false, code: 'unreadable_response', reason: '' };
     const opened = openLoginPage(signIn, started.auth_url);
     if (!opened.ok) return opened;
     const query = `/status?state=${encodeURIComponent(started.state)}`;
-    return await pollCustomMcpSignIn(signIn, () => customMcpRequest('GET', query, CUSTOM_MCP_LISTING_TIMEOUT_MS));
+    const finished = await pollCustomMcpSignIn(signIn, () => customMcpRequest('GET', query, CUSTOM_MCP_LISTING_TIMEOUT_MS));
+    if (signIn.cancelled) {
+      void customMcpRequest('GET', query, CUSTOM_MCP_LISTING_TIMEOUT_MS).then((late) => {
+        if (late.ok && late.data?.status === 'success') window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+      });
+    }
+    return finished;
   } finally {
     endCustomMcpSignIn(signIn);
   }
@@ -1335,6 +1355,10 @@ export async function customMcpConnect(opts: CustomMcpConnectOpts): Promise<Cust
   // Cancel is offered only once this sign-in exists and ends the wait at once. The request
   // runs on; a server it still adds is announced, so the connections list shows it.
   const signIn = opts.confirmedLoginHosts ? beginCustomMcpSignIn() : null;
+  if (signIn && !signIn.popup) {
+    endCustomMcpSignIn(signIn);
+    return POPUP_BLOCKED;
+  }
   const request = customMcpRequest('POST', '/connect', CUSTOM_MCP_LISTING_TIMEOUT_MS, {
     label: opts.label,
     server_url: opts.url,
@@ -1371,7 +1395,9 @@ export async function customMcpSummary(id: string): Promise<CustomMcpSummaryResu
 export async function customMcpTools(id: string): Promise<CustomMcpToolsResult> {
   if (isElectron && typeof bridge.customMcpTools === 'function') return bridge.customMcpTools({ id });
   if (isElectron) return CUSTOM_MCP_UNAVAILABLE;
-  const answer = await customMcpRequest('GET', `${connectionPath(id)}/tools`, CUSTOM_MCP_LISTING_TIMEOUT_MS);
+  const path = connectionPath(id);
+  if (!path) return NOT_A_CONNECTION;
+  const answer = await customMcpRequest('GET', `${path}/tools`, CUSTOM_MCP_LISTING_TIMEOUT_MS);
   if (!answer.ok) return answer;
   const { revision, ...result } = toolsFrom(answer.data);
   return revision === null ? result : { ...result, revision };
@@ -1383,7 +1409,9 @@ export async function customMcpSetTools(id: string, tools: string[], revision?: 
   if (isElectron && typeof bridge.customMcpSetTools === 'function') return bridge.customMcpSetTools({ id, tools });
   if (isElectron) return CUSTOM_MCP_UNAVAILABLE;
   if (revision === undefined) return { ok: false, code: 'stale_revision', reason: '' };
-  const answer = await customMcpRequest('PUT', `${connectionPath(id)}/tools`, CUSTOM_MCP_REQUEST_TIMEOUT_MS, { tools, tools_revision: revision });
+  const path = connectionPath(id);
+  if (!path) return NOT_A_CONNECTION;
+  const answer = await customMcpRequest('PUT', `${path}/tools`, CUSTOM_MCP_REQUEST_TIMEOUT_MS, { tools, tools_revision: revision });
   if (!answer.ok) return answer;
   const saved = toolsFrom(answer.data);
   const allowed = saved.tools.filter((tool) => tool.allowed).map((tool) => tool.name);
@@ -1398,8 +1426,14 @@ export async function customMcpReconnect(id: string, confirmedLoginHosts?: strin
   }
   if (isElectron) return CUSTOM_MCP_UNAVAILABLE;
   // No Cancel is offered during this request; one pressed elsewhere stops before the login page.
+  const path = connectionPath(id);
+  if (!path) return NOT_A_CONNECTION;
   const signIn = confirmedLoginHosts ? beginCustomMcpSignIn() : null;
-  const started = await customMcpRequest('POST', `${connectionPath(id)}/reconnect`, CUSTOM_MCP_RELAY_TIMEOUT_MS,
+  if (signIn && !signIn.popup) {
+    endCustomMcpSignIn(signIn);
+    return POPUP_BLOCKED;
+  }
+  const started = await customMcpRequest('POST', `${path}/reconnect`, CUSTOM_MCP_RELAY_TIMEOUT_MS,
     confirmedLoginHosts ? { confirmed_login_hosts: confirmedLoginHosts } : {});
   if (!started.ok || started.data?.status !== 'pending' || !signIn) endCustomMcpSignIn(signIn);
   if (!started.ok) return started;
@@ -1417,7 +1451,9 @@ export async function customMcpReconnect(id: string, confirmedLoginHosts?: strin
 export async function customMcpDisconnect(id: string): Promise<CustomMcpDisconnectResult> {
   if (isElectron && typeof bridge.customMcpDisconnect === 'function') return bridge.customMcpDisconnect({ id });
   if (isElectron) return CUSTOM_MCP_UNAVAILABLE;
-  const answer = await customMcpRequest('DELETE', connectionPath(id), CUSTOM_MCP_REQUEST_TIMEOUT_MS);
+  const path = connectionPath(id);
+  if (!path) return NOT_A_CONNECTION;
+  const answer = await customMcpRequest('DELETE', path, CUSTOM_MCP_REQUEST_TIMEOUT_MS);
   if (!answer.ok) return answer;
   // auth revokes at the server when it can and deletes the row either way; it does not say which.
   return { ok: true, revoked: false };
@@ -1452,6 +1488,23 @@ export async function notionFetchPage(name: string, page: string): Promise<Notio
     return bridge.notionFetchPage({ name, page });
   }
   return null;
+}
+
+export type PublishApprovalBridgeResult = NotionPagesBridgeResult;
+
+// Desktop: main sends the app secret an approval needs. An Electron shell from
+// before this bridge answers `unsupported`, so the dialog asks for an app
+// update instead of sending a request the server refuses. The web build has
+// no secret to send and gets null: the caller makes the request itself.
+export async function publishWithApproval(opts: {
+  kind: 'publish' | 'update';
+  path: string;
+  access?: Record<string, unknown>;
+  approvedDatasources: { engine: string; name: string }[];
+}): Promise<PublishApprovalBridgeResult | { ok: false; reason: 'unsupported' } | null> {
+  if (!isElectron) return null;
+  if (typeof bridge.publishWithApproval !== 'function') return { ok: false, reason: 'unsupported' };
+  return bridge.publishWithApproval(opts);
 }
 
 export interface DrivePickerFile {
@@ -2311,6 +2364,7 @@ export const host = {
   customMcpFinish,
   notionSearchPages,
   notionFetchPage,
+  publishWithApproval,
   onOAuthRefreshError,
   pickDriveFiles,
   cancelDrivePicker,

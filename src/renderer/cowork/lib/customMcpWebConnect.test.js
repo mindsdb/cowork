@@ -2,9 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   beginCustomMcpSignIn,
   cancelCustomMcpSignIn,
+  CUSTOM_MCP_SIGN_IN_CHANNEL,
   customMcpFailure,
+  endCustomMcpSignIn,
   openLoginPage,
   pollCustomMcpSignIn,
+  nudgeCustomMcpSignIns,
   toolsFrom,
 } from './customMcpWebConnect';
 
@@ -144,10 +147,100 @@ describe('the status poll', () => {
     await vi.waitFor(() => expect(readStatus).toHaveBeenCalledTimes(1));
     cancelCustomMcpSignIn();
 
-    expect(await polling).toMatchObject({ ok: false, code: 'login_failed' });
+    expect(await polling).toMatchObject({ ok: false, code: 'stopped_waiting' });
     expect(popup.close).toHaveBeenCalled();
     answer({ ok: true, data: { status: 'success' } });
     expect(readStatus).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the finish page's nudge", () => {
+  it('wakes the waiting sign-in through the channel, every time, and nothing once it ended', async () => {
+    const { win } = fakeWindow();
+    const signIn = beginCustomMcpSignIn(win);
+
+    const first = signIn.nextNudge();
+    nudgeCustomMcpSignIns();
+    await first;
+    // A spent nudge must not wake the wait again: the next one is still to come.
+    let woken = false;
+    const second = signIn.nextNudge().then(() => { woken = true; });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(woken).toBe(false);
+    nudgeCustomMcpSignIns();
+    await second;
+    expect(woken).toBe(true);
+
+    endCustomMcpSignIn(signIn);
+    expect(signIn.channel).toBeNull();
+  });
+
+  it('ignores anything else on the channel', async () => {
+    const { win } = fakeWindow();
+    const signIn = beginCustomMcpSignIn(win);
+    let woken = false;
+    void signIn.nextNudge().then(() => { woken = true; });
+
+    const other = new BroadcastChannel(CUSTOM_MCP_SIGN_IN_CHANNEL);
+    other.postMessage({ ok: false, code: 'login_not_yours' });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    other.close();
+
+    expect(woken).toBe(false);
+    cancelCustomMcpSignIn();
+  });
+
+  it('posts one fixed message and closes its channel, and does nothing without one', () => {
+    const posted = [];
+    const closed = vi.fn();
+    class Channel {
+      constructor(name) { this.name = name; }
+      postMessage(message) { posted.push([this.name, message]); }
+      close() { closed(); }
+    }
+
+    nudgeCustomMcpSignIns(Channel);
+    nudgeCustomMcpSignIns(undefined);
+
+    expect(posted).toEqual([[CUSTOM_MCP_SIGN_IN_CHANNEL, 'finished']]);
+    expect(closed).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads the status at once on a nudge, and ends with auth's code and sentence, keeping the pop-up", async () => {
+    const { win, popup } = fakeWindow();
+    const signIn = beginCustomMcpSignIn(win, undefined);
+    let nudge = () => {};
+    signIn.nextNudge = () => new Promise((resolve) => { nudge = resolve; });
+    const detail = "This server's tokens expire and it gives no refresh token, so it cannot be used on cloud.";
+    const readStatus = vi.fn(async () => ({ ok: true, data: { status: 'error', name: 'cm-x', error: 'no_refresh_token', detail } }));
+
+    const waiting = pollCustomMcpSignIn(signIn, readStatus, { sleep: () => new Promise(() => {}) });
+    await Promise.resolve();
+    nudge();
+    const ended = await waiting;
+    endCustomMcpSignIn(signIn);
+
+    expect(ended).toEqual({ ok: false, code: 'no_refresh_token', reason: detail });
+    expect(readStatus).toHaveBeenCalledTimes(1);
+    expect(popup.close).not.toHaveBeenCalled();
+  });
+
+  it('keeps waiting when a nudge finds its own sign-in still pending', async () => {
+    const { win } = fakeWindow();
+    const signIn = beginCustomMcpSignIn(win, undefined);
+    let nudge = () => {};
+    signIn.nextNudge = () => new Promise((resolve) => { nudge = resolve; });
+    const readStatus = vi.fn(async () => ({ ok: true, data: { status: 'pending' } }));
+
+    const waiting = pollCustomMcpSignIn(signIn, readStatus, { sleep: () => new Promise(() => {}) });
+    await Promise.resolve();
+    nudge();
+    await vi.waitFor(() => expect(readStatus).toHaveBeenCalledTimes(1));
+    for (let tick = 0; tick < 50; tick += 1) await Promise.resolve();
+
+    expect(readStatus).toHaveBeenCalledTimes(1);
+    cancelCustomMcpSignIn();
+    expect(await waiting).toMatchObject({ ok: false, code: 'stopped_waiting' });
   });
 });
 
