@@ -60,7 +60,7 @@ import {
 import { awaitSignOutSidecarFlush, startSignOutSidecarFlush } from './sign-out-restart';
 import { SERVER_START_CAP_MS } from '../shared/server-status';
 import { MINDS_API_HOST, MINDS_AUTH_SERVICE_URL } from './minds-urls';
-import { readArtifactSharePermission } from './artifact-share-permission';
+import { createArtifactSharePermissionReader } from './artifact-share-permission';
 import {
   validateAnthropic,
   validateMinds,
@@ -1338,12 +1338,13 @@ function setupIPC() {
   // Whether the active organization lets this person share an artifact with
   // everyone in it, for the Share panel. Read here for the same CORS reason
   // as the organization list.
-  ipcMain.handle(IPC.MINDSHUB_ARTIFACT_SHARE_PERMISSION, () => readArtifactSharePermission({
+  const artifactSharePermission = createArtifactSharePermissionReader({
     userSuppliedCredential: hasUserSuppliedMindsCredential,
     accessToken: freshAccessToken,
     fetch: (url, init) => fetch(url, { signal: AbortSignal.timeout(10_000), ...init }),
     authServiceUrl: MINDS_AUTH_SERVICE_URL,
-  }));
+  });
+  ipcMain.handle(IPC.MINDSHUB_ARTIFACT_SHARE_PERMISSION, () => artifactSharePermission.read());
 
   // Move this install to another organization: switch the session, mint and
   // commit a key there, remember the pick, and retire the key left behind.

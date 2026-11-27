@@ -1,12 +1,18 @@
 import { describe, it, expect, vi } from 'vitest';
-import { readArtifactSharePermission, type ArtifactSharePermissionDeps } from './artifact-share-permission';
+import { createArtifactSharePermissionReader, type ArtifactSharePermissionDeps } from './artifact-share-permission';
 
 const AUTH = 'https://auth.example/v1';
+
+const base64url = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
+const tokenFor = (sub: string, orgId: string) =>
+  `${base64url({ alg: 'none' })}.${base64url({ sub, active_organization: { id: orgId, name: orgId } })}.sig`;
+const ACME = tokenFor('user-1', 'org-acme');
+const BETA = tokenFor('user-1', 'org-beta');
 
 function deps(over: Partial<ArtifactSharePermissionDeps> = {}): ArtifactSharePermissionDeps {
   return {
     userSuppliedCredential: async () => false,
-    accessToken: async () => 'jwt-1',
+    accessToken: async () => ACME,
     fetch: vi.fn(async () => new Response(JSON.stringify({ org_role: 'member', permissions: ['artifacts.share_org'] }), { status: 200 })),
     authServiceUrl: AUTH,
     ...over,
@@ -15,13 +21,15 @@ function deps(over: Partial<ArtifactSharePermissionDeps> = {}): ArtifactSharePer
 
 const answering = (status: number, body: unknown) => vi.fn(async () => new Response(JSON.stringify(body), { status }));
 
+const readArtifactSharePermission = (d: ArtifactSharePermissionDeps) => createArtifactSharePermissionReader(d).read();
+
 describe('readArtifactSharePermission', () => {
   it('asks auth for the caller entitlements with the session token', async () => {
     const d = deps();
     await readArtifactSharePermission(d);
     expect(d.fetch).toHaveBeenCalledWith(`${AUTH}/entitlements/me/`, expect.objectContaining({
       method: 'GET',
-      headers: expect.objectContaining({ Authorization: 'Bearer jwt-1', 'X-MindsDB-Product': 'hub' }),
+      headers: expect.objectContaining({ Authorization: `Bearer ${ACME}`, 'X-MindsDB-Product': 'hub' }),
     }));
   });
 
@@ -81,5 +89,63 @@ describe('readArtifactSharePermission', () => {
       sessionCredential: false, known: false, canShareArtifactsOrg: false,
     });
     expect(d.fetch).not.toHaveBeenCalled();
+  });
+
+  it('reports no session credential when the pasted-key check fails', async () => {
+    const d = deps({ userSuppliedCredential: async () => { throw new Error('store unreadable'); } });
+    await expect(readArtifactSharePermission(d)).resolves.toEqual({
+      sessionCredential: false, known: false, canShareArtifactsOrg: false,
+    });
+    expect(d.fetch).not.toHaveBeenCalled();
+  });
+
+  it('treats a token that cannot be read as unknown', async () => {
+    const d = deps({ accessToken: async () => { throw new Error('refresh failed'); } });
+    await expect(readArtifactSharePermission(d)).resolves.toEqual({
+      sessionCredential: true, known: false, canShareArtifactsOrg: false,
+    });
+    expect(d.fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('createArtifactSharePermissionReader', () => {
+  it('reuses a known answer for the same person and organization', async () => {
+    const d = deps();
+    const reader = createArtifactSharePermissionReader(d);
+    await reader.read();
+    await expect(reader.read()).resolves.toEqual({ sessionCredential: true, known: true, canShareArtifactsOrg: true });
+    expect(d.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks again after an unknown answer', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response('{}', { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ org_role: 'member', permissions: ['artifacts.share_org'] }), { status: 200 }));
+    const reader = createArtifactSharePermissionReader(deps({ fetch }));
+    await expect(reader.read()).resolves.toMatchObject({ known: false });
+    await expect(reader.read()).resolves.toMatchObject({ known: true, canShareArtifactsOrg: true });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks again for another organization in the token', async () => {
+    let token = ACME;
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ org_role: 'member', permissions: ['artifacts.share_org'] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ org_role: 'member', permissions: [] }), { status: 200 }));
+    const reader = createArtifactSharePermissionReader(deps({ fetch, accessToken: async () => token }));
+    await expect(reader.read()).resolves.toMatchObject({ canShareArtifactsOrg: true });
+    token = BETA;
+    await expect(reader.read()).resolves.toMatchObject({ known: true, canShareArtifactsOrg: false });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('checks for a pasted key before the kept answer', async () => {
+    let pasted = false;
+    const d = deps({ userSuppliedCredential: async () => pasted });
+    const reader = createArtifactSharePermissionReader(d);
+    await expect(reader.read()).resolves.toMatchObject({ known: true, canShareArtifactsOrg: true });
+    pasted = true;
+    await expect(reader.read()).resolves.toEqual({ sessionCredential: false, known: false, canShareArtifactsOrg: false });
+    expect(d.fetch).toHaveBeenCalledTimes(1);
   });
 });

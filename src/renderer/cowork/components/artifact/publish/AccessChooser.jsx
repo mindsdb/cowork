@@ -8,10 +8,11 @@
 //
 // The choices, private → public (AUDIENCE_CHOICE, the same values a skill's
 // audience uses): Only me, Everyone at ‹org› (sharing in MindsHub mode, or
-// on Desktop for an organization: `orgAudience`), Specific teams and people (or, without it, Specific people by
-// email), Password protected, Public, and Public website (MindsHub mode,
-// where the caller offers it: `website`). The chosen one's field (the
-// password, the recipients) unfolds under the card.
+// on Desktop for an organization: `orgAudience`), Specific teams and people
+// (or, without sharing, Specific people by email), Password protected,
+// Public, and Public website (MindsHub mode, where the caller offers it:
+// `website`). The chosen one's field (the password, the recipients) unfolds
+// under the card.
 //
 // Controlled via a single `value` draft + `onChange`:
 //   const [draft, setDraft] = useState(accessDraftFromArtifact(artifact));
@@ -342,7 +343,8 @@ export function accessSummaryLabel(artifact, { orgSharing = false, orgAudience =
 // eye lands on first. A shared-token deployment offers no "Only me": a
 // publisher reached with one shared publish token (cowork-server's
 // COWORK_PUBLISH_TOKEN) has no owner to let in, so it answers an owner-only
-// upload with a 400. Everyone at ‹org› shows only with sharing on.
+// upload with a 400. Everyone at ‹org› shows with sharing on in MindsHub
+// mode, or with Desktop's organization audience.
 const SHARED_TOKEN_MODES = [AUDIENCE_CHOICE.ORG, AUDIENCE_CHOICE.SPECIFIC, AUDIENCE_CHOICE.PASSWORD, AUDIENCE_CHOICE.PUBLIC, AUDIENCE_CHOICE.WEBSITE];
 const DEFAULT_MODES = SHARED_TOKEN_PUBLISH ? SHARED_TOKEN_MODES : [AUDIENCE_CHOICE.PRIVATE, ...SHARED_TOKEN_MODES];
 

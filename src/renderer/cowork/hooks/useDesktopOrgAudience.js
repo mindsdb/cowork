@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { isElectron, mindshubArtifactSharePermission } from '../../platform/host';
-import { subscribeOrganizationChanges } from '../lib/organizationChanges';
 import { SHARING_OFF } from '../lib/orgSharing';
 import { LOAD_STATUS } from '../lib/sharingContract';
 import { useAccountUser } from './useAccountUser';
@@ -12,38 +11,13 @@ import { useSharingOrgName } from './useOrgSharing';
  * one card (`orgAudience`) and never `enabled`, which would also turn on
  * teams, people and skill sharing.
  *
- * usePublish is active whenever a viewer is open, not only the Share panel,
- * so the permission main reads from auth is kept per person and organization.
- * Only a known answer is kept: one auth couldn't give, and one for a pasted
- * key (which main answers without asking auth), are asked again next time.
+ * Main keeps auth's answer per person and organization, and checks for a
+ * pasted key on every call, so this asks once per mount and organization.
  */
 
 const OFF = Object.freeze({ status: LOAD_STATUS.IDLE, capabilities: SHARING_OFF, orgName: null });
 const LOADING = Object.freeze({ status: LOAD_STATUS.LOADING, capabilities: SHARING_OFF, orgName: null });
-
-let cached = { key: null, promise: null };
-
-subscribeOrganizationChanges(() => { cached = { key: null, promise: null }; });
-
-function loadPermission(key) {
-  if (cached.key === key && cached.promise) return cached.promise;
-  const promise = Promise.resolve()
-    .then(() => mindshubArtifactSharePermission())
-    .then((answer) => {
-      if (answer?.known !== true && cached.promise === promise) cached = { key: null, promise: null };
-      return answer;
-    }, () => {
-      if (cached.promise === promise) cached = { key: null, promise: null };
-      return null;
-    });
-  cached = { key, promise };
-  return promise;
-}
-
-/** For tests: forget what was read. */
-export function __resetDesktopOrgAudienceForTests() {
-  cached = { key: null, promise: null };
-}
+const NO_ANSWER = Object.freeze({ key: null, value: null });
 
 /**
  * The Desktop organization audience for the artifact Share panel:
@@ -57,12 +31,20 @@ export function useDesktopOrgAudience(active) {
   const accountUser = useAccountUser(false, { active: reading });
   const eligible = reading && !!accountUser?.org && !accountUser.orgIsPersonal;
   const key = eligible ? `${accountUser.sub}:${accountUser.orgId}` : null;
-  const [answer, setAnswer] = useState({ key: null, value: null });
+  const [answer, setAnswer] = useState(NO_ANSWER);
 
   useEffect(() => {
-    if (!key) return undefined;
+    // Forget the answer once there is no key, so coming back to the same
+    // organization never shows it before main answers again.
+    if (!key) {
+      setAnswer(NO_ANSWER);
+      return undefined;
+    }
     let live = true;
-    loadPermission(key).then((value) => { if (live) setAnswer({ key, value }); });
+    Promise.resolve()
+      .then(() => mindshubArtifactSharePermission())
+      .catch(() => null)
+      .then((value) => { if (live) setAnswer({ key, value }); });
     return () => { live = false; };
   }, [key]);
 

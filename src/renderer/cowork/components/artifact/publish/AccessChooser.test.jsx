@@ -104,9 +104,8 @@ describe('buildAccessPayload — restricted', () => {
   });
 });
 
-/* A draft mode the payload doesn't know (Everyone at ‹org› reaching a
-   desktop save, a mode a later chooser adds) saves as Only me, never as
-   Public, which would open the link to anyone who has it. */
+/* A draft mode the payload doesn't know (one a later chooser adds) saves as
+   Only me, never as Public, which would open the link to anyone who has it. */
 describe('buildAccessPayload: a mode it does not know', () => {
   it.each(['link', '', undefined])('saves %j on desktop as Only me, never Public', (mode) => {
     expect(buildAccessPayload({ mode, emailsText: 'a@x.com' })).toEqual({

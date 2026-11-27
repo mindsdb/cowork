@@ -1,4 +1,5 @@
 import { diagnostic } from '../shared/diagnostics';
+import { accountIdFromToken, activeOrgIdFromToken } from './jwt';
 
 /*
  * Whether the signed-in person may share an artifact with everyone in their
@@ -26,39 +27,78 @@ export interface ArtifactSharePermissionDeps {
   authServiceUrl: string;
 }
 
+export interface ArtifactSharePermissionReader {
+  read: () => Promise<ArtifactSharePermission>;
+}
+
 const UNKNOWN: ArtifactSharePermission = Object.freeze({
   sessionCredential: true, known: false, canShareArtifactsOrg: false,
 });
+const NO_SESSION_CREDENTIAL: ArtifactSharePermission = Object.freeze({
+  sessionCredential: false, known: false, canShareArtifactsOrg: false,
+});
 
-export async function readArtifactSharePermission(deps: ArtifactSharePermissionDeps): Promise<ArtifactSharePermission> {
-  // A pasted key wins over the session token when publishing, and auth files
-  // the rule under the key's organization, which need not be the one the
-  // panel would name.
-  if (await deps.userSuppliedCredential()) {
-    return { sessionCredential: false, known: false, canShareArtifactsOrg: false };
-  }
-  const token = await deps.accessToken();
-  if (!token) return UNKNOWN;
+async function askAuth(deps: ArtifactSharePermissionDeps, token: string): Promise<ArtifactSharePermission> {
   try {
     const res = await deps.fetch(`${deps.authServiceUrl}/entitlements/me/`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${token}`, 'X-MindsDB-Product': 'hub' },
     });
     if (res.status !== 200) {
-      diagnostic('main.artifact-share-permission', 'WARNING', 'artifact_share_permission_entitlements_not_ok');
+      diagnostic('main.artifact-share-permission', 'WARNING', 'artifact_share_permission_entitlements_not_ok', { status: res.status });
       return UNKNOWN;
     }
     const body = await res.json();
     // auth answers org_role null with no permissions when it could not
     // resolve the membership: that is "couldn't ask", not "not allowed".
     if (!body || body.org_role == null || !Array.isArray(body.permissions)) return UNKNOWN;
-    return {
+    return Object.freeze({
       sessionCredential: true,
       known: true,
       canShareArtifactsOrg: body.permissions.includes(ARTIFACTS_SHARE_ORG),
-    };
+    });
   } catch (error) {
     diagnostic('main.artifact-share-permission', 'WARNING', 'artifact_share_permission_could_not_read_entitlements', error);
     return UNKNOWN;
   }
+}
+
+/**
+ * Reads the permission, keeping a known answer per person and active
+ * organization: the Share button asks whenever a viewer opens. Only a known
+ * answer is kept, so one auth couldn't give is asked again next time.
+ */
+export function createArtifactSharePermissionReader(deps: ArtifactSharePermissionDeps): ArtifactSharePermissionReader {
+  let kept: { key: string; answer: ArtifactSharePermission } | null = null;
+
+  return {
+    async read() {
+      // A pasted key wins over the session token when publishing, and auth
+      // files the rule under the key's organization, which need not be the one
+      // the panel would name. Checked on every read, ahead of the kept answer,
+      // because a key can be pasted at any time. A check that fails can't
+      // prove the session token is used, so it answers as a pasted key.
+      try {
+        if (await deps.userSuppliedCredential()) return NO_SESSION_CREDENTIAL;
+      } catch (error) {
+        diagnostic('main.artifact-share-permission', 'WARNING', 'artifact_share_permission_could_not_check_pasted_key', error);
+        return NO_SESSION_CREDENTIAL;
+      }
+      let token: string | null;
+      try {
+        token = await deps.accessToken();
+      } catch (error) {
+        diagnostic('main.artifact-share-permission', 'WARNING', 'artifact_share_permission_could_not_read_token', error);
+        return UNKNOWN;
+      }
+      if (!token) return UNKNOWN;
+      const sub = accountIdFromToken(token);
+      const orgId = activeOrgIdFromToken(token);
+      const key = sub && orgId ? JSON.stringify([sub, orgId]) : null;
+      if (key && kept?.key === key) return kept.answer;
+      const answer = await askAuth(deps, token);
+      if (key && answer.known) kept = { key, answer };
+      return answer;
+    },
+  };
 }

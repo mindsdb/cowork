@@ -15,7 +15,7 @@ vi.mock('../../platform/host', async (importOriginal) => ({
   get isElectron() { return hostMock.isElectron; },
 }));
 
-import { useDesktopOrgAudience, __resetDesktopOrgAudienceForTests } from './useDesktopOrgAudience';
+import { useDesktopOrgAudience } from './useDesktopOrgAudience';
 import { notifyOrganizationChanged } from '../lib/organizationChanges';
 import { isOrgAudienceOn } from '../lib/orgSharing';
 
@@ -27,7 +27,6 @@ const PERSONAL_TOKEN = tokenWith({ activate_organization: { id: 'org-me', name: 
 const ALLOWED = { sessionCredential: true, known: true, canShareArtifactsOrg: true };
 
 beforeEach(() => {
-  __resetDesktopOrgAudienceForTests();
   hostMock.isElectron = true;
   hostMock.getAccessToken.mockReset().mockResolvedValue(ACME_TOKEN);
   hostMock.mindshubListOrgs.mockReset().mockResolvedValue({
@@ -100,21 +99,31 @@ describe('useDesktopOrgAudience', () => {
     expect(isOrgAudienceOn(result.current.capabilities)).toBe(false);
   });
 
-  it('asks once per organization and reuses the answer', async () => {
+  it('asks once per mount, and again on the next mount', async () => {
     const first = renderHook(() => useDesktopOrgAudience(true));
     await waitFor(() => expect(first.result.current.status).toBe('ready'));
+    first.rerender();
+    await act(async () => {});
+    expect(hostMock.mindshubArtifactSharePermission).toHaveBeenCalledTimes(1);
+    // Main keeps the answer, after checking for a pasted key on each call.
     const second = renderHook(() => useDesktopOrgAudience(true));
     await waitFor(() => expect(second.result.current.status).toBe('ready'));
-    expect(hostMock.mindshubArtifactSharePermission).toHaveBeenCalledTimes(1);
+    expect(hostMock.mindshubArtifactSharePermission).toHaveBeenCalledTimes(2);
   });
 
-  it('asks again after an unknown answer', async () => {
-    hostMock.mindshubArtifactSharePermission.mockResolvedValueOnce({ sessionCredential: true, known: false, canShareArtifactsOrg: false });
-    const first = renderHook(() => useDesktopOrgAudience(true));
-    await waitFor(() => expect(first.result.current.status).toBe('ready'));
-    const second = renderHook(() => useDesktopOrgAudience(true));
-    await waitFor(() => expect(second.result.current.capabilities.permissionsKnown).toBe(true));
-    expect(hostMock.mindshubArtifactSharePermission).toHaveBeenCalledTimes(2);
+  it('never shows an earlier answer after leaving the organization and coming back', async () => {
+    const seen = [];
+    const { result } = renderHook(() => { const r = useDesktopOrgAudience(true); seen.push(r); return r; });
+    await waitFor(() => expect(isOrgAudienceOn(result.current.capabilities)).toBe(true));
+    hostMock.getAccessToken.mockResolvedValue(PERSONAL_TOKEN);
+    await act(async () => { notifyOrganizationChanged('user-1'); });
+    await waitFor(() => expect(result.current.status).toBe('idle'));
+    hostMock.mindshubArtifactSharePermission.mockResolvedValue({ sessionCredential: false, known: false, canShareArtifactsOrg: false });
+    hostMock.getAccessToken.mockResolvedValue(ACME_TOKEN);
+    const back = seen.length;
+    await act(async () => { notifyOrganizationChanged('user-1'); });
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+    expect(seen.slice(back).every((r) => !isOrgAudienceOn(r.capabilities))).toBe(true);
   });
 
   it('asks again after the organization changes', async () => {

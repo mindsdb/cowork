@@ -53,7 +53,7 @@ describe('PublishMenu on Desktop with an organization', () => {
     expect(pub.publish.mock.calls[0][0]).toMatchObject({ mode: 'restricted', emails: [], org_allowed: true, owner_only: false });
   });
 
-  it('keeps Specific people about emails, with no teams, notify by email only and no MindsHub retry', async () => {
+  it('keeps Specific people about emails, with no teams and no MindsHub retry', async () => {
     const user = userEvent.setup();
     render(<PublishMenu controller={makeController({ accessEmails: ['a@x.com'], ownerOnly: false })} />);
     await user.click(trigger());
@@ -97,6 +97,31 @@ describe('PublishMenu on Desktop with an organization', () => {
     await user.click(screen.getByRole('radio', { name: /Everyone at Acme/ }));
     rerender(<PublishMenu controller={{ ...pub, orgAudience: OFF }} />);
     await waitFor(() => expect(screen.queryByText('Everyone at Acme')).toBeNull());
-    expect(screen.getAllByText('Only me').length).toBeGreaterThan(0);
+    expect(screen.getByTestId('access-dropdown')).toHaveTextContent('Only me');
+  });
+
+  it('rebuilds a first share from a request with nothing picked when the card goes away', async () => {
+    const user = userEvent.setup();
+    const pub = makeController({ publishedUrl: '' });
+    const { rerender } = render(<PublishMenu openRequest={{}} controller={pub} />);
+    await user.click(await screen.findByTestId('access-dropdown'));
+    await user.click(screen.getByRole('radio', { name: /Everyone at Acme/ }));
+    expect(screen.getByTestId('access-dropdown')).toHaveTextContent('Everyone at Acme');
+    rerender(<PublishMenu openRequest={{}} controller={{ ...pub, orgAudience: OFF }} />);
+    await waitFor(() => expect(screen.getByTestId('access-dropdown')).not.toHaveTextContent('Everyone at Acme'));
+    expect(screen.getByTestId('access-dropdown')).not.toHaveTextContent('Only me');
+  });
+
+  it('follows the saved access again after rebuilding a change draft', async () => {
+    const user = userEvent.setup();
+    const pub = makeController();
+    const { rerender } = render(<PublishMenu controller={pub} />);
+    await user.click(trigger());
+    await user.click(await screen.findByTestId('access-dropdown'));
+    await user.click(screen.getByRole('radio', { name: /Everyone at Acme/ }));
+    rerender(<PublishMenu controller={{ ...pub, orgAudience: OFF }} />);
+    await waitFor(() => expect(screen.getByTestId('access-dropdown')).toHaveTextContent('Only me'));
+    rerender(<PublishMenu controller={{ ...pub, orgAudience: OFF, accessEmails: ['a@x.com'], ownerOnly: false }} />);
+    await waitFor(() => expect(screen.getByTestId('access-dropdown')).toHaveTextContent('Specific people'));
   });
 });

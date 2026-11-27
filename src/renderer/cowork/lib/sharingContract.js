@@ -316,9 +316,10 @@ export function orgRestrictedAccessRequest({ emails = NO_IDS, ownerOnly, ...audi
 }
 
 /**
- * Desktop's restricted body: everyone named by email.
+ * Desktop's restricted body: everyone named by email, and with `orgAllowed`
+ * everyone in the publisher's organization too.
  *
- * @param {{ emails: string[], ownerOnly: boolean }} audience
+ * @param {{ emails: string[], ownerOnly: boolean, orgAllowed?: boolean }} audience
  * @returns {import('./sharingContract').DesktopRestrictedAccessPayload}
  */
 export function desktopRestrictedAccessRequest({ emails, ownerOnly, orgAllowed = false }) {

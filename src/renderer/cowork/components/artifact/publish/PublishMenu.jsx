@@ -432,13 +432,15 @@ export function PublishMenu({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, view, draftDirty, pub.accessLoaded, pub.accessMode, pub.orgAllowed, (pub.accessEmails || []).join(','), (pub.allowedTeamIds || []).join(','), (pub.allowedUserIds || []).join(','), !!sharing, sharing?.teams?.status, !!orgAudience]);
 
-  // An Everyone draft whose card went away (the organization changed, or
-  // Desktop's audience turned off) is rebuilt from the saved access.
+  // On Desktop, an Everyone draft whose card went away (the organization
+  // changed, or the audience turned off) is rebuilt as the panel would open,
+  // and follows the saved access again.
   useEffect(() => {
-    if (!open || sharing || orgAudience || draft.mode !== AUDIENCE_CHOICE.ORG) return;
-    setDraft(seedDraft());
+    if (!open || orgMode || sharing || orgAudience || draft.mode !== AUDIENCE_CHOICE.ORG) return;
+    setDraft(isPublished ? seedDraft() : firstShareDraft());
+    setDraftDirty(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, !!sharing, !!orgAudience]);
+  }, [open, orgMode, !!sharing, !!orgAudience]);
 
   const current = seedDraft();
   const draftValid = (d) => isAccessDraftValid(d, { orgSharing: !!sharing });
