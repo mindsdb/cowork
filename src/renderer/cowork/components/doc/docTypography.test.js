@@ -118,3 +118,36 @@ describe('doc typography shared with the page', () => {
     expect(/paddingLeft: \(b\.indent \|\| 0\) \* (\d+)/.exec(read('TextBlock.jsx'))[1]).toBe(String(px(indent)));
   });
 });
+
+const CODE = JSON.parse(readFileSync(resolve(__dirname, '../../__fixtures__/docs-code-highlight/contract.json')));
+// Only the hljs theme: the rest of globals.css holds at-rules and strings this parser doesn't read.
+const THEME = parse(GLOBALS.slice(
+  GLOBALS.indexOf('/* Scoped highlight.js theme'),
+  GLOBALS.indexOf('/* ─── iOS auto-zoom suppression'),
+));
+const flat = (v) => v.replace(/\s+/g, '');
+
+describe('code colours', () => {
+  const SCOPE = ':is(.anton-code-block,.doc-code) .hljs-';
+  const LIGHT = 'body[data-theme="light"] ';
+
+  it.each(['dark', 'light'])('give a doc\'s code the %s palette the page uses', (theme) => {
+    for (const [cls, value] of Object.entries(CODE.colors[theme])) {
+      const prop = cls.endsWith('-bg') ? 'background' : 'color';
+      const sel = SCOPE + cls.replace(/-bg$/, '');
+      // The light theme overrides only some classes; the rest keep the dark rule.
+      const decls = (theme === 'light' && THEME.get(LIGHT + sel)?.some(([p]) => p === prop))
+        ? THEME.get(LIGHT + sel) : THEME.get(sel);
+      expect(decls, sel).toBeDefined();
+      expect(decls.filter(([p]) => p === prop).map(([, v]) => flat(v)).pop(), sel).toBe(flat(value));
+    }
+  });
+
+  it('lay the highlight layer out as the code box, character for character', () => {
+    const box = Object.fromEntries(EDITOR.get('.doc-code__text'));
+    const layer = Object.fromEntries(EDITOR.get('.doc-code__hl'));
+    for (const prop of ['padding', 'font-family', 'font-size', 'line-height', 'white-space', 'tab-size']) {
+      expect(layer[prop], prop).toBe(box[prop]);
+    }
+  });
+});
