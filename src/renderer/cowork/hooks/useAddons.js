@@ -3,7 +3,7 @@ import { diagnostic } from '../../../shared/diagnostics';
 import { sendAddon, withdrawAddon } from '../api';
 import { trackAddonAdded, trackAddonQueued, trackAddonOverridden } from '../lib/analytics';
 import {
-  addonOutcome, newlyReturnedAddons, newAddonLocalKey, rememberOwnAddon, isOwnAddon, forgetOwnAddons,
+  addonOutcome, needsOwnTurn, newlyReturnedAddons, newAddonLocalKey, rememberOwnAddon, isOwnAddon, forgetOwnAddons,
 } from '../lib/addons';
 
 const LOGGER = 'renderer.cowork.hooks.useAddons';
@@ -278,7 +278,7 @@ export function useAddons({
     const ctrl = taskId ? liveAddonCtrl(taskId) : null;
     if (!ctrl) return;
     const item = (messageQueueRef.current[taskId] || []).find((q) => q.id === itemId);
-    if (!item || item.addonPending || item.paused || (item.attachments || []).length > 0) return;
+    if (!item || item.addonPending || item.paused || (item.attachments || []).length > 0 || needsOwnTurn(item)) return;
     const localKey = newAddonLocalKey();
     rememberOwnAddon(localKey, taskId);
     updateQueueItem(taskId, itemId, { addonPending: true, addonLocalKey: localKey });

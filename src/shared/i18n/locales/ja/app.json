@@ -266,10 +266,10 @@
     "stayQueued": "{agent} は今これを受け取れません。キューに残ります。"
   },
   "voiceCall": {
-    "backToCall": "{agent} との通話に戻る",
-    "onCall": "{agent} と通話中",
+    "backToCall": "音声モードに戻る",
+    "onCall": "音声モード中",
     "callBackPending": "完了したら {agent} から折り返し電話します",
-    "call": "{agent} に電話",
+    "call": "音声モード",
     "anotherCall": "別の通話が進行中です"
   },
   "notion": {

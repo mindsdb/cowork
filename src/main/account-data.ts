@@ -131,10 +131,10 @@ function dirHoldsEntries(dir: string): boolean {
 /**
  * Whether this root's `.env` holds a provider credential.
  *
- * The file itself proves nothing: the sidecar writes one to hold a generated
- * COWORK_AUTH_TOKEN, and the desktop writes consent flags into it, so a plain
- * launch produces a dotenv on an install nobody has configured. A credential
- * key with a value does prove it.
+ * The file itself proves nothing: the desktop writes consent flags into it,
+ * and sidecars from before the launch hand-off wrote a generated
+ * COWORK_AUTH_TOKEN there, so a plain launch produces a dotenv on an install
+ * nobody has configured. A credential key with a value does prove it.
  */
 function envHoldsCredential(root: string): boolean {
   let text: string;

@@ -266,10 +266,10 @@
     "stayQueued": "{agent} no puede recibirlo ahora. Se queda en la cola."
   },
   "voiceCall": {
-    "backToCall": "Volver a la llamada con {agent}",
-    "onCall": "En una llamada con {agent}",
+    "backToCall": "Volver al modo de voz",
+    "onCall": "Modo de voz activo",
     "callBackPending": "{agent} te llamará cuando termine",
-    "call": "Llamar a {agent}",
+    "call": "Modo de voz",
     "anotherCall": "Hay otra llamada en curso"
   },
   "notion": {

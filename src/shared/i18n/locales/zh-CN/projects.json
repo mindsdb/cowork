@@ -24,10 +24,6 @@
         "untilMobile": "免费 MindsHub Air 已对所有用户暂停，直至 {until}。暂停期间不会消耗你的额度。",
         "dailyResetMobile": "免费 MindsHub Air 已对所有用户暂停，直至每日预算重置。暂停期间不会消耗你的额度。"
       },
-      "resting": {
-        "resetsAt": "将于 {time} 重置。",
-        "noReset": "Air 可使用这些令牌，直至用完。"
-      },
       "balanceEmptySentence": "你的余额已用完。",
       "percentLeft": "免费额度剩余 {percent}",
       "autoTopUpFailed": {
@@ -46,8 +42,6 @@
       },
       "balanceLow": {
         "title": "余额不足",
-        "autoRefills": "剩余 {usd}。余额低于 {floor} 时，自动充值会将其补足至 {target}。",
-        "autoCovers": "剩余 {usd}。自动充值将补足余额。",
         "autoPending": "剩余 {usd}。自动充值正在等待银行处理。",
         "autoCapReached": "剩余 {usd}。为避免超出每月上限，自动充值已暂停。请充值以继续。",
         "body": "剩余 {usd}。请充值或开启自动充值。",
@@ -83,7 +77,8 @@
         "lowThenWalletWithTime": "之后，任务将按 API 价格使用你的余额，直到 {time} 重置。",
         "lowThenPause": "之后，任务将暂停，直到额度重置。",
         "lowThenPauseWithTime": "之后，任务将暂停至 {time}。"
-      }
+      },
+      "resetsAt": "将于 {time} 重置。"
     },
     "scheduleWhen": {
       "timeZone": "{city} 时间",
@@ -95,7 +90,14 @@
       "daily": "每天 {time}",
       "weekdays": "每个工作日 {time}",
       "weekly": "每{weekday} {time}",
-      "weeklyNoDay": "每周 {time}"
+      "weeklyNoDay": "每周 {time}",
+      "monthlyDay": "每月 {day} 日 {time}",
+      "monthlyDayOrLast": "每月 {day} 日（较短的月份为最后一天）{time}",
+      "monthlyFirst": "每月第一个{weekday} {time}",
+      "monthlySecond": "每月第二个{weekday} {time}",
+      "monthlyThird": "每月第三个{weekday} {time}",
+      "monthlyFourth": "每月第四个{weekday} {time}",
+      "monthlyLast": "每月最后一个{weekday} {time}"
     },
     "scheduleCopy": {
       "missedOnceServer": "如果此时服务器停机，只要在一小时内恢复，任务就会运行。超过一小时则会标记为“已错过”，你可以手动运行。",
@@ -105,7 +107,9 @@
       "missedLabelServer": "如果此时服务器停机",
       "missedLabelApp": "如果此时 MindsHub 已关闭",
       "missedOnceTitleServer": "服务器停机期间，此一次性任务的运行时间已过",
-      "missedOnceTitleApp": "MindsHub 关闭期间，此一次性任务的运行时间已过"
+      "missedOnceTitleApp": "MindsHub 关闭期间，此一次性任务的运行时间已过",
+      "lateRunApp": "计划时间：{when}。MindsHub 已关闭或电脑处于睡眠状态。",
+      "lateRunServer": "计划时间：{when}。服务器宕机或繁忙。"
     },
     "stopScheduleRun": {
       "unreachable": "无法连接服务器以停止运行。请重试。",
@@ -319,6 +323,7 @@
       "sections": {
         "mine": "我的",
         "sharedWithMe": "与我分享",
+        "sharedByOthers": "他人分享",
         "team": "我的团队",
         "builtin": "内置"
       },
@@ -469,6 +474,9 @@
       "uploadTooLarge": "本次上传超过了大小限制。请选择较小的文件，或减少一次上传的文件数量。",
       "requestTooLarge": "本次请求超过了大小限制。请尝试减少发送的内容。"
     },
+    "projectUploads": {
+      "notUploaded": "未上传的文件：{files}。"
+    },
     "fileDrop": {
       "uploading": "正在上传…"
     },
@@ -592,6 +600,7 @@
     "lastFailed": "上次失败",
     "lastRunFailed": "上次运行失败",
     "stoppedAtLimit": "达到上限后停止",
+    "writesRefused": "需要批准",
     "done": "已完成",
     "active": "已启用"
   },
@@ -603,7 +612,8 @@
       "hourly": "每小时",
       "daily": "每天",
       "weekdays": "工作日",
-      "weekly": "每周"
+      "weekly": "每周",
+      "monthly": "每月"
     },
     "openProject": "打开 {project}",
     "descriptionWithNext": "{sentence} · 下次：{next}",
@@ -623,6 +633,7 @@
     "partialNote": "部分操作可能已经完成。再次运行前，请先查看本次运行。",
     "limitTitle": "上次运行达到上限后停止",
     "limitNote": "部分工作可能已经完成。再次运行前，请先查看本次运行。",
+    "approvalTitle": "上次运行的更改未获批准",
     "failedTitle": "上次运行失败",
     "resume": "恢复",
     "runNow": "立即运行",
@@ -638,7 +649,12 @@
     "succeededTitle": "定时任务已完成",
     "succeededBody": "“{title}”已完成一次运行。点击打开。",
     "succeededToast": "定时任务“{title}”已完成一次运行。",
-    "openAction": "打开任务"
+    "openAction": "打开任务",
+    "stoppedTitle": "计划任务已停止",
+    "stoppedBody": "“{title}”在完成前达到上限并已停止。点击查看。",
+    "stoppedToast": "计划任务“{title}”在完成前达到上限并已停止。",
+    "genericTitle": "新通知",
+    "genericLine": "新通知：{subject}"
   },
   "scheduleNotifyMenu": {
     "label": "通知",
@@ -654,11 +670,13 @@
       "hourly": "每小时",
       "daily": "每天",
       "weekdays": "每个工作日",
-      "weekly": "每周"
+      "weekly": "每周",
+      "monthly": "每月"
     },
     "errorNoPrompt": "请告诉 {agent} 要做什么。",
     "errorPickFutureTime": "请选择一个未来的时间。",
     "errorPickTime": "请选择时间。",
+    "errorPickDays": "请至少选择一个星期几。",
     "errorSave": "无法保存定时任务。",
     "editTitle": "编辑定时任务",
     "createTitle": "创建定时任务",
@@ -670,6 +688,17 @@
     "when": "时间",
     "howOften": "频率",
     "dayOfWeek": "星期",
+    "daysOfWeek": "星期",
+    "dayOfMonth": "日期",
+    "monthBy": {
+      "label": "每月哪一天",
+      "day": "日期",
+      "week1": "第一个",
+      "week2": "第二个",
+      "week3": "第三个",
+      "week4": "第四个",
+      "weekLast": "最后一个"
+    },
     "date": "日期",
     "atMinute": "分钟：",
     "at": "时间：",
@@ -681,6 +710,7 @@
     "namePlaceholder": "根据提示词自动命名",
     "project": "项目",
     "model": "模型",
+    "connections": "连接",
     "accountDefault": "账户默认",
     "cancel": "取消",
     "saveAndRunOnce": "保存并运行一次",
@@ -722,7 +752,8 @@
       "success": "成功",
       "failed": "失败",
       "cancelled": "已停止",
-      "stoppedAtLimit": "达到上限后停止"
+      "stoppedAtLimit": "达到上限后停止",
+      "writesRefused": "未批准"
     },
     "sentence": "{when}（{zone}）",
     "runningNow": "正在运行",
@@ -739,6 +770,7 @@
     "scheduleAriaLabel": "定时",
     "accountDefaultModel": "账户默认模型",
     "ranOnDefaultModel": "默认模型",
+    "ranLate": "延迟",
     "modelUnavailable": "{model} 不可用，因此本次运行使用了你的默认模型。",
     "succeededCount": "{total, plural, other {# 次运行中成功 {succeeded} 次}}",
     "promptAriaLabel": "提示词",
@@ -802,7 +834,7 @@
     "couldNotCreate": "无法创建项目。",
     "couldNotOpenPicker": "无法打开文件夹选择器。",
     "filesNotUploaded": "已创建“{name}”，但其文件未能上传。",
-    "filesNotUploadedReason": "上传未完成。请重新将文件添加到项目中。",
+    "someFilesNotUploaded": "已创建“{name}”，但部分文件未能上传。",
     "filesUploadUnconfirmed": "已创建“{name}”。请先检查项目中的文件，再决定是否重新上传。",
     "title": "新建项目",
     "nameLabel": "项目名称",

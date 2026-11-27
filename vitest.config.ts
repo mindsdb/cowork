@@ -118,6 +118,42 @@ export default defineConfig({
            session's viewer, looks like a working page. */
         'src/renderer/cowork/lib/browserApproval.js': { statements: 98, branches: 95 },
         'src/renderer/cowork/lib/browserSession.js': { statements: 98, branches: 95 },
+        // The doc editor's decisions, kept out of its components to be tested
+        // directly: what each key and menu does to the doc, where a popover
+        // goes, a chart's scale and marks, and which artifacts open as docs
+        // (and as which page outside the app).
+        'src/renderer/cowork/components/doc/canvasOps.js': { statements: 100, branches: 100 },
+        'src/renderer/cowork/components/doc/chartGeometry.js': { statements: 100, branches: 95 },
+        'src/renderer/cowork/components/doc/docArtifact.js': { statements: 100, branches: 100 },
+        // The block menu's options, as data: a slip there copies, moves or
+        // deletes the wrong block, which nothing on screen flags.
+        'src/renderer/cowork/components/doc/blockMenu.js': { statements: 100, branches: 100 },
+        // The doc's op engine and its escaping, and the write queue. Their
+        // failures are silent: a block shown twice, an edit dropped while
+        // the doc's writer is away. Only the branch table shows the guards
+        // still fire.
+        'src/renderer/cowork/components/doc/docModel.js': { statements: 97, branches: 90 },
+        'src/renderer/cowork/components/doc/useDoc.js': { statements: 98, branches: 96 },
+        // The chat's side of docs: how the area splits, and what a message
+        // carries about the doc beside it. A doc_context that quietly goes
+        // missing (or rides on the wrong message) looks like an agent that
+        // didn't read the page.
+        'src/renderer/cowork/components/doc/docLayout.js': { statements: 100, branches: 100 },
+        'src/renderer/cowork/lib/docViewContext.js': { statements: 100, branches: 100 },
+        // Which doc sits beside which chat, and what its requests send. A doc
+        // left beside the next conversation, or one that never opens when the
+        // agent makes it, looks like an agent that did nothing.
+        'src/renderer/cowork/components/doc/useDocBesideChat.js': { statements: 78, branches: 43 },
+        // How a doc read or write's answer becomes an error (its status, code
+        // and words), and when an edit is given up on as timed out: useDoc
+        // decides from these whether to send it again, reread, or drop it.
+        'src/renderer/cowork/components/doc/docApi.js': { statements: 67, branches: 72 },
+        // Version history: which version a row names and when, and which
+        // blocks read differently now. A wrong time or mark sends someone
+        // back to the version they didn't mean, and the list, the preview
+        // and the restore all go through the hook.
+        'src/renderer/cowork/components/doc/versionHistory.js': { statements: 100, branches: 100 },
+        'src/renderer/cowork/components/doc/useVersionHistory.js': { statements: 98, branches: 90 },
       },
     },
     projects: [

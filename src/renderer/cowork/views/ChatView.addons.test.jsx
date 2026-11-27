@@ -257,6 +257,8 @@ describe('queue chips', () => {
     ['the task is not running', { task: idle }, {}],
     ['it has files', {}, { attachments: [{ id: 'f1', name: 'q3.csv' }] }],
     ['the conversation has no server id yet', { task: { ...live, id: 'tmp-1' } }, {}],
+    ['it asks for a doc', {}, { output: 'doc' }],
+    ['it acts on a passage of a doc', {}, { docContext: { request: 'Make it three', selection: { blockIds: ['b_1'] } } }],
   ])('does not offer Add to current task when %s', (_case, props, item) => {
     renderQueue([{ id: 'q1', text: 'skip the chart', ...item }], { onAddQueuedToTask: vi.fn(), ...props });
     expect(screen.queryByRole('button', { name: 'Add to current task' })).toBeNull();

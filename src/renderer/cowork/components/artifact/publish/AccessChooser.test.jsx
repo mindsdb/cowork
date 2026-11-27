@@ -1,5 +1,9 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { useState } from 'react';
+import { describe, it, expect, afterEach } from 'vitest';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { AUDIENCE_CHOICE } from '../../../lib/orgSharing';
+import { setOrgMode } from '../../../../lib/orgMode';
 import {
   AccessChooser,
   accessDraftFromArtifact,
@@ -155,39 +159,42 @@ describe('owner-only as its own selection', () => {
 
   it('reads an owner-only artifact back as the owner-only mode', () => {
     expect(accessDraftFromArtifact({
-      accessMode: 'restricted', accessEmails: [], orgAllowed: false, ownerOnly: true,
+      accessMode: 'restricted', accessEmails: [], orgAllowed: false, ownerOnly: true, publishedUrl: 'https://share/abc',
     }).mode).toBe('private');
   });
 
   it('reads a shared artifact back as Specific people', () => {
     const draft = accessDraftFromArtifact({
       accessMode: 'restricted', accessEmails: ['a@x.com'], orgAllowed: false, ownerOnly: false,
+      publishedUrl: 'https://share/abc',
     });
     expect(draft.mode).toBe('specific');
     expect(draft.emailsText).toBe('a@x.com');
   });
 
   it('falls back to deriving owner-only for a record written before the flag', () => {
-    const mode = (artifact) => accessDraftFromArtifact({ accessMode: 'restricted', ...artifact }).mode;
+    const mode = (artifact) => accessDraftFromArtifact({ accessMode: 'restricted', publishedUrl: 'https://share/abc', ...artifact }).mode;
     expect(mode({ accessEmails: [], orgAllowed: false })).toBe('private');
     expect(mode({ accessEmails: ['a@x.com'], orgAllowed: false })).toBe('specific');
     expect(mode({ accessEmails: [], orgAllowed: true })).toBe('specific');
   });
 
   it('prefers the server flag over the derivation when both are present', () => {
-    expect(accessDraftFromArtifact({ accessMode: 'restricted', ownerOnly: false, accessEmails: [], orgAllowed: false }).mode)
+    expect(accessDraftFromArtifact({
+      accessMode: 'restricted', ownerOnly: false, accessEmails: [], orgAllowed: false, publishedUrl: 'https://share/abc',
+    }).mode)
       .toBe('specific');
   });
 
-  it('offers Only me and Specific people as separate choices, private first', () => {
-    const { container } = render(
+  it('offers Only me and Specific people as separate choices, private first', async () => {
+    const user = userEvent.setup();
+    render(
       <AccessChooser value={{ mode: 'private', emailsText: '', orgAllowed: false }} onChange={() => {}} />,
     );
-    expect(screen.getByText('Only me')).toBeInTheDocument();
-    expect(screen.getByText('Specific people')).toBeInTheDocument();
-    const order = [...container.querySelectorAll('span')]
-      .map((n) => n.textContent)
-      .filter((t) => ['Only me', 'Specific people', 'Password protected', 'Public'].includes(t));
+    expect(screen.getByTestId('access-dropdown')).toHaveAccessibleName('Who can access your app: Only me');
+    await user.click(screen.getByTestId('access-dropdown'));
+    const order = screen.getAllByRole('radio').map((radio) => radio.textContent)
+      .map((text) => ['Only me', 'Specific people', 'Password protected', 'Public'].find((title) => text.startsWith(title)));
     expect(order).toEqual(['Only me', 'Specific people', 'Password protected', 'Public']);
   });
 
@@ -225,10 +232,27 @@ describe('an artifact that does not know who it reaches', () => {
   });
 });
 
+describe('accessDraftFromArtifact in MindsHub mode', () => {
+  afterEach(() => setOrgMode(false));
+
+  it('reads the access of an artifact without a published link', () => {
+    setOrgMode(true);
+    const draft = accessDraftFromArtifact({ accessMode: 'password', accessPassword: 'pw' });
+    expect(draft.mode).toBe('password');
+    expect(draft.password).toBe('pw');
+  });
+});
+
 describe('a first share with the platform UI on', () => {
-  it('starts on Public', () => {
-    expect(newAccessDraft().mode).toBe('public');
-    expect(accessDraftFromArtifact({ publishedUrl: '' }).mode).toBe('public');
+  it('starts on Only me', () => {
+    expect(newAccessDraft().mode).toBe(AUDIENCE_CHOICE.PRIVATE);
+    expect(newAccessDraft({ preselect: false }).mode).toBe('');
+    expect(accessDraftFromArtifact({ publishedUrl: '' }).mode).toBe(AUDIENCE_CHOICE.PRIVATE);
+  });
+
+  it('starts an unpublished desktop artifact from Only me, not from its old access', () => {
+    expect(accessDraftFromArtifact({ path: '/p/a.html', publishedUrl: '', accessMode: 'public' }).mode)
+      .toBe(AUDIENCE_CHOICE.PRIVATE);
   });
 
   it('describes Public and Password as reaching the internet', () => {
@@ -264,19 +288,29 @@ describe('notifying added people', () => {
   });
 });
 
-// The password unfolds under its own card, as the recipients do under
-// "Specific …", not after the last option (ENG-4455 follow-up).
+// The password unfolds under the access dropdown once "Password protected" is
+// picked, as the recipients do for "Specific …"; in the opened list,
+// "Password protected" comes before "Public".
 describe('AccessChooser password field', () => {
-  it('sits under "Password protected", before "Public"', () => {
-    const { container } = render(
-      <AccessChooser value={{ mode: 'password', password: '', emailsText: '', orgAllowed: false }} onChange={() => {}} />,
-    );
-    const field = screen.getByPlaceholderText('Add a password');
-    const editor = container.querySelector('[data-testid="password-field"]');
-    expect(editor).toContainElement(field);
-    const publicCard = screen.getByText('Public');
+  it('sits under "Password protected", before "Public"', async () => {
+    const user = userEvent.setup();
+    function Harness() {
+      const [draft, setDraft] = useState({ mode: 'public', password: '', emailsText: '', orgAllowed: false });
+      return <AccessChooser value={draft} onChange={setDraft} />;
+    }
+    render(<Harness />);
+    expect(screen.queryByPlaceholderText('Add a password')).toBeNull();
+
+    await user.click(screen.getByTestId('access-dropdown'));
+    const passwordOption = screen.getByRole('radio', { name: /^Password protected/ });
+    const publicOption = screen.getByRole('radio', { name: /^Public/ });
     // eslint-disable-next-line no-bitwise
-    expect(field.compareDocumentPosition(publicCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(passwordOption.compareDocumentPosition(publicOption) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await user.click(passwordOption);
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(screen.getByTestId('access-dropdown')).toHaveAccessibleName('Who can access your app: Password protected');
+    expect(within(screen.getByTestId('access-editor')).getByPlaceholderText('Add a password')).toBeInTheDocument();
   });
 
   it('shows no password field for other choices', () => {

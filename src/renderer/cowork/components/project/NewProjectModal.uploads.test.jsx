@@ -70,21 +70,25 @@ describe('NewProjectModal file upload', () => {
     expect(api.uploadProjectFiles).toHaveBeenCalledWith('untitled-project-2', expect.any(Array));
   });
 
-  it('falls back to a general reason when the refusal carries no sentence', async () => {
-    api.uploadProjectFiles.mockRejectedValue(Object.assign(new Error(''), { status: 400 }));
-    const { onCreated } = await createWithOneFile();
+  it('names a file the server refused inside a successful upload', async () => {
+    api.uploadProjectFiles.mockResolvedValue({
+      results: [
+        { name: 'quarterly-report.pdf', ok: true, size: 8 },
+        { name: '.env', ok: false, error: 'invalid filename' },
+      ],
+    });
+    const { onClose, onCreated } = await createWithOneFile();
 
     await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    expect(onClose).toHaveBeenCalled();
     expect(toast.add).toHaveBeenCalledTimes(1);
     const [shown] = toast.add.mock.calls[0];
-    expect(shown).toMatchObject({
-      type: 'danger',
-      description: "The upload didn't finish. Add the files to the project again.",
-    });
+    expect(shown).toMatchObject({ type: 'danger', timeout: 0, description: 'Files not uploaded: .env.' });
+    expect(shown.title).toBe('"billing" was created, but not all of its files uploaded.');
   });
 
   it('raises no toast when the upload succeeds', async () => {
-    api.uploadProjectFiles.mockResolvedValue({ results: [] });
+    api.uploadProjectFiles.mockResolvedValue({ results: [{ name: 'quarterly-report.pdf', ok: true, size: 8 }] });
     const { onClose, onCreated, file } = await createWithOneFile();
 
     await waitFor(() => expect(onCreated).toHaveBeenCalled());
@@ -97,9 +101,19 @@ describe('NewProjectModal file upload', () => {
 describe('NewProjectModal when the upload cannot be confirmed', () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  /* cowork-server answers a 4xx before it writes any file, so only a 4xx
+     proves the files aren't there. A gateway's 5xx can come after the writes. */
+  const gatewayPage = (status) => () => new Response(`<html><h1>${status}</h1></html>`, {
+    status,
+    headers: { 'Content-Type': 'text/html' },
+  });
+
   it.each([
     ['the upload response is cut short', () => new Response('{"results":[', { status: 200 })],
     ['the connection drops', () => { throw new TypeError('Failed to fetch'); }],
+    ['a gateway answers 502', gatewayPage(502)],
+    ['a gateway answers 504', gatewayPage(504)],
+    ['the server answers 500', () => Response.json({ detail: 'Internal Server Error' }, { status: 500 })],
   ])('asks the user to check the files when %s', async (_scenario, uploadResponse) => {
     const project = { id: 'project-1', name: 'billing' };
     const fetch = vi.fn()
@@ -113,5 +127,26 @@ describe('NewProjectModal when the upload cannot be confirmed', () => {
     expect(fetch.mock.calls[1][0]).toMatch(/\/billing\/files\/upload$/);
     const toast = document.querySelector('[data-type="danger"]');
     expect(toast?.textContent).toBe('"billing" was created. Check its files before trying the upload again.');
+  });
+});
+
+describe('NewProjectModal when the server or a proxy refuses the upload', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it.each([
+    ['an edge 413 page', new Response('<html><h1>413 Payload Too Large</h1></html>', { status: 413, headers: { 'Content-Type': 'text/html' } }), SIZE_LIMIT],
+    ["the server's 413", Response.json({ detail: 'This upload is larger than the 500 MB limit.' }, { status: 413 }), 'This upload is larger than the 500 MB limit.'],
+    ['a 404', Response.json({ detail: 'Project not found' }, { status: 404 }), 'Project not found'],
+    ['a 400 with no sentence', new Response('', { status: 400 }), 'Upload failed (400)'],
+  ])('says the files did not upload after %s', async (_scenario, refusal, reason) => {
+    const project = { id: 'project-1', name: 'billing' };
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(Response.json(project))
+      .mockResolvedValueOnce(refusal));
+
+    const { onCreated } = await createWithOneFile();
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith(project));
+    const toast = document.querySelector('[data-type="danger"]');
+    expect(toast?.textContent).toBe(`"billing" was created, but its files didn't upload.${reason}`);
   });
 });

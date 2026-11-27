@@ -113,6 +113,15 @@ export function addonEligibility({ conversationId, text, attachments, liveStream
 }
 
 /**
+ * A queued message that needs a turn of its own: it asks for a doc ("Write it
+ * as a doc") or acts on a passage of one ("Edit with agent"). An add-on
+ * reaches the running turn as text alone, without that context.
+ */
+export function needsOwnTurn(item) {
+  return Boolean(item?.output || item?.docContext?.request || item?.docContext?.selection);
+}
+
+/**
  * What the server's answer to `POST /responses/addon` means for the app.
  *
  * Only an explicit `added` with an id adds the message. Everything else —

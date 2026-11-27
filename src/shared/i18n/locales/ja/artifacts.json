@@ -48,29 +48,27 @@
   },
   "status": {
     "badge": {
+      "onlyYou": "自分のみ",
       "public": "公開",
-      "password": "パスワード",
+      "publicPassword": "公開 · パスワード",
       "restricted": "制限付き"
     },
     "hint": {
       "notSharedYet": "まだ共有されていません。開いて「共有」を選ぶと、Webリンクを取得できます。",
-      "notShareable": "共有されていません。リンクで共有できるのはWebページとMarkdownドキュメントのみです。",
+      "notShareable": "共有されていません。リンクで共有できるのは、Webページ、ドキュメント、スプレッドシート、プレゼンテーション、PDF、CSV、テキストファイルです。この種類のファイルは共有できません。",
       "orgRestricted": "制限付きです。リンクを開ける人は「共有」から確認できます。",
       "ownerOnly": "共有済みですが、リンクを開けるのはあなただけです。",
+      "password": "リンクとパスワードを知っている人なら誰でも開けます。",
       "chosenPeople": "共有済みです。リンクを開けるのは選択したユーザーのみです。",
       "unknown": "共有済みです。リンクを開ける人を確認できなかったため、制限付きとして扱われます。",
       "sharedWith": "{names} と共有",
       "sharedWithMore": "{names} ほか {count} 件と共有"
     },
-    "sharingFailed": "共有できませんでした",
-    "couldNotShare": "共有できませんでした。",
     "tryAgain": "再試行",
-    "sharing": "共有中…",
     "updating": "更新中…",
     "stoppingSharing": "共有を停止中…",
     "deleting": "削除中…",
     "notShared": "未共有",
-    "draft": "下書き",
     "unsharedChanges": "未共有の変更"
   },
   "liveAppShare": {
@@ -133,6 +131,8 @@
       "hoursAgo": "{count, plural, other {#時間前}}",
       "daysAgo": "{count, plural, other {#日前}}",
       "replies": "{count, plural, other {#件の返信}}",
+      "replyPlaceholder": "返信…",
+      "replyAriaLabel": "このコメントに返信",
       "edited": "（編集済み）",
       "unattachedTip": "このコメントが指していたアーティファクトの部分は、現在は存在しません。",
       "generalTip": "アーティファクト全体に対するフィードバックです。",
@@ -306,6 +306,12 @@
   },
   "publish": {
     "ownedByOther": "このアーティファクトは別のオーナーによって公開されました。",
+    "datasources": {
+      "notice": "公開すると、次の接続の認証情報がアップロードされます: {list}",
+      "review": "このアプリは、承認していない接続の認証情報を送信します。共有で確認してから、もう一度公開してください。",
+      "updateApp": "接続付きでこのアプリを公開するには、アプリを更新してください。チャットでエージェントに公開を依頼することもできます。",
+      "unapproved": "次の認証情報なしで公開されました: {list}"
+    },
     "linkLeftLive": {
       "unrecorded": "このリンクは、{product}が各ページの共有者を記録するようになる前に共有されたため、{product}では更新も公開停止もできません。「更新」を選ぶと新しいリンクで共有され、「共有を停止」やアーティファクトの削除を行っても、このリンクを知っている人は引き続き開くことができます。削除するには管理者に依頼してください。",
       "otherArtifact": "公開停止されたページはありません。このアーティファクトの記録は、別のアーティファクトのページ（{link}）を指していました。",
@@ -333,6 +339,8 @@
       "specificDesc": "指定したユーザーのみ"
     },
     "whoCanAccess": "アプリにアクセスできるユーザー",
+    "whoCanAccessDoc": "ドキュメントにアクセスできるユーザー",
+    "updatesAsYouEdit": "編集するたびに更新されます",
     "addPassword": "パスワードを追加",
     "hide": "非表示",
     "show": "表示",
@@ -353,7 +361,6 @@
     "makeLive": "公開する",
     "shared": "共有済み",
     "share": "共有",
-    "shareToWeb": "Webに共有",
     "sharingBusy": "共有中",
     "websiteUrl": "WebサイトのURL",
     "change": "変更",
@@ -470,6 +477,7 @@
     "backendFailed": "バックエンドを起動できませんでした",
     "proxyUnavailable": "プレビュープロキシを利用できません",
     "noMountUrl": "プレビューのマウントからURLが返されませんでした",
+    "appNotPublishedYet": "このアプリは公開されるとここに表示されます。公開は作成直後に行われます。少し待ってからもう一度お試しください。",
     "loadFailed": "アーティファクトを読み込めませんでした",
     "portNotReady": "バックエンドのポートはまだ利用できません。プレビューを読み込み中です。",
     "remoteNoUrl": "このアーティファクトはリモートサーバーから配信されており、開くためのURLがまだありません。",
@@ -510,8 +518,6 @@
       "title": "タイトル（A–Z）",
       "type": "種類"
     },
-    "shareProtected": "パスワード保護で共有",
-    "shareRestricted": "制限付きで共有",
     "downloadFailed": "このアーティファクトをダウンロードできませんでした。",
     "menu": "アーティファクトのメニュー",
     "openProject": "{project}を開く",
@@ -519,9 +525,7 @@
     "openViewer": "ビューアで開く",
     "showInExplorer": "エクスプローラーで表示",
     "deleteItem": "アーティファクトを削除",
-    "onlyHtmlMd": "共有できるのはHTMLとMarkdownのアーティファクトのみです。",
-    "sharedToast": "{mode, select, password {共有しました（パスワード保護） — {url}} restricted {共有しました（制限付き） — {url}} other {共有しました — {url}}}",
-    "mindsApiKey": "アーティファクトを共有するには、設定でMinds APIキーを設定してください。",
+    "onlyHtmlMd": "共有できるのは、Webページ、ドキュメント、スプレッドシート、プレゼンテーション、PDF、CSV、テキストファイルのみです。",
     "stoppedOnMindsHub": "MindsHubでの共有を停止しました。",
     "stopped": "共有を停止しました。",
     "updated": "共有バージョンを更新しました。",
@@ -546,11 +550,9 @@
       "noMatch": "これらのフィルターに一致するアーティファクトはありません。",
       "clear": "フィルターをクリア",
       "status": "状態",
-      "allStatuses": "すべての状態"
-    },
-    "owner": {
-      "you": "あなた",
-      "youHint": "あなたのもので、ほかの人と共有しています。"
+      "allStatuses": "すべての状態",
+      "access": "アクセス",
+      "allAccess": "すべてのアクセスレベル"
     },
     "openComments": "{count, plural, other {未解決のコメント # 件}}",
     "openCommentsHint": "コメントを表示してプレビューを開く"
@@ -923,7 +925,15 @@
     "sourceHint": "ページのテキストとレイアウトを変更",
     "commentsHint": "フィードバックを残して確認",
     "statsHint": "誰がどれだけ閲覧したか",
-    "commentsOpen": "コメント（未解決 {count} 件）"
+    "commentsOpen": "コメント（未解決 {count} 件）",
+    "openChat": "チャットを開く",
+    "openChatHint": "プレビューを閉じて、作成元のチャットに移動します",
+    "openChatUnavailable": {
+      "noOrigin": "チャットで作成されていないか、チャットが記録される前に作成されました",
+      "deleted": "作成元のチャットは削除されています",
+      "colleague": "同僚のチャットで作成されたため、その本人しか開けません",
+      "unreachable": "作成元のチャットに現在アクセスできません"
+    }
   },
   "liveEditPanel": {
     "close": "ライブ編集パネルを閉じる",

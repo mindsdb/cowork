@@ -36,6 +36,7 @@ export default function ScheduledView({
   projects,
   models,
   modelMeta,
+  connectors,
   selectedProject,
   onCreate,
   onUpdate,
@@ -279,6 +280,7 @@ export default function ScheduledView({
         projects={projects}
         models={models}
         modelMeta={modelMeta}
+        connectors={connectors}
         defaultProjectPath={selectedProject?.path || ''}
         agentLabel={agentLabel}
       />

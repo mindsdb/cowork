@@ -18,13 +18,15 @@ import { CircleAlert } from 'lucide-react';
 import { Icon } from '../components/ui/Icon';
 import ArtifactRepairCard from '../components/ArtifactRepairCard';
 import { parseArtifactRepairPrompt } from '../lib/artifactRepairPrompt';
-import { parseQuickEditPrompt } from '../lib/quickEditPrompt';
+import { inlineSubmitChatPrompt, parseQuickEditPrompt } from '../lib/quickEditPrompt';
+import { MESSAGE_CARD_SLOT, cardRevisionId, inlineArtifactKey, isSupersededInline, latestInlineArtifactByKey } from '../lib/inlineArtifactCards';
+import { artifactShareState } from '../lib/orgSharing';
 import { planQuickEditCards } from '../lib/quickEditGroup';
 import { QuickEditGroupCard } from '../components/chat/QuickEditGroupCard';
 import { ArtifactRefPill } from '../components/artifacts/ArtifactRefPill';
 import Composer from '../components/Composer';
 import CodingTerminal from '../components/CodingTerminal';
-import { ActionBar, Alert, Badge, Card, Tooltip } from '../components/ui';
+import { ActionBar, Alert, Badge, Card, Collapsible, Tooltip } from '../components/ui';
 import { Modal, ModalBody } from '../components/ui/Modal';
 import { MarkdownContent } from '../components/markdown/MarkdownContent';
 import { ThinkingBlock } from '../components/thinking/ThinkingBlock';
@@ -39,6 +41,12 @@ import { ScratchpadModal } from '../components/thinking/ScratchpadModal';
 import ContextFileModal from '../components/project/ContextFileModal';
 import { ProgressBox, WorkingFolderBox, ContextBox } from '../components/rail';
 import { ArtifactViewer } from '../components/artifact';
+import { ArtifactInlinePreview } from '../components/artifact/ArtifactInlinePreview';
+import DocCard from '../components/doc/DocCard';
+import DocColumn from '../components/doc/DocColumn';
+import { isDocArtifact } from '../components/doc/docArtifact';
+import { docGridColumns } from '../components/doc/docLayout';
+import { useDocBesideChat } from '../components/doc/useDocBesideChat';
 import SkillCard from '../components/SkillCard';
 import ConnectorDraftCard from '../components/ConnectorDraftCard';
 import AskUserCard from '../components/AskUserCard';
@@ -51,7 +59,7 @@ import { revealArtifact, attachmentRawUrl, artifactServeUrl, fetchHealth, provis
 import { AttachmentThumbnail, useBlobImageSrc } from '../components/AttachmentThumbnail';
 import { GeneratedImageCard } from '../components/GeneratedImageCard';
 import { normalizeArtifactRecord } from '../lib/artifactPaths';
-import { BACKEND_ARTIFACT_TYPES, canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isImageArtifact, isPublishableArtifact } from '../lib/artifactKinds';
+import { BACKEND_ARTIFACT_TYPES, canDownloadArtifact, canDownloadOrgDraft, canPreviewLocally, canPreviewOrgDraft, isBackendArtifact, isHtmlArtifact, isImageArtifact, isInlineArtifact, isPublishableArtifact, isWidgetArtifact } from '../lib/artifactKinds';
 import { useLiveApps } from '../../lib/liveApps';
 import { canPreviewDocument } from '../preview/kinds';
 import { downloadArtifactFile } from '../lib/artifactDownload';
@@ -68,6 +76,7 @@ import { isPersonsBrowserTurn, isPositionClickCard } from '../lib/browserApprova
 import { BROWSER_ACTION_BADGE, groupBrowserSteps } from '../lib/browserSteps';
 import { BROWSER_APPROVAL_BADGE, answeredBrowserStep } from '../lib/browserStepPrompt';
 import { BROWSER_HANDOVER_BADGE, finishedHandOverStep, isHandOverCard } from '../lib/browserHandOverPrompt';
+import { openNeeds } from '../lib/voice/callNeeds';
 import { BrowserHandOverContext } from '../lib/browserHandOverContext';
 import { dropHandBack } from '../lib/browserHandBack';
 import { useBrowserPrefs } from '../lib/browserPrefs';
@@ -79,6 +88,7 @@ import { host, isWeb } from '../../platform/host';
 import { PLATFORM_UI } from '../../lib/deployment';
 import { Crumb as CrumbButton, CrumbSep } from '../components/ui/Crumb';
 import { useBreakpoint } from '../hooks/useBreakpoint';
+import { useIntersection } from '../hooks/useIntersection';
 import { useRevealOnHover } from '../hooks/useRevealOnHover';
 import { harnessLabel } from '../lib/agentLabel';
 import { artifactOpenTarget, noPreviewDownloadedNote } from '../lib/artifactActions';
@@ -89,7 +99,7 @@ import { providerOverloadedButtons } from '../lib/turnErrorActions';
 import { isSkippedFailedAssistant, isOrphanUser as isOrphanUserPure, lastVisibleTurnIdx } from '../lib/turnVisibility';
 import { isThinkingActive } from '../lib/thinkingActive';
 import { splitTurnSegments, liveSegmentIndex } from '../lib/turnSegments';
-import { addonRowLabel, queuedReasonKey } from '../lib/addons';
+import { addonRowLabel, needsOwnTurn, queuedReasonKey } from '../lib/addons';
 import { linkFigureSteps } from '../lib/figureSources';
 import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
 import { billingActions, billingCopyKey, offersBilling } from '../lib/billingLinks';
@@ -394,6 +404,15 @@ function CoworkUserTurn({ content: rawContent, attachments, onDelete, onEdit, is
       <ArtifactRefPill slug={aboutArtifact.slug} onOpen={onOpenArtifact} />
     </div>
   ) : null;
+  // An inline artifact's Submit (ENG-4684) also carries the page's state as
+  // JSON for the agent: folded under the pill, not shown as a wall of it.
+  const submittedState = aboutArtifact?.json != null ? (
+    <div className="user-turn-artifact-state" data-testid="user-turn-artifact-state">
+      <Collapsible variant="compact" title={t('chatView.turn.submittedData')}>
+        <pre className="m-0 max-h-60 overflow-auto rounded-md bg-surface-2 p-2 font-mono text-xs text-ink-2">{aboutArtifact.json}</pre>
+      </Collapsible>
+    </div>
+  ) : null;
   const actions = deleting ? (
     <span
       // Primary ink, not the usual meta grey: the turn around it is at
@@ -420,7 +439,7 @@ function CoworkUserTurn({ content: rawContent, attachments, onDelete, onEdit, is
       turnId={turnId}
       deleting={deleting}
       attachments={attachmentRows}
-      footer={artifactPill}
+      footer={submittedState ? <>{artifactPill}{submittedState}</> : artifactPill}
       actions={shownActions}
     >
       {repair ? <ArtifactRepairCard repair={repair} projectId={projectId} streaming={streaming} /> : null}
@@ -647,22 +666,48 @@ export function artifactStepToCard(step, projectPath) {
 // down to the card because an artifact the agent created THIS turn cannot be in
 // an artifacts index that was loaded before it existed, and judging it against
 // one would mark a brand-new artifact "Deleted".
-function StepArtifacts({ steps, onOpen, onShare, projectPath, live = false }) {
+//
+// `latestInline` and `messageIndex` fold an inline card a later one shows
+// again (latestInlineArtifactByKey): one live frame per artifact.
+function StepArtifacts({ steps, onOpen, onShare, projectPath, live = false, activeDocId = null, latestInline = null, messageIndex = null, onInlineSubmit = null }) {
   const artifacts = steps?.filter((s) => s.badge === 'Artifact') || [];
   if (artifacts.length === 0) return null;
   return (
     <div className="flex flex-col gap-3 mt-1">
-      {artifacts.map((s) => (
-        <ArtifactCard
-          key={s.id}
-          artifact={artifactStepToCard(s, projectPath)}
-          onOpen={onOpen}
-          onShare={onShare}
-          live={live}
-        />
-      ))}
+      {artifacts.map((s) => {
+        const card = artifactStepToCard(s, projectPath);
+        // A doc opens beside the chat in the doc editor, not in the file viewer.
+        if (isDocArtifact(card)) {
+          return <DocCard key={s.id} artifact={card} onOpen={onOpen} live={live} active={!!activeDocId && card.id === activeDocId} />;
+        }
+        return (
+          <ArtifactCard
+            key={s.id}
+            artifact={card}
+            onOpen={onOpen}
+            onShare={onShare}
+            live={live}
+            inlineSuperseded={isSupersededInline(latestInline, s.data, messageIndex, s.id)}
+            onInlineSubmit={onInlineSubmit}
+          />
+        );
+      })}
     </div>
   );
+}
+
+// An inline artifact a later card shows again (ENG-4684) renders as the plain
+// artifact card: "This was updated. See the latest version below." scrolls to
+// the live copy (the card marked with the same `data-inline-artifact` key),
+// and "Preview this version" opens the page as this card made it.
+export function scrollToLiveInlineArtifact(key) {
+  if (!key || typeof document === 'undefined') return false;
+  const live = [...document.querySelectorAll('[data-inline-artifact]')]
+    .filter((el) => el.getAttribute('data-inline-artifact') === key);
+  const target = live[live.length - 1];
+  if (!target) return false;
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  return true;
 }
 
 // One turn's steps and ask_user cards, rendered in event order: work done
@@ -877,7 +922,7 @@ function StepConnectorDrafts({ steps, onConnect }) {
   );
 }
 
-export function ArtifactCard({ artifact, onOpen, onShare = null, live = false }) {
+export function ArtifactCard({ artifact, onOpen, onShare = null, live = false, inlineSuperseded = false, onInlineSubmit = null }) {
   // This card is an artifact surface like the panel's rows, so it answers to the
   // same deployment gate. Without it the chat offered a local preview, Export
   // and Show in Finder for content an org deployment does not serve, while the
@@ -939,7 +984,10 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
   // an image, or before the artifact card carries a serveUrl (org mode, or the
   // live-turn card streamed in ahead of ChatView.jsx's serveUrl passthrough).
   const { src: thumbSrc } = useBlobImageSrc({ url: isImage ? (artifactServeUrl(artifact) || null) : null });
-  const published = !!artifact.publishedUrl;
+  // A widget (ENG-4684) collects input in the chat and is not a deliverable:
+  // no Share, and no shared page to open (a stray published URL included).
+  const widget = isWidgetArtifact(artifact);
+  const published = !!artifact.publishedUrl && !widget;
   const hasBridge = host.isElectron || !host.isWeb;
   const canDownload = canDownloadArtifact(artifact);
   const openTarget = artifactOpenTarget({
@@ -947,6 +995,8 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
     published,
     canPreviewInline,
     canPreviewDraft,
+    // A full-stack app: the viewer frames it at its published address.
+    canPreviewPublished: BACKEND_ARTIFACT_TYPES.has(artifact.type),
     hasBridge,
     hasDraft: canDownloadOrgDraft(artifact),
     canDownload,
@@ -1007,7 +1057,11 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
        * The viewer reads the draft URL in org mode and the local bytes on
        * desktop, so it opens on either without a canonical path of its own.
        */
-      onOpen(artifact);
+      // A live inline page hands over where the user is in it (its tab or
+      // slide, scroll, hash), for the viewer to open on the same place.
+      const view = liveInline ? liveInlineViewRef.current : null;
+      if (view) onOpen(artifact, { view });
+      else onOpen(artifact);
       return;
     }
     if (openTarget === 'published') {
@@ -1136,8 +1190,14 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
    * A document preview keeps the file one click away beside it: Download on
    * web, and on desktop Open, which hands the file to the default app.
    */
+  // "Shared link" only once the link reaches someone besides the owner
+  // (artifactShareState, the Share button's own rule); before that it is
+  // just the artifact's link.
+  const linkShared = artifactShareState(artifact).shared === true;
   const sharedLinkAction = !deleted && showSharedLink
-    ? { label: t('chatView.artifactCard.sharedLink'), onClick: handleOpenPublished, tooltip: t('chatView.artifactCard.sharedLinkTooltip') }
+    ? linkShared
+      ? { label: t('chatView.artifactCard.sharedLink'), onClick: handleOpenPublished, tooltip: t('chatView.artifactCard.sharedLinkTooltip') }
+      : { label: t('chatView.artifactCard.openLink'), onClick: handleOpenPublished, tooltip: t('chatView.artifactCard.openLinkTooltip') }
     : null;
   const downloadAction = !deleted && openTarget !== 'download'
     && (orgMode ? canDownloadOrgDraft(artifact) : (!hasBridge && canPreviewDoc && canDownload))
@@ -1157,17 +1217,57 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
    * which the viewer would show disabled without.
    */
   const shareAction = onShare && !deleted
+    && !widget
     && isPublishableArtifact(artifact)
     && !(liveApps && BACKEND_ARTIFACT_TYPES.has(artifact.type) && !published)
     && capabilities?.canEdit !== false
     && (orgMode || canAct)
     ? { label: t('chatView.artifactCard.share'), onClick: () => onShare(artifact), tooltip: t('chatView.artifactCard.shareTooltip') }
     : null;
+  /*
+   * An artifact the agent marked to show inline (ENG-4684) shows its live page
+   * in the card body, under the same head and actions: Preview still opens it
+   * full size in the viewer. Only where this card would preview that page
+   * anyway: an HTML page, not a fullstack app (it needs the viewer's proxy),
+   * that this deployment can render and that is still there.
+   */
+  const showInline = isInlineArtifact(artifact)
+    && isHtmlArtifact(artifact)
+    && !isBackendArtifact(artifact)
+    && !canPreviewDoc
+    && openTarget === 'preview'
+    && canActivate;
+  /*
+   * A later card shows this artifact live (latestInlineArtifactByKey), so
+   * this one is the plain card: no frame until "Preview this version" opens
+   * the page as this card made it (its `revisionId`, the revision its turn
+   * captured). A card with no revision (one stored before cards carried it,
+   * or a turn whose capture failed) offers no "Preview this version": the
+   * page as it is now is the live copy below, and showing it here under that
+   * label would claim it is this reply's version. It keeps the ordinary
+   * Preview, which opens the viewer and its history.
+   */
+  const superseded = showInline && inlineSuperseded;
+  const liveInline = showInline && !superseded;
+  const versionRevisionId = superseded ? cardRevisionId(artifact) : '';
+  const [versionOpen, setVersionOpen] = useState(false);
+  const framed = liveInline || (!!versionRevisionId && versionOpen);
+  // The live frame's latest view report (usePreviewView), read by handleOpen.
+  const liveInlineViewRef = useRef(null);
   const primaryDisabled = needsLocalPath && !canAct;
   const primaryReason = primaryDisabled ? (disabledReason || t('chatView.artifactCard.noFilePath')) : '';
-  const openAction = !deleted && primaryAction
-    ? { ...primaryAction, disabled: primaryDisabled, tooltip: primaryDisabled ? undefined : primaryAction.tooltip }
-    : null;
+  // A live inline card is already the page: no Preview button (the title
+  // still opens it full size); Share stays.
+  const openAction = liveInline
+    ? null
+    : versionRevisionId
+    ? {
+      label: versionOpen ? t('chatView.artifactCard.hideVersionPreview') : t('chatView.artifactCard.previewThisVersion'),
+      onClick: () => setVersionOpen((v) => !v),
+    }
+    : !deleted && primaryAction
+      ? { ...primaryAction, disabled: primaryDisabled, tooltip: primaryDisabled ? undefined : primaryAction.tooltip }
+      : null;
   const previewText = artifact.preview?.[0]?.heading || artifact.preview?.[0]?.text || displayPath;
   /*
    * Whole-card click → preview. The inner buttons (the primary action,
@@ -1184,16 +1284,25 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
           It mounts empty because `status` starts null, which is what lets
           aria-live see a content CHANGE when an action fills it. */}
       <div className="sr-only" role="status" aria-live="polite">{status?.text ?? ''}</div>
+    {/* Inline, the card is a group, not a button: a live page cannot sit
+        inside a role="button" (its content would leave the accessibility
+        tree), and its clicks belong to the page. The title and Preview still
+        open the viewer. */}
     <Card
       as="div"
-      interactive={canActivate}
+      interactive={canActivate && !framed}
       flat
       padding="none"
-      onActivate={canActivate ? handleOpen : undefined}
+      onActivate={canActivate && !framed ? handleOpen : undefined}
+      role={framed ? 'group' : undefined}
       aria-label={deleted
         ? t('chatView.artifactCard.deletedAriaLabel', { title: artifact.title })
-        : (canActivate ? t('chatView.artifactCard.actionTarget', { action: activateLabel, target: artifact.title }) : noDestinationReason)}
-      className="railed chat-artifact-card"
+        : framed
+          ? artifact.title
+          : (canActivate ? t('chatView.artifactCard.actionTarget', { action: activateLabel, target: artifact.title }) : noDestinationReason)}
+      className={cn('railed chat-artifact-card', framed && 'is-inline')}
+      data-inline-artifact={liveInline ? inlineArtifactKey(artifact) || undefined : undefined}
+      data-testid={superseded ? 'artifact-inline-superseded' : undefined}
     >
       <div
         className={cn(
@@ -1219,7 +1328,16 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
           className="m-0 block min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-base font-semibold text-ink underline-offset-[3px] enabled:hover:underline disabled:cursor-not-allowed disabled:opacity-70"
         >{artifact.title}</button>
         <span className="flex min-w-0 items-center gap-1.5 font-body text-xs text-ink-3">
-          <span className="shrink-0">{artifact.kind && artifact.kind !== 'live artifact' ? artifact.kind : t('chatView.artifactCard.liveArtifact')}</span>
+          {superseded ? (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); scrollToLiveInlineArtifact(inlineArtifactKey(artifact)); }}
+              title={t('chatView.artifactCard.goToLatestTooltip')}
+              className="m-0 min-w-0 cursor-pointer truncate border-0 bg-transparent p-0 text-left font-body text-xs text-ink-3 underline-offset-[3px] hover:underline"
+            >{t('chatView.artifactCard.updatedSeeBelow')}</button>
+          ) : (
+            <span className="shrink-0">{artifact.kind && artifact.kind !== 'live artifact' ? artifact.kind : t('chatView.artifactCard.liveArtifact')}</span>
+          )}
           {deleted && <Badge variant="muted" size="xs">{t('chatView.artifactCard.deletedBadge')}</Badge>}
         </span>
         {/* A disabled button takes no hover, so its reason is said here, in
@@ -1259,6 +1377,17 @@ export function ArtifactCard({ artifact, onOpen, onShare = null, live = false })
           <ActionBar size="sm" align="start" className="flex-wrap" primary={openAction} />
         )}
       </div>
+      {framed && (
+        <div className="chat-artifact-card__frame">
+          <ArtifactInlinePreview
+            artifact={artifact}
+            title={artifact.title || ''}
+            revisionId={versionRevisionId || undefined}
+            onSubmit={onInlineSubmit ? (submission) => onInlineSubmit(artifact, submission) : null}
+            onView={liveInline ? (view) => { liveInlineViewRef.current = view; } : null}
+          />
+        </div>
+      )}
       {/* The footer is the artifact's location bar: the path at rest, and the
           result of an action for the moment it is on screen. One or the
           other, so a long message never crushes the path beside it. */}
@@ -2194,7 +2323,15 @@ function lastUserMessageBefore(visibleMessages, i) {
   for (let j = i - 1; j >= 0; j--) {
     const m = visibleMessages[j];
     if (m?.role === 'user' && typeof m.content === 'string' && m.content) {
-      return { text: m.content, attachments: Array.isArray(m.attachments) ? m.attachments : [] };
+      // The doc it was sent beside, when this app sent it: a resend goes with
+      // that one, never with whatever doc is open now. Asked for as a doc, it
+      // is asked for as one again.
+      return {
+        text: m.content,
+        attachments: Array.isArray(m.attachments) ? m.attachments : [],
+        docContext: m.docContext || null,
+        output: m.output || null,
+      };
     }
   }
   return null;
@@ -2266,6 +2403,7 @@ export default function ChatView({
   disabledConnections,
   onUpdateConnectorMute,
   onStartVoiceCall = null,
+  dictationAvailable = false,
   // A voice call asked to show this task's browser: {taskId, sessionId, at}.
   browserRequest = null,
   // The project's tasks ({id, title}), for the browser pane's list of the
@@ -2327,6 +2465,9 @@ export default function ChatView({
   onAddQueuedToTask,
   onMoveAddonToQueue,
   onResendQueued,
+  // A doc to open beside this chat as it shows, then `onDocDocked`.
+  dockDoc = null,
+  onDocDocked,
   agentLabel,
   // Conversation ids the server currently has an active producer for
   // (App.jsx's cross-client sync feed). Used to decide whether an
@@ -2407,7 +2548,9 @@ export default function ChatView({
   const effectiveRailOpen = !pane && !railFloats && railOpen;
   // A comparison pane never resends on its own: it would give one side a
   // turn the other never got, and the two would stop being comparable.
-  const sendAgain = pane ? undefined : (text, attachments) => onSend?.(text, attachments);
+  const sendAgain = pane ? undefined : (text, attachments, docContext = null, output = null) => (
+    onSend?.(text, attachments, { docContext, ...(output ? { output } : {}) })
+  );
   const railOverlayOpen = !pane && railFloats && railNarrowOpen;
   /* The floating rail drawer counts as an overlay, so the desktop browser
      pane's native view steps aside rather than draw over it. */
@@ -2426,16 +2569,44 @@ export default function ChatView({
   // Anything else still routes through the Electron OS handler via
   // openPath inside the card.
   const [previewArt, setPreviewArt] = useState(null);
+  const isStreaming = task.messages.some((m) => m.role === '_streaming');
+  // The doc open beside the chat. A doc the agent creates in this
+  // conversation opens here the moment it exists. A comparison pane has no
+  // right-hand column, so no doc opens there.
+  const docSide = useDocBesideChat({
+    taskId: task?.id, projectId: project?.id, streaming: isStreaming, onSend, enabled: !pane,
+  });
+  // A doc the app brought this chat up for ("Edit with agent" on a doc from
+  // the library) opens beside it, once.
+  useEffect(() => {
+    if (!dockDoc) return;
+    docSide.open(dockDoc);
+    onDocDocked?.();
+  }, [dockDoc, docSide.open, onDocDocked]);
   // A new object per Share click, so the viewer opens its panel once per click.
   const [previewShare, setPreviewShare] = useState(null);
-  const handleArtifactOpen = (artifact) => {
+  // Where a live inline page was when its Preview was clicked (a new object
+  // per click), for the viewer to open on the same place.
+  const [previewViewRequest, setPreviewViewRequest] = useState(null);
+  const handleArtifactOpen = (artifact, { view = null } = {}) => {
+    if (isDocArtifact(artifact)) {
+      docSide.open(artifact);
+      return;
+    }
     // The card already filters: it only calls onOpen for previewable
     // types (HTML / md / txt / csv). Dispatch straight to the viewer.
     setPreviewShare(null);
+    setPreviewViewRequest(view ? { view } : null);
     setPreviewArt(artifact);
   };
   const handleArtifactShare = (artifact) => {
+    // A doc shares from its own pane, which knows the page follows its edits.
+    if (isDocArtifact(artifact)) {
+      docSide.open(artifact);
+      return;
+    }
     setPreviewShare({});
+    setPreviewViewRequest(null);
     setPreviewArt(artifact);
   };
   // Task settings menu (kebab in header).
@@ -2487,7 +2658,6 @@ export default function ChatView({
   };
   const cancelTitleRename = () => setTitleEditing(false);
 
-  const isStreaming = task.messages.some((m) => m.role === '_streaming');
   // A mid-task send holds its queue slot while the server decides (ENG-4194);
   // the running turn already shows it as "Sending…", so the chip appears only
   // if that turn ends first.
@@ -2613,15 +2783,18 @@ export default function ChatView({
   const [openingBrowser, setOpeningBrowser] = useState(false);
   const [blankOpenedId, setBlankOpenedId] = useState(null);
   useEffect(() => { setOpeningBrowser(false); setBlankOpenedId(null); }, [task.id]);
-  const browserOpen = !pane && (host.isWeb || host.supportsInAppBrowser) && viewable(shownBrowserId);
-  const openingBrowserOpen = !pane && openingBrowser && !browserOpen && host.isWeb;
+  // A doc open beside the chat holds the right-hand column; the browser pane,
+  // in any of its states, comes back when the doc closes.
+  const docHoldsColumn = Boolean(docSide.doc);
+  const browserOpen = !pane && !docHoldsColumn && (host.isWeb || host.supportsInAppBrowser) && viewable(shownBrowserId);
+  const openingBrowserOpen = !pane && !docHoldsColumn && openingBrowser && !browserOpen && host.isWeb;
   /* The top-right Show browser icon, in a task whose browser is off or could
      not open: a blank page that asks where to go. The real pane takes its
      place as soon as the turn's Browser step arrives. */
   const [blankBrowser, setBlankBrowser] = useState(false);
   useEffect(() => { setBlankBrowser(false); }, [task.id]);
   useEffect(() => { if (browserOpen) setBlankBrowser(false); }, [browserOpen]);
-  const blankBrowserOpen = !pane && blankBrowser && !browserOpen && (host.isWeb || host.supportsInAppBrowser);
+  const blankBrowserOpen = !pane && !docHoldsColumn && blankBrowser && !browserOpen && (host.isWeb || host.supportsInAppBrowser);
   const browserPaneOpen = browserOpen || blankBrowserOpen || openingBrowserOpen;
   /* On a phone the pane docks at the top of the chat (no taller than half
      the screen) and minimizes to its header instead of closing. It expands
@@ -2682,6 +2855,48 @@ export default function ChatView({
   const askingUser = (streamingMsg?.steps || []).some(
     (s) => s.badge === 'AskUser' && !s.data?.answer && !isPositionClickCard(s.data),
   );
+  /* Overlay mode only: below 640 the pane docks and carries the phone's own
+     strip; from 1160 up the pane sits beside the chat, already visible. */
+  const browserPaneOverlay = paneFloats && !isMobile;
+  /* What the overlay strip says is waiting, read from the card itself (not
+     `browserHandoff`/`handoffWatching` below, which come from the viewer and
+     can lag the card: a hand-over card can open before the viewer reports who
+     holds the browser). `openNeed` already excludes answered and
+     auto-approved cards and tells a hand-over from a plain question by the
+     card's own prompt; this is deliberately narrower than `askingUser` above,
+     which lets an auto-approved card through. */
+  const browserWaitNeed = browserPaneOverlay ? openNeeds(streamingMsg?.steps)[0] || null : null;
+  /* Whether the step is the person's turn in the browser, by its id prefix
+     (isPersonsBrowserTurn's own test), not by whether `openNeed` managed to
+     parse its prompt into a hand-over: both the message and the button must
+     agree on this even when the prompt doesn't match the shape anton writes
+     (changed wording, a multi-line reason), where `openNeed` falls back to
+     `kind: 'question'`. Disagreeing would tell the person to go to a chat
+     that has nothing for them (the question wording, no button) or hand them
+     a button that takes the page away mid hand-over. */
+  const browserWaitIsHandOver = Boolean(browserWaitNeed) && /^browser:(?!approve:)/.test(browserWaitNeed.questionId);
+  const browserWaitMessage = !browserWaitNeed ? ''
+    : browserWaitIsHandOver
+    // The page's own host leads the reason, so a lookalike page can't pass
+    // its words off as the app's (LocalBrowserStage's own hint, the same way).
+    // `site`/`watching` are unset when the prompt didn't parse; `text` is
+    // still the card's own text either way (its full prompt, in that case).
+    ? (browserWaitNeed.watching
+      ? tc('browser.overlayHandOverWatching', { site: browserWaitNeed.site || tc('browser.aNewTab'), reason: browserWaitNeed.text, agent: harnessLabel(task?.harness) || 'Anton' })
+      : tc('browser.overlayHandOver', { site: browserWaitNeed.site || tc('browser.aNewTab'), reason: browserWaitNeed.text }))
+    : tc('browser.overlayQuestion', { agent: harnessLabel(task?.harness) || 'Anton' });
+  /* The live region announces content CHANGES, so its text is held in state
+     and written from an effect rather than rendered straight from
+     `browserWaitMessage`: a region whose first commit already has the text
+     is silent (AskUserCard.jsx's own announcement does the same). Gated on
+     the panel actually being mounted: the card and the panel's own open
+     often land in the same commit (the default "only when needed" path),
+     and filling the announcement in that same commit would mean the
+     region's first commit, once the footer mounts, already has the text. */
+  const [browserWaitAnnouncement, setBrowserWaitAnnouncement] = useState('');
+  useEffect(() => {
+    setBrowserWaitAnnouncement(browserPaneOpen ? browserWaitMessage : '');
+  }, [browserWaitMessage, browserPaneOpen]);
   const phoneBrowserExpanded = Boolean(browserDock) && browserPaneOpen && !browserMinimized;
   // While it is expanded the page under it stays put: no scroll, so typing in
   // the address row can't move the screen.
@@ -2779,6 +2994,36 @@ export default function ChatView({
     };
     openUrlInTask(null).then((id) => { if (!id) fallBack(); }, fallBack);
   };
+  const closeBrowserPanel = () => {
+    // A closed pane shows this browser no more: a hand-back waiting for its viewer ends.
+    dropHandBack(shownBrowserId);
+    openSeqRef.current += 1;
+    setOpeningBrowser(false);
+    setShownBrowserId(null);
+  };
+  const closeBlankBrowser = () => { openSeqRef.current += 1; setBlankBrowser(false); };
+  /* The pane's footer, overlay mode only: a live region, mounted whether or
+     not anything is waiting (so its first text change is heard, not its
+     first mount), plus the visible strip while something is. A hand-over
+     gets the message and no button: its whole instruction is to work in the
+     page, so a button whose only effect takes the page away is the wrong
+     offer; a plain question's button closes the pane it sits on (each panel
+     closes itself differently) and returns to the card. */
+  const browserWaitFooter = (closePane) => (browserPaneOverlay ? (
+    <>
+      <div className="sr-only" role="status" aria-live="polite">{browserWaitAnnouncement}</div>
+      {browserWaitMessage && (
+        <div className="browser-panel__wait-strip">
+          <p>{browserWaitMessage}</p>
+          {!browserWaitIsHandOver && (
+            <Button size="sm" onClick={() => { closePane(); scrollToBottom(); }}>
+              {tc('browser.overlayGoToQuestion')}
+            </Button>
+          )}
+        </div>
+      )}
+    </>
+  ) : null);
   const browserNode = (
     <>
       {(browserOpen || openingBrowserOpen) && (
@@ -2786,13 +3031,7 @@ export default function ChatView({
           sessionId={browserOpen ? shownBrowserId : null}
           startBlank={openingBrowserOpen || (browserOpen && shownBrowserId === blankOpenedId)}
           agentLabel={harnessLabel(task?.harness) || 'Anton'}
-          onClose={() => {
-            // A closed pane shows this browser no more: a hand-back waiting for its viewer ends.
-            dropHandBack(shownBrowserId);
-            openSeqRef.current += 1;
-            setOpeningBrowser(false);
-            setShownBrowserId(null);
-          }}
+          onClose={closeBrowserPanel}
           extraActions={projectBrowsers}
           dock={browserDock}
           onControl={onBrowserControl}
@@ -2801,6 +3040,7 @@ export default function ChatView({
           onSend={onSend ? (text) => onSend(text) : undefined}
           onDraft={(text) => setComposerPrefill((prev) => ({ text, bump: (prev?.bump || 0) + 1, append: true }))}
           onOpenUrl={openUrlInTask}
+          footer={browserWaitFooter(closeBrowserPanel)}
         />
       )}
       {blankBrowserOpen && (
@@ -2810,8 +3050,9 @@ export default function ChatView({
           browserOn={!!browserOn}
           onSend={onSend ? (text) => onSend(text) : undefined}
           onOpenUrl={openUrlInTask}
-          onClose={() => { openSeqRef.current += 1; setBlankBrowser(false); }}
+          onClose={closeBlankBrowser}
           dock={browserDock}
+          footer={browserWaitFooter(closeBlankBrowser)}
         />
       )}
     </>
@@ -2965,6 +3206,18 @@ export default function ChatView({
     () => latestSkillCardIndexByKey(streamingMsg ? [...visibleMessages, streamingMsg] : visibleMessages),
     [visibleMessages, streamingMsg],
   );
+  // One live frame per inline artifact (ENG-4684): the latest card showing it
+  // inline keeps the frame, earlier ones fold to a chip. Same order as skills.
+  const latestInlineArtifact = useMemo(
+    () => latestInlineArtifactByKey(streamingMsg ? [...visibleMessages, streamingMsg] : visibleMessages),
+    [visibleMessages, streamingMsg],
+  );
+  // An inline page's Submit is a chat turn, sent the way a question card's
+  // typed answer is: the quick-edit bar's prompt about the artifact, plus the
+  // page's state. [] so it does not take the composer's staged files.
+  const handleInlineSubmit = onSend
+    ? (artifact, { state, message }) => onSend(inlineSubmitChatPrompt(artifact, message, state), [])
+    : null;
 
   const stick = useStickToBottom(scrollRef);
   const { scrollToBottom, follow: followEnd, anchorLastTurn } = stick;
@@ -3022,21 +3275,14 @@ export default function ChatView({
   // load. Re-running once a load settles re-checks a reader who is still
   // parked at the top and needs the page after this one.
   const loadEarlierSentinelRef = useRef(null);
-  useEffect(() => {
-    if (!task.hasMoreMessages || !onLoadEarlierMessages) return undefined;
-    if (typeof IntersectionObserver === 'undefined') return undefined;
-    const root = scrollRef.current;
-    const sentinel = loadEarlierSentinelRef.current;
-    if (!root || !sentinel) return undefined;
-    const observer = new IntersectionObserver(
-      (entries) => { if (entries.some((e) => e.isIntersecting)) onLoadEarlierMessages({ auto: true }); },
-      // Start the fetch slightly before the top is actually reached, so the
-      // page is usually already there by the time the reader gets there.
-      { root, rootMargin: '200px 0px 0px 0px' },
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [task.hasMoreMessages, task.id, onLoadEarlierMessages, loadingEarlierMessages]);
+  useIntersection(
+    loadEarlierSentinelRef,
+    (intersecting) => { if (intersecting) onLoadEarlierMessages({ auto: true }); },
+    // Start the fetch slightly before the top is actually reached, so the
+    // page is usually already there by the time the reader gets there.
+    { rootRef: scrollRef, rootMargin: '200px 0px 0px 0px', enabled: !!(task.hasMoreMessages && onLoadEarlierMessages) },
+    [task.id, onLoadEarlierMessages, loadingEarlierMessages],
+  );
 
   // Outer ref + conv-column ref. The orb canvas binds to the conv
   // column so the floating orb is naturally clipped to that area
@@ -3149,7 +3395,9 @@ export default function ChatView({
       // row past the container — the scroll bar never appears. 1fr forces
       // the row to fill the container height so the inner overflowY can
       // create a real scroll context.
-      className={`flex-1 min-h-0 grid grid-rows-[1fr] transition-[grid-template-columns] duration-layout ease-out bg-transparent font-body text-ink-2 relative overflow-hidden ${browserPaneOpen && !paneFloats ? 'grid-cols-[minmax(0,1fr)_minmax(440px,50%)]' : effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
+      className={`flex-1 min-h-0 grid grid-rows-[1fr] ${docSide.resizing ? '' : 'transition-[grid-template-columns] duration-layout ease-out'} bg-transparent font-body text-ink-2 relative overflow-hidden ${browserPaneOpen && !paneFloats ? 'grid-cols-[minmax(0,1fr)_minmax(440px,50%)]' : effectiveRailOpen ? 'grid-cols-[minmax(0,1fr)_320px]' : 'grid-cols-[minmax(0,1fr)_0px]'}`}
+      // A doc open beside the chat takes the right column (the rail steps aside).
+      style={docSide.doc && !isNarrow ? { gridTemplateColumns: docGridColumns(docSide.share, docSide.expanded) } : undefined}
     >
       <OrbitProvider
         canvasRef={convRef}
@@ -3582,7 +3830,7 @@ export default function ChatView({
                          nothing to switch to. */
                       onSwitchToAir={
                         onSwitchToAirAndResend && balanceResend && taskModelId !== MINDSHUB_AIR_MODEL_ID
-                          ? () => onSwitchToAirAndResend(balanceResend.text, balanceResend.attachments)
+                          ? () => onSwitchToAirAndResend(balanceResend.text, balanceResend.attachments, balanceResend.docContext)
                           : undefined
                       }
                     />
@@ -3682,7 +3930,7 @@ export default function ChatView({
                       time={formatMetaTime(m.createdAt)}
                       agentLabel={agentLabel}
                       onOpenSettings={onOpenSettings}
-                      onRetry={resend && sendAgain ? () => sendAgain(resend.text, resend.attachments) : undefined}
+                      onRetry={resend && sendAgain ? () => sendAgain(resend.text, resend.attachments, resend.docContext, resend.output) : undefined}
                       reconnectable={m.reconnectable}
                       providerLabel={m.providerLabel}
                       errorText={m.content}
@@ -3773,7 +4021,7 @@ export default function ChatView({
                       title={t('chatView.errors.contentRecoveryTitle')}
                       body={t('chatView.errors.contentRecoveryBody')}
                       buttons={resend && sendAgain
-                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
+                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext, resend.output), primary: true }]
                         : []}
                     />
                   );
@@ -3824,7 +4072,7 @@ export default function ChatView({
                         ? t('chatView.errors.billingUnavailableBody')
                         : t('chatView.errors.providerUnauthorizedBody')}
                       buttons={resend && sendAgain
-                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
+                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext, resend.output), primary: true }]
                         : []}
                     />
                   );
@@ -3849,7 +4097,7 @@ export default function ChatView({
                       title={t('chatView.errors.workerUnresponsiveTitle')}
                       body={t('chatView.errors.workerUnresponsiveBody')}
                       buttons={resend && sendAgain
-                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
+                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext, resend.output), primary: true }]
                         : []}
                     />
                   );
@@ -3873,7 +4121,7 @@ export default function ChatView({
                         : t('chatView.errors.modelTimeoutOperatorBody')}
                       buttons={[
                         ...(resend && sendAgain
-                          ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
+                          ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext, resend.output), primary: true }]
                           : []),
                         ...(PLATFORM_UI ? [{ label: t('chatView.cards.openSettings'), onClick: () => onOpenSettings?.('agent') }] : []),
                       ]}
@@ -3897,7 +4145,7 @@ export default function ChatView({
                       title={t('chatView.errors.turnLostTitle')}
                       body={t('chatView.errors.turnLostBody')}
                       buttons={resend && sendAgain
-                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
+                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext, resend.output), primary: true }]
                         : []}
                     />
                   );
@@ -3925,7 +4173,7 @@ export default function ChatView({
                         {m._reconnecting && <Reconnecting />}
                       </>}
                       buttons={resend && !turnMayBeRunning && sendAgain
-                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments), primary: true }]
+                        ? [{ label: t('chatView.cards.tryAgain'), onClick: () => sendAgain(resend.text, resend.attachments, resend.docContext, resend.output), primary: true }]
                         : []}
                     />
                   );
@@ -3976,7 +4224,7 @@ export default function ChatView({
                       agentLabel={agentLabel}
                       body={m.content}
                       retryAt={m.retryAt}
-                      onRetry={rlResend && sendAgain ? () => sendAgain(rlResend.text, rlResend.attachments) : undefined}
+                      onRetry={rlResend && sendAgain ? () => sendAgain(rlResend.text, rlResend.attachments, rlResend.docContext, rlResend.output) : undefined}
                     />
                   );
                 }
@@ -3997,7 +4245,7 @@ export default function ChatView({
                       title={t('chatView.errors.serverBusyTitle')}
                       body={m.content}
                       retryAt={m.retryAt}
-                      onRetry={busyResend && sendAgain ? () => sendAgain(busyResend.text, busyResend.attachments) : undefined}
+                      onRetry={busyResend && sendAgain ? () => sendAgain(busyResend.text, busyResend.attachments, busyResend.docContext, busyResend.output) : undefined}
                     />
                   );
                 }
@@ -4019,7 +4267,7 @@ export default function ChatView({
                       body={m.content}
                       retryAt={m.retryAt}
                       onRetry={unavailableResend && sendAgain
-                        ? () => sendAgain(unavailableResend.text, unavailableResend.attachments)
+                        ? () => sendAgain(unavailableResend.text, unavailableResend.attachments, unavailableResend.docContext, unavailableResend.output)
                         : undefined}
                     />
                   );
@@ -4165,9 +4413,11 @@ export default function ChatView({
                       artifact={normalizeArtifactRecord(m.artifact, artifactProjectPath)}
                       onOpen={handleArtifactOpen}
                       onShare={handleArtifactShare}
+                      inlineSuperseded={isSupersededInline(latestInlineArtifact, m.artifact, i, MESSAGE_CARD_SLOT)}
+                      onInlineSubmit={handleInlineSubmit}
                     />
                   )}
-                  <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} />
+                  <StepArtifacts steps={m.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} activeDocId={docSide.doc?.artifactId} latestInline={latestInlineArtifact} messageIndex={i} onInlineSubmit={handleInlineSubmit} />
                   <StepSkills steps={m.steps} latestByKey={latestSkillCardByKey} messageIndex={i} projectName={project?.name} />
                   <StepConnectorDrafts steps={m.steps} onConnect={onConnectCustomConnector} />
                   {(() => {
@@ -4277,7 +4527,7 @@ export default function ChatView({
                     <StreamCursor />
                   </div>
                 )}
-                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} live />
+                <StepArtifacts steps={streamingMsg.steps} onOpen={handleArtifactOpen} onShare={handleArtifactShare} projectPath={artifactProjectPath} activeDocId={docSide.doc?.artifactId} live latestInline={latestInlineArtifact} messageIndex={visibleMessages.length} onInlineSubmit={handleInlineSubmit} />
                 <StepSkills steps={streamingMsg.steps} latestByKey={latestSkillCardByKey} messageIndex={visibleMessages.length} projectName={project?.name} />
                 <StepConnectorDrafts steps={streamingMsg.steps} onConnect={onConnectCustomConnector} />
               </AnswerTurn>
@@ -4366,7 +4616,7 @@ export default function ChatView({
                     ) : null}
                     {q.addonPending ? (
                       <span role="status" className="text-ink-3 text-[12px] px-1" aria-label={t('chatView.addon.addingToTask')}>…</span>
-                    ) : (onAddQueuedToTask && isStreaming && !q.paused && !String(task?.id ?? '').startsWith('tmp-') && !(q.attachments || []).length && (
+                    ) : (onAddQueuedToTask && isStreaming && !q.paused && !String(task?.id ?? '').startsWith('tmp-') && !(q.attachments || []).length && !needsOwnTurn(q) && (
                       <Tooltip content={t('chatView.addon.addToTask')}>
                         <button
                           type="button"
@@ -4411,6 +4661,7 @@ export default function ChatView({
             disabledConnections={disabledConnections ?? task.disabledConnections ?? []}
             onUpdateConnectorMute={onUpdateConnectorMute}
             onStartVoiceCall={onStartVoiceCall}
+            dictationAvailable={dictationAvailable}
             browserSwitch={browserSwitch}
             onRemoveAttachment={onRemoveAttachment}
             placeholder={t('chatView.composer.replyPlaceholder')}
@@ -4447,6 +4698,9 @@ export default function ChatView({
           }}
         />
       )}
+      {docSide.doc && (
+        <DocColumn side={docSide} narrow={isNarrow} areaRef={chatRef} />
+      )}
       <aside
         /* Narrow: fixed overlay that slides in from the right.
            Wide: inline grid column.
@@ -4463,6 +4717,8 @@ export default function ChatView({
         } : {
           visibility: effectiveRailOpen ? 'visible' : 'hidden',
           opacity: effectiveRailOpen ? 1 : 0,
+          // The doc open beside the chat holds this column.
+          ...(docSide.doc ? { display: 'none' } : null),
         }}
       >
         {/* Rail header bar — collapse button. Stays visible on mobile
@@ -4510,6 +4766,7 @@ export default function ChatView({
           isStreaming={isStreaming}
           conversationId={task?.id || null}
           onAddressWithAgent={({ prompt }) => onSend?.(prompt)}
+          onOpenDoc={docSide.open}
         />
         <ContextBox
           projects={projects}
@@ -4579,7 +4836,9 @@ export default function ChatView({
         artifact={previewArt}
         shareRequest={previewShare}
         shareEntry={previewShare ? 'chat_card' : 'viewer'}
-        onClose={() => { setPreviewArt(null); setPreviewShare(null); }}
+        viewRequest={previewViewRequest}
+        onInlineSubmit={handleInlineSubmit}
+        onClose={() => { setPreviewArt(null); setPreviewShare(null); setPreviewViewRequest(null); }}
         onChange={(updated) => setPreviewArt(updated)}
         conversationId={task?.id || null}
         onAddressWithAgent={({ prompt }) => onSend?.(prompt)}

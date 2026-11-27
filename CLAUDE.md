@@ -43,6 +43,10 @@ npm run dev:web
 npm run build:web   # → dist/renderer-web/
 ```
 
+`dev:web` hands the server its launch values the way desktop main does (`scripts/start-server.mjs`, which only `scripts/dev-web.mjs` uses), and Vite's `/api` proxy adds the bearer token and the window proof to requests from Vite's own pages (`src/renderer/dev-api-proxy.ts`). The sibling cowork-server checkout must report `app_secret_protocol: 2` at `/api/v1/health/` and prove it holds the launch's app secret. Otherwise `dev:web` stops with an error that says something else holds the port, or that the checkout predates the launch hand-off.
+
+`dev:web` gives up the window proof's protection. Vite's proxy trusts a request's `Origin`, `Host` and `Referer` headers, and only a browser sets those honestly. Any local process, including an agent's, can send `Origin: http://localhost:5173` and get both values added. Test that an agent can't answer for the person in `npm run dev` or a packaged build.
+
 ### Type checking
 
 ```sh
@@ -105,14 +109,13 @@ uv run cowork-server
 
 FastAPI runs loopback-only at `127.0.0.1:26866`. CORS defaults to localhost origins only; override with `COWORK_ALLOWED_ORIGINS='["*"]'` for cloud/VPC deployments or an ingress-controlled environment.
 
-**Bearer-token authentication** — on by default in local/desktop tenancy. Off by default in org mode, where `COWORK_REQUIRE_AUTH=true` isn't supported at all — the token would be mirrored into shared storage every org can read; org's own ingress is the auth boundary there. To pin a fixed token or opt out in local mode, set in `~/.cowork/.env`:
+**Bearer-token authentication** is always on for a server the desktop app launches, which holds the launch hand-off below. For a server started any other way, `COWORK_REQUIRE_AUTH` decides: on by default in local tenancy, and not supported at all in org mode, where org's own ingress is the auth boundary.
 
-```
-COWORK_REQUIRE_AUTH=false        # opt out (not recommended)
-COWORK_AUTH_TOKEN=<your-token>   # omit to auto-generate on first startup
-```
+**The launch hand-off.** Desktop main makes three values fresh for every server launch: the app secret (`src/main/app-secret.ts`), the bearer token and the window proof (`src/main/server-auth.ts`). It sets `COWORK_APP_SECRET_STDIN=2` in the server's spawn environment and writes the three values as one JSON line to the server's stdin (`launchStdinLine` in `src/shared/server-launch.ts`, which holds the flag, the protocol number and the header name that cowork-server's `cowork/app_secret.py` mirrors). It keeps them in memory only: nothing writes them to disk or into any process environment, and cowork-server takes its token from the hand-off alone and removes any `COWORK_AUTH_TOKEN` line from `~/.cowork/.env`, so a token set there has no effect. A restart makes fresh values. The app treats a server whose `/api/v1/health/` lacks `app_secret_protocol: 2` as incompatible, as it treats one without the `coding` capability.
 
-When `COWORK_AUTH_TOKEN` is empty, the server generates a cryptographically random token at startup and writes it back to `~/.cowork/.env`. The desktop app reads the same file and injects `Authorization: Bearer <token>` on every API request automatically. It leaves the token off requests from the document preview frame, from frames inside it, and requests with no frame (`src/main/document-preview-guard.ts`). The `/api/v1/health/` endpoint is always exempt.
+The session's one `onBeforeSendHeaders` listener (`src/main/server-token-listener.ts`, registered in `app.ts`) adds `Authorization: Bearer <token>` to the renderer's loopback requests. It leaves the token off requests from the document preview frame, from frames inside it, and requests with no frame (`src/main/document-preview-guard.ts`). It adds `X-Cowork-Window-Proof` only to a fetch or XMLHttpRequest (Electron's `xhr` resource type) from the main window's own top-level frame, and removes that header from every other request to the local server. Desktop main's own requests spread `authHeader()`, which carries both headers. The listener and `authHeader()` get both values only once the server has proved over `/health` that it holds the app secret, and lose them when it stops or exits on its own. While a start is pending, the listener holds every renderer request to `127.0.0.1:<port>` until the start publishes both values or ends without them (`untilServerStartSettles` in `src/main/server-process.ts`), so none reaches whatever holds the port during a start. Desktop main's own requests are not held. The `/api/v1/health/` endpoint is always exempt. `settings:read` never returns a `COWORK_AUTH_TOKEN` line.
+
+The embedded Claude Code terminal runs with this app's environment minus `COWORK_*`, `MINDSHUB_*`, `CLAUDE_CODE_*`, `CLAUDECODE` and `ANTHROPIC_*`. The git calls in a task's repository run with it minus `COWORK_*` and `MINDSHUB_*` only. Desktop main sets no `OPENAI_*` or `ANTHROPIC_*` variable, so the user's own `OPENAI_*` values reach both, and their `ANTHROPIC_*` values reach the git calls. On Windows, where variable names ignore case, these names match in any case (`src/main/agent-env.ts`).
 
 #### Install source & channel
 
@@ -192,7 +195,7 @@ Note: the server updater is source-aware and never converts an existing git inst
 
 Three independently-versioned pieces update through three mechanisms, orchestrated by [src/main/updater.ts](src/main/updater.ts). **UI + server are coupled** and auto-apply together at boot (server first, then UI, then window reload); the **shell is independent** and always needs a relaunch. See [docs/update-behavior.md](docs/update-behavior.md) for *when* each applies and *what the user sees* per scenario.
 
-- **UI** (hot-swap, `prod` builds only): CI publishes `dist/renderer/` as `ui-bundle.tar.gz` to `mindsdb/antontron-releases`. Main process fetches + caches in `~/Library/Application Support/anton/ui-cache/` (see [src/main/ui-updater.ts](src/main/ui-updater.ts)).
+- **UI** (hot-swap, `prod` builds only): CI publishes `dist/renderer/` as `ui-bundle.tar.gz` to `mindsdb/antontron-releases`, signed with Ed25519 in a job of its own ([scripts/sign-ui-bundle.mjs](scripts/sign-ui-bundle.mjs)). Main process fetches + caches in `~/Library/Application Support/anton/ui-cache/` (see [src/main/ui-updater.ts](src/main/ui-updater.ts)), and checks the signature at download and every cached file against the signed list before each load ([src/main/ui-signature.ts](src/main/ui-signature.ts)). Nothing may write into a cache slot: an extra file fails the check.
 - **Server** (sidecar reinstall + restart, all packaged builds): source-aware (see [src/main/server-updater.ts](src/main/server-updater.ts)). A **git** install updates by re-pulling the configured branch/tag HEAD (trigger = changed remote commit SHA via `git ls-remote`) for cowork-server **and** anton; a **PyPI** install updates by version comparison + `uv tool install --upgrade`. It detects which from the tool venv's `direct_url.json`.
 - **Shell** (the Electron app binary — can't hot-update): an `electron-updater` background download installs the new build on relaunch (ENG-850, see [src/main/shell-auto-update-runtime.ts](src/main/shell-auto-update-runtime.ts)) — **on by default for `stable` and `prod`**, fail-closed for other kinds. A `prod`-only manual "download the installer" notice (ENG-849, `checkForShellUpdate` in updater.ts) is the fallback when auto-update is disabled or fails.
 - All three have rollback/health checks on failure. Disable server auto-update with `COWORK_SERVER_DISABLE_AUTOUPDATE=1`. Bypass UI updates with `DEV_MODE=full` in `~/.anton/.env`. `SHELL_AUTO_UPDATE_ENABLED=false` is the shell-update kill switch (stable + prod).

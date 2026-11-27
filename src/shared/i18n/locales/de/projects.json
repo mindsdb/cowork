@@ -24,10 +24,6 @@
         "untilMobile": "Das kostenlose MindsHub Air ist für alle bis {until} pausiert. Ihr Kontingent wird dadurch nicht verbraucht.",
         "dailyResetMobile": "Das kostenlose MindsHub Air ist für alle pausiert, bis das Tagesbudget zurückgesetzt wird. Ihr Kontingent wird dadurch nicht verbraucht."
       },
-      "resting": {
-        "resetsAt": "Wird um {time} zurückgesetzt.",
-        "noReset": "Air nutzt diese, bis sie aufgebraucht sind."
-      },
       "balanceEmptySentence": "Ihr Guthaben ist aufgebraucht.",
       "percentLeft": "Noch {percent} Ihres Gratiskontingents übrig",
       "autoTopUpFailed": {
@@ -46,8 +42,6 @@
       },
       "balanceLow": {
         "title": "Guthaben wird knapp",
-        "autoRefills": "Noch {usd} übrig. Die automatische Aufladung füllt auf {target} auf, sobald es unter {floor} fällt.",
-        "autoCovers": "Noch {usd} übrig. Die automatische Aufladung übernimmt das.",
         "autoPending": "Noch {usd} übrig. Die automatische Aufladung wartet auf Ihre Bank.",
         "autoCapReached": "Noch {usd} übrig. Die automatische Aufladung ist pausiert, um im monatlichen Limit zu bleiben. Laden Sie Guthaben auf, um weiterzumachen.",
         "body": "Noch {usd} übrig. Laden Sie Guthaben auf oder aktivieren Sie die automatische Aufladung.",
@@ -83,7 +77,8 @@
         "lowThenWalletWithTime": "Danach nutzen Aufgaben bis zum Zurücksetzen um {time} Ihr Guthaben zu API-Preisen.",
         "lowThenPause": "Danach pausieren Aufgaben bis zum Zurücksetzen.",
         "lowThenPauseWithTime": "Danach pausieren Aufgaben bis {time}."
-      }
+      },
+      "resetsAt": "Wird um {time} zurückgesetzt."
     },
     "scheduleWhen": {
       "timeZone": "Ortszeit {city}",
@@ -95,7 +90,14 @@
       "daily": "Täglich um {time}",
       "weekdays": "Werktags um {time}",
       "weekly": "Jeden {weekday} um {time}",
-      "weeklyNoDay": "Wöchentlich um {time}"
+      "weeklyNoDay": "Wöchentlich um {time}",
+      "monthlyDay": "Monatlich am {day}. um {time}",
+      "monthlyDayOrLast": "Monatlich am {day}., in kürzeren Monaten am letzten Tag, um {time}",
+      "monthlyFirst": "Monatlich am ersten {weekday} um {time}",
+      "monthlySecond": "Monatlich am zweiten {weekday} um {time}",
+      "monthlyThird": "Monatlich am dritten {weekday} um {time}",
+      "monthlyFourth": "Monatlich am vierten {weekday} um {time}",
+      "monthlyLast": "Monatlich am letzten {weekday} um {time}"
     },
     "scheduleCopy": {
       "missedOnceServer": "Ist der Server zu diesem Zeitpunkt nicht erreichbar, wird die Aufgabe ausgeführt, sobald er innerhalb einer Stunde wieder läuft. Danach gilt sie als verpasst und Sie können sie selbst ausführen.",
@@ -105,7 +107,9 @@
       "missedLabelServer": "Wenn der Server zu diesem Zeitpunkt nicht erreichbar ist",
       "missedLabelApp": "Wenn MindsHub zu diesem Zeitpunkt geschlossen ist",
       "missedOnceTitleServer": "Der Termin dieser einmaligen Aufgabe ist verstrichen, während der Server nicht erreichbar war",
-      "missedOnceTitleApp": "Der Termin dieser einmaligen Aufgabe ist verstrichen, während MindsHub geschlossen war"
+      "missedOnceTitleApp": "Der Termin dieser einmaligen Aufgabe ist verstrichen, während MindsHub geschlossen war",
+      "lateRunApp": "Fällig {when}. MindsHub war geschlossen oder Ihr Computer im Ruhezustand.",
+      "lateRunServer": "Fällig {when}. Der Server war nicht erreichbar oder ausgelastet."
     },
     "stopScheduleRun": {
       "unreachable": "Der Server ist nicht erreichbar, die Ausführung konnte nicht gestoppt werden. Versuchen Sie es erneut.",
@@ -319,6 +323,7 @@
       "sections": {
         "mine": "Meine",
         "sharedWithMe": "Mit mir geteilt",
+        "sharedByOthers": "Von anderen geteilt",
         "team": "Meine Teams",
         "builtin": "Integriert"
       },
@@ -469,6 +474,9 @@
       "uploadTooLarge": "Dieser Upload überschreitet die zulässige Größe. Wählen Sie eine kleinere Datei oder weniger Dateien auf einmal aus.",
       "requestTooLarge": "Diese Anfrage überschreitet die zulässige Größe. Versuchen Sie, weniger Inhalt zu senden."
     },
+    "projectUploads": {
+      "notUploaded": "Nicht hochgeladene Dateien: {files}."
+    },
     "fileDrop": {
       "uploading": "Wird hochgeladen…"
     },
@@ -592,6 +600,7 @@
     "lastFailed": "Zuletzt fehlgeschlagen",
     "lastRunFailed": "Letzte Ausführung fehlgeschlagen",
     "stoppedAtLimit": "An Limit gestoppt",
+    "writesRefused": "Freigabe nötig",
     "done": "Fertig",
     "active": "Aktiv"
   },
@@ -603,7 +612,8 @@
       "hourly": "Stündlich",
       "daily": "Täglich",
       "weekdays": "Werktags",
-      "weekly": "Wöchentlich"
+      "weekly": "Wöchentlich",
+      "monthly": "Monatlich"
     },
     "openProject": "{project} öffnen",
     "descriptionWithNext": "{sentence} · nächste Ausführung {next}",
@@ -623,6 +633,7 @@
     "partialNote": "Einige Aktionen wurden möglicherweise abgeschlossen. Prüfen Sie die Ausführung, bevor Sie sie wiederholen.",
     "limitTitle": "Die letzte Ausführung wurde an einem Limit gestoppt",
     "limitNote": "Ein Teil der Arbeit ist möglicherweise erledigt. Prüfen Sie die Ausführung, bevor Sie sie wiederholen.",
+    "approvalTitle": "Die Änderungen des letzten Laufs wurden nicht freigegeben",
     "failedTitle": "Die letzte Ausführung ist fehlgeschlagen",
     "resume": "Fortsetzen",
     "runNow": "Jetzt ausführen",
@@ -638,7 +649,12 @@
     "succeededTitle": "Geplante Aufgabe abgeschlossen",
     "succeededBody": "„{title}“ hat eine Ausführung abgeschlossen. Zum Öffnen klicken.",
     "succeededToast": "Die geplante Aufgabe „{title}“ hat eine Ausführung abgeschlossen.",
-    "openAction": "Aufgabe öffnen"
+    "openAction": "Aufgabe öffnen",
+    "stoppedTitle": "Geplante Aufgabe angehalten",
+    "stoppedBody": "„{title}“ hat vor dem Abschluss sein Limit erreicht und wurde angehalten. Zum Prüfen klicken.",
+    "stoppedToast": "Geplante Aufgabe „{title}“ hat vor dem Abschluss ihr Limit erreicht und wurde angehalten.",
+    "genericTitle": "Neue Benachrichtigung",
+    "genericLine": "Neue Benachrichtigung: {subject}"
   },
   "scheduleNotifyMenu": {
     "label": "Benachrichtigungen",
@@ -654,11 +670,13 @@
       "hourly": "Stündlich",
       "daily": "Täglich",
       "weekdays": "Werktags",
-      "weekly": "Wöchentlich"
+      "weekly": "Wöchentlich",
+      "monthly": "Monatlich"
     },
     "errorNoPrompt": "Beschreiben Sie, was {agent} tun soll.",
     "errorPickFutureTime": "Wählen Sie einen Zeitpunkt in der Zukunft.",
     "errorPickTime": "Wählen Sie eine Uhrzeit.",
+    "errorPickDays": "Wählen Sie mindestens einen Wochentag.",
     "errorSave": "Zeitplan konnte nicht gespeichert werden.",
     "editTitle": "Geplante Aufgabe bearbeiten",
     "createTitle": "Aufgabe planen",
@@ -670,6 +688,17 @@
     "when": "Wann",
     "howOften": "Wie oft",
     "dayOfWeek": "Wochentag",
+    "daysOfWeek": "Wochentage",
+    "dayOfMonth": "Tag des Monats",
+    "monthBy": {
+      "label": "Welcher Tag im Monat",
+      "day": "Tag",
+      "week1": "Erster",
+      "week2": "Zweiter",
+      "week3": "Dritter",
+      "week4": "Vierter",
+      "weekLast": "Letzter"
+    },
     "date": "Datum",
     "atMinute": "zur Minute",
     "at": "um",
@@ -681,6 +710,7 @@
     "namePlaceholder": "Wird aus dem Prompt abgeleitet",
     "project": "Projekt",
     "model": "Modell",
+    "connections": "Verbindungen",
     "accountDefault": "Kontostandard",
     "cancel": "Abbrechen",
     "saveAndRunOnce": "Speichern und einmal ausführen",
@@ -722,7 +752,8 @@
       "success": "Erfolgreich",
       "failed": "Fehlgeschlagen",
       "cancelled": "Gestoppt",
-      "stoppedAtLimit": "An Limit gestoppt"
+      "stoppedAtLimit": "An Limit gestoppt",
+      "writesRefused": "Nicht freigegeben"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "Läuft gerade",
@@ -739,6 +770,7 @@
     "scheduleAriaLabel": "Zeitplan",
     "accountDefaultModel": "Standardmodell des Kontos",
     "ranOnDefaultModel": "Standardmodell",
+    "ranLate": "Verspätet",
     "modelUnavailable": "{model} ist nicht verfügbar, daher wurde für diese Ausführung Ihr Standardmodell verwendet.",
     "succeededCount": "{total, plural, one {{succeeded} von # Ausführung erfolgreich} other {{succeeded} von # Ausführungen erfolgreich}}",
     "promptAriaLabel": "Prompt",
@@ -802,7 +834,7 @@
     "couldNotCreate": "Projekt konnte nicht erstellt werden.",
     "couldNotOpenPicker": "Die Ordnerauswahl konnte nicht geöffnet werden.",
     "filesNotUploaded": "„{name}“ wurde erstellt, aber die Dateien wurden nicht hochgeladen.",
-    "filesNotUploadedReason": "Der Upload wurde nicht abgeschlossen. Fügen Sie die Dateien erneut zum Projekt hinzu.",
+    "someFilesNotUploaded": "„{name}“ wurde erstellt, aber nicht alle Dateien wurden hochgeladen.",
     "filesUploadUnconfirmed": "„{name}“ wurde erstellt. Prüfen Sie die Dateien im Projekt, bevor Sie den Upload erneut versuchen.",
     "title": "Neues Projekt starten",
     "nameLabel": "Projektname",

@@ -190,17 +190,47 @@
     }
   },
   "comingSoon": {
-    "cloudTitle": "Cloud에서 곧 제공 예정",
+    "cloudTitle": "데스크톱 앱에서 사용할 수 있습니다",
+    "cloudTitleNamed": "{feature}은(는) 데스크톱 앱에서 사용할 수 있습니다",
     "unavailableTitle": "사용할 수 없는 기능",
-    "cloudBodyNamed": "{feature}은(는) 아직 Cloud에서 사용할 수 없습니다. 그동안 데스크톱 앱에서 사용할 수 있습니다.",
-    "cloudBody": "이 기능은 아직 Cloud에서 사용할 수 없습니다. 그동안 데스크톱 앱에서 사용할 수 있습니다.",
-    "cloudBodyCustom": "{feature}은(는) 아직 Cloud에서 사용할 수 없습니다. 지금 사용자 지정 커넥터로 연결할 수 있습니다.",
+    "cloudBodyNamed": "현재 {feature}은(는) 데스크톱 앱에서 사용할 수 있습니다. 앱을 다운로드해 그곳에서 {feature}을(를) 연결하세요.",
+    "cloudBody": "현재 데스크톱 앱에서 사용할 수 있습니다. 앱을 다운로드해 그곳에서 사용하세요.",
+    "mobileBodyNamed": "{feature}은(는) 컴퓨터의 데스크톱 앱에서 사용할 수 있습니다.",
+    "mobileBody": "이 기능은 컴퓨터의 데스크톱 앱에서 사용할 수 있습니다.",
+    "cloudBodyCustom": "현재 {feature}은(는) 데스크톱 앱에서 사용할 수 있습니다. 여기서는 지금 사용자 지정 커넥터로 연결할 수 있습니다.",
     "unavailableBodyNamed": "{feature}은(는) 이 배포에서 사용할 수 없습니다.",
     "unavailableBody": "이 기능은 이 배포에서 사용할 수 없습니다.",
     "notNow": "나중에",
-    "download": "앱 다운로드",
+    "download": "데스크톱 앱 다운로드",
     "connectCustom": "사용자 지정 {feature} 커넥터 연결",
     "buildCustom": "사용자 지정 커넥터 만들기"
+  },
+  "desktopOffer": {
+    "tag": "데스크톱",
+    "notNow": "나중에",
+    "download": "데스크톱 앱 다운로드",
+    "platforms": "Mac, Windows 및 Linux용.",
+    "code": {
+      "title": "코드 모드는 데스크톱 앱에서 사용할 수 있습니다",
+      "body": "코드 모드는 내 컴퓨터의 코드로 작업하므로 데스크톱 앱이 필요합니다. 데스크톱 앱에서 Cowork는 다음을 할 수 있습니다:",
+      "points": {
+        "files": "내 폴더와 저장소의 코드를 읽고 변경",
+        "commands": "내 컴퓨터에서 명령과 테스트 실행",
+        "agents": "Claude Code 또는 Codex에 작업 맡기기"
+      }
+    },
+    "folder": {
+      "projectTitle": "데스크톱 앱에서 내 컴퓨터의 폴더 사용",
+      "chatTitle": "작업 폴더는 데스크톱 앱에 있습니다",
+      "projectBody": "브라우저는 내 컴퓨터의 파일에 접근할 수 없습니다. 데스크톱 앱에서는 이미 있는 폴더에서 프로젝트를 시작할 수 있고, Cowork가 그 안의 파일로 작업합니다.",
+      "chatBody": "브라우저는 내 컴퓨터의 파일에 접근할 수 없습니다. 데스크톱 앱에서는 내 컴퓨터의 폴더를 채팅에 추가할 수 있고, Cowork가 그 안에서 작업합니다.",
+      "points": {
+        "inPlace": "업로드 없음: 파일을 있는 그대로 사용합니다",
+        "saved": "만든 결과물은 내 컴퓨터에 저장됩니다",
+        "kept": "Cowork에서 폴더를 제거해도 파일은 그대로 남습니다"
+      },
+      "note": "Mac, Windows 및 Linux용. 여기 브라우저에서도 계속 파일을 업로드할 수 있습니다."
+    }
   },
   "loadStatus": {
     "retry": "다시 시도",
@@ -210,10 +240,6 @@
   "upToDate": "최신 상태",
   "upToDateSaving": "저장 중…",
   "upToDateSaved": "저장됨",
-  "usageBar": {
-    "hideAllowance": "제공량 숨기기",
-    "hide": "숨기기"
-  },
   "diagnostics": {
     "copy": "진단 정보 복사",
     "copied": "복사됨",
@@ -438,7 +464,8 @@
       "fromDesktop": "계정이 준비되었습니다. 여기서 바로 시작하거나 {product} 앱으로 돌아가 로그인하세요.",
       "dismiss": "닫기"
     },
-    "ownWorkHeading": "{product}가 무엇을 작업할까요?"
+    "ownWorkHeading": "{product}가 무엇을 작업할까요?",
+    "galleryHint": "예시 {title}에서 가져왔습니다. 원하는 대로 바꾼 뒤 보내기를 누르세요."
   },
   "logout": {
     "title": "{product}에서 로그아웃할까요?",
@@ -451,7 +478,53 @@
     "failed": "로그아웃을 완료하지 못했습니다. 다시 시도하세요.",
     "waitNote": "아직 로그아웃하는 중입니다. 이 창을 닫아도 자동으로 완료됩니다."
   },
+  "notices": {
+    "title": "알림",
+    "ariaLabel": "{count, plural, =0 {알림} other {알림, 읽지 않음 #개}}",
+    "unread": "읽지 않음:",
+    "markAllRead": "모두 읽음으로 표시",
+    "emptyTitle": "알림 없음",
+    "emptyDescription": "확인이 필요한 예약 실행이 여기에 표시됩니다.",
+    "loadFailed": "알림을 불러올 수 없습니다."
+  },
   "shortcuts": {
     "showBrowser": "브라우저 표시"
+  },
+  "gallery": {
+    "open": "사용 사례 갤러리",
+    "title": "사용 사례 갤러리",
+    "welcomeTitle": "{product}에 오신 것을 환영합니다",
+    "welcomeIntro": "어디서 시작할지 모르겠다면 {product}가 메시지 하나로 만든 결과물을 둘러보세요. 하나를 열어 결과를 보고 거기서 시작하세요.",
+    "intro": "아이디어가 떨어졌나요? {product}가 메시지 하나로 만든 결과물을 둘러보세요. 하나를 열어 결과를 보고 거기서 시작하세요.",
+    "hide": "갤러리 숨기기",
+    "searchLabel": "예시 검색",
+    "searchPlaceholder": "검색: 슬라이드, 스프레드시트, 학습…",
+    "tabsLabel": "카테고리",
+    "all": "전체",
+    "startHere": "여기서 시작",
+    "allExamples": "모든 예시",
+    "results": "{count, plural, other {예시 #개 일치}}",
+    "noResults": "일치하는 항목이 없습니다. 입력란에 필요한 내용을 적으면 {product}가 거기서 시작합니다.",
+    "loading": "예시를 불러오는 중…",
+    "unavailable": "지금은 예시를 불러올 수 없습니다.",
+    "retry": "다시 시도",
+    "minutes": "{count, plural, other {약 #분}}",
+    "builtWith": "{model}로 제작",
+    "needs": "필요한 것: {needs}",
+    "backToAll": "모든 예시",
+    "backToResults": "“{query}” 검색 결과",
+    "position": "{current} / {total}",
+    "previous": "이전 예시",
+    "next": "다음 예시",
+    "breadcrumb": "이동 경로",
+    "whatItMade": "{product}가 만든 것",
+    "download": "다운로드",
+    "sampleInput": "제공한 샘플",
+    "playInBrowser": "브라우저에서 열기",
+    "start": "이 예시로 시작",
+    "tryIt": "이 예시 실행해 보기",
+    "startNote": "메시지를 입력란에 넣습니다. 보내기를 누르기 전에는 아무것도 실행되지 않습니다.",
+    "tryItNote": "샘플 데이터로 새 작업을 바로 실행합니다.",
+    "ownFile": "내 파일 사용"
   }
 }

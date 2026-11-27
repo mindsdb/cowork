@@ -21,11 +21,12 @@ import { describe, expect, it } from 'vitest';
 
 import { DRAFT_LINK_ORIGINS, withDraftLinkFrameSources } from '../shared/draft-link-origins';
 import { orgBrandImageOrigins, withOrgBrandImageSources } from '../shared/org-brand-image-origins';
+import { GALLERY_CONSOLE_ORIGINS, galleryImageOrigins, withGalleryImageSources } from '../shared/gallery-image-origins';
 
 const ARTIFACT_CDN = 'https://cdn.jsdelivr.net';
 
 const webTemplate = readFileSync(join(__dirname, 'index-web.html'), 'utf8');
-const platformWebPage = withOrgBrandImageSources(withDraftLinkFrameSources(webTemplate));
+const platformWebPage = withGalleryImageSources(withOrgBrandImageSources(withDraftLinkFrameSources(webTemplate)));
 const desktopPage = readFileSync(join(__dirname, 'index.html'), 'utf8');
 
 const WEB_PAGES: [string, string][] = [
@@ -120,8 +121,10 @@ describe('shell CSP', () => {
    * img-src names exactly the auth hosts on top of the template's, and the
    * template (self-hosted and white-label) names none of them.
    */
-  it('lets the platform-UI web page load org brand images from the auth hosts only', () => {
-    expect(directive(platformWebPage, 'img-src')).toEqual([...directive(webTemplate, 'img-src'), ...orgBrandImageOrigins(undefined)]);
+  it('lets the platform-UI web page load org brand images and gallery pictures from the auth and console hosts only', () => {
+    expect(directive(platformWebPage, 'img-src')).toEqual([
+      ...directive(webTemplate, 'img-src'), ...orgBrandImageOrigins(undefined), ...galleryImageOrigins(undefined),
+    ]);
     expect(ourDomains(directive(webTemplate, 'img-src'))).toEqual([]);
   });
 
@@ -139,6 +142,17 @@ describe('shell CSP', () => {
    * A scheme source such as https: would let any frame in the desktop app,
    * the preview's editor frame included, load any site.
    */
+  /*
+   * The Use Case Gallery reads its list and pictures from the console. Desktop
+   * is one bundle for every build kind, so it names production and staging,
+   * for images and reads only: never a frame, and never a dev host.
+   */
+  it('lets the desktop shell read and show gallery pictures from the console hosts only', () => {
+    expect(ourDomains(directive(desktopPage, 'img-src'))).toEqual([...GALLERY_CONSOLE_ORIGINS]);
+    expect(ourDomains(directive(desktopPage, 'connect-src'))).toEqual([...GALLERY_CONSOLE_ORIGINS]);
+    expect(schemeSources(directive(desktopPage, 'img-src'))).toEqual(['data:', 'blob:']);
+  });
+
   it.each(['frame-src', 'child-src'])('lets the desktop shell frame only its loopback server in %s', (name) => {
     expect(schemeSources(directive(desktopPage, name))).toEqual([]);
     expect(directive(desktopPage, name)).toEqual(['http://127.0.0.1:*', 'http://localhost:*']);

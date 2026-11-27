@@ -1,14 +1,19 @@
 import { EventEmitter } from 'events';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
-import type { BeforeSendResponse } from 'electron';
+import type { BeforeSendResponse, OnBeforeSendHeadersListenerDetails } from 'electron';
 import yaml from 'js-yaml';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PREVIEW_FRAME_NAME } from '../shared/document-preview';
+import { WINDOW_PROOF_HEADER } from '../shared/server-launch';
 import { guardDocumentPreviewFrames, type DocumentPreviewGuard, type GuardedFrame } from './document-preview-guard';
 import {
+  gatesInOrder,
+  holdWhileServerStarts,
   serverTokenListener,
+  type MainWindowContents,
+  type RequestGate,
   type ServerTokenListener,
   type ServerTokenListenerDeps,
   type SettleHeldRequest,
@@ -17,27 +22,53 @@ import {
 
 const SERVER_PORT = 26866;
 const RESPONSES_URL = `http://127.0.0.1:${SERVER_PORT}/api/v1/responses`;
-const TOKEN = 'server-token';
+const TOKEN = 'a1'.repeat(32);
+const PROOF = 'b2'.repeat(32);
+const FORGED = 'c3'.repeat(32);
+const MAIN_CONTENTS_ID = 7;
+const OTHER_CONTENTS_ID = 8;
+
+type ResourceType = OnBeforeSendHeadersListenerDetails['resourceType'];
+const RESOURCE_TYPES: ReadonlySet<string> = new Set<ResourceType>([
+  'mainFrame', 'subFrame', 'stylesheet', 'script', 'image', 'font', 'object', 'xhr', 'ping', 'cspReport', 'media', 'webSocket', 'other',
+]);
 
 /* One request from server-token-listener.test.yaml. */
 interface RequestCase {
   name: string;
   url: string;
-  frame: 'main' | 'preview' | 'none';
+  frame: 'main' | 'subframe' | 'preview' | 'unreadable' | 'none';
+  resourceType?: ResourceType;
+  webContents?: 'main' | 'other' | 'none';
+  window?: 'open' | 'gone' | 'unreadable';
+  bringsProof?: string;
   viteDevPort?: string;
   serverToken?: boolean;
   authorized: boolean;
+  proved: boolean;
+  keepsForged?: boolean;
 }
+
+const optional = (value: unknown, check: (v: unknown) => boolean): boolean => value === undefined || check(value);
+const oneOf = (...values: unknown[]) => (v: unknown) => values.includes(v);
+const isString = (v: unknown) => typeof v === 'string';
+const isBoolean = (v: unknown) => typeof v === 'boolean';
 
 function isRequestCase(value: unknown): value is RequestCase {
   if (typeof value !== 'object' || value === null) return false;
   const entry = value as Record<string, unknown>;
   return typeof entry.name === 'string'
     && typeof entry.url === 'string'
-    && (entry.frame === 'main' || entry.frame === 'preview' || entry.frame === 'none')
-    && (entry.viteDevPort === undefined || typeof entry.viteDevPort === 'string')
-    && (entry.serverToken === undefined || typeof entry.serverToken === 'boolean')
-    && typeof entry.authorized === 'boolean';
+    && oneOf('main', 'subframe', 'preview', 'unreadable', 'none')(entry.frame)
+    && optional(entry.resourceType, (v) => typeof v === 'string' && RESOURCE_TYPES.has(v))
+    && optional(entry.webContents, oneOf('main', 'other', 'none'))
+    && optional(entry.window, oneOf('open', 'gone', 'unreadable'))
+    && optional(entry.bringsProof, isString)
+    && optional(entry.viteDevPort, isString)
+    && optional(entry.serverToken, isBoolean)
+    && isBoolean(entry.authorized)
+    && isBoolean(entry.proved)
+    && optional(entry.keepsForged, isBoolean);
 }
 
 /* Reads the requests list. Throws when it is missing or empty, or when an
@@ -52,21 +83,58 @@ function loadRequestCases(): RequestCase[] {
   return requests;
 }
 
-/* The real guard, with a main-window frame and the preview frame inside it
-   created where the guard sees them. */
-function guardedFrames(): { guard: DocumentPreviewGuard; main: GuardedFrame; preview: GuardedFrame } {
+/* A frame whose every property throws, the way Electron answers once the
+   frame's render frame is gone. */
+function unreadableFrame(): GuardedFrame {
+  const gone = (): never => { throw new Error('Render frame was disposed before WebFrameMain could be accessed'); };
+  return {
+    get frameTreeNodeId() { return gone(); },
+    get name() { return gone(); },
+    get url() { return gone(); },
+    get parent() { return gone(); },
+  };
+}
+
+interface Frames {
+  guard: DocumentPreviewGuard;
+  main: GuardedFrame;
+  subframe: GuardedFrame;
+  preview: GuardedFrame;
+}
+
+/* The real guard, with the main window's top-level frame, a frame inside it
+   and the preview frame inside it, created where the guard sees them. */
+function guardedFrames(): Frames {
   const contents = new EventEmitter();
   const guard = guardDocumentPreviewFrames(contents);
   const main: GuardedFrame = { frameTreeNodeId: 1, name: '', url: 'file:///app/index.html', parent: null };
   const preview: GuardedFrame = { frameTreeNodeId: 2, name: PREVIEW_FRAME_NAME, url: 'about:srcdoc', parent: main };
-  for (const frame of [main, preview]) contents.emit('frame-created', {}, { frame });
-  return { guard, main, preview };
+  const subframe: GuardedFrame = { frameTreeNodeId: 3, name: '', url: 'http://127.0.0.1:26866/api/v1/files/raw/page.html', parent: main };
+  for (const frame of [main, preview, subframe]) contents.emit('frame-created', {}, { frame });
+  return { guard, main, subframe, preview };
 }
 
-/* The packaged app's listener: the server on SERVER_PORT with TOKEN, no Vite,
-   and a gate that holds nothing. */
+/* The main window's contents, whose top-level frame is `main` (frameTreeNodeId 1). */
+const MAIN_WINDOW: MainWindowContents = { id: MAIN_CONTENTS_ID, mainFrame: { frameTreeNodeId: 1 } };
+
+/* Contents whose top-level frame throws when read, as destroyed contents do. */
+const UNREADABLE_WINDOW: MainWindowContents = {
+  id: MAIN_CONTENTS_ID,
+  get mainFrame(): { frameTreeNodeId: number } { throw new Error('Object has been destroyed'); },
+};
+
+/* The packaged app's listener: the server on SERVER_PORT with TOKEN and PROOF,
+   the main window open, no Vite, and a gate that holds nothing. */
 function listenerWith(overrides: Partial<ServerTokenListenerDeps> & Pick<ServerTokenListenerDeps, 'guard'>): ServerTokenListener {
-  return serverTokenListener({ serverPort: () => SERVER_PORT, token: () => TOKEN, viteDevPort: null, gate: () => false, ...overrides });
+  return serverTokenListener({
+    serverPort: () => SERVER_PORT,
+    token: () => TOKEN,
+    windowProof: () => PROOF,
+    mainWindow: () => MAIN_WINDOW,
+    viteDevPort: null,
+    gate: () => false,
+    ...overrides,
+  });
 }
 
 /* Sends one request and returns the list of responses the listener hands
@@ -77,21 +145,53 @@ function send(listener: ServerTokenListener, request: TokenRequestDetails): Befo
   return responses;
 }
 
-const withToken = (token: string): BeforeSendResponse => ({ requestHeaders: { Authorization: `Bearer ${token}` } });
+/* A fetch from the main window's top-level frame. */
+function mainWindowFetch(frame: GuardedFrame, overrides: Partial<TokenRequestDetails> = {}): TokenRequestDetails {
+  return { url: RESPONSES_URL, method: 'POST', frame, resourceType: 'xhr', webContentsId: MAIN_CONTENTS_ID, requestHeaders: {}, ...overrides };
+}
+
+const withToken = (token: string, proof?: string): BeforeSendResponse => ({
+  requestHeaders: { Authorization: `Bearer ${token}`, ...(proof ? { [WINDOW_PROOF_HEADER]: proof } : {}) },
+});
 const withoutToken: BeforeSendResponse = { requestHeaders: {} };
 
 describe('the server token listener', () => {
   it.each(loadRequestCases())('$name', (request) => {
-    const { guard, main, preview } = guardedFrames();
+    const frames = guardedFrames();
     const listener = listenerWith({
-      guard,
+      guard: frames.guard,
       viteDevPort: request.viteDevPort ?? null,
       token: () => (request.serverToken === false ? null : TOKEN),
+      windowProof: () => (request.serverToken === false ? null : PROOF),
+      mainWindow: () => ({ open: MAIN_WINDOW, gone: null, unreadable: UNREADABLE_WINDOW }[request.window ?? 'open']),
     });
-    const frame = { main, preview, none: null }[request.frame];
+    const frame = { main: frames.main, subframe: frames.subframe, preview: frames.preview, unreadable: unreadableFrame(), none: null }[request.frame];
+    const webContentsId = { main: MAIN_CONTENTS_ID, other: OTHER_CONTENTS_ID, none: undefined }[request.webContents ?? 'main'];
+    const brought = request.bringsProof ? { [request.bringsProof]: FORGED } : {};
 
-    expect(send(listener, { url: request.url, method: 'GET', frame, requestHeaders: {} }))
-      .toEqual([request.authorized ? withToken(TOKEN) : withoutToken]);
+    const responses = send(listener, {
+      url: request.url,
+      method: 'GET',
+      frame,
+      resourceType: request.resourceType ?? 'xhr',
+      webContentsId,
+      requestHeaders: { ...brought },
+    });
+
+    expect(responses).toEqual([{
+      requestHeaders: {
+        ...(request.keepsForged ? brought : {}),
+        ...(request.authorized ? { Authorization: `Bearer ${TOKEN}` } : {}),
+        ...(request.proved ? { [WINDOW_PROOF_HEADER]: PROOF } : {}),
+      },
+    }]);
+  });
+
+  it('leaves the headers alone when the URL does not parse', () => {
+    const { guard, main } = guardedFrames();
+    const request = mainWindowFetch(main, { url: 'not a url', requestHeaders: { [WINDOW_PROOF_HEADER]: FORGED } });
+
+    expect(send(listenerWith({ guard }), request)).toEqual([{ requestHeaders: { [WINDOW_PROOF_HEADER]: FORGED } }]);
   });
 });
 
@@ -106,13 +206,16 @@ describe('a request the gate holds', () => {
     return { gate, held };
   }
 
-  /* A response-creation request whose frame reads null once `gone` is set,
-     the way Electron answers after the frame has navigated or been destroyed. */
+  /* A response-creation fetch from the main window whose frame reads null once
+     `gone` is set, the way Electron answers after the frame has navigated or
+     been destroyed. */
   function vanishingFrameRequest(frame: GuardedFrame) {
     const state = { gone: false };
     const request: TokenRequestDetails = {
       url: RESPONSES_URL,
       method: 'POST',
+      resourceType: 'xhr',
+      webContentsId: MAIN_CONTENTS_ID,
       requestHeaders: {},
       get frame() { return state.gone ? null : frame; },
     };
@@ -120,8 +223,9 @@ describe('a request the gate holds', () => {
   }
 
   it.each([
-    ['a main-window request keeps the token', 'main', withToken(TOKEN)],
-    ['a preview-frame request still goes without it', 'preview', withoutToken],
+    ['a main-window fetch keeps the token and the proof', 'main', withToken(TOKEN, PROOF)],
+    ['a subframe fetch keeps the token and still goes without the proof', 'subframe', withToken(TOKEN)],
+    ['a preview-frame request still goes without either', 'preview', withoutToken],
   ] as const)('asks about the frame before the wait, so %s after its frame is gone', (_label, which, expected) => {
     const frames = guardedFrames();
     const { gate, held } = holdingGate();
@@ -135,24 +239,26 @@ describe('a request the gate holds', () => {
     expect(responses).toEqual([expected]);
   });
 
-  it('reads the token when the request goes out, so a token replaced during the wait is the one sent', () => {
+  it('reads the token and the proof when the request goes out, so the ones a restart made during the wait are sent', () => {
     const { guard, main } = guardedFrames();
     const { gate, held } = holdingGate();
-    let token = 'token-before-restart';
-    const responses = send(listenerWith({ guard, gate, token: () => token }), { url: RESPONSES_URL, method: 'POST', frame: main, requestHeaders: {} });
+    let launch = { token: 'd4'.repeat(32), proof: 'e5'.repeat(32) };
+    const listener = listenerWith({ guard, gate, token: () => launch.token, windowProof: () => launch.proof });
+    const responses = send(listener, mainWindowFetch(main));
 
-    token = 'token-after-restart';
+    launch = { token: 'f6'.repeat(32), proof: '07'.repeat(32) };
     held[0].settle(true);
 
-    expect(responses).toEqual([withToken('token-after-restart')]);
+    expect(responses).toEqual([withToken('f6'.repeat(32), '07'.repeat(32))]);
   });
 
   it('hands the gate the request and cancels it when the gate settles it as not ready', () => {
     const { guard, main } = guardedFrames();
     const { gate, held } = holdingGate();
     const token = vi.fn(() => TOKEN);
-    const request: TokenRequestDetails = { url: RESPONSES_URL, method: 'POST', frame: main, requestHeaders: {} };
-    const responses = send(listenerWith({ guard, gate, token }), request);
+    const windowProof = vi.fn(() => PROOF);
+    const request = mainWindowFetch(main);
+    const responses = send(listenerWith({ guard, gate, token, windowProof }), request);
     expect(held).toHaveLength(1);
     expect(held[0].details).toBe(request);
 
@@ -160,5 +266,123 @@ describe('a request the gate holds', () => {
 
     expect(responses).toEqual([{ cancel: true }]);
     expect(token).not.toHaveBeenCalled();
+    expect(windowProof).not.toHaveBeenCalled();
+  });
+});
+
+describe('a request a pending server start holds', () => {
+  /* A start that has not settled yet, and the call that settles it. */
+  function pendingStart() {
+    let settle!: () => void;
+    const settled = new Promise<void>((resolve) => { settle = resolve; });
+    return { settled, settle };
+  }
+
+  it('waits for the start, then goes out with the values the start published', async () => {
+    const { guard, main } = guardedFrames();
+    const start = pendingStart();
+    let launch: { token: string | null; proof: string | null } = { token: null, proof: null };
+    const listener = listenerWith({
+      guard,
+      token: () => launch.token,
+      windowProof: () => launch.proof,
+      gate: holdWhileServerStarts(() => SERVER_PORT, () => start.settled),
+    });
+    const responses = send(listener, mainWindowFetch(main));
+    expect(responses).toEqual([]);
+
+    launch = { token: TOKEN, proof: PROOF };
+    start.settle();
+    await start.settled;
+
+    expect(responses).toEqual([withToken(TOKEN, PROOF)]);
+  });
+
+  it('goes out with neither header, and is not canceled, when the start ends without trust', async () => {
+    const { guard, main } = guardedFrames();
+    const start = pendingStart();
+    const listener = listenerWith({
+      guard,
+      token: () => null,
+      windowProof: () => null,
+      gate: holdWhileServerStarts(() => SERVER_PORT, () => start.settled),
+    });
+    const responses = send(listener, mainWindowFetch(main));
+
+    start.settle();
+    await start.settled;
+
+    expect(responses).toEqual([withoutToken]);
+  });
+
+  it.each([
+    ['localhost at the server\'s port', `http://localhost:${SERVER_PORT}/api/v1/conversations`],
+    ['an /api/ call through Vite', 'http://localhost:5173/api/v1/conversations'],
+    ['another loopback port', 'http://127.0.0.1:9999/api/v1/conversations'],
+    ['a URL that does not parse', 'not a url'],
+  ])('lets %s go at once', (_label, url) => {
+    const { guard, main } = guardedFrames();
+    const listener = listenerWith({
+      guard,
+      viteDevPort: '5173',
+      gate: holdWhileServerStarts(() => SERVER_PORT, () => pendingStart().settled),
+    });
+
+    expect(send(listener, mainWindowFetch(main, { url }))).toHaveLength(1);
+  });
+
+  it('lets a request to the server go at once when no start is pending', () => {
+    const { guard, main } = guardedFrames();
+    const listener = listenerWith({ guard, gate: holdWhileServerStarts(() => SERVER_PORT, () => null) });
+
+    expect(send(listener, mainWindowFetch(main))).toEqual([withToken(TOKEN, PROOF)]);
+  });
+});
+
+describe('two gates in order', () => {
+  /* A gate that holds every request until `settle(ready)` is called on it. */
+  function heldGate() {
+    const held: SettleHeldRequest[] = [];
+    const gate: RequestGate = (_details, settle) => { held.push(settle); return true; };
+    return { gate, held };
+  }
+  const passing: RequestGate = () => false;
+
+  it('runs the second only after the first lets the request go', () => {
+    const { guard, main } = guardedFrames();
+    const first = heldGate();
+    const second = heldGate();
+    const responses = send(listenerWith({ guard, gate: gatesInOrder(first.gate, second.gate) }), mainWindowFetch(main));
+    expect(second.held).toHaveLength(0);
+
+    first.held[0](true);
+    expect(second.held).toHaveLength(1);
+    expect(responses).toEqual([]);
+
+    second.held[0](true);
+    expect(responses).toEqual([withToken(TOKEN, PROOF)]);
+  });
+
+  it('leaves the request to the second when the first does not hold it, and sends it when neither does', () => {
+    const { guard, main } = guardedFrames();
+    const second = heldGate();
+    const heldBySecond = send(listenerWith({ guard, gate: gatesInOrder(passing, second.gate) }), mainWindowFetch(main));
+    expect(heldBySecond).toEqual([]);
+    second.held[0](false);
+    expect(heldBySecond).toEqual([{ cancel: true }]);
+
+    expect(send(listenerWith({ guard, gate: gatesInOrder(passing, passing) }), mainWindowFetch(main))).toEqual([withToken(TOKEN, PROOF)]);
+  });
+
+  it("cancels the request on the first gate's cancel without asking the second", () => {
+    const { guard, main } = guardedFrames();
+    const first = heldGate();
+    const second = vi.fn<RequestGate>(() => false);
+    const responses = send(listenerWith({ guard, gate: gatesInOrder(first.gate, second) }), mainWindowFetch(main));
+
+    first.held[0](false);
+
+    expect(responses).toEqual([{ cancel: true }]);
+    expect(second).not.toHaveBeenCalled();
   });
 });

@@ -11,6 +11,8 @@ const platform = vi.hoisted(() => ({
   pickCodeFolder: vi.fn(async () => ({ ok: true, path: '/Users/me/Documents/notes' })),
   isElectron: true,
   isWeb: false,
+  isMobileShell: false,
+  openExternal: vi.fn(),
 }));
 
 const orgMode = vi.hoisted(() => ({ value: false }));
@@ -68,6 +70,8 @@ describe('NewProjectModal folder selection', () => {
       path: '/Users/me/Documents/notes',
     });
     platform.isElectron = true;
+    platform.isWeb = false;
+    platform.isMobileShell = false;
     orgMode.value = false;
   });
 
@@ -210,10 +214,32 @@ describe('NewProjectModal folder selection', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('is not offered in the browser, where a path would be meaningless', () => {
+  it('offers the desktop app in the browser instead of a folder picker', async () => {
     platform.isElectron = false;
+    platform.isWeb = true;
+    orgMode.value = true;
     open();
-    expect(screen.queryByRole('button', { name: CHOOSE })).toBeNull();
+    const choose = screen.getByRole('button', { name: /^Use an existing folder/ });
+    expect(choose).toHaveTextContent('Desktop');
+
+    fireEvent.click(choose);
+
+    expect(await screen.findByRole('dialog', { name: 'Use a folder on your computer in the Desktop app' })).toBeInTheDocument();
+    expect(platform.pickCodeFolder).not.toHaveBeenCalled();
+
+    // Not now returns to the form as it was, with no folder chosen.
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /Desktop app/ })).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await waitFor(() => expect(api.createProject).toHaveBeenCalledWith('billing'));
+  });
+
+  it('offers nothing inside the mobile app', () => {
+    platform.isElectron = false;
+    platform.isWeb = true;
+    platform.isMobileShell = true;
+    open();
+    expect(screen.queryByRole('button', { name: /^Use an existing folder/ })).toBeNull();
   });
 
   it('is not offered in org mode, where the server refuses a path', () => {
