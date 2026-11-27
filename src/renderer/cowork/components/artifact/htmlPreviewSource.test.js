@@ -8,6 +8,7 @@ const createDraftLink = vi.fn();
 const loadArtifactDraftDocument = vi.fn();
 const loadArtifactRevision = vi.fn();
 const inlineHtmlFromApi = vi.fn();
+const publishedFrameCredential = vi.fn();
 const hostState = vi.hoisted(() => ({ isWeb: false, isElectron: true, local: true }));
 
 vi.mock('../../api', () => ({ mountArtifactPreview: (...a) => mountArtifactPreview(...a) }));
@@ -22,7 +23,11 @@ vi.mock('../../lib/draftLinkRules', () => ({
   draftLinkUrl: (link) => link.url,
   draftLinksWithdrawal: vi.fn(async () => null),
 }));
+vi.mock('../../../lib/viewSession', () => ({
+  publishedFrameCredential: (...a) => publishedFrameCredential(...a),
+}));
 vi.mock('../../../platform/host', () => ({
+  getAccessToken: vi.fn(),
   host: {
     get isWeb() { return hostState.isWeb; },
     get isElectron() { return hostState.isElectron; },
@@ -140,5 +145,49 @@ describe('loadHtmlRevision', () => {
     await expect(loadHtmlRevision({ artifact, revisionId: 'r3' })).rejects.toBeInstanceOf(HtmlPreviewError);
     loadArtifactRevision.mockResolvedValue({ id: 'r3', content: '' });
     await expect(loadHtmlRevision({ artifact, revisionId: 'r3' })).rejects.toMatchObject({ stage: 'revision' });
+  });
+});
+
+describe('loadHtmlPreview: a published full-stack app', () => {
+  const app = { type: 'fullstack-stateful-app', path: '/p/.anton/artifacts/app/static/index.html' };
+  const PUBLISHED = 'https://view.staging.mindshub.ai/a/k3m7q2xwp6n4tahd5rzc2bvy7e/';
+  const ORIGIN = 'https://f5h8n2w6-staging.mindshub.co';
+  const load = () => loadHtmlPreview({ ...base, hasActionPath: false, artifact: app, publishedApp: { url: PUBLISHED } });
+
+  beforeEach(() => { Object.assign(hostState, { isWeb: true, isElectron: false, local: false }); });
+
+  it('frames the app on its artifact host with a token, and reports when it expires', async () => {
+    publishedFrameCredential.mockResolvedValue({ origin: ORIGIN, credential: 'v1.p.s', exp: 1_900_000_000 });
+    expect(await load()).toEqual({
+      kind: 'published', url: `${ORIGIN}/_t/v1.p.s/`, doc: '', port: null, expiresAt: 1_900_000_000,
+    });
+    expect(publishedFrameCredential).toHaveBeenCalledWith(PUBLISHED, expect.any(Function));
+    expect(mountArtifactPreview).not.toHaveBeenCalled();
+    expect(createDraftLink).not.toHaveBeenCalled();
+  });
+
+  it('versions a public app, whose responses are cached, and sets no expiry', async () => {
+    publishedFrameCredential.mockResolvedValue({ origin: ORIGIN, credential: 'k3m7q2xwp6n4tahd5rzc2bvy7e', exp: null });
+    const out = await load();
+    expect(out.url).toBe(`${ORIGIN}/_t/k3m7q2xwp6n4tahd5rzc2bvy7e/?v=7.0`);
+    expect(out.expiresAt).toBeNull();
+  });
+
+  it.each(['no_access', 'password', 'update_needed', 'retry', 'unavailable'])('fails with the reason %s', async (reason) => {
+    publishedFrameCredential.mockResolvedValue({ error: reason });
+    const error = await load().catch((e) => e);
+    expect(error).toBeInstanceOf(HtmlPreviewError);
+    expect(error.stage).toBe('published');
+    expect(error.reason).toBe(reason);
+    expect(error.message).not.toBe('');
+  });
+
+  it('says it shows once published, and asks nothing, without an https address', async () => {
+    for (const url of ['', 'javascript:alert(1)']) {
+      const error = await loadHtmlPreview({ ...base, hasActionPath: false, artifact: app, publishedApp: { url } }).catch((e) => e);
+      expect(error.stage).toBe('published');
+      expect(error.reason).toBe('');
+    }
+    expect(publishedFrameCredential).not.toHaveBeenCalled();
   });
 });
