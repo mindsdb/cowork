@@ -232,6 +232,31 @@ describe('tools', () => {
 });
 
 describe('reconnect', () => {
+  it('refuses with not_mcp when the address now answers 200 with something that is not an MCP answer', async () => {
+    await seed();
+    const { deps, authorize } = loginServer({
+      [`POST ${SERVER_URL}`]: { status: 200, headers: { 'content-type': 'application/json' }, json: { hello: 'world' } },
+    });
+
+    expect(await reconnectCustom({ id: ID }, deps)).toMatchObject({ ok: false, code: 'not_mcp' });
+
+    expect(authorize).not.toHaveBeenCalled();
+    expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-old');
+    expect(server.held.get(ID)).not.toHaveProperty('access_token');
+  });
+
+  it('reconnects a server that needs no login and answers initialize as JSON', async () => {
+    await seed();
+    const { deps } = loginServer({
+      [`POST ${SERVER_URL}`]: {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+        json: { jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 'T', version: '1' } } },
+      },
+    });
+    expect(await reconnectCustom({ id: ID }, deps)).toEqual({ ok: true });
+  });
+
   it('names the login hosts first and opens nothing', async () => {
     await seed();
     const { deps, authorize } = loginServer();

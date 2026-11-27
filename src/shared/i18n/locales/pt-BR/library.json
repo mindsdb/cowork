@@ -709,6 +709,7 @@
       "invalidRequest": "Essa solicitação não é válida: {reason}",
       "tokenRejected": "O servidor não aceita mais este login. Reconecte para entrar de novo.",
       "unreachable": "Não foi possível acessar o servidor. Tente de novo mais tarde.",
+      "notMcp": "Esse endereço não é um servidor MCP. Confira o endereço e tente de novo.",
       "notHandedOver": "O app ainda não passou as configurações para este servidor. Reinicie o app e tente de novo.",
       "missing": "Esta conexão não existe mais.",
       "unreadable": "O registro desta conexão não pode ser lido agora. Tente de novo mais tarde."

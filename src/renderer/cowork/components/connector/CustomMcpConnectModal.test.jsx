@@ -106,6 +106,7 @@ describe('CustomMcpConnectModal', () => {
   it.each([
     [{ code: 'not_public', reason: 'x' }, "This address isn't on the public internet, so Anton won't connect to it."],
     [{ code: 'proxy_network', reason: 'x' }, "This network only allows connections through a proxy, which MCP servers added by URL can't use."],
+    [{ code: 'not_mcp', reason: 'x' }, "That address isn't an MCP server. Check the address and try again."],
     [{ code: 'needs_client_id', reason: 'x' }, 'This server needs a client ID. Add one under Advanced.'],
     [{ code: 'login_failed', reason: 'cancelled' }, "The login didn't finish: cancelled"],
     [{ code: 'grant_refused', reason: 'the token endpoint answered 400: invalid_grant' }, "The login didn't finish: the token endpoint answered 400: invalid_grant"],

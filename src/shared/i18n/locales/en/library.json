@@ -709,6 +709,7 @@
       "invalidRequest": "That request isn't valid: {reason}",
       "tokenRejected": "The server no longer accepts this login. Reconnect to sign in again.",
       "unreachable": "The server couldn't be reached. Try again later.",
+      "notMcp": "That address isn't an MCP server. Check the address and try again.",
       "notHandedOver": "The app hasn't handed this server its settings yet. Restart the app and try again.",
       "missing": "This connection no longer exists.",
       "unreadable": "This connection's record can't be read right now. Try again later."

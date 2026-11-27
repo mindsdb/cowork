@@ -243,6 +243,73 @@ describe('discoverMcpAuth against hostile answers', () => {
     expect(requests.every((r) => r.url.startsWith('https://mcp.example.com/'))).toBe(true);
   });
 
+  const INIT = { jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 'S', version: '1' } } };
+  const JSON_TYPE = { 'content-type': 'application/json' };
+  const SSE_TYPE = { 'content-type': 'text/event-stream' };
+
+  it.each([
+    ['an HTML page', { status: 200, headers: { 'content-type': 'text/html' }, text: '<html><body>hi</body></html>' }],
+    ['plain JSON', { status: 200, headers: JSON_TYPE, json: { hello: 'world' } }],
+    ['an empty body', { status: 200, headers: JSON_TYPE, text: '' }],
+    ['no content type', { status: 200, json: INIT }],
+    ['a JSON-RPC error with no result', { status: 200, headers: JSON_TYPE, json: { jsonrpc: '2.0', id: 1, error: { code: -32600, message: 'bad' } } }],
+    ['a reply for another request id', { status: 200, headers: JSON_TYPE, json: { ...INIT, id: 2 } }],
+    ['a reply with no id', { status: 200, headers: JSON_TYPE, json: { jsonrpc: '2.0', result: INIT.result } }],
+    ['a reply with both a result and an error', { status: 200, headers: JSON_TYPE, json: { ...INIT, error: { code: -1, message: 'x' } } }],
+    ['a server info with no name', { status: 200, headers: JSON_TYPE, json: { ...INIT, result: { ...INIT.result, serverInfo: { version: '1' } } } }],
+    ['a server info with no version', { status: 200, headers: JSON_TYPE, json: { ...INIT, result: { ...INIT.result, serverInfo: { name: 'S' } } } }],
+    ['an event stream reply for another id', { status: 200, headers: SSE_TYPE, text: `data: ${JSON.stringify({ ...INIT, id: 7 })}\n\n` }],
+    ['a result that is not an initialize result', { status: 200, headers: JSON_TYPE, json: { jsonrpc: '2.0', id: 1, result: {} } }],
+    ['an event stream with no initialize result', { status: 200, headers: SSE_TYPE, text: 'event: message\ndata: {"nope":1}\n\n' }],
+    ['an event stream whose last event has no blank line after it', { status: 200, headers: SSE_TYPE, text: `data: ${JSON.stringify(INIT)}\n` }],
+    ['an event stream with only a comment', { status: 200, headers: SSE_TYPE, text: ': ping\n\n' }],
+  ])('refuses 200 with %s as not_mcp', async (_label, answer) => {
+    const { fetchFn } = replay({ [`POST ${SERVER}`]: answer });
+    expect(await failure(discoverMcpAuth(SERVER, fetchFn))).toBe('not_mcp');
+  });
+
+  it('accepts an initialize result as JSON', async () => {
+    const { fetchFn, requests } = replay({ [`POST ${SERVER}`]: { status: 200, headers: JSON_TYPE, json: INIT } });
+    expect(await discoverMcpAuth(SERVER, fetchFn)).toEqual({ needsLogin: false });
+    expect(requests[0].init).toMatchObject({ settleEarly: expect.any(Function), decodeBody: true });
+  });
+
+  it('accepts an initialize result in an event stream, after a priming event, with CRLF and a BOM', async () => {
+    const text = `\uFEFFid: 0\r\ndata:\r\n\r\n: note\r\n\r\nevent: message\r\ndata: ${JSON.stringify(INIT)}\r\n\r\n`;
+    const { fetchFn } = replay({ [`POST ${SERVER}`]: { status: 200, headers: { 'content-type': 'text/event-stream; charset=utf-8' }, text } });
+    expect(await discoverMcpAuth(SERVER, fetchFn)).toEqual({ needsLogin: false });
+  });
+
+  it('accepts an initialize result that follows a notification in an event stream', async () => {
+    const note = { jsonrpc: '2.0', method: 'notifications/message', params: {} };
+    const text = `data: ${JSON.stringify(note)}\n\ndata: ${JSON.stringify(INIT)}\n\n`;
+    const { fetchFn } = replay({ [`POST ${SERVER}`]: { status: 200, headers: SSE_TYPE, text } });
+    expect(await discoverMcpAuth(SERVER, fetchFn)).toEqual({ needsLogin: false });
+  });
+
+  it('refuses as not_mcp a body the guarded fetch could not decode', async () => {
+    const fetchFn: GuardedFetch = async () => {
+      throw new GuardedFetchError('bad_response', 'bad body');
+    };
+    expect(await failure(discoverMcpAuth(SERVER, fetchFn))).toBe('not_mcp');
+  });
+
+  it('still runs the login discovery for a 401 challenge', async () => {
+    const { fetchFn } = replay({
+      [`POST ${SERVER}`]: { status: 401, headers: CHALLENGE },
+      'GET https://mcp.example.com/.well-known/oauth-protected-resource/mcp': { status: 404 },
+      'GET https://mcp.example.com/.well-known/oauth-protected-resource': { status: 404 },
+      'GET https://mcp.example.com/.well-known/oauth-authorization-server': { status: 404 },
+      'GET https://mcp.example.com/.well-known/openid-configuration': { status: 404 },
+    });
+    // No metadata anywhere: the server's own origin is its authorization server.
+    expect(await discoverMcpAuth(SERVER, fetchFn)).toMatchObject({
+      needsLogin: true,
+      resource: SERVER,
+      authorizationServer: { issuer: 'https://mcp.example.com' },
+    });
+  });
+
   it('refuses a server that answers neither as an MCP server nor with a login challenge', async () => {
     const { fetchFn } = replay({ [`POST ${SERVER}`]: { status: 500, text: 'oops' } });
     expect(await failure(discoverMcpAuth(SERVER, fetchFn))).toBe('not_mcp');

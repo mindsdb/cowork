@@ -16,6 +16,8 @@ import * as https from 'node:https';
 import type { IncomingMessage, RequestOptions } from 'node:http';
 import type { LookupAddress } from 'node:dns';
 import { isIP } from 'node:net';
+import { StringDecoder } from 'node:string_decoder';
+import * as zlib from 'node:zlib';
 import { isIpLiteralHost, isPublicAddress } from './public-address';
 
 export type GuardedFetchErrorCode =
@@ -42,6 +44,15 @@ export interface GuardedRequestInit {
   method?: string;
   headers?: Record<string, string> | Headers;
   body?: string | URLSearchParams;
+  /** Resolve as soon as a successful answer is a text/event-stream with a
+   *  complete event that ends the wait, without waiting for the stream to
+   *  close (an MCP server may keep it open). `true` ends it at the first event
+   *  that carries data; a function ends it at the first event whose data it
+   *  accepts. The body is then what arrived so far, decoded. */
+  settleEarly?: boolean | ((eventData: string) => boolean);
+  /** Ask for and decode gzip, deflate and br bodies. The decoded size is held
+   *  to `maxBytes` too. Without it the request asks for no encoding. */
+  decodeBody?: boolean;
 }
 
 export type GuardedFetch = (input: string | URL, init?: GuardedRequestInit) => Promise<Response>;
@@ -178,6 +189,9 @@ function send(
   const host = bare(url.hostname);
   const body = init.body === undefined ? undefined : String(init.body);
   const headers: Record<string, string> = { ...headerRecord(init.headers), host: url.host };
+  if (!Object.keys(headers).some((name) => name.toLowerCase() === 'accept-encoding')) {
+    headers['accept-encoding'] = init.decodeBody ? 'gzip, deflate, br' : 'identity';
+  }
   if (body !== undefined && !Object.keys(headers).some((name) => name.toLowerCase() === 'content-length')) {
     headers['content-length'] = String(Buffer.byteLength(body));
   }
@@ -196,35 +210,132 @@ function send(
 
   return new Promise<Response>((resolve, reject) => {
     let settled = false;
+    let teardown: (() => void) | null = null; // set once a response has a decoder to stop
     const finish = (outcome: () => void) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      teardown?.();
       outcome();
     };
     const req = request(requestOptions, (res: IncomingMessage) => {
-      const chunks: Buffer[] = [];
-      let size = 0;
-      res.on('data', (chunk: Buffer) => {
-        size += chunk.length;
-        if (size > maxBytes) {
-          req.destroy();
-          finish(() => reject(new GuardedFetchError('too_large', 'the server sent more than the allowed size')));
-          return;
-        }
-        chunks.push(chunk);
-      });
-      res.on('end', () =>
+      const chunks: Buffer[] = []; // the body handed back: decoded when `decode`
+      const rawChunks: Buffer[] = []; // wire bytes held for a one-shot decode
+      let wire = 0;
+      let out = 0;
+      const status = res.statusCode ?? 0;
+      const okStatus = status >= 200 && status < 300;
+      const encoding = String(res.headers['content-encoding'] ?? '').trim().toLowerCase();
+      const decode = init.decodeBody === true && encoding !== '' && encoding !== 'identity';
+      const early = !!init.settleEarly && okStatus && /^text\/event-stream\b/i.test(String(res.headers['content-type'] ?? ''));
+      const matches = typeof init.settleEarly === 'function' ? init.settleEarly : (data: string) => data.trim() !== '';
+      const scanner = early ? createSseScanner(matches) : null;
+      const utf8 = new StringDecoder('utf8');
+      let decoder: zlib.Gunzip | zlib.Inflate | zlib.InflateRaw | zlib.BrotliDecompress | null = null;
+      let held: Buffer[] = [];
+      teardown = () => decoder?.destroy();
+      // A refusal's body is never read, so it is never decompressed either.
+      const skipBody = decode && !okStatus;
+      const stop = () => {
+        req.destroy();
+        decoder?.destroy();
+      };
+      const fail = (code: GuardedFetchErrorCode, message: string) => {
+        stop();
+        finish(() => reject(new GuardedFetchError(code, message)));
+      };
+      const resolveWith = (raw: Buffer) =>
         finish(() => {
           // Node's parser passes any three-digit status, and `Response` throws
           // outside 200-599; thrown here it would escape every handler.
           try {
-            resolve(toResponse(res, Buffer.concat(chunks)));
+            resolve(toResponse(res, raw, decode));
           } catch {
             reject(new GuardedFetchError('bad_response', 'the server sent a response that is not valid HTTP'));
           }
-        }),
-      );
+        });
+      // Takes body bytes (decoded ones when `decode`); true once the answer is settled.
+      const accept = (buf: Buffer): boolean => {
+        if (settled) return true;
+        out += buf.length;
+        if (out > maxBytes) {
+          fail('too_large', 'the server sent more than the allowed size');
+          return true;
+        }
+        chunks.push(buf);
+        if (scanner && scanner.feed(utf8.write(buf))) {
+          stop();
+          resolveWith(Buffer.concat(chunks));
+          return true;
+        }
+        return false;
+      };
+      const feedDecoder = (chunk: Buffer) => {
+        let first = chunk;
+        if (!decoder) {
+          if (encoding === 'deflate') {
+            // Zlib-wrapped or raw deflate: tell them apart by the two-byte header.
+            held.push(chunk);
+            first = Buffer.concat(held);
+            if (first.length < 2) return;
+            held = [];
+            const zlibWrapped = (first[0] & 0x0f) === 8 && ((first[0] << 8) | first[1]) % 31 === 0;
+            decoder = zlibWrapped ? zlib.createInflate() : zlib.createInflateRaw();
+          } else if (encoding === 'gzip' || encoding === 'x-gzip') {
+            decoder = zlib.createGunzip();
+          } else if (encoding === 'br') {
+            decoder = zlib.createBrotliDecompress();
+          } else {
+            fail('bad_response', 'the server used an encoding that was not asked for');
+            return;
+          }
+          decoder.on('data', (piece: Buffer) => {
+            accept(piece);
+          });
+          decoder.on('error', (err: unknown) => {
+            if ((err as { code?: string } | null)?.code === 'ERR_BUFFER_TOO_LARGE') fail('too_large', 'the server sent more than the allowed size');
+            else fail('bad_response', 'the server sent a body that could not be decoded');
+          });
+          decoder.on('end', () => {
+            if (!settled) resolveWith(Buffer.concat(chunks));
+          });
+        }
+        decoder.write(first);
+      };
+      res.on('data', (chunk: Buffer) => {
+        if (settled) return;
+        wire += chunk.length;
+        if (wire > maxBytes) {
+          fail('too_large', 'the server sent more than the allowed size');
+          return;
+        }
+        if (skipBody) return;
+        if (!decode) accept(chunk);
+        else if (early) feedDecoder(chunk);
+        else rawChunks.push(chunk);
+      });
+      res.on('end', () => {
+        if (settled) return;
+        if (!decode) {
+          resolveWith(Buffer.concat(chunks));
+          return;
+        }
+        if (skipBody) {
+          resolveWith(Buffer.alloc(0));
+          return;
+        }
+        if (early) {
+          // The decoder's own `end` settles; an empty body or a stub header has none.
+          if (decoder) decoder.end();
+          else if (held.length > 0) fail('bad_response', 'the server sent a body that could not be decoded');
+          else fail('bad_response', 'the server sent a body that could not be decoded');
+          return;
+        }
+        decodeContent(Buffer.concat(rawChunks), encoding, maxBytes).then(
+          (decoded) => resolveWith(decoded),
+          (err: unknown) => finish(() => reject(err)),
+        );
+      });
       res.on('error', () => finish(() => reject(new GuardedFetchError('network', 'the connection failed'))));
     });
     const timer = setTimeout(() => {
@@ -237,9 +348,96 @@ function send(
   });
 }
 
-function toResponse(res: IncomingMessage, body: Buffer): Response {
+/* An incremental server-sent-event reader. `feed` takes the next piece of
+   text and returns true once a complete event whose data satisfies `matches`
+   has been seen. It keeps only the unfinished line and the data of the event
+   being read, so the work is linear in the bytes received. A leading BOM is
+   dropped; CRLF, CR and LF all end a line, including a CRLF split across
+   pieces. Comments and events without data (a priming event) never match. */
+function createSseScanner(matches: (data: string) => boolean): { feed: (text: string) => boolean } {
+  let line = '';
+  let data: string[] = [];
+  let afterCR = false;
+  let started = false;
+  const endLine = (): boolean => {
+    const current = line;
+    line = '';
+    if (current === '') {
+      const joined = data.join('\n');
+      const hadData = data.length > 0;
+      data = [];
+      return hadData && joined.trim() !== '' && matches(joined);
+    }
+    if (current.startsWith('data:')) data.push(current.slice(5).replace(/^ /, ''));
+    return false;
+  };
+  return {
+    feed(text) {
+      let from = 0;
+      if (!started && text.length > 0) {
+        started = true;
+        if (text.charCodeAt(0) === 0xfeff) from = 1;
+      }
+      let start = from;
+      for (let i = from; i < text.length; i++) {
+        const c = text[i];
+        if (c !== '\r' && c !== '\n') {
+          afterCR = false;
+          continue;
+        }
+        line += text.slice(start, i);
+        start = i + 1;
+        if (c === '\n' && afterCR) {
+          afterCR = false;
+          continue;
+        }
+        afterCR = c === '\r';
+        if (endLine()) {
+          return true;
+        }
+      }
+      line += text.slice(start);
+      return false;
+    },
+  };
+}
+
+function decodeContent(raw: Buffer, encoding: string, maxBytes: number): Promise<Buffer> {
+  const limit = { maxOutputLength: maxBytes };
+  const run = (decoder: (input: Buffer, options: zlib.ZlibOptions | zlib.BrotliOptions, cb: (err: Error | null, out: Buffer) => void) => void, input: Buffer) =>
+    new Promise<Buffer>((resolve, reject) => {
+      decoder(input, limit, (err, out) => (err ? reject(err) : resolve(out)));
+    });
+  const fail = (err: unknown): never => {
+    const code = (err as { code?: string } | null)?.code;
+    if (code === 'ERR_BUFFER_TOO_LARGE') throw new GuardedFetchError('too_large', 'the server sent more than the allowed size');
+    throw new GuardedFetchError('bad_response', 'the server sent a body that could not be decoded');
+  };
+  let decoded: Promise<Buffer>;
+  switch (encoding) {
+    case 'gzip':
+    case 'x-gzip':
+      decoded = run(zlib.gunzip, raw);
+      break;
+    case 'deflate':
+      // Servers send zlib-wrapped or raw deflate; accept either.
+      decoded = run(zlib.inflate, raw).catch((err) =>
+        (err as { code?: string }).code === 'ERR_BUFFER_TOO_LARGE' ? Promise.reject(err) : run(zlib.inflateRaw, raw),
+      );
+      break;
+    case 'br':
+      decoded = run(zlib.brotliDecompress, raw);
+      break;
+    default:
+      return Promise.reject(new GuardedFetchError('bad_response', 'the server used an encoding that was not asked for'));
+  }
+  return decoded.catch(fail);
+}
+
+function toResponse(res: IncomingMessage, body: Buffer, decoded = false): Response {
   const headers = new Headers();
   for (const [name, value] of Object.entries(res.headers)) {
+    if (decoded && (name === 'content-encoding' || name === 'content-length')) continue;
     if (Array.isArray(value)) value.forEach((item) => headers.append(name, item));
     else if (value !== undefined) headers.set(name, value);
   }

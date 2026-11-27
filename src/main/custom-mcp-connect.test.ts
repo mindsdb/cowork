@@ -143,7 +143,14 @@ const LOGIN_SERVER: Record<string, Answer> = {
   [`POST ${AUTH}/token`]: { status: 200, json: { access_token: 'AT-1', refresh_token: 'RT-1', token_type: 'Bearer', expires_in: 3600 } },
 };
 
-const NO_LOGIN_SERVER: Record<string, Answer> = { [`POST ${SERVER_URL}`]: { status: 200, json: { jsonrpc: '2.0', id: 1, result: {} } } };
+const INITIALIZE_RESULT = {
+  jsonrpc: '2.0',
+  id: 1,
+  result: { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'Tracker', version: '1' } },
+};
+const NO_LOGIN_SERVER: Record<string, Answer> = {
+  [`POST ${SERVER_URL}`]: { status: 200, headers: { 'content-type': 'application/json' }, json: INITIALIZE_RESULT },
+};
 
 let ids: string[];
 function deps(table: Record<string, Answer>, overrides: Partial<ConnectDeps> = {}) {
@@ -240,6 +247,24 @@ describe('connectCustomMcp', () => {
     expect(authorize).not.toHaveBeenCalled();
     expect(server.held.get(ID)).not.toHaveProperty('access_token');
     expect(await readPart(store.root!, ID, 'refresh')).toBeNull();
+    expect(hasRefreshLoop(store.root!, ID)).toBe(false);
+  });
+
+  it.each([
+    ['an HTML page', { status: 200, headers: { 'content-type': 'text/html' } }],
+    ['plain JSON', { status: 200, headers: { 'content-type': 'application/json' }, json: { hello: 'world' } }],
+    ['an empty body', { status: 200, headers: { 'content-type': 'application/json' } }],
+    ['a JSON-RPC error', { status: 200, headers: { 'content-type': 'application/json' }, json: { jsonrpc: '2.0', id: 1, error: { code: -1, message: 'no' } } }],
+  ])('refuses a 200 answer that is %s as not an MCP server and stores nothing', async (_label, answer) => {
+    const { deps: d, authorize } = deps({ [`POST ${SERVER_URL}`]: answer });
+
+    const result = await connectCustomMcp({ label: 'Page', url: SERVER_URL }, d);
+
+    expect(result).toMatchObject({ ok: false, code: 'not_mcp' });
+    expect(authorize).not.toHaveBeenCalled();
+    expect(server.records.size).toBe(0);
+    expect(server.held.size).toBe(0);
+    expect(keychain.entries.size).toBe(0);
     expect(hasRefreshLoop(store.root!, ID)).toBe(false);
   });
 

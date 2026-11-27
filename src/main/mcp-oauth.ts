@@ -12,7 +12,7 @@
  * meant for another service under its own name.
  */
 
-import type { GuardedFetch } from './guarded-fetch';
+import { GuardedFetchError, type GuardedFetch } from './guarded-fetch';
 
 export type McpOAuthErrorCode =
   | 'not_mcp'
@@ -84,6 +84,77 @@ const INITIALIZE_BODY = JSON.stringify({
   params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'MindsHub Cowork', version: '1' } },
 });
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+const INITIALIZE_ID = 1;
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+/* Whether a JSON-RPC message is the reply to the probe's initialize request. */
+function isInitializeReply(message: unknown): message is Record<string, unknown> {
+  return isRecord(message) && message.jsonrpc === '2.0' && message.id === INITIALIZE_ID && ('result' in message || 'error' in message);
+}
+
+/* Whether a JSON-RPC message is a successful initialize result for the probe:
+   the probe's id, a result and no error, and the fields MCP requires. */
+function isInitializeResult(message: unknown): boolean {
+  if (!isInitializeReply(message) || 'error' in message || !isRecord(message.result)) return false;
+  const { protocolVersion, capabilities, serverInfo } = message.result;
+  return (
+    typeof protocolVersion === 'string' && protocolVersion !== '' &&
+    isRecord(capabilities) &&
+    isRecord(serverInfo) &&
+    typeof serverInfo.name === 'string' && serverInfo.name !== '' &&
+    typeof serverInfo.version === 'string' && serverInfo.version !== ''
+  );
+}
+
+/* The data of each event in an event-stream body, in order. */
+function sseEventData(rawBody: string): string[] {
+  return rawBody
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n?/g, '\n')
+    .split('\n\n')
+    .slice(0, -1) // the last piece is empty or an event cut off before its blank line
+    .map((event) =>
+      event
+        .split('\n')
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(5).replace(/^ /, ''))
+        .join('\n'),
+    )
+    .filter((data) => data.trim() !== '');
+}
+
+/* Whether a 200 answer to `initialize` is a valid MCP answer: a JSON-RPC
+   result as JSON, or carried in the data of an event stream, where
+   notifications may come first and the reply to the probe decides. */
+function isInitializeAnswer(contentType: string | null, rawBody: string): boolean {
+  const type = (contentType ?? '').split(';')[0].trim().toLowerCase();
+  if (type === 'application/json') return isInitializeResult(parseJson(rawBody.replace(/^\uFEFF/, '')));
+  if (type === 'text/event-stream') {
+    for (const data of sseEventData(rawBody)) {
+      const message = parseJson(data);
+      if (isInitializeReply(message)) return isInitializeResult(message);
+    }
+  }
+  return false;
+}
+
+/* Ends the wait on an event stream at the reply to the probe, not at a
+   notification the server sends first. */
+function endsInitializeWait(eventData: string): boolean {
+  return isInitializeReply(parseJson(eventData));
+}
+
 /**
  * Asks the MCP server at `serverUrl` whether it needs a login, and if so,
  * where and for which resource. `serverUrl` is the canonical URL the server
@@ -96,8 +167,22 @@ export async function discoverMcpAuth(serverUrl: string, fetchFn: GuardedFetch):
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
     body: INITIALIZE_BODY,
+    settleEarly: endsInitializeWait,
+    decodeBody: true,
+  }).catch((err: unknown) => {
+    // A body that cannot be decoded is not what an MCP server sends.
+    if (err instanceof GuardedFetchError && err.code === 'bad_response') {
+      throw new McpOAuthError('not_mcp', 'the server answered with something that is not an MCP response');
+    }
+    throw err;
   });
-  if (probe.ok) return { needsLogin: false };
+  if (probe.ok) {
+    const body = await probe.text().catch(() => '');
+    if (!isInitializeAnswer(probe.headers.get('content-type'), body)) {
+      throw new McpOAuthError('not_mcp', 'the server did not answer the MCP initialize request');
+    }
+    return { needsLogin: false };
+  }
   if (probe.status !== 401) {
     throw new McpOAuthError('not_mcp', `the server answered ${probe.status} instead of an MCP response`);
   }
