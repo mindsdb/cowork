@@ -489,7 +489,8 @@
     "cloudAvailable": "可在此使用（MindsHub Cloud）",
     "available": "可用的连接器",
     "featured": "精选",
-    "desktopOnly": "可在 Cowork 桌面应用中使用的连接器"
+    "desktopOnly": "可在 Cowork 桌面应用中使用的连接器",
+    "bot": "机器人"
   },
   "sharepoint": {
     "folderListFailed": "无法列出此文件夹的内容。",
@@ -536,6 +537,18 @@
       "skipped": "已跳过 {count, plural, other {# 项}}：",
       "done": "完成"
     }
+  },
+  "teamsBot": {
+    "title": "Microsoft Teams（机器人）",
+    "about": "在 Teams 聊天和频道中向 {name} 提问。这是一个机器人，不是数据连接器：{name} 无法读取你的 Teams 消息。",
+    "notConnected": "先连接，然后在 Teams 中给 {name} 发一条消息。你的 Teams 账户会通过 Microsoft 登录名与此账户匹配，该登录名必须是你的 {name} 邮箱。",
+    "waiting": "此处已连接。在 Teams 中给 {name} 发一条消息即可完成：这会把你的 Teams 账户与此账户关联。",
+    "connected": "已连接。在 Teams 中向 {name} 提问。",
+    "connectedAs": "已以 {teamsName} 身份连接。",
+    "connect": "连接",
+    "disconnect": "断开连接",
+    "close": "关闭",
+    "unavailable": "Teams 连接暂不可用，请稍后再试。"
   },
   "dataVault": {
     "howTo": "操作指南",
