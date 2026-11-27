@@ -98,3 +98,94 @@ export async function viewSessionFrameUrl(
     return pageUrl;
   }
 }
+
+// A link key, as the view host's worker checks it (LINK_KEY_SHAPE).
+const LINK_KEY = /^[a-z2-7]{26}$/;
+// An artifact host: <host_key>[-<env>].mindshub.co, the host key as the
+// content worker's HOST_KEY_PATTERN. A draft host never matches: "draft" is
+// shorter than a host key.
+const ARTIFACT_HOST_ORIGIN = /^https:\/\/[a-z0-9]{6,30}(?:-[a-z0-9]+)?\.mindshub\.co$/;
+// A token (v1.<payload>.<signature>) or a link key: one path segment, and
+// never "." or "..", which would frame the artifact host's root.
+const FRAME_CREDENTIAL = /^(?!\.+$)[A-Za-z0-9._-]{1,4096}$/;
+
+export const PUBLISHED_FRAME_TIMEOUT_MS = 5_000;
+
+export type PublishedFrameError = 'no_access' | 'password' | 'update_needed' | 'retry' | 'unavailable';
+export type PublishedFrame = { origin: string; credential: string; exp: number | null } | { error: PublishedFrameError };
+
+/** `value` when it is an artifact host's origin, else ''. */
+export function artifactHostOrigin(value: unknown): string {
+  return typeof value === 'string' && ARTIFACT_HOST_ORIGIN.test(value) ? value : '';
+}
+
+/**
+ * The frame of a published full-stack app's preview: the app's artifact host
+ * and the credential for its /_t/ prefix. The view host's _cowork_token
+ * trades the user's Keycloak token for it, which goes in the POST body to
+ * this environment's own view host only, as in viewSessionFrameUrl. The
+ * preview then frames the app without the view host's shell.
+ *
+ * Never throws: each failure is a reason the viewer shows as a notice.
+ */
+export async function publishedFrameCredential(
+  publishedUrl: string,
+  getToken: () => Promise<string | null>,
+): Promise<PublishedFrame> {
+  if (typeof window === 'undefined' || window.location.protocol !== 'https:') return { error: 'unavailable' };
+  if (!besideViewHost()) return { error: 'unavailable' };
+  let page: URL;
+  let viewOrigin: string;
+  try {
+    page = new URL(publishedUrl);
+    viewOrigin = new URL(MINDS_VIEW_URL).origin;
+  } catch {
+    return { error: 'unavailable' };
+  }
+  if (page.origin !== viewOrigin) return { error: 'unavailable' };
+  const id = /^\/a\/([^/]+)(?:\/|$)/.exec(page.pathname)?.[1];
+  if (!id) return { error: 'unavailable' };
+  // An address from before the artifact hosts (/a/<report id>) has no link
+  // key; the next publish of the app gives it one.
+  if (!LINK_KEY.test(id)) return { error: 'update_needed' };
+  let token: string | null = null;
+  try {
+    token = await getToken();
+  } catch {
+    // A failed refresh may succeed on the next try.
+    return { error: 'retry' };
+  }
+  if (!token) return { error: 'unavailable' };
+  let response: Response;
+  try {
+    response = await fetch(`${viewOrigin}/a/${id}/_cowork_token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+      credentials: 'omit',
+      redirect: 'error',
+      signal: AbortSignal.timeout(PUBLISHED_FRAME_TIMEOUT_MS),
+    });
+  } catch {
+    // A network error, the timeout, or a refused preflight: any answer
+    // without CORS headers, such as a view host without this route yet.
+    return { error: 'retry' };
+  }
+  const body = await response.json().catch(() => null);
+  if (response.ok) {
+    const origin = artifactHostOrigin(body?.origin);
+    const credential = typeof body?.credential === 'string' && FRAME_CREDENTIAL.test(body.credential)
+      ? body.credential
+      : '';
+    const exp = body?.exp === null ? null : Number.isFinite(body?.exp) ? Number(body.exp) : undefined;
+    if (!origin || !credential || exp === undefined) return { error: 'unavailable' };
+    return { origin, credential, exp };
+  }
+  if (response.status === 403 && (body?.reason === 'no_access' || body?.reason === 'password')) {
+    return { error: body.reason };
+  }
+  // An expired session, the rate limit, and any 5xx (a lambda fault or
+  // timeout, the worker's 502) may pass on a reload.
+  if (response.status === 401 || response.status === 429 || response.status >= 500) return { error: 'retry' };
+  return { error: 'unavailable' };
+}
