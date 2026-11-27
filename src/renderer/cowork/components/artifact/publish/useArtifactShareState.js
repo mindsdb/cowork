@@ -16,6 +16,9 @@
  * before it answers they would show nothing picked, with nobody listed.
  * A failed read offers Retry and saves nothing.
  *
+ * On Desktop `orgAudience` (useDesktopOrgAudience) offers "Everyone at
+ * ‹org›" alone; Save never waits for it, so `sharingStatus` stays ready there.
+ *
  * Published is not the same as shared: an owner-only artifact has a URL that
  * only its owner can open. Until the access route answers, an org card says
  * nothing about who a restricted artifact reaches, so neither the button nor
@@ -23,20 +26,24 @@
  * card's own to say).
  */
 
-import { artifactShareState, isOrgSharingOn, permissionsUnknown } from '../../../lib/orgSharing';
+import { artifactShareState, isOrgAudienceOn, isOrgSharingOn, permissionsUnknown } from '../../../lib/orgSharing';
 import { LOAD_STATUS } from '../../../lib/sharingContract';
 
 /** @param {ReturnType<typeof import('./usePublish').usePublish>} pub */
 export function useArtifactShareState(pub) {
   const orgMode = pub.orgMode === true;
   const sharing = isOrgSharingOn(pub.orgSharing?.capabilities) ? pub.orgSharing : null;
-  const orgName = sharing?.orgName ?? null;
+  // Desktop's "Everyone at ‹org›" alone (useDesktopOrgAudience). Kept apart
+  // from `sharing`, which PublishMenu reads as teams and people.
+  const orgAudience = !sharing && isOrgAudienceOn(pub.orgAudience?.capabilities) ? pub.orgAudience : null;
+  const orgName = sharing ? sharing.orgName ?? null : orgAudience?.orgName ?? null;
   const sharingStatus = orgMode ? pub.orgSharing.status : LOAD_STATUS.READY;
   const accessStatus = !orgMode || pub.accessLoaded
     ? LOAD_STATUS.READY
     : (pub.accessLoadFailed ? LOAD_STATUS.ERROR : LOAD_STATUS.LOADING);
   const shareState = artifactShareState(pub, {
     orgSharing: !!sharing,
+    orgAudience: !!orgAudience,
     orgName,
     teams: sharing?.teams?.teams || [],
     audienceKnown: accessStatus === LOAD_STATUS.READY,
@@ -44,6 +51,7 @@ export function useArtifactShareState(pub) {
   return {
     orgMode,
     sharing,
+    orgAudience,
     orgName,
     sharingStatus,
     sharingReady: sharingStatus === LOAD_STATUS.READY,
