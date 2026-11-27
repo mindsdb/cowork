@@ -46,6 +46,11 @@ export function useArtifactCommentLayer(
     markersVisible = true,
     // Reads a comment image by id as a Blob; absent: the layer shows none.
     loadImage = null,
+    // Whether the frame holds a comment layer at all. A published app's frame
+    // holds only the app's own code, so nothing is ever posted to it. Not
+    // `enabled`: opening Comments asks for comment mode in the same commit
+    // that turns `enabled` on, and that request must reach the layer.
+    hasLayer = true,
   } = {},
 ) {
   const [mode, setMode] = useState(false); // comment-placement active in the iframe
@@ -72,12 +77,11 @@ export function useArtifactCommentLayer(
     onCreate, onReply, onStatus, onEditThread, onDeleteThread, onEditReply, onDeleteReply,
   };
 
-  // A disabled layer (a published app's frame holds no layer) is never posted to.
-  const enabledRef = useRef(enabled);
-  enabledRef.current = enabled;
+  const hasLayerRef = useRef(hasLayer);
+  hasLayerRef.current = hasLayer;
 
   const postToLayer = useCallback((msg) => {
-    if (!enabledRef.current) return;
+    if (!hasLayerRef.current) return;
     const win = iframeRef.current && iframeRef.current.contentWindow;
     if (!win) return;
     try { win.postMessage({ source: 'anton-comments', ...msg }, '*'); } catch { /* frame gone */ }

@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { useArtifactCommentLayer } from './useArtifactCommentLayer';
@@ -24,17 +24,34 @@ function FramelessHarness({ handlers }) {
   return null;
 }
 
-function DisabledHarness({ onLayer }) {
+function LayerlessHarness({ onLayer }) {
   const iframeRef = useRef(null);
-  const layer = useArtifactCommentLayer(iframeRef, { threads: [], viewer: { id: 'u1' }, enabled: false });
+  const layer = useArtifactCommentLayer(iframeRef, {
+    threads: [], viewer: { id: 'u1' }, enabled: true, hasLayer: false,
+  });
   onLayer(layer);
   return <iframe ref={iframeRef} title="Published app" srcDoc="<html></html>" />;
 }
 
+/* Opening Comments as the viewer does: one effect turns the panel on (and
+   with it `enabled`) and asks for comment mode in the same commit. */
+function OpeningHarness({ open }) {
+  const iframeRef = useRef(null);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const layer = useArtifactCommentLayer(iframeRef, { threads: [], viewer: { id: 'u1' }, enabled: commentsOpen });
+  useEffect(() => {
+    if (!open) return;
+    setCommentsOpen(true);
+    layer.enterModeWhenReady();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+  return <iframe ref={iframeRef} title="Draft preview" srcDoc="<html></html>" />;
+}
+
 describe('useArtifactCommentLayer postMessage bridge', () => {
-  it('posts nothing to the frame while the layer is disabled', () => {
+  it('posts nothing to a frame that holds no layer', () => {
     let layer;
-    render(<DisabledHarness onLayer={(value) => { layer = value; }} />);
+    render(<LayerlessHarness onLayer={(value) => { layer = value; }} />);
     const frame = screen.getByTitle('Published app');
     const postMessageSpy = vi.spyOn(frame.contentWindow, 'postMessage');
 
@@ -50,6 +67,16 @@ describe('useArtifactCommentLayer postMessage bridge', () => {
     }));
 
     expect(postMessageSpy).not.toHaveBeenCalled();
+  });
+
+  it('asks for comment mode in the commit that opens Comments, when the layer is already there', () => {
+    const { rerender } = render(<OpeningHarness open={false} />);
+    const frame = screen.getByTitle('Draft preview');
+    const spy = vi.spyOn(frame.contentWindow, 'postMessage');
+
+    rerender(<OpeningHarness open />);
+
+    expect(spy.mock.calls.map(([msg]) => msg.type)).toContain('enter-mode');
   });
 
   it('answers a ready announcement from a srcdoc iframe with the current thread list', () => {

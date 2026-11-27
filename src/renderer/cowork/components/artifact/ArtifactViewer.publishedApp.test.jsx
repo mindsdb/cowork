@@ -178,7 +178,7 @@ afterEach(() => {
   cleanup();
 });
 
-const ORIGIN = 'https://f5h8n2w6-staging.mindshub.co';
+const ORIGIN = 'https://f5h8n2w6-staging.mindshub.test';
 const frameOf = () => screen.findByTitle('Team Shared Todo');
 
 describe('ArtifactViewer: a full-stack app on an org deployment', () => {

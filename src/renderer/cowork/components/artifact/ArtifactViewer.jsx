@@ -500,6 +500,7 @@ export function ArtifactViewer({
     // A live app's pane holds the app's own code and no comment layer, so no
     // frame there may drive comments.
     enabled: open && commentsEnabled && commentsOpen && !liveAppView && frameHasOurShim,
+    hasLayer: frameHasOurShim,
     markersVisible: commentsOpen && markersShown,
     onCreate: createArtifactComment,
     onReply: replyToComment,
@@ -1118,8 +1119,9 @@ export function ArtifactViewer({
   usePreviewCheckTarget({
     slug: artifact?.slug || artifactFolder.split(/[\\/]/).filter(Boolean).pop() || '',
     // A published app's frame sends no diagnostics, and a reload would only
-    // mint a new token and report "clean".
-    enabled: framedPreview && frameHasOurShim,
+    // mint a new token and report "clean". Decided by the artifact, not by
+    // previewKind, which is empty while each load fetches its credential.
+    enabled: framedPreview && !(orgMode && isBackendArtifact),
     reload: reloadPreviewSmoothly,
     iframeReady,
     errors: diagnostics.errors,

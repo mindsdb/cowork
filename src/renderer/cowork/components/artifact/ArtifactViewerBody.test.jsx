@@ -404,7 +404,7 @@ describe('ArtifactViewerBody side panel', () => {
 });
 
 describe('ArtifactViewerBody published app preview', () => {
-  const PAGE = 'https://f5h8n2w6-staging.mindshub.co/_t/v1.p.s/';
+  const PAGE = 'https://f5h8n2w6-staging.mindshub.test/_t/v1.p.s/';
   const PUBLISHED = 'https://view.staging.mindshub.ai/a/k3m7q2xwp6n4tahd5rzc2bvy7e/';
 
   it("gives the app's frame what the published page's frame has", () => {
