@@ -232,6 +232,46 @@ describe('tools', () => {
 });
 
 describe('reconnect', () => {
+  const INITIALIZE_RESULT = { protocolVersion: '2025-06-18', capabilities: {}, serverInfo: { name: 'Tracker', version: '1' } };
+
+  it('reports success for a server with no login that still answers as MCP, as JSON or as an event stream', async () => {
+    await seed();
+    const asJson = loginServer({ [`POST ${SERVER_URL}`]: { status: 200, headers: { 'content-type': 'application/json' }, json: { jsonrpc: '2.0', id: 1, result: INITIALIZE_RESULT } } });
+    expect(await reconnectCustom({ id: ID }, asJson.deps)).toEqual({ ok: true });
+
+    const stream = `data: ${JSON.stringify({ jsonrpc: '2.0', id: 1, result: INITIALIZE_RESULT })}\n\n`;
+    const asStream = loginServer().deps;
+    asStream.fetchFn = async () => new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+    expect(await reconnectCustom({ id: ID }, asStream)).toEqual({ ok: true });
+  });
+
+  it.each([
+    ['an HTML page', { status: 200, headers: { 'content-type': 'text/html' } }],
+    ['plain JSON', { status: 200, headers: { 'content-type': 'application/json' }, json: { ok: true } }],
+    ['an empty body', { status: 200, headers: { 'content-type': 'application/json' } }],
+    ['a JSON-RPC error with no result', { status: 200, headers: { 'content-type': 'application/json' }, json: { jsonrpc: '2.0', id: 1, error: { code: -1, message: 'x' } } }],
+  ] satisfies Array<[string, Answer]>)('fails with not_mcp when the address now answers 200 with %s', async (_name, answer) => {
+    await seed();
+    const { deps, authorize } = loginServer({ [`POST ${SERVER_URL}`]: answer });
+
+    expect(await reconnectCustom({ id: ID }, deps)).toMatchObject({ ok: false, code: 'not_mcp' });
+
+    expect(authorize).not.toHaveBeenCalled();
+    expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-old');
+    expect(server.records.has(ID)).toBe(true);
+  });
+
+  it.each([500, 503])('fails with unreachable when the address answers %i, and keeps the connection', async (status) => {
+    await seed();
+    const { deps, authorize } = loginServer({ [`POST ${SERVER_URL}`]: { status } });
+
+    expect(await reconnectCustom({ id: ID }, deps)).toMatchObject({ ok: false, code: 'unreachable' });
+
+    expect(authorize).not.toHaveBeenCalled();
+    expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-old');
+    expect(server.records.has(ID)).toBe(true);
+  });
+
   it('names the login hosts first and opens nothing', async () => {
     await seed();
     const { deps, authorize } = loginServer();

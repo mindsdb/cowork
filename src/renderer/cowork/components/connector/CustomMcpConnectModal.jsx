@@ -54,6 +54,8 @@ export function connectErrorMessage(t, result) {
       return t('customMcp.error.tokenRejected');
     case 'unreachable':
       return t('customMcp.error.unreachable');
+    case 'not_mcp':
+      return t('customMcp.error.notMcp');
     case 'not_handed_over':
       return t('customMcp.error.notHandedOver');
     case 'custom_connection_missing':

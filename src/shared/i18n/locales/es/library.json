@@ -711,7 +711,8 @@
       "unreachable": "No se pudo contactar con el servidor. Inténtalo más tarde.",
       "notHandedOver": "La app aún no le ha pasado su configuración a este servidor. Reinicia la app e inténtalo de nuevo.",
       "missing": "Esta conexión ya no existe.",
-      "unreadable": "El registro de esta conexión no se puede leer ahora. Inténtalo más tarde."
+      "unreadable": "El registro de esta conexión no se puede leer ahora. Inténtalo más tarde.",
+      "notMcp": "Esta dirección no respondió como un servidor MCP. Comprueba que sea la dirección MCP del servidor."
     },
     "detail": {
       "server": "Servidor",
