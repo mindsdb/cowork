@@ -162,6 +162,7 @@ contextBridge.exposeInMainWorld('antontron', {
   mindshubSetUserKey: (key: string) => ipcRenderer.invoke(IPC.MINDSHUB_SET_USER_KEY, key),
   mindshubListOrgs: () => ipcRenderer.invoke(IPC.MINDSHUB_LIST_ORGS),
   mindshubSwitchOrg: (organizationId: string) => ipcRenderer.invoke(IPC.MINDSHUB_SWITCH_ORG, organizationId),
+  mindshubArtifactSharePermission: () => ipcRenderer.invoke(IPC.MINDSHUB_ARTIFACT_SHARE_PERMISSION),
   mindshubBrandImages: (urls: unknown) => ipcRenderer.invoke(IPC.MINDSHUB_BRAND_IMAGES, urls),
   mindshubOrgIconUris: (urls: unknown) => ipcRenderer.invoke(IPC.MINDSHUB_ORG_ICON_URIS, urls),
   // Fires whenever the MindsHub session state changes in the main

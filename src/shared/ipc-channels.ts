@@ -126,6 +126,7 @@ export const IPC = {
   // which is what the gateway reads to decide whose credits a turn spends.
   MINDSHUB_LIST_ORGS: 'mindshub:list-orgs',
   MINDSHUB_SWITCH_ORG: 'mindshub:switch-org',
+  MINDSHUB_ARTIFACT_SHARE_PERMISSION: 'mindshub:artifact-share-permission',
   // The org's logo and icon: the renderer sends the URLs it got
   // from org-branding, main returns them as data: URIs and sets the app icon.
   MINDSHUB_BRAND_IMAGES: 'mindshub:brand-images',
