@@ -321,11 +321,11 @@ export function orgRestrictedAccessRequest({ emails = NO_IDS, ownerOnly, ...audi
  * @param {{ emails: string[], ownerOnly: boolean }} audience
  * @returns {import('./sharingContract').DesktopRestrictedAccessPayload}
  */
-export function desktopRestrictedAccessRequest({ emails, ownerOnly }) {
+export function desktopRestrictedAccessRequest({ emails, ownerOnly, orgAllowed = false }) {
   return {
     mode: 'restricted',
     [AUDIENCE_FIELD.EMAILS]: [...emails],
-    [AUDIENCE_FIELD.ORG_ALLOWED]: false,
+    [AUDIENCE_FIELD.ORG_ALLOWED]: orgAllowed === true,
     [AUDIENCE_FIELD.OWNER_ONLY]: ownerOnly === true,
   };
 }
