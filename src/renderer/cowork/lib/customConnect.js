@@ -7,7 +7,7 @@
    kept out of the chat like the cloud database form. Pure, so each shape is
    testable on its own. */
 
-import { toCloudSpec } from './cloudConnectorSpec';
+import { isCloudDatasourceSpec, toCloudSpec, toOrgConnectorSpec } from './cloudConnectorSpec';
 import { SHAREPOINT_ENGINE } from './connectorIds';
 
 export const ADDRESS_FIELD = '_api_address';
@@ -83,15 +83,18 @@ export function toCustomConnectSpec(spec, check, label, authSummary = null) {
 
 /**
  * The connect form a picked connector opens. In cloud, a member's own custom
- * connector connects through its own check, never through a chat turn; any
- * other connector is shaped for the hosted path. Desktop takes the spec as is.
+ * connector connects through its own check, never through a chat turn; a
+ * cloud datasource gets its cloud form (toCloudSpec); any other built-in
+ * offers only the methods cloud runs (toOrgConnectorSpec). Desktop takes the
+ * spec as is.
  * @param {{full: object, baseSpec: object, label: string, orgMode: boolean, editingConnection?: object|null}} args
  * @returns {object}
  */
 export function connectSpecFor({ full, baseSpec, label, orgMode, editingConnection = null }) {
   if (!orgMode) return baseSpec;
   if (full?.custom) return toCustomConnectSpec(baseSpec, full.check || null, label, full.auth_summary || null);
-  return toCloudSpec(baseSpec, editingConnection);
+  if (isCloudDatasourceSpec(baseSpec)) return toCloudSpec(baseSpec, editingConnection);
+  return toOrgConnectorSpec(baseSpec);
 }
 
 /**

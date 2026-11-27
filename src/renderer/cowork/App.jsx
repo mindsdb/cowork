@@ -3768,8 +3768,8 @@ function AppCore() {
       // it: that block replaces the desktop fields and copy whole, and a
       // method without one is not offered, because the relay supports exactly
       // one method per database connector and refuses the rest. OAuth methods
-      // stay beside the cloud form; a connector with no cloud block passes
-      // through untouched.
+      // stay beside the cloud form; any other built-in offers only its OAuth
+      // methods, since the server refuses its token forms (connectSpecFor).
       const baseSpec = {
         ...full.form,
         // Stamp the canonical engine slug so server-side code

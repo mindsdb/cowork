@@ -13,6 +13,12 @@ import {
   toCustomConnectSpec,
   toCustomConnectionRows,
 } from './customConnect';
+import { toCloudSpec } from './cloudConnectorSpec';
+import githubForm from './__fixtures__/connectorSpecs/github.json';
+import linearForm from './__fixtures__/connectorSpecs/linear.json';
+import postgresForm from './__fixtures__/connectorSpecs/postgres.json';
+import slackForm from './__fixtures__/connectorSpecs/slack.json';
+import supabaseForm from './__fixtures__/connectorSpecs/supabase.json';
 
 const SPEC = {
   form_id: 'acme_crm-connector',
@@ -245,6 +251,52 @@ describe('the form a picked connector opens', () => {
 
     expect(spec._cloud_datasource).toBe(true);
     expect(spec._custom_connect).toBeUndefined();
+  });
+});
+
+// The forms below are copies of cowork-server's connector specs
+// (cowork/services/connectors/specs/<id>.json, its `form`) at e2c2a913.
+describe('a built-in connector on the hosted Connect page', () => {
+  const pick = (id, form, { orgMode = true, editingConnection = null } = {}) => connectSpecFor({
+    full: { id }, baseSpec: { ...form, engine: id, _connector_id: id }, label: id, orgMode, editingConnection,
+  });
+  const ids = (spec) => spec.methods.map((m) => m.id);
+
+  it.each([
+    ['linear', linearForm, ['browser_oauth_builtin', 'oauth']],
+    ['github', githubForm, ['browser_oauth_builtin', 'oauth']],
+    ['slack', slackForm, ['mcp', 'oauth']],
+  ])('offers %s only its sign-in methods, never a token form the server refuses', (id, form, kept) => {
+    const spec = pick(id, form);
+
+    expect(ids(spec)).toEqual(kept);
+    expect(spec._cloud_datasource).toBeUndefined();
+  });
+
+  it('keeps every method on desktop', () => {
+    const base = { ...linearForm, engine: 'linear', _connector_id: 'linear' };
+
+    expect(connectSpecFor({ full: { id: 'linear' }, baseSpec: base, label: 'Linear', orgMode: false })).toBe(base);
+  });
+
+  const editing = {
+    datasourceId: 7, revision: 3, name: 'prod', hostMasked: 'db***om', port: 5432,
+    database: 'appdb', dbSchema: null, username: 'dbuser', tlsMode: 'system',
+  };
+
+  it.each([
+    ['postgres', 'new connection', postgresForm, null],
+    ['postgres', 'edit', postgresForm, editing],
+    ['supabase', 'new connection', supabaseForm, null],
+    ['supabase', 'edit', supabaseForm, editing],
+  ])('shapes the %s database form exactly as before (%s)', (id, _case, form, editingConnection) => {
+    const base = { ...form, engine: id, _connector_id: id };
+
+    const spec = pick(id, form, { editingConnection });
+
+    expect(spec).toEqual(toCloudSpec(base, editingConnection));
+    expect(spec._cloud_datasource).toBe(true);
+    if (editingConnection) expect(spec._datasource_edit).toEqual({ id: 7, expectedRevision: 3 });
   });
 });
 
