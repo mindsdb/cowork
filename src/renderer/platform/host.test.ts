@@ -1092,7 +1092,7 @@ describe('checkConfigured() on web reads the deployment flags from /health', () 
     const host = await importHost();
 
     await expect(host.checkConfigured()).resolves.toEqual({
-      configured: true, provider: 'minds_cloud', orgMode: false, liveApps: true, draftLinks: false,
+      configured: true, provider: 'minds_cloud', orgMode: false, liveApps: true, draftLinks: false, artifactWebsites: false,
     });
     expect(String((fetch.mock.calls[0] as unknown[])[0])).toMatch(/\/api\/v1\/health\/$/);
   });
@@ -1628,5 +1628,29 @@ describe('setScheduleKeepAwake()', () => {
     (window as unknown as Record<string, unknown>).antontron = {};
     host = await importHost();
     expect(() => host.setScheduleKeepAwake(true)).not.toThrow();
+  });
+});
+
+describe('checkConfigured() on web reads artifact_websites from /health', () => {
+  function stubHealth(body: Record<string, unknown>) {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => body })));
+  }
+
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('reports public websites only when /health says true', async () => {
+    stubHealth({ config_ready: true, provider: 'minds_cloud', org_mode: true, artifact_websites: true });
+    const host = await importHost();
+    await expect(host.checkConfigured()).resolves.toMatchObject({ orgMode: true, artifactWebsites: true });
+  });
+
+  it.each([
+    ['absent', {}],
+    ['false', { artifact_websites: false }],
+    ['a string', { artifact_websites: 'true' }],
+  ])('reports no public websites when the flag is %s', async (_label, flag) => {
+    stubHealth({ config_ready: true, ...flag });
+    const host = await importHost();
+    await expect(host.checkConfigured()).resolves.toMatchObject({ artifactWebsites: false });
   });
 });

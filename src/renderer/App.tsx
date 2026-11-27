@@ -19,6 +19,7 @@ import { resolveBootTarget, resolveRegistrationConsent } from './lib/bootTarget'
 import { setOrgMode } from './lib/orgMode';
 import { setLiveApps } from './lib/liveApps';
 import { setDraftLinks } from './lib/draftLinks';
+import { setArtifactWebsites } from './lib/artifactWebsites';
 import { resolveDocsEnabled, setDocsEnabled } from './lib/docsEnabled';
 import { trackBootScreenResolved, trackShellUpdatePhase, drainUpdateJournal } from './cowork/lib/analytics';
 import { hasBootedBefore, rememberBooted, welcomeFloorMs } from './lib/bootWelcome';
@@ -96,6 +97,7 @@ export default function App() {
       setOrgMode(orgMode);
       setLiveApps(result.liveApps);
       setDraftLinks(result.draftLinks);
+      setArtifactWebsites(result.artifactWebsites);
       setDocsEnabled(resolveDocsEnabled(result.docsEnabled, orgMode));
       setServiceUnconfigured(result.state === 'unconfigured');
       setPage(result.state === 'ready' ? 'terminal' : 'auth');
@@ -222,6 +224,7 @@ export default function App() {
       setOrgMode(orgMode);
       setLiveApps(decision.liveApps);
       setDraftLinks(decision.draftLinks);
+      setArtifactWebsites(decision.artifactWebsites);
       // After the fail-safe above: an unreadable /health hides doc entries in
       // the web build and keeps them on desktop.
       setDocsEnabled(resolveDocsEnabled(decision.docsEnabled, orgMode));

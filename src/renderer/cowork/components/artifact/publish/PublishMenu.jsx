@@ -35,7 +35,7 @@ import {
   parseEmailList,
 } from './AccessChooser';
 import { SharedWithList, useRecipientItems } from '../../RecipientRows';
-import { AUDIENCE_CHOICE, mindsHubUnreachablePermissions, recipientSummary } from '../../../lib/orgSharing';
+import { AUDIENCE_CHOICE, hasViewerAnalytics, mindsHubUnreachablePermissions, offersViewerAnalytics, recipientSummary } from '../../../lib/orgSharing';
 import { LOAD_STATUS } from '../../../lib/sharingContract';
 import { LoadStatus, RetryAlert } from '../../LoadStatus';
 import { useArtifactShareState } from './useArtifactShareState';
@@ -43,6 +43,8 @@ import { shareStateIcon } from '../../ShareStateLabel';
 import { UpToDateTag, useSaveStatus } from '../../UpToDateTag';
 import { useArtifactStats } from '../stats/useArtifactStats';
 import { ViewerAnalyticsSettings } from './ViewerAnalyticsSettings';
+import { isBackendArtifact } from '../../../lib/artifactKinds';
+import { useArtifactWebsites } from '../../../../lib/artifactWebsites';
 import { DatasourceApprovalNotice } from './DatasourceApprovalNotice';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
@@ -54,7 +56,7 @@ const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
 function draftDiffers(draft, current) {
   if (draft.mode !== current.mode) return true;
   // Nothing else to compare: the mode IS the whole selection.
-  if (draft.mode === AUDIENCE_CHOICE.PRIVATE) return false;
+  if (draft.mode === AUDIENCE_CHOICE.PRIVATE || draft.mode === AUDIENCE_CHOICE.WEBSITE) return false;
   if (draft.mode === AUDIENCE_CHOICE.PASSWORD) return (draft.password || '') !== (current.password || '');
   if (draft.mode === AUDIENCE_CHOICE.SPECIFIC) {
     const a = parseEmailList(draft.emailsText).valid.join(',');
@@ -353,7 +355,10 @@ export function PublishMenu({
   const [view, setView] = useState('summary');
   // Viewer analytics settings (ENG-4455), read with the stats while the panel
   // is open on a published artifact.
-  const analytics = useArtifactStats(pub.artifact, { enabled: open && isPublished && !!pub.artifact });
+  // Not for a public website: its stats routes answer 404.
+  const analytics = useArtifactStats(pub.artifact, {
+    enabled: open && isPublished && !!pub.artifact && hasViewerAnalytics(pub.accessMode),
+  });
   // The analytics switches save as they flip; the footer says so.
   const analyticsSave = useSaveStatus(!!analytics.trackingBusy, !!analytics.error);
   // Which reads the panel waits on, and whether it may claim "Shared"
@@ -362,6 +367,12 @@ export function PublishMenu({
     orgMode, sharing, orgName, sharingStatus, sharingReady, accessStatus, shareState, isSharedWithSomeone,
     permissionsUnreachable,
   } = useArtifactShareState(pub);
+  // "Public website": MindsHub mode, a deployment that allows it (/health's
+  // artifact_websites) and a static artifact; the publisher refuses it for a
+  // fullstack app, live apps included.
+  const artifactWebsites = useArtifactWebsites();
+  const offerWebsite = orgMode && artifactWebsites && !!pub.artifact && !isBackendArtifact(pub.artifact);
+  const isWebsite = pub.accessMode === AUDIENCE_CHOICE.WEBSITE;
   const sharingSettingsStatus = !sharingReady && (
     <LoadStatus status={sharingStatus} what={t('publish.load.sharingSettings')} onRetry={pub.orgSharing.retry} />
   );
@@ -599,7 +610,7 @@ export function PublishMenu({
                     {sharingSettingsStatus || (
                       <>
                         {permissionsNotice}
-                        <AccessChooser value={draft} onChange={editDraft} onSubmit={doPublish} sharing={sharing} ariaLabel={whoCanAccess} />
+                        <AccessChooser value={draft} onChange={editDraft} onSubmit={doPublish} sharing={sharing} ariaLabel={whoCanAccess} website={offerWebsite} />
                       </>
                     )}
                   </div>
@@ -627,7 +638,7 @@ export function PublishMenu({
   
                   <div className={SCROLL_BODY} data-testid="publish-menu-body">
                     <div className="py-3 px-4 border-b border-t-0 border-x-0 border-solid border-line">
-                      <SectionLabel>{t('publish.websiteUrl')}</SectionLabel>
+                      <SectionLabel>{isWebsite ? t('publish.websiteAddress') : t('publish.websiteUrl')}</SectionLabel>
                       <UrlField url={pub.publishedUrl} onCopied={() => reportLinkCopied(pub.artifact, { entry })} />
                     </div>
 
@@ -657,6 +668,7 @@ export function PublishMenu({
                                   ariaLabel={whoCanAccess}
                                   value={current}
                                   sharing={sharing}
+                                  website={offerWebsite}
                                   onChange={(d) => {
                                     if (d.mode === current.mode) return;
                                     editDraft(d);
@@ -688,7 +700,10 @@ export function PublishMenu({
                           {sharingSettingsStatus || accessLoadStatus || (
                             <>
                               {permissionsNotice}
-                              <AccessChooser value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} ariaLabel={whoCanAccess} />
+                              <AccessChooser value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} ariaLabel={whoCanAccess} website={offerWebsite} />
+                              {draft.mode === AUDIENCE_CHOICE.WEBSITE && analytics.data?.require_email === true && (
+                                <Alert variant="info" className="mt-2">{t('publish.websiteEmailGateNotice')}</Alert>
+                              )}
                             </>
                           )}
                         </>
@@ -737,10 +752,10 @@ export function PublishMenu({
                     </div>
 
                     {/* Whatever access is picked or being changed: analytics
-                        is its own setting, saved as it flips. Not for Only
-                        me, which nobody else opens. */}
+                        is its own setting, saved as it flips
+                        (offersViewerAnalytics says where it is not offered). */}
                     {pub.artifact && view !== 'versions'
-                      && (view === 'access' ? draft.mode : current.mode) !== AUDIENCE_CHOICE.PRIVATE && (
+                      && offersViewerAnalytics(view === 'access' ? draft.mode : current.mode) && (
                       <div className="py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line">
                         <SectionLabel>{t('analytics.title')}</SectionLabel>
                         <ViewerAnalyticsSettings controller={analytics} />

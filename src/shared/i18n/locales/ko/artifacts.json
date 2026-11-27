@@ -51,7 +51,8 @@
       "onlyYou": "나만",
       "public": "공개",
       "publicPassword": "공개 · 비밀번호",
-      "restricted": "제한됨"
+      "restricted": "제한됨",
+      "website": "웹사이트"
     },
     "hint": {
       "notSharedYet": "아직 공유되지 않았습니다. 웹 링크를 받으려면 열어서 ‘공유’를 선택하세요.",
@@ -336,7 +337,9 @@
       "restrictedTitle": "제한됨",
       "restrictedDesc": "링크를 열 수 있는 사람을 아직 알 수 없습니다",
       "specificTitle": "특정 사용자",
-      "specificDesc": "지정한 사람만"
+      "specificDesc": "지정한 사람만",
+      "websiteTitle": "공개 웹사이트",
+      "websiteDesc": "자체 웹 주소로, 인터넷상의 누구나 열 수 있습니다"
     },
     "whoCanAccess": "앱에 액세스할 수 있는 사람",
     "whoCanAccessDoc": "문서에 액세스할 수 있는 사람",
@@ -386,7 +389,9 @@
       "ownerOnlyTitle": "소유자만",
       "ownerOnlyDesc": "다른 사람은 공유 링크를 열 수 없습니다",
       "listWithheld": "공유된 팀과 사람만"
-    }
+    },
+    "websiteAddress": "웹사이트 주소",
+    "websiteEmailGateNotice": "공개 웹사이트는 방문자에게 이메일을 묻지 않습니다. 누구나 열 수 있습니다."
   },
   "previewErrors": {
     "reported": "{count, plural, other {미리 보기에서 오류 #개가 보고되었습니다}}",

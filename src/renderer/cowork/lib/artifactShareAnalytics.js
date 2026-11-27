@@ -22,7 +22,7 @@ import {
 /**
  * @typedef {object} ShareSnapshot
  * @property {boolean | null} shared Reaches anyone besides its owner; null when unknown.
- * @property {'unpublished'|'public'|'password'|'only_me'|'organization'|'specific'|'unknown'} audience
+ * @property {'unpublished'|'public'|'website'|'password'|'only_me'|'organization'|'specific'|'unknown'} audience
  * @property {boolean | null} orgWide
  * @property {number | null} teamCount Teams named, the organization's default team aside.
  * @property {number | null} peopleCount Members and outside emails named.
@@ -52,6 +52,9 @@ export function shareSnapshot(artifact, { teams = [] } = {}) {
   const mode = artifact.accessMode || (artifact.accessProtected ? 'password' : 'public');
   if (mode === 'public') {
     return { shared: true, audience: 'public', orgWide: false, teamCount: 0, peopleCount: 0, fingerprint: 'public' };
+  }
+  if (mode === 'website') {
+    return { shared: true, audience: 'website', orgWide: false, teamCount: 0, peopleCount: 0, fingerprint: 'website' };
   }
   if (mode === 'password') {
     return {

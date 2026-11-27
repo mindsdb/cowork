@@ -51,7 +51,8 @@
       "onlyYou": "Solo tú",
       "public": "Público",
       "publicPassword": "Público · contraseña",
-      "restricted": "Restringido"
+      "restricted": "Restringido",
+      "website": "Sitio web"
     },
     "hint": {
       "notSharedYet": "Aún no se comparte. Ábrelo y elige Compartir para obtener un enlace web.",
@@ -336,7 +337,9 @@
       "restrictedTitle": "Restringido",
       "restrictedDesc": "Aún no se sabe quién puede abrir el enlace",
       "specificTitle": "Personas específicas",
-      "specificDesc": "Solo las personas que indiques"
+      "specificDesc": "Solo las personas que indiques",
+      "websiteTitle": "Sitio web público",
+      "websiteDesc": "Su propia dirección web, abierta a cualquier persona en internet"
     },
     "whoCanAccess": "Quién puede acceder a tu app",
     "whoCanAccessDoc": "Quién puede acceder a tu documento",
@@ -386,7 +389,9 @@
       "ownerOnlyTitle": "Solo su propietario",
       "ownerOnlyDesc": "Nadie más puede abrir el enlace compartido",
       "listWithheld": "Solo los equipos y las personas con quienes se comparte"
-    }
+    },
+    "websiteAddress": "Dirección del sitio",
+    "websiteEmailGateNotice": "Un sitio web público no pide el correo electrónico a los visitantes. Cualquiera puede abrirlo."
   },
   "previewErrors": {
     "reported": "{count, plural, one {La vista previa informó # error} other {La vista previa informó # errores}}",

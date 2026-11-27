@@ -317,3 +317,17 @@ describe('ArtifactStatus without a page badge (a live app shares through "Share 
     expect(screen.getByText('Public')).toBeInTheDocument();
   });
 });
+
+describe('ArtifactStatus for a public website', () => {
+  it('shows the green "Website" badge, never "Restricted"', () => {
+    render(<ArtifactStatus artifact={{ publishedUrl: 'https://k3x9.mindshub.co/', accessMode: 'website' }} />);
+    expect(screen.getByText('Website')).toBeInTheDocument();
+    expect(isSuccess('Website')).toBe(true);
+    expect(hasIcon('Website')).toBe(true);
+    expect(screen.queryByText('Restricted')).toBeNull();
+  });
+
+  it('needs no hint beyond the badge', () => {
+    expect(artifactStatusHint({ publishedUrl: 'https://k3x9.mindshub.co/', accessMode: 'website' }, true, { orgMode: true })).toBe('');
+  });
+});

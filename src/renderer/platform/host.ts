@@ -609,6 +609,9 @@ export async function checkConfigured(): Promise<{
   // Only a server that issues signed draft links reports them; the bridge
   // path never does.
   draftLinks?: boolean;
+  // Only a server that lets owners publish public websites reports them; the
+  // bridge path never does.
+  artifactWebsites?: boolean;
   // Present only when /health reports it; lib/docsEnabled.ts decides what
   // its absence (an older server, the bridge) means.
   docsEnabled?: boolean;
@@ -626,6 +629,7 @@ export async function checkConfigured(): Promise<{
     org_mode?: boolean;
     live_apps?: boolean;
     draft_links?: boolean;
+    artifact_websites?: boolean;
     docs_enabled?: unknown;
   };
   return {
@@ -634,6 +638,7 @@ export async function checkConfigured(): Promise<{
     orgMode: Boolean(h.org_mode),
     liveApps: h.live_apps === true,
     draftLinks: h.draft_links === true,
+    artifactWebsites: h.artifact_websites === true,
     ...(typeof h.docs_enabled === 'boolean' ? { docsEnabled: h.docs_enabled } : {}),
   };
 }
