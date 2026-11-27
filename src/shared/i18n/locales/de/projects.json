@@ -703,6 +703,7 @@
     "namePlaceholder": "Wird aus dem Prompt abgeleitet",
     "project": "Projekt",
     "model": "Modell",
+    "connections": "Verbindungen",
     "accountDefault": "Kontostandard",
     "cancel": "Abbrechen",
     "saveAndRunOnce": "Speichern und einmal ausführen",

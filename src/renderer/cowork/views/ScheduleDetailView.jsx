@@ -97,6 +97,7 @@ export default function ScheduleDetailView({
   projects = [],
   models = [],
   modelMeta,
+  connectors,
   onBack,                   // → setRoute('scheduled')
   onOpenRunSession,         // (sessionId) → navigate to that conversation
   onUpdate,                 // (id, payload) → server PUT
@@ -330,6 +331,7 @@ export default function ScheduleDetailView({
         projects={projects}
         models={models}
         modelMeta={modelMeta}
+        connectors={connectors}
         agentLabel={agentLabel}
       />
 

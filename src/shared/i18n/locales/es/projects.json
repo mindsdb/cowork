@@ -703,6 +703,7 @@
     "namePlaceholder": "Nombrada a partir de la instrucción",
     "project": "Proyecto",
     "model": "Modelo",
+    "connections": "Conexiones",
     "accountDefault": "Predeterminado de la cuenta",
     "cancel": "Cancelar",
     "saveAndRunOnce": "Guardar y ejecutar una vez",

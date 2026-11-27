@@ -703,6 +703,7 @@
     "namePlaceholder": "Named from the prompt",
     "project": "Project",
     "model": "Model",
+    "connections": "Connections",
     "accountDefault": "Account default",
     "cancel": "Cancel",
     "saveAndRunOnce": "Save and run once",
