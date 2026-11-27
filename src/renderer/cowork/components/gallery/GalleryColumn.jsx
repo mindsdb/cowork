@@ -198,8 +198,14 @@ export default function GalleryColumn({
   const [focusDetail, setFocusDetail] = useState(0);
   const searchRef = useRef(null);
 
+  // When the gallery opens, move the cursor into it so Escape and the arrows work.
+  // If an example is open, it covers the search box, so use the example's title.
+  // This only runs on open, because picking an example already moves the cursor.
   useEffect(() => {
-    if (focusSearch) searchRef.current?.focus();
+    if (!focusSearch) return;
+    if (openId) setFocusDetail((n) => n + 1);
+    else searchRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusSearch]);
 
   const view = useMemo(
