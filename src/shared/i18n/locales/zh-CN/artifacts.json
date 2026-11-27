@@ -338,6 +338,8 @@
       "restrictedDesc": "尚不清楚谁能打开此链接",
       "specificTitle": "特定人员",
       "specificDesc": "仅限你列出的人",
+      "orgAlsoHasAccess": "组织成员也可以打开。",
+      "orgAlsoHasAccessHint": "如需停止，请选择“仅自己”“密码保护”或“公开”。",
       "websiteTitle": "公开网站",
       "websiteDesc": "拥有独立网址，互联网上的任何人都能打开"
     },

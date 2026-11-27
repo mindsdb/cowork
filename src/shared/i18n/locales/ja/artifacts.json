@@ -338,6 +338,8 @@
       "restrictedDesc": "リンクを開ける人はまだ確認できていません",
       "specificTitle": "特定のユーザー",
       "specificDesc": "指定したユーザーのみ",
+      "orgAlsoHasAccess": "組織のメンバーも開くことができます。",
+      "orgAlsoHasAccessHint": "これを止めるには、「自分のみ」「パスワード保護」「公開」のいずれかを選択してください。",
       "websiteTitle": "公開Webサイト",
       "websiteDesc": "独自のWebアドレスで、インターネット上の誰でも開けます"
     },

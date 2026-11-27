@@ -21827,6 +21827,74 @@
       "text": "a3e29399fbf4"
     }
   },
+  "artifacts:publish.access.orgAlsoHasAccess": {
+    "de": {
+      "from": "b438cacf3a20",
+      "text": "84e3d7901fbd"
+    },
+    "es": {
+      "from": "b438cacf3a20",
+      "text": "840c3708af07"
+    },
+    "fr": {
+      "from": "b438cacf3a20",
+      "text": "dad72f575bb4"
+    },
+    "it": {
+      "from": "b438cacf3a20",
+      "text": "b8bfb243b337"
+    },
+    "ja": {
+      "from": "b438cacf3a20",
+      "text": "86a120b31c78"
+    },
+    "ko": {
+      "from": "b438cacf3a20",
+      "text": "dcf801a36a6a"
+    },
+    "pt-BR": {
+      "from": "b438cacf3a20",
+      "text": "28ac56aec43b"
+    },
+    "zh-CN": {
+      "from": "b438cacf3a20",
+      "text": "339a7ea6c267"
+    }
+  },
+  "artifacts:publish.access.orgAlsoHasAccessHint": {
+    "de": {
+      "from": "cfbec894bc00",
+      "text": "7b09b05b8cdf"
+    },
+    "es": {
+      "from": "cfbec894bc00",
+      "text": "adfd9fbf0dcc"
+    },
+    "fr": {
+      "from": "cfbec894bc00",
+      "text": "ed2b8545bafb"
+    },
+    "it": {
+      "from": "cfbec894bc00",
+      "text": "e5eed5a5e0a5"
+    },
+    "ja": {
+      "from": "cfbec894bc00",
+      "text": "4591fe68e7c3"
+    },
+    "ko": {
+      "from": "cfbec894bc00",
+      "text": "a09400d92ca3"
+    },
+    "pt-BR": {
+      "from": "cfbec894bc00",
+      "text": "1329b7997488"
+    },
+    "zh-CN": {
+      "from": "cfbec894bc00",
+      "text": "6d2cd769ff78"
+    }
+  },
   "artifacts:publish.access.passwordDesc": {
     "de": {
       "from": "765fa4e39d3c",
@@ -29883,40 +29951,6 @@
     "zh-CN": {
       "from": "b5a229ac8bec",
       "text": "fb8d739d08b9"
-    }
-  },
-  "artifacts:status.couldNotShare": {
-    "de": {
-      "from": "a233b5efb768",
-      "text": "6b038b38bbd5"
-    },
-    "es": {
-      "from": "a233b5efb768",
-      "text": "e531f11eb5de"
-    },
-    "fr": {
-      "from": "a233b5efb768",
-      "text": "8da0ab17b617"
-    },
-    "it": {
-      "from": "a233b5efb768",
-      "text": "ae9e4fcb2747"
-    },
-    "ja": {
-      "from": "a233b5efb768",
-      "text": "3d6e5e3840fe"
-    },
-    "ko": {
-      "from": "a233b5efb768",
-      "text": "a82476615478"
-    },
-    "pt-BR": {
-      "from": "a233b5efb768",
-      "text": "734f9b3c9319"
-    },
-    "zh-CN": {
-      "from": "a233b5efb768",
-      "text": "1b8ed5955409"
     }
   },
   "artifacts:status.deleting": {
