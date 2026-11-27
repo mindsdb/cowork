@@ -662,6 +662,7 @@
     "sendTo": "Send to",
     "usageByTurn": "Usage by turn",
     "usageSummary": "{count, plural, one {# turn} other {# turns}} · {tokens} tokens",
+    "includedInPlan": "Included in your plan",
     "sideUsage": "Side {side} usage by turn",
     "listPriceNote": "Estimated at list price. Includes the calls the agent makes on its own, such as checking its answer.",
     "carryIncomplete": "Some of the files {name} made are still in this comparison and did not reach the task.",

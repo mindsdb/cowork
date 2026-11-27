@@ -13599,6 +13599,40 @@
       "text": "bc4b2dbbb77b"
     }
   },
+  "artifacts:compare.includedInPlan": {
+    "de": {
+      "from": "262d75931742",
+      "text": "fce6b33409b9"
+    },
+    "es": {
+      "from": "262d75931742",
+      "text": "9ec5977d8479"
+    },
+    "fr": {
+      "from": "262d75931742",
+      "text": "28cc4f5d2be5"
+    },
+    "it": {
+      "from": "262d75931742",
+      "text": "40ed21658283"
+    },
+    "ja": {
+      "from": "262d75931742",
+      "text": "451698c696c8"
+    },
+    "ko": {
+      "from": "262d75931742",
+      "text": "26d677b2627d"
+    },
+    "pt-BR": {
+      "from": "262d75931742",
+      "text": "232848defb4f"
+    },
+    "zh-CN": {
+      "from": "262d75931742",
+      "text": "822b78dfcdbd"
+    }
+  },
   "artifacts:compare.isolationNote": {
     "de": {
       "from": "e8ef988642b4",
@@ -29883,40 +29917,6 @@
     "zh-CN": {
       "from": "b5a229ac8bec",
       "text": "fb8d739d08b9"
-    }
-  },
-  "artifacts:status.couldNotShare": {
-    "de": {
-      "from": "a233b5efb768",
-      "text": "6b038b38bbd5"
-    },
-    "es": {
-      "from": "a233b5efb768",
-      "text": "e531f11eb5de"
-    },
-    "fr": {
-      "from": "a233b5efb768",
-      "text": "8da0ab17b617"
-    },
-    "it": {
-      "from": "a233b5efb768",
-      "text": "ae9e4fcb2747"
-    },
-    "ja": {
-      "from": "a233b5efb768",
-      "text": "3d6e5e3840fe"
-    },
-    "ko": {
-      "from": "a233b5efb768",
-      "text": "a82476615478"
-    },
-    "pt-BR": {
-      "from": "a233b5efb768",
-      "text": "734f9b3c9319"
-    },
-    "zh-CN": {
-      "from": "a233b5efb768",
-      "text": "1b8ed5955409"
     }
   },
   "artifacts:status.deleting": {

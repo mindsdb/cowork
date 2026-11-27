@@ -662,6 +662,7 @@
     "sendTo": "送信先",
     "usageByTurn": "ターンごとの使用量",
     "usageSummary": "{count, plural, other {#ターン}} · {tokens}トークン",
+    "includedInPlan": "プランに含まれています",
     "sideUsage": "サイド{side}のターンごとの使用量",
     "listPriceNote": "定価に基づく推定値です。回答の確認など、エージェントが自動で行う呼び出しも含まれます。",
     "carryIncomplete": "{name}が作成したファイルの一部はこの比較に残っており、タスクに移されていません。",

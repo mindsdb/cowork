@@ -419,8 +419,24 @@ export function usageTokens(usage) {
 }
 
 /**
+ * Whether a plan window or the Free allowance covered every call of a turn or
+ * side. The server's `GET /comparisons/{id}/usage` counts such calls in
+ * `includedCalls` and adds none of them to the tokens, the estimate or
+ * `unpricedCalls`. It leaves `estimatedCostUsd` null when no call was priced,
+ * so included calls with no unpriced call and no estimate beside them are all
+ * the calls there were. A server that predates `includedCalls` sends none,
+ * which reads as no included calls.
+ */
+export function allCallsIncluded(usage) {
+  if (!usage || !(usage.includedCalls > 0) || usage.unpricedCalls > 0) return false;
+  return !(typeof usage.estimatedCostUsd === 'number' && Number.isFinite(usage.estimatedCostUsd));
+}
+
+/**
  * A side's cost as shown: the estimate, plus the caveats that make it a floor.
- * Null when the gateway had nothing for the side (a BYOK model, an older gateway).
+ * Included calls never make it a floor. Null when the side has no priced call:
+ * the gateway had nothing for it (a BYOK model, an older gateway), or the plan
+ * covered every call (`allCallsIncluded`).
  */
 export function sideCost(usage) {
   if (!usage?.available) return null;
@@ -440,13 +456,16 @@ function inputTokens(usage) {
 
 /**
  * One row per turn, then a total, for a side's usage table: time, input and
- * output tokens, cost. `inputDetail` splits the input for its tooltip.
+ * output tokens, cost. `inputDetail` splits the input for its tooltip. A turn
+ * whose every call the plan covered carries only its label, its time and
+ * `included`, so no token count or price is shown for it.
  */
 export function turnUsageRows(usage, turns = []) {
   if (!usage?.available) return [];
+  const time = (ms) => (ms === null ? null : formatDuration(ms));
   const row = (label, u, ms) => ({
     label,
-    time: ms === null ? null : formatDuration(ms),
+    time: time(ms),
     input: formatTokens(inputTokens(u)),
     inputDetail: tr('usage.inputDetail', {
       fresh: formatTokens(u?.inputTokens || 0),
@@ -457,21 +476,33 @@ export function turnUsageRows(usage, turns = []) {
     tokens: formatTokens(usageTokens(u)),
     cost: formatEstimate(u?.estimatedCostUsd) ?? tr('usage.notPriced'),
   });
-  const rows = (usage.turns || []).map((t) => row(tr('usage.turn', { turn: t.turn }), t, turnDurationMs(turns[t.turn - 1])));
+  const rows = (usage.turns || []).map((t) => {
+    const label = tr('usage.turn', { turn: t.turn });
+    const ms = turnDurationMs(turns[t.turn - 1]);
+    return allCallsIncluded(t) ? { label, time: time(ms), included: true } : row(label, t, ms);
+  });
   const total = totalDurationMs(turns);
   return [...rows, { ...row(tr('usage.total'), usage, total.counted ? total.total : null), total: true, cost: sideCost(usage)?.text ?? tr('usage.notPriced') }];
 }
 
 /**
- * The history's Cost cell, from the cost each side had when last read: both
- * sides together, "+" when that leaves something out, null before any read.
+ * The history's Cost cell, from the usage each side had when last read. Null
+ * before any read. `{ included: true }` when the plan covered every call of
+ * every side, which the caller shows as such. Otherwise `{ text }`: both sides
+ * together, "+" when that leaves something out. The snapshot carries
+ * `includedCalls` beside the figure, so a side the plan covered whole reads at
+ * $0 and leaves nothing out. A snapshot without `includedCalls` has none.
  */
 export function historyCost(sides = []) {
-  const read = sides.filter((s) => typeof s?.usage?.estimatedCostUsd === 'number' && Number.isFinite(s.usage.estimatedCostUsd));
-  if (read.length === 0) return null;
-  const total = read.reduce((sum, s) => sum + s.usage.estimatedCostUsd, 0);
-  const partial = read.length < sides.length || read.some((s) => s.usage.partial);
-  return `${formatEstimate(total)}${partial ? '+' : ''}`;
+  const usages = sides.map((s) => s?.usage);
+  const priced = usages.filter((u) => typeof u?.estimatedCostUsd === 'number' && Number.isFinite(u.estimatedCostUsd));
+  const covered = usages.filter((u) => !u?.partial && allCallsIncluded(u));
+  const read = priced.length + covered.length;
+  if (read === 0) return null;
+  if (priced.length === 0 && covered.length === sides.length) return { included: true };
+  const total = priced.reduce((sum, u) => sum + u.estimatedCostUsd, 0);
+  const partial = read < sides.length || priced.some((u) => u.partial);
+  return { text: `${formatEstimate(total)}${partial ? '+' : ''}` };
 }
 
 /**
@@ -483,7 +514,8 @@ export function historyCost(sides = []) {
  * covers fewer (one still in flight after a turn ends) describes an earlier
  * point, so its figures are left out and the event says `cost_stale`. A
  * cheaper side is named only when both figures are complete: a floor could
- * reverse the order.
+ * reverse the order. A side the plan covered whole (`allCallsIncluded`) cost
+ * $0 at list price and leaves nothing out.
  */
 export function comparisonCostProps(usage, turnCounts = {}) {
   const stale = SIDE_LABELS.some((label) => {
@@ -500,8 +532,9 @@ export function comparisonCostProps(usage, turnCounts = {}) {
       continue;
     }
     props[`tokens_${label}`] = usageTokens(side);
-    if (typeof side.estimatedCostUsd === 'number' && Number.isFinite(side.estimatedCostUsd)) {
-      costs[label] = Number(side.estimatedCostUsd);
+    const cost = allCallsIncluded(side) ? 0 : side.estimatedCostUsd;
+    if (typeof cost === 'number' && Number.isFinite(cost)) {
+      costs[label] = Number(cost);
       props[`cost_${label}_usd`] = costs[label];
     } else {
       props.cost_partial = true;
@@ -515,13 +548,17 @@ export function comparisonCostProps(usage, turnCounts = {}) {
   return props;
 }
 
-/** Both sides together, over the sides that have a figure. Null when neither does. */
+/**
+ * Both sides together, over the sides that have a figure. Null when neither
+ * does. A side whose every call the plan covered adds nothing to the total and
+ * leaves nothing out of it, so it never marks the total partial.
+ */
 export function combinedCost(usage) {
-  const figures = SIDE_LABELS
-    .map((label) => usage?.sides?.[label])
-    .filter((side) => side?.available && typeof side.estimatedCostUsd === 'number' && Number.isFinite(side.estimatedCostUsd));
+  const sides = SIDE_LABELS.map((label) => usage?.sides?.[label]);
+  const figures = sides.filter((side) => side?.available && typeof side.estimatedCostUsd === 'number' && Number.isFinite(side.estimatedCostUsd));
   if (figures.length === 0) return null;
   const total = figures.reduce((sum, side) => sum + Number(side.estimatedCostUsd), 0);
-  const partial = figures.length < SIDE_LABELS.length || figures.some((side) => sideCost(side)?.partial);
+  const covered = sides.filter((side) => side?.available && allCallsIncluded(side)).length;
+  const partial = figures.length + covered < SIDE_LABELS.length || figures.some((side) => sideCost(side)?.partial);
   return { text: `${formatEstimate(total)}${partial ? '+' : ''}`, partial };
 }

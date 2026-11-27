@@ -662,6 +662,7 @@
     "sendTo": "보낼 대상",
     "usageByTurn": "턴별 사용량",
     "usageSummary": "{count, plural, other {#턴}} · 토큰 {tokens}개",
+    "includedInPlan": "플랜에 포함됨",
     "sideUsage": "{side} 측 턴별 사용량",
     "listPriceNote": "정가 기준 추정치입니다. 답변 확인 등 에이전트가 자체적으로 수행하는 호출도 포함됩니다.",
     "carryIncomplete": "{name}이(가) 만든 파일 중 일부가 아직 이 비교에 남아 있으며 작업으로 옮겨지지 않았습니다.",

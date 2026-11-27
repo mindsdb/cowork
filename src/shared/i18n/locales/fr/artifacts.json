@@ -662,6 +662,7 @@
     "sendTo": "Envoyer à",
     "usageByTurn": "Utilisation par tour",
     "usageSummary": "{count, plural, one {# tour} other {# tours}} · {tokens} jetons",
+    "includedInPlan": "Inclus dans votre forfait",
     "sideUsage": "Utilisation par tour du côté {side}",
     "listPriceNote": "Estimation au prix catalogue. Inclut les appels que l’agent effectue de lui-même, par exemple pour vérifier sa réponse.",
     "carryIncomplete": "Certains fichiers créés par {name} sont encore dans cette comparaison et n’ont pas été transférés dans la tâche.",

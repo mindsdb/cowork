@@ -662,6 +662,7 @@
     "sendTo": "发送给",
     "usageByTurn": "各轮用量",
     "usageSummary": "{count, plural, other {# 轮}} · {tokens} 个 token",
+    "includedInPlan": "已包含在你的套餐内",
     "sideUsage": "{side} 侧各轮用量",
     "listPriceNote": "按标价估算。包括智能体自行发起的调用，例如检查自己的回答。",
     "carryIncomplete": "{name} 生成的部分文件仍留在此对比中，未转入任务。",

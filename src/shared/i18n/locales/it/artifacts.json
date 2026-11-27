@@ -662,6 +662,7 @@
     "sendTo": "Invia a",
     "usageByTurn": "Utilizzo per turno",
     "usageSummary": "{count, plural, one {# turno} other {# turni}} · {tokens} token",
+    "includedInPlan": "Incluso nel tuo piano",
     "sideUsage": "Utilizzo per turno del lato {side}",
     "listPriceNote": "Stima al prezzo di listino. Include le chiamate che l’agente esegue in autonomia, ad esempio per verificare la risposta.",
     "carryIncomplete": "Alcuni file creati da {name} sono ancora in questo confronto e non sono arrivati nell’attività.",

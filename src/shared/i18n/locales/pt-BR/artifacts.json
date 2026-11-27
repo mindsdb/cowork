@@ -662,6 +662,7 @@
     "sendTo": "Enviar para",
     "usageByTurn": "Uso por turno",
     "usageSummary": "{count, plural, one {# turno} other {# turnos}} · {tokens} tokens",
+    "includedInPlan": "Incluído no seu plano",
     "sideUsage": "Uso por turno do lado {side}",
     "listPriceNote": "Estimado pelo preço de tabela. Inclui as chamadas que o agente faz por conta própria, como conferir a resposta.",
     "carryIncomplete": "Alguns arquivos que {name} criou ainda estão nesta comparação e não chegaram à tarefa.",

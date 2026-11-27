@@ -662,6 +662,7 @@
     "sendTo": "Senden an",
     "usageByTurn": "Nutzung pro Runde",
     "usageSummary": "{count, plural, one {# Runde} other {# Runden}} · {tokens} Tokens",
+    "includedInPlan": "In Ihrem Plan enthalten",
     "sideUsage": "Nutzung pro Runde für Seite {side}",
     "listPriceNote": "Geschätzt zum Listenpreis. Einschließlich der Aufrufe, die der Agent selbstständig macht, etwa um seine Antwort zu prüfen.",
     "carryIncomplete": "Einige der Dateien, die {name} erstellt hat, sind noch in diesem Vergleich und wurden nicht in die Aufgabe übernommen.",
