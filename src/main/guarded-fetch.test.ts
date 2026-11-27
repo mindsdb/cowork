@@ -14,6 +14,24 @@ type Responder = (options: https.RequestOptions & { servername?: string }, body:
   | 'error'
   | 'hang';
 
+// Every decoder `guarded-fetch` makes, so a test can check it is stopped.
+const decoders = vi.hoisted(() => ({ made: [] as Array<{ destroyed: boolean }> }));
+vi.mock('node:zlib', async (importActual) => {
+  const actual = await importActual<typeof import('node:zlib')>();
+  const recorded = <A extends unknown[], T extends { destroyed: boolean }>(make: (...args: A) => T) =>
+    (...args: A): T => {
+      const decoder = make(...args);
+      decoders.made.push(decoder);
+      return decoder;
+    };
+  return {
+    ...actual,
+    createGunzip: recorded(actual.createGunzip),
+    createInflate: recorded(actual.createInflate),
+    createBrotliDecompress: recorded(actual.createBrotliDecompress),
+  };
+});
+
 /* A stand-in for https.request: records the options it was called with and
    plays back what `responder` returns, without opening a socket. */
 function fakeRequest(responder: Responder) {
@@ -401,6 +419,32 @@ describe('decodeBody', () => {
     const noise = Buffer.from(Array.from({ length: 400 }, (_, i) => (i * 7919) % 251));
     const { fetchFn } = guarded(() => ({ status: 200, headers: { 'content-encoding': 'gzip' }, chunks: [gzipSync(noise)] }), { maxBytes: 100 });
     expect(await refusal(fetchFn('https://mcp.example.com/mcp', { decodeBody: true }))).toBe('too_large');
+  });
+
+  it.each(encoders)('destroys the %s decoder when it refuses a body as too large decoded', async (name, encode) => {
+    decoders.made.length = 0;
+    const body = encode(Buffer.alloc(10_000, 'a'));
+    const { fetchFn } = guarded(() => ({ status: 200, headers: { 'content-encoding': name }, chunks: [body] }), { maxBytes: 1000 });
+    expect(await refusal(fetchFn('https://mcp.example.com/mcp', { decodeBody: true }))).toBe('too_large');
+    expect(decoders.made).toHaveLength(1);
+    expect(decoders.made[0].destroyed).toBe(true);
+  });
+
+  it('destroys the decoder when it refuses a body as too large as sent', async () => {
+    decoders.made.length = 0;
+    const noise = Buffer.from(Array.from({ length: 400 }, (_, i) => (i * 7919) % 251));
+    const { fetchFn } = guarded(() => ({ status: 200, headers: { 'content-encoding': 'gzip' }, chunks: [gzipSync(noise)] }), { maxBytes: 100 });
+    expect(await refusal(fetchFn('https://mcp.example.com/mcp', { decodeBody: true }))).toBe('too_large');
+    expect(decoders.made).toHaveLength(1);
+    expect(decoders.made[0].destroyed).toBe(true);
+  });
+
+  it.each(encoders)('destroys the %s decoder when it refuses a malformed body', async (name) => {
+    decoders.made.length = 0;
+    const { fetchFn } = guarded(() => ({ status: 200, headers: { 'content-encoding': name }, chunks: ['this is not compressed'] }));
+    expect(await refusal(fetchFn('https://mcp.example.com/mcp', { decodeBody: true }))).toBe('bad_response');
+    expect(decoders.made).toHaveLength(1);
+    expect(decoders.made[0].destroyed).toBe(true);
   });
 
   it('returns the body as it arrived without decodeBody', async () => {

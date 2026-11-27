@@ -283,6 +283,19 @@ describe('connectCustomMcp', () => {
     expect(hasRefreshLoop(store.root!, ID)).toBe(false);
   });
 
+  it('reports an address that answers 503 as unreachable, and stores nothing', async () => {
+    const { deps: d, authorize } = deps({ [`POST ${SERVER_URL}`]: { status: 503 } });
+
+    const result = await connectCustomMcp({ label: 'Docs', url: SERVER_URL }, d);
+
+    expect(result).toMatchObject({ ok: false, code: 'unreachable' });
+    expect(authorize).not.toHaveBeenCalled();
+    expect(server.records.size).toBe(0);
+    expect(server.held.size).toBe(0);
+    expect(keychain.entries.size).toBe(0);
+    expect(await listConnectionIds(store.root!)).toEqual([]);
+  });
+
   it('uses a given client ID and keeps its secret in the keychain only', async () => {
     const { deps: d, mcp } = deps(LOGIN_SERVER);
 

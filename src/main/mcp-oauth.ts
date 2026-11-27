@@ -16,6 +16,7 @@ import { SseParser, type GuardedFetch } from './guarded-fetch';
 
 export type McpOAuthErrorCode =
   | 'not_mcp'
+  | 'unreachable'
   | 'resource_mismatch'
   | 'issuer_mismatch'
   | 'insecure_endpoint'
@@ -77,14 +78,14 @@ const OAUTH_ERROR_CODES = new Set([
 const REFUSED_GRANT_CODES = new Set(['invalid_grant', 'invalid_client', 'unauthorized_client']);
 const MAX_LIFETIME_SECONDS = 365 * 24 * 60 * 60;
 
+const INITIALIZE_ID = 1;
+
 const INITIALIZE_BODY = JSON.stringify({
   jsonrpc: '2.0',
-  id: 1, // INITIALIZE_ID
+  id: INITIALIZE_ID,
   method: 'initialize',
   params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'MindsHub Cowork', version: '1' } },
 });
-
-const INITIALIZE_ID = 1;
 
 /* The JSON-RPC message in `data` when it is the reply to our `initialize`
    request: the same id, carrying a `result` or an `error`. */
@@ -150,6 +151,9 @@ export async function discoverMcpAuth(serverUrl: string, fetchFn: GuardedFetch):
     return { needsLogin: false };
   }
   if (probe.status !== 401) {
+    // A server that is briefly down is still the right address; only say it is
+    // not an MCP server when it answered something else.
+    if (probe.status >= 500) throw new McpOAuthError('unreachable', `the server answered ${probe.status}`);
     throw new McpOAuthError('not_mcp', `the server answered ${probe.status} instead of an MCP response`);
   }
   const challenge = parseWwwAuthenticate(probe.headers.get('www-authenticate'));

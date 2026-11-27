@@ -243,9 +243,9 @@ describe('discoverMcpAuth against hostile answers', () => {
     expect(requests.every((r) => r.url.startsWith('https://mcp.example.com/'))).toBe(true);
   });
 
-  it('refuses a server that answers neither as an MCP server nor with a login challenge', async () => {
-    const { fetchFn } = replay({ [`POST ${SERVER}`]: { status: 500, text: 'oops' } });
-    expect(await failure(discoverMcpAuth(SERVER, fetchFn))).toBe('not_mcp');
+  it.each([500, 502, 503, 599])('reports a server that answers %i as unreachable, not as a non-MCP address', async (status) => {
+    const { fetchFn } = replay({ [`POST ${SERVER}`]: { status, text: 'oops' } });
+    expect(await failure(discoverMcpAuth(SERVER, fetchFn))).toBe('unreachable');
   });
 });
 
@@ -303,8 +303,19 @@ describe('discoverMcpAuth on a 200 answer', () => {
     expect(await failure(discoverMcpAuth(SERVER, fetchFn))).toBe('not_mcp');
   });
 
-  it('still refuses a non-401 error status as not_mcp, and still starts a login on a 401', async () => {
-    expect(await failure(discoverMcpAuth(SERVER, replay({ [`POST ${SERVER}`]: { status: 403, text: 'no' } }).fetchFn))).toBe('not_mcp');
+  it('sends the id its reply check accepts', async () => {
+    const { fetchFn, requests } = replay({ [`POST ${SERVER}`]: { status: 200, headers: JSON_TYPE, json: answer } });
+    await discoverMcpAuth(SERVER, fetchFn);
+    const sent = JSON.parse(String(requests[0].init.body)) as { id: unknown };
+    const settle = requests[0].init.settleEarly as (data: string) => boolean;
+    expect(settle(JSON.stringify({ jsonrpc: '2.0', id: sent.id, result: RESULT }))).toBe(true);
+    expect(settle(JSON.stringify({ jsonrpc: '2.0', id: 'other', result: RESULT }))).toBe(false);
+  });
+
+  it('refuses a 403 or a 404 as not_mcp, and still starts a login on a 401', async () => {
+    for (const status of [403, 404]) {
+      expect(await failure(discoverMcpAuth(SERVER, replay({ [`POST ${SERVER}`]: { status, text: 'no' } }).fetchFn))).toBe('not_mcp');
+    }
     const { fetchFn } = replay(hostile({}));
     expect(await discoverMcpAuth(SERVER, fetchFn)).toMatchObject({ needsLogin: true, resource: SERVER });
   });

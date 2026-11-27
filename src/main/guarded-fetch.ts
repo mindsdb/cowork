@@ -223,7 +223,13 @@ function send(
       outcome();
     };
     const req = request(requestOptions, (res: IncomingMessage) => {
+      // Declared before `fail`, which must stop it: bytes already written to a
+      // decoder keep inflating (a few KB of brotli can become a gigabyte) until
+      // it is destroyed.
+      let decoder: Gunzip | Inflate | BrotliDecompress | null = null;
       const fail = (code: GuardedFetchErrorCode, message: string) => {
+        if (decoder) res.unpipe(decoder);
+        decoder?.destroy();
         req.destroy();
         res.destroy();
         finish(() => reject(new GuardedFetchError(code, message)));
@@ -236,7 +242,7 @@ function send(
         fail('bad_response', 'the server sent a body in an encoding that cannot be read');
         return;
       }
-      const decoder = encoding ? decoderFor(encoding) : null;
+      decoder = encoding ? decoderFor(encoding) : null;
       // An unfinished compressed stream cannot be vouched for, so it is read to its end.
       const early = init.settleEarly && !decoder && isEventStream(res);
       const accepts = typeof init.settleEarly === 'function' ? init.settleEarly : (data: string) => data.trim() !== '';
@@ -262,7 +268,9 @@ function send(
           rawSize += chunk.length;
           if (rawSize > maxBytes) fail('too_large', 'the server sent more than the allowed size');
         });
-        decoder.on('error', () => fail('bad_response', 'the server sent a body that cannot be decoded'));
+        decoder.on('error', () => {
+          if (!settled) fail('bad_response', 'the server sent a body that cannot be decoded');
+        });
       }
       body.on('data', (chunk: Buffer) => {
         if (settled) return;

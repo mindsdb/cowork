@@ -261,6 +261,17 @@ describe('reconnect', () => {
     expect(server.records.has(ID)).toBe(true);
   });
 
+  it.each([500, 503])('fails with unreachable when the address answers %i, and keeps the connection', async (status) => {
+    await seed();
+    const { deps, authorize } = loginServer({ [`POST ${SERVER_URL}`]: { status } });
+
+    expect(await reconnectCustom({ id: ID }, deps)).toMatchObject({ ok: false, code: 'unreachable' });
+
+    expect(authorize).not.toHaveBeenCalled();
+    expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-old');
+    expect(server.records.has(ID)).toBe(true);
+  });
+
   it('names the login hosts first and opens nothing', async () => {
     await seed();
     const { deps, authorize } = loginServer();
