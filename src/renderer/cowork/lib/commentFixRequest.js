@@ -6,6 +6,7 @@
 
 import { parseCommentText } from './commentImages';
 import { threadReplies, threadText } from './commentsReducer';
+import { pageBlockId } from '../components/doc/docComments';
 import i18n from '../../lib/i18n';
 
 export const MAX_REQUEST_CHARS = 4000;
@@ -14,8 +15,9 @@ const tr = (key, vars) => i18n.t(`quickEdit.comment.${key}`, { ns: 'artifacts', 
 
 // The selector is a CSS path for a comment on an element, a JSON anchor (a
 // text range, a doc's blocks) for one on a place, quoting the words picked
-// there, or empty for one on the whole artifact.
-function anchorLine(selector) {
+// there, or empty for one on the whole artifact. On a doc, a path made on the
+// shared page names a block, which the agent gets by id with the request.
+function anchorLine(selector, doc) {
   if (!selector) return tr('onArtifact');
   try {
     const anchor = JSON.parse(selector);
@@ -25,12 +27,13 @@ function anchorLine(selector) {
         : tr('onArtifact');
     }
   } catch { /* a CSS path */ }
+  if (doc && pageBlockId(selector)) return tr('onArtifact');
   return tr('onElement', { selector: String(selector).slice(0, 300) });
 }
 
-/** The bar message for `thread`. */
-export function commentFixMessage(thread) {
-  const lines = [anchorLine(thread?.selector)];
+/** The bar message for `thread`; `doc` for a comment on a doc. */
+export function commentFixMessage(thread, { doc = false } = {}) {
+  const lines = [anchorLine(thread?.selector, doc)];
   const entries = [threadText(thread), ...threadReplies(thread).map((reply) => reply?.text)];
   for (const text of entries) {
     const body = parseCommentText(text || '').body.trim();
