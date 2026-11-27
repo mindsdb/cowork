@@ -112,9 +112,10 @@ const deploymentBrand = webEntryTransform('cowork-deployment-brand', withDeploym
 
 // A web build with the platform UI on is the hosted build, whose preview frame
 // loads signed draft links and published full-stack apps, so its page's CSP
-// must let a frame load the artifact domain (shared/draft-link-origins.ts). They go in at build time: one hosted
-// build serves every environment, and the self-hosted and white-label pages
-// built from the same template must not name them. The hosted build runs the
+// must let a frame load the artifact domain (shared/draft-link-origins.ts).
+// It goes in at build time: one hosted build serves every environment, and the
+// self-hosted and white-label pages built from the same template must not name
+// it. The hosted build runs the
 // brand transform too. The brand transform adds tags around the title and
 // icons and before </head>; this one rewrites only the CSP meta tag. Neither
 // adds anything the other checks for, so either order gives the same page

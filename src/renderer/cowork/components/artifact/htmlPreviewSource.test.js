@@ -152,7 +152,8 @@ describe('loadHtmlPreview: a published full-stack app', () => {
   const app = { type: 'fullstack-stateful-app', path: '/p/.anton/artifacts/app/static/index.html' };
   const PUBLISHED = 'https://view.staging.mindshub.ai/a/k3m7q2xwp6n4tahd5rzc2bvy7e/';
   const ORIGIN = 'https://f5h8n2w6-staging.mindshub.co';
-  const load = () => loadHtmlPreview({ ...base, hasActionPath: false, artifact: app, publishedApp: { url: PUBLISHED } });
+  const signal = new AbortController().signal;
+  const load = () => loadHtmlPreview({ ...base, signal, hasActionPath: false, artifact: app, publishedApp: { url: PUBLISHED } });
 
   beforeEach(() => { Object.assign(hostState, { isWeb: true, isElectron: false, local: false }); });
 
@@ -161,7 +162,7 @@ describe('loadHtmlPreview: a published full-stack app', () => {
     expect(await load()).toEqual({
       kind: 'published', url: `${ORIGIN}/_t/v1.p.s/`, doc: '', port: null, expiresAt: 1_900_000_000,
     });
-    expect(publishedFrameCredential).toHaveBeenCalledWith(PUBLISHED, expect.any(Function));
+    expect(publishedFrameCredential).toHaveBeenCalledWith(PUBLISHED, expect.any(Function), signal);
     expect(mountArtifactPreview).not.toHaveBeenCalled();
     expect(createDraftLink).not.toHaveBeenCalled();
   });

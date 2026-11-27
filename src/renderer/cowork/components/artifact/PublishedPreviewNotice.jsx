@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from 'react';
 import Ico from '../Icons';
 import { Button } from '../ui';
 import { host } from '../../../platform/host';
@@ -36,16 +37,23 @@ export function PublishedPreviewNotice({ message, reason, url, onReload }) {
  * Over the app's frame once its token is about to expire: from then on its
  * requests fail (after the frame script waits for a refresh nobody answers)
  * and its links open blank. The body makes the frame inert, so keys stop
- * reaching it too, and focus moves to Reload.
+ * reaching it too. Focus moves to Reload only when it was in the frame (or
+ * nowhere): someone typing in the quick edit bar or a comment composer keeps
+ * the caret, so Space or Enter cannot press Reload by accident.
  */
-export function PublishedSessionEnded({ onReload }) {
+export function PublishedSessionEnded({ onReload, frameRef }) {
   const { t } = useTranslation('artifacts');
+  const reloadRef = useRef(null);
+  useLayoutEffect(() => {
+    const active = document.activeElement;
+    if (!active || active === document.body || active === frameRef?.current) reloadRef.current?.focus();
+  }, [frameRef]);
   return (
     <div data-testid="published-session-ended" style={{ ...COVER, zIndex: 2, background: 'var(--surface)' }}>
       <div role="status">
         <div style={MESSAGE}>{t('viewer.publishedSessionEnded')}</div>
         <div style={ACTIONS}>
-          <Button onClick={onReload} autoFocus>{Ico.reload(14)} {t('header.reloadPreview')}</Button>
+          <Button ref={reloadRef} onClick={onReload}>{Ico.reload(14)} {t('header.reloadPreview')}</Button>
         </div>
       </div>
     </div>

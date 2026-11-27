@@ -1,5 +1,5 @@
 import { useRef } from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { useArtifactCommentLayer } from './useArtifactCommentLayer';
 
@@ -24,7 +24,34 @@ function FramelessHarness({ handlers }) {
   return null;
 }
 
+function DisabledHarness({ onLayer }) {
+  const iframeRef = useRef(null);
+  const layer = useArtifactCommentLayer(iframeRef, { threads: [], viewer: { id: 'u1' }, enabled: false });
+  onLayer(layer);
+  return <iframe ref={iframeRef} title="Published app" srcDoc="<html></html>" />;
+}
+
 describe('useArtifactCommentLayer postMessage bridge', () => {
+  it('posts nothing to the frame while the layer is disabled', () => {
+    let layer;
+    render(<DisabledHarness onLayer={(value) => { layer = value; }} />);
+    const frame = screen.getByTitle('Published app');
+    const postMessageSpy = vi.spyOn(frame.contentWindow, 'postMessage');
+
+    act(() => {
+      layer.toggleMode();
+      layer.exitMode();
+      layer.hlOn('t1');
+      layer.focus('t1');
+    });
+    fireEvent(window, new MessageEvent('message', {
+      source: frame.contentWindow,
+      data: { source: 'anton-comments', type: 'ready' },
+    }));
+
+    expect(postMessageSpy).not.toHaveBeenCalled();
+  });
+
   it('answers a ready announcement from a srcdoc iframe with the current thread list', () => {
     const threads = [{ id: 't1', status: 'open', created_at: '2026-01-01T00:00:00Z' }];
     render(<Harness threads={threads} />);

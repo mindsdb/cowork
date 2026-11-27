@@ -1,5 +1,3 @@
-import { PublishedPreviewNotice, PublishedSessionEnded } from './PublishedPreviewNotice';
-import { PUBLISHED_FRAME_ALLOW, PUBLISHED_FRAME_SANDBOX } from './htmlPreviewSource';
 import { useEffect, useState } from 'react';
 import Ico from '../Icons';
 import { Button, Spinner } from '../ui';
@@ -20,6 +18,8 @@ import { DocumentPreview } from '../../preview/DocumentPreview';
 import { csvPreviewNotice } from './artifactPreviewUtils';
 import { ViewerSidePanel } from './ViewerSidePanel';
 import { useTranslation } from '../../../lib/i18n';
+import { PublishedPreviewNotice, PublishedSessionEnded } from './PublishedPreviewNotice';
+import { PUBLISHED_FRAME_ALLOW, PUBLISHED_FRAME_SANDBOX } from './htmlPreviewSource';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
 const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
@@ -315,7 +315,7 @@ export function ArtifactViewerBody({
           }}
         />
       )}
-      {sessionEnded && previewKind === 'published' && <PublishedSessionEnded onReload={onReload} />}
+      {sessionEnded && previewKind === 'published' && <PublishedSessionEnded onReload={onReload} frameRef={iframeRef} />}
       {/* Under the reload cover the page reloads unseen: no placeholder
           flashes in between, the cover itself is the wait. */}
       {(loading || !(previewUrl || previewDoc) || !iframeReady) && reloadPhase === 'idle' && <PreviewPlaceholder />}

@@ -173,7 +173,7 @@ export async function loadHtmlPreview({
     if (!publishedAppUrl(publishedApp.url)) {
       throw new HtmlPreviewError(tr('viewer.appNotPublishedYet'), { stage: 'published' });
     }
-    const frame = await publishedFrameCredential(publishedApp.url, getAccessToken);
+    const frame = await publishedFrameCredential(publishedApp.url, getAccessToken, signal);
     if (frame.error) {
       const key = PUBLISHED_FAILURE_MESSAGE_KEYS[frame.error] || PUBLISHED_FAILURE_MESSAGE_KEYS.unavailable;
       throw new HtmlPreviewError(tr(key), { stage: 'published', reason: frame.error });

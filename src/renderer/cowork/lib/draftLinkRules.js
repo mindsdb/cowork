@@ -43,7 +43,8 @@ export async function draftLinksWithdrawal(error, readHealth) {
 // Milliseconds until `margin` before a link expires, by this page's clock.
 // `expiresAt` is in seconds on the server's clock. When the two clocks
 // disagree by more than a link's lifetime (less than the margin left, or more
-// than `cap`), the full lifetime from now is the better guess.
+// than `cap`), the full lifetime from now less the margin (`cap - margin`) is
+// the better guess.
 export function draftLinkLifetimeMs(expiresAt, now = Date.now(), { cap = DRAFT_LINK_TTL_MS, margin = 0 } = {}) {
   const left = Number(expiresAt) * 1000 - now;
   const trusted = Number.isFinite(left) && left - margin > 0 && left <= cap;

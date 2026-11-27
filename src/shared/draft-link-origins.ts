@@ -24,9 +24,9 @@ function directiveName(part: string): string {
 /**
  * Lets the web page's preview frame load the artifact domain: appends
  * ARTIFACT_HOST_FRAME_SOURCES to the frame-src and child-src directives of the
- * page's CSP meta tag and changes nothing else. Only the hosted web build applies it (vite.config.ts), so the
- * self-hosted and white-label pages built from the same template never name
- * these hosts.
+ * page's CSP meta tag and changes nothing else. Only the hosted web build
+ * applies it (vite.config.ts), so the self-hosted and white-label pages built
+ * from the same template never name the artifact domain.
  *
  * Refuses a missing or duplicate meta tag or directive, and a source the policy
  * already lists, so a changed template fails the build instead of shipping a

@@ -315,7 +315,8 @@ and redirects have no such header. A deployment proxy can use the header to
 distinguish the shell from other HTML. The build rejects missing, duplicate or
 reordered title and icon anchors, and markers already present in the source.
 
-The hosted build adds the draft hosts to the page's CSP meta tag as well.
+The hosted build adds the artifact domain (`https://*.mindshub.co`), where draft links and
+published full-stack apps live, to the page's CSP meta tag as well.
 That tag allows same-origin scripts, inline scripts, styles and images, so the
 brand's script, its title line, its stylesheet and its images load there too.
 Both changes are made at build time, and either order gives the same page.

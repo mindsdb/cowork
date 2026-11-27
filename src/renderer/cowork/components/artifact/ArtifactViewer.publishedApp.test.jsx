@@ -68,6 +68,10 @@ const hooks = vi.hoisted(() => {
   // (iframeRef, artifact, options), the others (iframeRef, options).
   return { enabled, track: (name, real) => (...args) => { enabled[name] = args[args.length - 1]?.enabled; return real(...args); } };
 });
+vi.mock('./usePreviewCheckTarget', async (importOriginal) => {
+  const real = await importOriginal();
+  return { ...real, usePreviewCheckTarget: hooks.track('check', real.usePreviewCheckTarget) };
+});
 vi.mock('./usePreviewDiagnostics', async (importOriginal) => {
   const real = await importOriginal();
   return { ...real, usePreviewDiagnostics: hooks.track('diagnostics', real.usePreviewDiagnostics) };
@@ -184,7 +188,7 @@ describe('ArtifactViewer: a full-stack app on an org deployment', () => {
     render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
 
     expect((await frameOf()).getAttribute('src')).toBe(`${ORIGIN}/_t/v1.p.s/`);
-    expect(publishedFrameCredential).toHaveBeenCalledWith(LIVE, getAccessToken);
+    expect(publishedFrameCredential).toHaveBeenCalledWith(LIVE, getAccessToken, expect.any(AbortSignal));
     expect(mountArtifactPreview).not.toHaveBeenCalled();
   });
 
@@ -201,7 +205,7 @@ describe('ArtifactViewer: a full-stack app on an org deployment', () => {
     render(<ArtifactViewer open artifact={{ ...app, publishedUrl: LIVE }} onClose={vi.fn()} />);
 
     await frameOf();
-    expect(publishedFrameCredential).toHaveBeenCalledWith(LIVE, getAccessToken);
+    expect(publishedFrameCredential).toHaveBeenCalledWith(LIVE, getAccessToken, expect.any(AbortSignal));
   });
 
   it('says it shows once published instead of erroring, when it has no address yet', async () => {
@@ -245,10 +249,20 @@ describe('ArtifactViewer: a full-stack app on an org deployment', () => {
   it('keeps every frame message hook off for the app, whose frame holds only its own code', async () => {
     published.url = LIVE;
     publishedFrameCredential.mockResolvedValue({ origin: ORIGIN, credential: 'v1.p.s', exp: null });
+    // Inline metadata, so only the frame's missing shim can switch it off.
+    render(<ArtifactViewer open artifact={{ ...app, display: 'inline' }} onClose={vi.fn()} />);
+
+    await frameOf();
+    expect(hooks.enabled).toMatchObject({ diagnostics: false, view: false, fit: false, inline: false, check: false });
+  });
+
+  it('turns the agent preview check off, as for a live app, so it reports unavailable', async () => {
+    published.url = LIVE;
+    publishedFrameCredential.mockResolvedValue({ origin: ORIGIN, credential: 'v1.p.s', exp: null });
     render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
 
     await frameOf();
-    expect(hooks.enabled).toMatchObject({ diagnostics: false, view: false, fit: false, inline: false });
+    expect(hooks.enabled.check).toBe(false);
   });
 
   it('opens comments without a reload and without the comment bridge', async () => {
@@ -306,6 +320,18 @@ describe('ArtifactViewer: a full-stack app on an org deployment', () => {
       // A sleeping laptop: the clock moves on, the timer has not fired.
       vi.setSystemTime(Date.now() + 3600_000);
       act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+      expect(screen.getByTestId('published-session-ended')).toBeInTheDocument();
+    });
+
+    it('checks the deadline again when the window regains focus', async () => {
+      published.url = LIVE;
+      const exp = Math.floor(Date.now() / 1000) + 3600;
+      publishedFrameCredential.mockResolvedValue({ origin: ORIGIN, credential: 'v1.p.s', exp });
+      render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
+      await frameOf();
+
+      vi.setSystemTime(Date.now() + 3600_000);
+      act(() => { window.dispatchEvent(new Event('focus')); });
       expect(screen.getByTestId('published-session-ended')).toBeInTheDocument();
     });
   });

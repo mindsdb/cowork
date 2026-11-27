@@ -72,7 +72,12 @@ export function useArtifactCommentLayer(
     onCreate, onReply, onStatus, onEditThread, onDeleteThread, onEditReply, onDeleteReply,
   };
 
+  // A disabled layer (a published app's frame holds no layer) is never posted to.
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
+
   const postToLayer = useCallback((msg) => {
+    if (!enabledRef.current) return;
     const win = iframeRef.current && iframeRef.current.contentWindow;
     if (!win) return;
     try { win.postMessage({ source: 'anton-comments', ...msg }, '*'); } catch { /* frame gone */ }

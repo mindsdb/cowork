@@ -9,7 +9,7 @@ import { withOrgBrandImageSources } from '../shared/org-brand-image-origins';
 import { withGalleryImageSources } from '../shared/gallery-image-origins';
 
 // Loads the real renderer config as a dev server for each kind of build and
-// checks which of them put the draft hosts in the web page's CSP.
+// checks which of them put the artifact domain in the web page's CSP.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ENV_KEYS = ['BUILD_TARGET', 'VITE_PLATFORM_UI'] as const;
 type BuildEnv = Partial<Record<(typeof ENV_KEYS)[number], string>>;
@@ -55,7 +55,7 @@ afterAll(() => {
   }
 });
 
-describe('draft hosts in the web page CSP', () => {
+describe('the artifact domain in the web page CSP', () => {
   it('go into the web entry of a web build with the platform UI on', async () => {
     const dev = await startServer({ BUILD_TARGET: 'web', VITE_PLATFORM_UI: 'true' });
     expect(pluginNames(dev)).toContain(PLUGIN);

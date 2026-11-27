@@ -461,6 +461,36 @@ describe('ArtifactViewerBody published app preview', () => {
     expect(onReload).toHaveBeenCalledOnce();
   });
 
+  it('moves focus to Reload when it was on the page body', () => {
+    render(renderBody('preview', { kind: 'published', url: PAGE, sessionEnded: true }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /Reload preview/ }));
+  });
+
+  it('moves focus to Reload when it was in the frame', () => {
+    const iframeRef = { current: null };
+    const { rerender } = render(renderBody('preview', { kind: 'published', url: PAGE, sessionEnded: false, iframeRef }));
+    const frame = screen.getByTitle('Deck preview');
+    frame.focus();
+    expect(document.activeElement).toBe(frame);
+    rerender(renderBody('preview', { kind: 'published', url: PAGE, sessionEnded: true, iframeRef }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /Reload preview/ }));
+  });
+
+  it('keeps focus in an input outside the frame when the overlay mounts', () => {
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    try {
+      const iframeRef = { current: null };
+      const { rerender } = render(renderBody('preview', { kind: 'published', url: PAGE, sessionEnded: false, iframeRef }));
+      input.focus();
+      rerender(renderBody('preview', { kind: 'published', url: PAGE, sessionEnded: true, iframeRef }));
+      expect(screen.getByTestId('published-session-ended')).toBeInTheDocument();
+      expect(document.activeElement).toBe(input);
+    } finally {
+      input.remove();
+    }
+  });
+
   it('leaves the frame live while the session runs', () => {
     render(renderBody('preview', { kind: 'published', url: PAGE, sessionEnded: false }));
     expect(screen.getByTitle('Deck preview').hasAttribute('inert')).toBe(false);

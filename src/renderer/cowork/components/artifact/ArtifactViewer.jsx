@@ -743,7 +743,7 @@ export function ArtifactViewer({
   /* An inline artifact or widget shown here is live for the operator too
      (lib/voice/screenWidgets.js): its state, the page's text as read above,
      and its Submit, which goes the way the page's own does. */
-  const inlineLive = open && !!(previewUrl || previewDoc) && isInlineArtifact(artifact);
+  const inlineLive = open && frameHasOurShim && !!(previewUrl || previewDoc) && isInlineArtifact(artifact);
   useEffect(() => {
     if (!inlineLive) return undefined;
     return showWidgetOnScreen(() => {
@@ -1099,7 +1099,7 @@ export function ArtifactViewer({
   // Not gated on previewUrl/previewDoc: a reload clears both for a moment,
   // and the check must not lose its viewer to its own reload. Live apps,
   // documents, images and text have no diagnostics to report, so a check for
-  // them answers "unavailable".
+  // them answers "unavailable", and so does a published app (below).
   const framedPreview = open && hasPreviewSource && !isImage && !isText && !showDocumentPreview && !liveAppView;
   // A quick edit's reloads (its preview check, the applied edit, its Undo)
   // cover the preview while it reloads instead of flashing it blank
@@ -1114,7 +1114,9 @@ export function ArtifactViewer({
   }, [reloadKeepingPlace, previewReload.reload]);
   usePreviewCheckTarget({
     slug: artifact?.slug || artifactFolder.split(/[\\/]/).filter(Boolean).pop() || '',
-    enabled: framedPreview,
+    // A published app's frame sends no diagnostics, and a reload would only
+    // mint a new token and report "clean".
+    enabled: framedPreview && previewKind !== 'published',
     reload: reloadPreviewSmoothly,
     iframeReady,
     errors: diagnostics.errors,
