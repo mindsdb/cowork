@@ -198,9 +198,9 @@ export default function GalleryColumn({
   const [focusDetail, setFocusDetail] = useState(0);
   const searchRef = useRef(null);
 
-  // Asked for focus (opened, or reopened where the person left it): the search
-  // box, or the opened example's heading while the list and its search box are
-  // hidden under it, so Escape and the arrow keys act on the column.
+  // When the gallery opens, move the cursor into it so Escape and the arrows work.
+  // If an example is open, it covers the search box, so use the example's title.
+  // This only runs on open, because picking an example already moves the cursor.
   useEffect(() => {
     if (!focusSearch) return;
     if (openId) setFocusDetail((n) => n + 1);
