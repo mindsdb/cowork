@@ -33,6 +33,7 @@ function cadenceLabel(cadence) {
     daily:    'daily',
     weekdays: 'weekdays',
     weekly:   'weekly',
+    monthly:  'monthly',
   }[cadence];
   return key ? i18n.t(`scheduleRow.cadence.${key}`, { ns: 'projects' }) : cadence;
 }
@@ -77,7 +78,7 @@ export default function ScheduleRow({
   // The schedule in words, then when it next runs: the row's second line.
   const state = scheduleState(task);
   const when = task.nextRunAt && !Number.isNaN(new Date(task.nextRunAt).getTime())
-    ? describeWhen(whenFromDate(task.nextRunAt, task.cadence, task.timezone))
+    ? describeWhen(whenFromDate(task.nextRunAt, task.cadence, task.timezone, task.recurrence))
     : cadenceLabel(task.cadence);
   // Name the zone only when it isn't the one the viewer is in.
   const sentence = usableZone(task.timezone) === deviceZone() ? when : `${when}, ${timeZoneLabel(task.timezone)}`;

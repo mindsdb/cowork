@@ -2,10 +2,10 @@ import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, posix, resolve } from 'node:path';
+import { join, posix, resolve, win32 } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { assertAppIdentity, assertSetupPassed, channels, failureStep, forbiddenEntitlements, inspectableCopy, packageIdentity, validateManifest, FORBIDDEN_ENTITLEMENTS, STEP_NAMES } from './macos-setup-contract.mjs';
+import { assertAppIdentity, assertSetupPassed, channels, failureStep, forbiddenEntitlements, inspectableCopy, packageIdentity, validateManifest, within, FORBIDDEN_ENTITLEMENTS, STEP_NAMES } from './macos-setup-contract.mjs';
 import { checkFuses, enableInspector, fuseMismatches, INSPECTABLE_FUSES, RELEASE_FUSES } from './release-fuses.mjs';
 
 const require = createRequire(import.meta.url);
@@ -244,6 +244,13 @@ test('the inspectable copy keeps the bundle\'s name in a fresh folder and launch
   for (const executable of [bundle, '/Applications/MindsHub Cowork.app/Contents/MacOS/MindsHub Cowork', `${bundle}.old/Contents/MacOS/MindsHub Cowork (Staging)`]) {
     assert.throws(() => inspectableCopy(bundle, executable, '/Users/runner/work/_temp/cowork-app-x', posix), /not inside the installed app/, executable);
   }
+});
+
+test('a path is within a folder when it is the folder or below it, a name starting with two dots included', () => {
+  for (const child of ['/p', '/p/a', '/p/..qa', '/p/..qa/app', '/p/a/../b']) assert.equal(within('/p', child, posix), true, child);
+  for (const child of ['/', '/q', '/p2', '/p/..', '/p/../q', 'C:\\p']) assert.equal(within('/p', child, posix), false, child);
+  for (const child of ['C:\\p', 'C:\\p\\..qa', 'c:\\P\\a']) assert.equal(within('C:\\p', child, win32), true, child);
+  for (const child of ['C:\\q', 'C:\\p\\..\\q', 'D:\\p']) assert.equal(within('C:\\p', child, win32), false, child);
 });
 
 /* src/main/release-hardening.invariant.test.ts pins electron-builder.yml's

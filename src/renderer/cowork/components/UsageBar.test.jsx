@@ -176,4 +176,20 @@ describe('mobile usage copy from real account states', () => {
       hostMock.host.isMobileShell = false;
     }
   });
+
+  it('gives a pick the Free tier covers the allowance figure, as Air gets it', () => {
+    hostMock.host.isMobileShell = true;
+    try {
+      const read = {
+        reachable: true, balance: { usd: 0, canConsume: false }, autoTopUp: null,
+        freeTokens: { limit: 100, remaining: 8, resetsAt: '2099-09-11T12:00:00Z' },
+      };
+      expect(deriveComposerWarning(read, { model: 'glm-5-3-flash', coveredByTier: 'free' }))
+        .toEqual(deriveComposerWarning(read, { model: 'mindshub_air' }));
+      expect(deriveComposerWarning(read, { model: 'glm-5-3-flash', coveredByTier: 'free' })?.kind).toBe('free_low');
+      expect(deriveComposerWarning(read, { model: 'glm-5-3-flash', coveredByTier: 'plus' })).toBeNull();
+    } finally {
+      hostMock.host.isMobileShell = false;
+    }
+  });
 });

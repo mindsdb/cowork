@@ -9,20 +9,20 @@
         "updatePaymentMethod": "Actualizar método de pago",
         "upgrade": "{tier, select, plus {Obtener Plus} pro {Mejorar a Pro} other {Mejorar plan}}"
       },
-      "noFreeGrant": "Esta cuenta no incluye tokens gratuitos de MindsHub Air. MindsHub Air usa tu saldo, como cualquier otro modelo.",
+      "noFreeGrant": "Esta cuenta no incluye tokens gratuitos. Todos los modelos usan tu saldo.",
       "allowanceStop": {
         "noGrant": "{noGrant} Tu saldo está vacío, así que agrega fondos para continuar.",
-        "withTime": "Tu cupo gratuito de MindsHub Air se agotó y tu saldo está vacío. Agrega fondos para seguir trabajando o espera a que se renueve a las {time}.",
-        "noTime": "Tu cupo gratuito de MindsHub Air se agotó y tu saldo está vacío. Agrega fondos para seguir trabajando.",
-        "noTimeMobile": "Tu cupo gratuito de MindsHub Air se agotó y tu saldo está vacío.",
+        "withTime": "Tu cupo gratuito se agotó y tu saldo está vacío. Agrega fondos para seguir trabajando o espera a que se renueve a las {time}.",
+        "noTime": "Tu cupo gratuito se agotó y tu saldo está vacío. Agrega fondos para seguir trabajando.",
+        "noTimeMobile": "Tu cupo gratuito se agotó y tu saldo está vacío.",
         "noGrantMobile": "{noGrant} Tu saldo está vacío.",
-        "withTimeMobile": "Tu cupo gratuito de MindsHub Air se agotó y tu saldo está vacío. Se renueva a las {time}."
+        "withTimeMobile": "Tu cupo gratuito se agotó y tu saldo está vacío. Se renueva a las {time}."
       },
       "freeServingPaused": {
-        "until": "MindsHub Air gratuito está en pausa para todos hasta {until}. Esto no usa tu cupo. Agrega fondos para seguir trabajando ahora.",
-        "dailyReset": "MindsHub Air gratuito está en pausa para todos hasta que se reinicie el presupuesto diario. Esto no usa tu cupo. Agrega fondos para seguir trabajando ahora.",
-        "untilMobile": "MindsHub Air gratuito está en pausa para todos hasta {until}. Esto no usa tu cupo.",
-        "dailyResetMobile": "MindsHub Air gratuito está en pausa para todos hasta que se reinicie el presupuesto diario. Esto no usa tu cupo."
+        "until": "Los modelos gratuitos están en pausa para todos hasta {until}. Esto no usa tu cupo. Agrega fondos para seguir trabajando ahora.",
+        "dailyReset": "Los modelos gratuitos están en pausa para todos hasta que se reinicie el presupuesto diario. Esto no usa tu cupo. Agrega fondos para seguir trabajando ahora.",
+        "untilMobile": "Los modelos gratuitos están en pausa para todos hasta {until}. Esto no usa tu cupo.",
+        "dailyResetMobile": "Los modelos gratuitos están en pausa para todos hasta que se reinicie el presupuesto diario. Esto no usa tu cupo."
       },
       "balanceEmptySentence": "Tu saldo está vacío.",
       "percentLeft": "Te queda {percent} de tu cupo gratuito",
@@ -50,19 +50,18 @@
       },
       "freeUsed": {
         "title": "Cupo gratuito agotado",
-        "body": "MindsHub Air usa tu saldo hasta que se renueve tu cupo.",
-        "bodyWithTime": "MindsHub Air usa tu saldo hasta que se renueve tu cupo a las {time}.",
-        "bodyWithUsd": "MindsHub Air usa tu saldo (quedan {usd}) hasta que se renueve tu cupo.",
-        "bodyWithUsdWithTime": "MindsHub Air usa tu saldo (quedan {usd}) hasta que se renueve tu cupo a las {time}."
+        "body": "Los modelos gratuitos ahora usan tu saldo hasta que se renueve tu cupo.",
+        "bodyWithTime": "Los modelos gratuitos ahora usan tu saldo hasta que se renueve tu cupo a las {time}."
       },
       "freeLow": {
-        "body": "Después, MindsHub Air usará tu saldo hasta que se renueve tu cupo.",
-        "bodyWithTime": "Después, MindsHub Air usará tu saldo hasta que se renueve tu cupo a las {time}.",
+        "body": "Después, los modelos gratuitos usarán tu saldo hasta que se renueve tu cupo.",
+        "bodyWithTime": "Después, los modelos gratuitos usarán tu saldo hasta que se renueve tu cupo a las {time}.",
         "balanceLowToo": "Tu saldo también está bajo ({usd})."
       },
       "budgetExceeded": {
+        "airOnPlan": "{hasModel, select, true {{scope, select, org {{model} no puede ejecutarse hasta que un propietario o administrador aumente el presupuesto en Presupuestos. Los demás modelos siguen funcionando.} other {{model} no puede ejecutarse hasta que un administrador aumente el presupuesto en Presupuestos. Los demás modelos siguen funcionando.}}} other {{scope, select, org {Los modelos de pago no pueden ejecutarse hasta que un propietario o administrador lo aumente en Presupuestos. MindsHub Air sigue funcionando mientras dure el cupo de tu plan.} other {Los modelos de pago no pueden ejecutarse hasta que un administrador lo aumente en Presupuestos. MindsHub Air sigue funcionando mientras dure el cupo de tu plan.}}}}",
         "raise": "{hasModel, select, true {{scope, select, org {{model} no puede ejecutarse hasta que un propietario o administrador aumente el presupuesto en Presupuestos. Los demás modelos siguen funcionando.} other {{model} no puede ejecutarse hasta que un administrador aumente el presupuesto en Presupuestos. Los demás modelos siguen funcionando.}}} other {{scope, select, org {Los modelos de pago no pueden ejecutarse hasta que un propietario o administrador lo aumente en Presupuestos.} other {Los modelos de pago no pueden ejecutarse hasta que un administrador lo aumente en Presupuestos.}}}}",
-        "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} no puede ejecutarse hasta que un propietario o administrador aumente el presupuesto en Presupuestos. Los demás modelos siguen funcionando.} other {{model} no puede ejecutarse hasta que un administrador aumente el presupuesto en Presupuestos. Los demás modelos siguen funcionando.}}} other {{scope, select, org {Los modelos de pago no pueden ejecutarse hasta que un propietario o administrador lo aumente en Presupuestos. MindsHub Air sigue funcionando mientras dure su cupo gratuito.} other {Los modelos de pago no pueden ejecutarse hasta que un administrador lo aumente en Presupuestos. MindsHub Air sigue funcionando mientras dure su cupo gratuito.}}}}"
+        "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} no puede ejecutarse hasta que un propietario o administrador aumente el presupuesto en Presupuestos. Los demás modelos siguen funcionando.} other {{model} no puede ejecutarse hasta que un administrador aumente el presupuesto en Presupuestos. Los demás modelos siguen funcionando.}}} other {{scope, select, org {Los modelos de pago no pueden ejecutarse hasta que un propietario o administrador lo aumente en Presupuestos. MindsHub Air sigue funcionando mientras dure tu cupo gratuito.} other {Los modelos de pago no pueden ejecutarse hasta que un administrador lo aumente en Presupuestos. MindsHub Air sigue funcionando mientras dure tu cupo gratuito.}}}}"
       },
       "window": {
         "usedUpTitle": "{window, select, 7d {Cupo semanal agotado} other {Cupo de 5 horas agotado}}",
@@ -90,7 +89,14 @@
       "daily": "Todos los días a las {time}",
       "weekdays": "Cada día hábil a las {time}",
       "weekly": "Cada {weekday} a las {time}",
-      "weeklyNoDay": "Cada semana a las {time}"
+      "weeklyNoDay": "Cada semana a las {time}",
+      "monthlyDay": "Cada mes el día {day} a las {time}",
+      "monthlyDayOrLast": "Cada mes el día {day}, o el último día de un mes más corto, a las {time}",
+      "monthlyFirst": "Cada mes el primer {weekday} a las {time}",
+      "monthlySecond": "Cada mes el segundo {weekday} a las {time}",
+      "monthlyThird": "Cada mes el tercer {weekday} a las {time}",
+      "monthlyFourth": "Cada mes el cuarto {weekday} a las {time}",
+      "monthlyLast": "Cada mes el último {weekday} a las {time}"
     },
     "scheduleCopy": {
       "missedOnceServer": "Si el servidor está caído a esta hora, la tarea se ejecuta cuando vuelva, dentro de la hora. Después se marca como perdida y puedes ejecutarla tú.",
@@ -116,8 +122,8 @@
       },
       "row": {
         "walletEmpty": "No hay créditos disponibles. Agrega fondos para usar MindsHub.",
-        "allowanceExhausted": "No hay tokens gratuitos de MindsHub Air disponibles y el saldo está vacío.",
-        "freeAirPaused": "MindsHub Air gratuito está en pausa en este momento.",
+        "allowanceExhausted": "No hay tokens gratuitos disponibles y el saldo está vacío.",
+        "freeAirPaused": "Los modelos gratuitos están en pausa en este momento.",
         "budgetExceeded": "Se agotó un presupuesto.",
         "walletEmptyMobile": "No hay créditos disponibles."
       },
@@ -463,6 +469,13 @@
         "pendingDetail": "Tus credenciales se guardan cifradas. Esta página se actualiza cuando termina la comprobación."
       }
     },
+    "httpRefusal": {
+      "uploadTooLarge": "Esta subida supera el límite de tamaño. Elige un archivo más pequeño o sube menos archivos a la vez.",
+      "requestTooLarge": "Esta solicitud supera el límite de tamaño. Intenta enviar menos contenido."
+    },
+    "projectUploads": {
+      "notUploaded": "Archivos no subidos: {files}."
+    },
     "fileDrop": {
       "uploading": "Subiendo…"
     },
@@ -598,7 +611,8 @@
       "hourly": "Cada hora",
       "daily": "Diaria",
       "weekdays": "Días hábiles",
-      "weekly": "Semanal"
+      "weekly": "Semanal",
+      "monthly": "Mensual"
     },
     "openProject": "Abrir {project}",
     "descriptionWithNext": "{sentence} · próxima {next}",
@@ -634,7 +648,12 @@
     "succeededTitle": "Tarea programada terminada",
     "succeededBody": "«{title}» terminó una ejecución. Haz clic para abrirla.",
     "succeededToast": "La tarea programada «{title}» terminó una ejecución.",
-    "openAction": "Abrir tarea"
+    "openAction": "Abrir tarea",
+    "stoppedTitle": "Tarea programada detenida",
+    "stoppedBody": "«{title}» se detuvo al alcanzar su límite antes de terminar. Haz clic para revisarla.",
+    "stoppedToast": "La tarea programada «{title}» se detuvo al alcanzar su límite antes de terminar.",
+    "genericTitle": "Nueva notificación",
+    "genericLine": "Nueva notificación: {subject}"
   },
   "scheduleNotifyMenu": {
     "label": "Notificaciones",
@@ -650,11 +669,13 @@
       "hourly": "Cada hora",
       "daily": "Todos los días",
       "weekdays": "Cada día hábil",
-      "weekly": "Cada semana"
+      "weekly": "Cada semana",
+      "monthly": "Cada mes"
     },
     "errorNoPrompt": "Dile a {agent} qué hacer.",
     "errorPickFutureTime": "Elige una hora en el futuro.",
     "errorPickTime": "Elige una hora.",
+    "errorPickDays": "Elige al menos un día de la semana.",
     "errorSave": "No se pudo guardar la programación.",
     "editTitle": "Editar tarea programada",
     "createTitle": "Programar una tarea",
@@ -666,6 +687,17 @@
     "when": "Cuándo",
     "howOften": "Frecuencia",
     "dayOfWeek": "Día de la semana",
+    "daysOfWeek": "Días de la semana",
+    "dayOfMonth": "Día del mes",
+    "monthBy": {
+      "label": "Qué día del mes",
+      "day": "Día",
+      "week1": "Primer",
+      "week2": "Segundo",
+      "week3": "Tercer",
+      "week4": "Cuarto",
+      "weekLast": "Último"
+    },
     "date": "Fecha",
     "atMinute": "en el minuto",
     "at": "a las",
@@ -677,6 +709,7 @@
     "namePlaceholder": "Nombrada a partir de la instrucción",
     "project": "Proyecto",
     "model": "Modelo",
+    "connections": "Conexiones",
     "accountDefault": "Predeterminado de la cuenta",
     "cancel": "Cancelar",
     "saveAndRunOnce": "Guardar y ejecutar una vez",
@@ -799,6 +832,9 @@
     "folderUnsupported": "Este servidor no permite asociar un proyecto a una carpeta. Creó \"{name}\" como un proyecto normal y borró la carpeta que elegiste. Actualiza Cowork para usar tu carpeta o elimina ese proyecto si no lo quieres.",
     "couldNotCreate": "No se pudo crear el proyecto.",
     "couldNotOpenPicker": "No se pudo abrir el selector de carpetas.",
+    "filesNotUploaded": "Se creó \"{name}\", pero sus archivos no se subieron.",
+    "someFilesNotUploaded": "Se creó \"{name}\", pero no se subieron todos sus archivos.",
+    "filesUploadUnconfirmed": "Se creó \"{name}\". Revisa los archivos del proyecto antes de volver a subirlos.",
     "title": "Crear un proyecto",
     "nameLabel": "Nombre del proyecto",
     "instructionsLabel": "Instrucciones",

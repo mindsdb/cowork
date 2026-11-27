@@ -308,4 +308,33 @@ describe('mindsUpgradeUrl (ENG-4186)', () => {
     expect(mindsUpgradeUrl('plus')).toBe(MINDS_UPGRADE_URL.plus);
     expect(mindsUpgradeUrl(null)).toBe(MINDS_UPGRADE_URL.plus);
   });
+
+  it('carries the placement as a cowork start surface, beside the plan and organization', async () => {
+    const { mindsUpgradeUrl } = await importUrls();
+    const url = new URL(mindsUpgradeUrl('pro', { organizationId: 'org-1', subject: 'user-1' }, 'window_card'));
+    expect(url.searchParams.get('start_surface')).toBe('cowork_window_card');
+    expect(url.searchParams.get('upgrade')).toBe('pro');
+    expect(url.searchParams.get('organization')).toBe('org-1');
+    expect(url.searchParams.get('subject')).toBe('user-1');
+  });
+
+  it('names no start surface when no placement is given', async () => {
+    const { mindsUpgradeUrl } = await importUrls();
+    for (const placement of [undefined, null, '']) {
+      const url = new URL(mindsUpgradeUrl('plus', { organizationId: 'org-1' }, placement));
+      expect(url.searchParams.has('start_surface')).toBe(false);
+      expect(url.searchParams.get('upgrade')).toBe('plus');
+    }
+  });
+
+  it('names no start surface for a placement outside UPGRADE_PLACEMENTS', async () => {
+    const { mindsUpgradeUrl } = await importUrls();
+    // 'plan-banner' fails START_SURFACE_PATTERN; 'plan_banner' matches it but is not listed.
+    for (const placement of ['plan-banner', 'plan_banner']) {
+      const url = new URL(mindsUpgradeUrl('pro', { organizationId: 'org-1' }, placement));
+      expect(url.searchParams.has('start_surface')).toBe(false);
+      expect(url.searchParams.get('upgrade')).toBe('pro');
+      expect(url.searchParams.get('organization')).toBe('org-1');
+    }
+  });
 });

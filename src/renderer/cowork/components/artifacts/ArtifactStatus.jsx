@@ -23,7 +23,7 @@ import { ArtifactAuthorshipBadge } from './ArtifactAuthorshipBadge';
 
 // One badge per artifact for who can open it (ENG-1212, ENG-4647), from its
 // audience (artifactAudienceChoice, the Share panel's AUDIENCE_CHOICE): the same rule in every group and for
-// every kind of file. ONLY a genuinely public artifact gets the green
+// every kind of file. ONLY a genuinely public artifact (a link or a website) gets the green
 // "success" treatment, so a protected one can never read as available to all.
 // A shared artifact's badge carries a `dot` (the "this is live" affordance);
 // one only its owner can open has none until it is shared. Public and
@@ -37,6 +37,7 @@ const AUDIENCE_BADGE = {
   [AUDIENCE_CHOICE.ORG]: { variant: 'default', icon: Ico.building(12), labelKey: null },
   [AUDIENCE_CHOICE.PASSWORD]: { variant: 'default', icon: Ico.lock(12), labelKey: 'status.badge.publicPassword' },
   [AUDIENCE_CHOICE.PUBLIC]: { variant: 'success', icon: Ico.globe(12), labelKey: 'status.badge.public' },
+  [AUDIENCE_CHOICE.WEBSITE]: { variant: 'success', icon: Ico.globe(12), labelKey: 'status.badge.website' },
 };
 
 /** The label of an audience, for its badge and the Access filter. */
@@ -47,7 +48,7 @@ export function audienceChoiceLabel(choice, orgName = null) {
 
 function accessMode(artifact) {
   const mode = artifact.accessMode || (artifact.accessProtected ? 'password' : null);
-  return mode && ['public', 'password', 'restricted'].includes(mode) ? mode : null;
+  return mode && ['public', 'website', 'password', 'restricted'].includes(mode) ? mode : null;
 }
 
 /** The org's name for "Everyone at ‹org›", from the page around the badges:

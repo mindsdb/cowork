@@ -59,12 +59,51 @@ describe('ScheduleTaskModal — what, then when', () => {
     expect(options).toEqual({ runOnce: false });
   });
 
-  it('offers a day of the week only for weekly', async () => {
-    renderModal();
-    expect(screen.queryByRole('combobox', { name: 'Day of the week' })).toBeNull();
+  it('offers days of the week only for weekly, and sends the chosen ones', async () => {
+    const { onSubmit } = renderModal();
+    prompt('weekly report');
+    expect(screen.queryByRole('group', { name: 'Days of the week' })).toBeNull();
     await pick('How often', 'Every week');
-    await pick('Day of the week', 'Monday');
-    expect(screen.getByText(/^Every Monday at/)).toBeInTheDocument();
+    const days = screen.getByRole('group', { name: 'Days of the week' });
+    // Today's weekday starts on; turn every day off, then pick Mon and Thu.
+    for (const button of days.querySelectorAll('button[aria-pressed="true"]')) fireEvent.click(button);
+    fireEvent.click(screen.getByRole('button', { name: /^Schedule$/ }));
+    expect(await screen.findByText(/Pick at least one day of the week/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Thursday' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Monday' }));
+    expect(screen.getByText(/^Every Monday and Thursday at/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Schedule$/ }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    const [payload] = onSubmit.mock.calls[0];
+    expect(payload).toMatchObject({ cadence: 'weekly', recurrence: { days: ['mon', 'thu'] } });
+    expect([1, 4]).toContain(new Date(payload.next_run_at).getUTCDay());
+  });
+
+  it('sends a monthly weekday of the month', async () => {
+    const { onSubmit } = renderModal();
+    prompt('month-end close');
+    await pick('How often', 'Every month');
+    await pick('Which day of the month', 'Last');
+    await pick('Day of the week', 'Friday');
+    expect(screen.getByText(/^Every month on the last Friday at/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Schedule$/ }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    const [payload] = onSubmit.mock.calls[0];
+    expect(payload).toMatchObject({ cadence: 'monthly', recurrence: { week: -1, weekday: 'fri' } });
+    const first = new Date(payload.next_run_at);
+    expect(first.getUTCDay()).toBe(5);
+    expect(first.getUTCDate() + 7).toBeGreaterThan(new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate());
+  });
+
+  it('opens a saved monthly task on its day of the month', async () => {
+    renderModal({
+      task: {
+        id: 's1', title: 'Rent', prompt: 'pay rent', cadence: 'monthly', timezone: 'UTC',
+        nextRunAt: '2030-01-01T09:00:00Z', recurrence: { monthDay: 1 },
+      },
+    });
+    expect(screen.getByText(/^Every month on day 1 at 9:00/)).toBeInTheDocument();
   });
 
   it('refuses a one-off time that has passed', async () => {
@@ -191,6 +230,58 @@ describe('ScheduleTaskModal — model', () => {
     expect(screen.getByRole('combobox', { name: 'Model' })).toHaveTextContent('claude-retired');
     await pick('Model', /Account default/);
     expect((await submitted(onSubmit, /Save changes/i)).model).toBe('default');
+  });
+});
+
+describe('ScheduleTaskModal — connections', () => {
+  const CONNECTORS = [
+    { engine: 'gmail', name: 'Work mail', display_name: 'Gmail' },
+    { engine: 'hubspot', name: 'CRM' },
+  ];
+  const submitted = async (onSubmit, button = /^Schedule$/) => {
+    fireEvent.click(screen.getByRole('button', { name: button }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    return onSubmit.mock.calls[0][0];
+  };
+
+  it('uses every connection unless one is left out', async () => {
+    const { onSubmit } = renderModal({ connectors: CONNECTORS });
+    prompt('send the digest');
+    expect(screen.getByRole('checkbox', { name: /Work mail/ })).toBeChecked();
+    expect((await submitted(onSubmit)).disabled_connections).toEqual([]);
+  });
+
+  it('sends the connections left out', async () => {
+    const { onSubmit } = renderModal({ connectors: CONNECTORS });
+    prompt('send the digest');
+    await userEvent.setup().click(screen.getByRole('checkbox', { name: /CRM/ }));
+    expect((await submitted(onSubmit)).disabled_connections).toEqual([{ engine: 'hubspot', name: 'CRM' }]);
+  });
+
+  it('starts an edit from the task’s left-out connections, and can give one back', async () => {
+    const task = { id: 's1', prompt: 'digest', cadence: 'daily', disabledConnections: [{ engine: 'gmail', name: 'Work mail' }] };
+    const { onSubmit } = renderModal({ connectors: CONNECTORS, task });
+    const mail = screen.getByRole('checkbox', { name: /Work mail/ });
+    expect(mail).not.toBeChecked();
+    await userEvent.setup().click(mail);
+    expect((await submitted(onSubmit, /Save changes/i)).disabled_connections).toEqual([]);
+  });
+
+  it('shows no connections field without any connections', () => {
+    renderModal();
+    expect(screen.queryByText('Connections')).not.toBeInTheDocument();
+  });
+
+  it('keeps a renamed datasource excluded when editing', async () => {
+    const task = {
+      id: 's1', prompt: 'digest', cadence: 'daily',
+      disabledConnections: [{ engine: 'postgres', name: 'Primary', datasource_id: 12 }],
+    };
+    const { onSubmit } = renderModal({
+      task, connectors: [{ engine: 'postgres', name: 'Renamed', datasourceId: 12 }],
+    });
+    expect(screen.getByRole('checkbox', { name: /Renamed/ })).not.toBeChecked();
+    expect((await submitted(onSubmit, /Save changes/i)).disabled_connections).toEqual(task.disabledConnections);
   });
 });
 

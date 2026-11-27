@@ -85,11 +85,11 @@ vi.mock('../../../platform/host', () => ({
     openPath: vi.fn(),
   },
 }));
-const publishMock = vi.hoisted(() => ({ url: '' }));
+const publishMock = vi.hoisted(() => ({ url: '', accessMode: 'public' }));
 vi.mock('./publish/usePublish', () => ({
   usePublish: () => ({
     publishedUrl: publishMock.url,
-    accessMode: 'public',
+    accessMode: publishMock.accessMode,
     artifactKey: 'artifact/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     busy: false,
   }),
@@ -197,6 +197,7 @@ describe('ArtifactViewer quick edit bar', () => {
     workspaceMock.load.mockImplementation(async () => {});
     workspaceMock.commentsReady = false;
     publishMock.url = '';
+    publishMock.accessMode = 'public';
     workspaceMock.load.mockClear();
     workspaceApi.loadArtifactDraftDocument.mockResolvedValue({
       content: '<html><body>Hi</body></html>', contentType: 'text/html', isHtml: true,
@@ -1497,6 +1498,19 @@ describe('ArtifactViewer quick edit bar', () => {
 
       const rail = screen.getByRole('toolbar', { name: 'Viewer panels' });
       expect(within(rail).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Live edit', 'Comments', 'Stats']);
+    });
+
+    // A public website has no viewer stats: its stats routes answer 404.
+    it('offers no Stats on the rail for a public website', async () => {
+      workspaceMock.commentsReady = true;
+      workspaceMock.source = HTML_SOURCE;
+      publishMock.url = 'https://k3x9-staging.mindshub.co/';
+      publishMock.accessMode = 'website';
+      renderViewer();
+      await screen.findByTitle('Launch brief');
+
+      const rail = screen.getByRole('toolbar', { name: 'Viewer panels' });
+      expect(within(rail).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['Live edit', 'Comments']);
     });
 
     it('switches panels from the rail and closes the open one on a second click', async () => {

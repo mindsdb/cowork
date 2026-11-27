@@ -627,6 +627,9 @@ export async function checkConfigured(): Promise<{
   // Only a server that issues signed draft links reports them; the bridge
   // path never does.
   draftLinks?: boolean;
+  // Only a server that lets owners publish public websites reports them; the
+  // bridge path never does.
+  artifactWebsites?: boolean;
   // Present only when /health reports it; lib/docsEnabled.ts decides what
   // its absence (an older server, the bridge) means.
   docsEnabled?: boolean;
@@ -644,6 +647,7 @@ export async function checkConfigured(): Promise<{
     org_mode?: boolean;
     live_apps?: boolean;
     draft_links?: boolean;
+    artifact_websites?: boolean;
     docs_enabled?: unknown;
   };
   return {
@@ -652,6 +656,7 @@ export async function checkConfigured(): Promise<{
     orgMode: Boolean(h.org_mode),
     liveApps: h.live_apps === true,
     draftLinks: h.draft_links === true,
+    artifactWebsites: h.artifact_websites === true,
     ...(typeof h.docs_enabled === 'boolean' ? { docsEnabled: h.docs_enabled } : {}),
   };
 }
@@ -2130,23 +2135,6 @@ export function onMindsHubCredentialChanged(cb: () => void): () => void {
   return () => {};
 }
 
-// Where the refresh token is stored: macOS keychain (true) or a plaintext
-// file under ~/.cowork (false). Electron-only — the web shell has no local
-// token store, so both wrappers no-op to a safe default.
-export async function getKeychainPref(): Promise<boolean> {
-  if (isElectron && typeof bridge.getKeychainPref === 'function') {
-    return (await bridge.getKeychainPref()).enabled;
-  }
-  return false;
-}
-
-export async function setKeychainPref(enabled: boolean): Promise<boolean> {
-  if (isElectron && typeof bridge.setKeychainPref === 'function') {
-    return (await bridge.setKeychainPref(enabled)).ok;
-  }
-  return false;
-}
-
 // Whether the desktop's agent sends its anonymous usage events, the shared
 // browser's included (COWORK_USAGE_EVENTS in the account's dotenv; on unless
 // turned off). Null where the shell can't say: the web, or an older shell.
@@ -2346,8 +2334,6 @@ export const host = {
   mindshubSwitchOrg,
   mindshubGetCachedToken,
   onMindsHubAuthChanged,
-  getKeychainPref,
-  setKeychainPref,
   getUsageEventsPref,
   setUsageEventsPref,
   getAccessToken,

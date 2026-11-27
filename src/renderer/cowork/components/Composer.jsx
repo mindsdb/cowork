@@ -975,7 +975,7 @@ export default function Composer({
   }, []);
 
   // Which usage warning, if any, to tuck above the input. App provides the
-  // polled usage; the pick decides whether free Air tokens or the paid
+  // polled usage; the pick decides whether the free allowance or the paid
   // balance is what the next turn spends.
   const hubUsage = useContext(HubUsageContext);
   // On Plus or Pro, a pick the plan does not cover runs on the wallet, so its

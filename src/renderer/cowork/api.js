@@ -15,7 +15,7 @@ import { reduceServerEvents, replayedAnswer } from './lib/conversationHistory';
 import { withQuickEditGroup } from './lib/quickEditGroup';
 import { isAntonConfigError } from './lib/antonErrors';
 import { ADDON_REQUEST_TIMEOUT_MS, foldAddonMessages, isValidLocalKey } from './lib/addons';
-import { readRefusalBody, readRefusalObject, readRetryAfter } from './lib/httpRefusal';
+import { readRefusalBody, readRefusalObject, readRetryAfter, refusalMessage } from './lib/httpRefusal';
 import { host } from '../platform/host';
 import { withoutNotionPageNotes, stripNotionPageNoteFromTitle } from './lib/notionPageNote';
 import { currentServerLocale } from '../lib/i18n';
@@ -261,7 +261,8 @@ function dedupe(key, factory, { forceFresh = false } = {}) {
 
 /**
  * Builds the Error a refused request throws. The message is the body's
- * sentence, else the caller's fallback. status, code, retry_after and retry_at
+ * sentence, else the size sentence for a 413, else the caller's fallback
+ * (refusalMessage in lib/httpRefusal.js). status, code, retry_after and retry_at
  * let a caller tell a busy server from a turn already running, and wait as
  * long as the server asked. The body is read once, as text, and parsed from
  * there: reading it as JSON first would consume it, and a body that isn't JSON
@@ -269,9 +270,10 @@ function dedupe(key, factory, { forceFresh = false } = {}) {
  *
  * @param {Response} res
  * @param {string} fallback
+ * @param {{fileUpload?: boolean}} [options]
  * @returns {Promise<RefusalError>}
  */
-async function responseError(res, fallback) {
+async function responseError(res, fallback, { fileUpload = false } = {}) {
   let text = '';
   try {
     text = await res.text();
@@ -280,7 +282,7 @@ async function responseError(res, fallback) {
   }
   const { message, code } = readRefusalBody(text);
   const { retry_after, retry_at } = readRetryAfter(res.headers?.get?.('Retry-After'));
-  const err = /** @type {RefusalError} */ (new Error(message || fallback));
+  const err = /** @type {RefusalError} */ (new Error(refusalMessage({ status: res.status, message, fallback, fileUpload })));
   err.status = res.status;
   err.code = code;
   err.retry_after = retry_after;
@@ -1629,7 +1631,7 @@ export async function uploadProjectFiles(projectName, files) {
     method: 'POST',
     body: form,
   });
-  if (!res.ok) throw await responseError(res, `Upload failed (${res.status})`);
+  if (!res.ok) throw await responseError(res, `Upload failed (${res.status})`, { fileUpload: true });
   return res.json();
 }
 
@@ -1929,8 +1931,8 @@ export async function setActiveHubWorkspace(workspaceId) {
 }
 
 /**
- * The signed-in account's free MindsHub Air allowance, paid balance, and auto
- * top up state (ENG-1782). Never throws: signed out, an unreachable sidecar,
+ * The signed-in account's free allowance, paid balance, and auto top up
+ * state (ENG-1782). Never throws: signed out, an unreachable sidecar,
  * and an old sidecar with no such route all answer the same dark shape, and
  * the composer notice and Settings tab render nothing for it.
  */
@@ -2315,7 +2317,7 @@ export async function uploadSkillFile(file, { shared } = {}) {
   form.append('file', file, file.name);
   if (typeof shared === 'boolean') form.append('shared', shared ? 'true' : 'false');
   const res = await authFetch(BASE + '/skills/upload', { method: 'POST', body: form });
-  if (!res.ok) throw await responseError(res, `Upload failed (${res.status})`);
+  if (!res.ok) throw await responseError(res, `Upload failed (${res.status})`, { fileUpload: true });
   return res.json();
 }
 
@@ -3740,7 +3742,7 @@ export async function uploadAttachments(files, { projectName, sessionId, timeout
       `${BASE}/attachments/${enc(projectName)}/${enc(sessionId)}/upload`,
       { method: 'POST', body: form, signal },
     );
-    if (!res.ok) throw await responseError(res, `Attachment upload failed (${res.status})`);
+    if (!res.ok) throw await responseError(res, `Attachment upload failed (${res.status})`, { fileUpload: true });
     const data = await res.json();
     return Array.isArray(data) ? data : [];
   } catch (err) {
@@ -4085,6 +4087,42 @@ export async function fetchScheduleRuns(id, { limit = 100, strict = false } = {}
     if (strict) throw err;
     return { schedule_id: id, runs: [] };
   }
+}
+
+// ─── Notices ────────────────────────────────────────────────────────────────
+//
+// The account's notification inbox: what happened while the user may not
+// have been looking, such as a scheduled run that ended. A server older than
+// these routes answers 404; the reads below return null then, so the caller
+// can hide the bell. Any other failure throws.
+
+async function noticesReq(path, options) {
+  try {
+    return await req(path, { timeoutMs: SHORT_REQUEST_TIMEOUT_MS, ...options });
+  } catch (err) {
+    if (err?.status === 404) return null;
+    throw err;
+  }
+}
+
+// { notices: [{ id, kind, subject, target, createdAt, readAt }], unreadCount },
+// newest first, or null when the server has no notices.
+export async function fetchNotices({ limit = 50 } = {}) {
+  const data = await noticesReq(`/notices/?limit=${encodeURIComponent(limit)}`);
+  if (!data) return null;
+  return {
+    notices: Array.isArray(data.notices) ? data.notices : [],
+    unreadCount: Number.isFinite(data.unreadCount) ? data.unreadCount : 0,
+  };
+}
+
+// A 404 here means the notice is not the caller's (or is gone): nothing to mark.
+export async function markNoticeRead(id) {
+  return noticesReq(`/notices/${encodeURIComponent(id)}/read`, { method: 'POST' });
+}
+
+export async function markAllNoticesRead() {
+  return noticesReq('/notices/read-all', { method: 'POST' });
 }
 
 // ─── Mock data (used when server is offline) ──────────────────────────────────

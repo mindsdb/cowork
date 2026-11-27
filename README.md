@@ -82,8 +82,8 @@ A channel's state is not all under one folder. It spreads across several locatio
 | **Data home** — `~/.cowork-<kind>` / `~/.cowork` | SQLite `cowork.db`, `.env`, `state.json`, `.master_key`, and the `projects/` `files/` `skills/` `data-vault/` trees ([full layout](https://github.com/mindsdb/cowork-server#data-layer)) | `COWORK_HOME` |
 | **uv tool install** — `~/.cowork-<kind>/uv/` / `~/.local/{share/uv,bin}` | The `cowork-server` + `anton-agent` Python sidecar (binary + venv). Beside the `tools/` folder, never inside it: `.cowork-release-contracts/`, the release installer's rollback snapshots ([`install_release_server.py`](scripts/install_release_server.py)). uv reads every folder in `tools/` as a tool, and `uv tool list` fails on one it can't name | `UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` |
 | **Server logs** — `~/.cowork-<kind>/logs/` / `~/Library/Logs/anton` | `cowork-server.log` | Non-prod redirects to the data home |
-| **Electron userData** — `~/Library/Application Support/<app name>` (prod = `anton`) | Renderer `localStorage` (terms consent, UI prefs); on **Windows/Linux** the encrypted MindsHub refresh token (`mindshub-refresh.bin`, safe-storage) | `app.setName` per kind |
-| **MindsHub refresh token** — **macOS:** `~/.cowork-<kind>/refresh-token.dat` / `~/.cowork/refresh-token.dat`; **Windows/Linux:** userData `mindshub-refresh.bin` | The Keycloak refresh token | `COWORK_HOME` (macOS) / userData (Win/Linux) — see [`token-store.ts`](src/main/token-store.ts) |
+| **Electron userData** — `~/Library/Application Support/<app name>` (prod = `anton`) | Renderer `localStorage` (terms consent, UI prefs); the MindsHub refresh token (`mindshub-refresh.bin`, encrypted with safeStorage on every platform); on macOS the `keychain-unavailable` marker | `app.setName` per kind |
+| **MindsHub refresh token** — userData `mindshub-refresh.bin`; fallback `~/.cowork-<kind>/refresh-token.dat` / `~/.cowork/refresh-token.dat` only while safeStorage is unavailable | The Keycloak refresh token. On macOS a refused Keychain prompt writes userData `keychain-unavailable` and keeps that install on the fallback file without asking again; delete the marker to use the Keychain again | userData (secure file) / `COWORK_HOME` (fallback) — see [`token-store.ts`](src/main/token-store.ts) |
 | **OTA UI cache** — non-prod: `~/.cowork-<kind>/ui-cache` / prod: userData `ui-cache/` | Hot-swapped renderer bundle | `COWORK_HOME` (non-prod) / userData (prod) — see [`ui-updater.ts`](src/main/ui-updater.ts) |
 | **Shell-update downloads** — `~/Library/Caches/anton-updater-{prod,stable}` | electron-updater's pending shell installer (**prod + stable only**; other kinds have no shell auto-update) | Per-channel cache dir name, in the OS cache root — not userData |
 | **OS keychain** — service `cowork-oauth-<kind>` / `cowork-oauth` | Connector OAuth refresh tokens | Per-kind service name |
@@ -198,7 +198,8 @@ anton-reset() {
 
   # Per-user runtime state — all build kinds (prod uses ~/.cowork and the
   # 'anton' userData dir; dev/preview/stable use suffixed homes and their own
-  # userData dirs). The homes also hold the macOS refresh-token.dat and the
+  # userData dirs). The userData dirs hold the refresh token and the Keychain
+  # marker; the homes hold the fallback refresh-token.dat, if any, and the
   # non-prod ui-cache; the 'anton' userData dir holds prod's ui-cache.
   rm -rf "$HOME/Library/Application Support/anton" \
          "$HOME/Library/Application Support/MindsHub Cowork (Dev)" \
@@ -414,6 +415,8 @@ assets/
 
 - **OTA updates**: The React UI and the Python backend update over-the-air (coupled, auto-applied at boot) without a new installer; the Electron shell auto-updates on stable/prod via `electron-updater`, installing on relaunch. See [Over-the-Air Updates](#over-the-air-updates).
 
+- **Upload and request errors**: Cowork shows the server’s explanation when it supplies one. If a proxy returns HTTP 413 without an explanation, Cowork gives guidance in the current UI language. File uploads suggest picking a smaller file or sending fewer files together. Other requests, including text-only chats, suggest sending less content. Other statuses keep the caller’s fallback, such as “Upload failed (502)”. Creating a project still succeeds if its files are refused. cowork-server answers with a 4xx before it writes any file, so only a 4xx makes the toast say the files didn’t upload. After a 5xx, a dropped connection or an unreadable answer, the toast asks the user to check the project’s files before retrying. When an upload succeeds but the server reports a file it didn’t save, such as a dotfile, the new-project toast and the project files rail name that file.
+
 ### Loopback authentication
 
 Desktop main makes three values fresh for every launch of the sidecar, each 32 random bytes in hex: the bearer token, the window proof and the app secret. It sets `COWORK_APP_SECRET_STDIN=2` in the sidecar's environment and writes the three as one JSON line to its stdin, `{"app_secret": …, "auth_token": …, "window_proof": …}`, then closes stdin. The values live only in desktop main's memory (`src/main/server-auth.ts`, `src/main/app-secret.ts`) and in the sidecar's: nothing writes them to disk or into a process environment, which the agent's code would inherit. cowork-server takes its bearer token from this line alone and removes any `COWORK_AUTH_TOKEN` line from `~/.cowork/.env`. A sidecar whose `/api/v1/health/` does not report `app_secret_protocol: 2` is incompatible, and the start fails, with no legacy fallback. A sidecar that refuses the hand-off exits with one line, `cowork-server: <problem>`, which the start error in the backend help panel repeats. A sidecar left running by an earlier app process is replaced, never adopted, since this process never handed it its token. `src/shared/server-launch.ts` holds the flag, the protocol number and the header name, which cowork-server's `cowork/app_secret.py` mirrors.
@@ -591,7 +594,7 @@ if you need one for that.
 
 ### The MindsHub hub routes
 
-**Nothing under `/api/v1/hub/*` calls MindsHub directly.** The renderer calls its own sidecar, which forwards on the caller's behalf. `/api/v1/hub/usage/` carries the free MindsHub Air allowance, the balance, the period's credit spend and auto top up state, and backs Settings → Usage and the stopped-task cards. `/api/v1/hub/workspaces/` answers the MindsHub workspace listing and backs the workspace selector described in the next section.
+**Nothing under `/api/v1/hub/*` calls MindsHub directly.** The renderer calls its own sidecar, which forwards on the caller's behalf. `/api/v1/hub/usage/` carries the free allowance, the balance, the period's credit spend and auto top up state, and backs Settings → Usage and the stopped-task cards. `/api/v1/hub/workspaces/` answers the MindsHub workspace listing and backs the workspace selector described in the next section.
 
 MindsHub's ingress allows the console origins and no Cowork host, and a per-PR Cowork host cannot be added to a static allow-list. A direct call would therefore work in the packaged app (`webSecurity` is off there) and fail in the web SPA. Going through the sidecar is what lets both hosts read the same thing, which is why Settings → Usage is offered on the hosted build and not filtered off it.
 
@@ -912,10 +915,10 @@ as available, so a degraded response can never empty a picker.
 The app reads `GET /hub/usage/` on the sidecar every 30 seconds while signed in,
 and again whenever the window regains focus, so a top-up made in a browser shows
 up without a relaunch. `useHubUsage` holds the answer. One read carries the free
-MindsHub Air allowance, the paid balance, auto top up state and credit spend for
-the period. `reachable: false` is the resting state, so every surface renders exactly
-as it did before this existed until the sidecar says otherwise. A sidecar too old
-to serve the route answers 404, which reads as unreachable and paints nothing.
+allowance, the paid balance, auto top up state and credit spend for the period.
+`reachable: false` is the resting state, so every surface renders exactly as it
+did before this existed until the sidecar says otherwise. A sidecar too old to
+serve the route answers 404, which reads as unreachable and paints nothing.
 
 `deriveComposerWarning` in `lib/usageWarnings.js` turns that read into at most one
 notice, and it is the only thing that decides which. The notice sits above the
@@ -927,11 +930,16 @@ instead, because that turn is still running and the person has not come back to
 the composer yet. It reads the same BYOK gate the bar does, so a task billing
 someone else's key never hears about these tokens.
 
-Which resource the warning names depends on what the next turn will spend. An
-explicit MindsHub Air pick runs on the free tokens, an explicit paid model only
-ever bills the balance, and the router can land on either, so both matter for it.
-The two resources are always named apart. "Out of tokens" on its own is never one
-of the outputs.
+Which resource the warning names depends on what the next turn will spend.
+Without a paid plan, an explicit MindsHub Air pick runs on the free allowance,
+and so does an explicit pick the Free tier covers, one whose `coveredByTier` is
+`free`. Without a paid plan, any other explicit pick, including one whose
+coverage is unknown, only ever bills the balance. The router can land on either,
+so both matter for it. On Plus or Pro no pick spends a free allowance: auth
+serves the plan's own windows in the same fields, so `usageTransitions` sends no
+free-allowance notice there, and `freeAllowanceState` gives the stopped-task
+cards no figure to speak from. The two resources are always named apart. "Out of
+tokens" on its own is never one of the outputs.
 
 When nothing is wrong, the bar still says where the free grant stands: "3.4M of
 5M free tokens left. Resets on Oct 1." A warning a person first meets at 20% left
@@ -944,10 +952,10 @@ here too, in the same words the warning uses, because it is true and actionable
 from the moment it empties rather than from the moment the grant crosses 20%.
 The tone stays neutral: while the grant can still pay, nothing is blocked.
 
-An explicit paid pick cannot spend the grant, so it gets no figure, but the bar's
-height is reserved with a hidden copy of it. Otherwise switching picks moved the
-whole composer up and down, and for a free user the healthy state is the state
-they are in nearly all month.
+An explicit pick that only bills the balance cannot spend the grant, so it gets
+no figure, but the bar's height is reserved with a hidden copy of it. Otherwise
+switching picks moved the whole composer up and down, and for a free user the
+healthy state is the state they are in nearly all month.
 
 Announcing is a separate, permanently mounted `sr-only` region rather than a role
 on the bar. `aria-live` announces content CHANGES, so a region has to be in the
@@ -983,6 +991,8 @@ funds", the automatic tab for "Set up auto top up". Anyone else gets the billing
 page, because every wallet control the console offers is owner-only and a member
 following a deep link would reach a dialog they cannot submit.
 
+Each Get Plus or Upgrade control opens the console's plan confirmation through `useUpgradeOffer`, with `?upgrade=<tier>&start_surface=cowork_<placement>` on the link. The same click records `upgrade_clicked` with `placement`, `start_surface`, `tier` and `from_tier`, and `surface` stays `desktop` or `web`, as on every event. The placements live in `UPGRADE_PLACEMENTS` in `src/renderer/lib/startSurface.ts`. A placement outside that list gets no start surface on the link or the event, and a click with no placement records `placement: 'unknown'`. The Manage link and the Add funds and auto top up links carry no start surface.
+
 Settings carries the same figures under Usage, on desktop and on the hosted web
 build alike: the free grant with its reset date, the balance, the spend for the
 period and auto top up state. The web nav drops the sections a hosted user cannot
@@ -996,9 +1006,9 @@ and open `/usage-bar-fixture.html`. It renders every state from the real
 `?theme=dark` for the dark pass. Each case carries an `id` off its label, so a
 screenshot run can crop to one state rather than a page too tall to read.
 
-A task that stops on a billing limit gets a card in its timeline, and the card names the limit that fired. The drained-wallet card (`token_limit`) reads the same usage view through `freeAllowanceState` in `lib/usageWarnings.js`, and stops speaking from it once that view shows a wallet that can pay (a balance `isBalanceEmpty` does not flag): the card stays in the task, and the view describes the account as it is now. A view with no balance, which cowork-server sends when its wallet read fails, leaves the stop standing. With free allowance left, it says the priced model is what stopped and offers Switch to MindsHub Air. With the allowance spent, it names both resources and the refill time, in the sentence the spent-allowance card uses for the same state (`allowanceStopCopy`). It keeps the fixed balance copy, with Add funds only, when the view gives it nothing to go on (usage unreachable, no grant, an uncapped grant, or no usable time), when there is no Switch to offer (the task already runs on MindsHub Air, Air is not offered or is locked, or there is no message to resend), and when the wallet can pay again, as it can after a top up. The spent-allowance card (`included_allowance_exhausted`) names the refill time the gate sent on the failure, on a desktop or a hosted turn. When the failure carries none, as a hosted turn from an older cowork-server does, the card takes the refill time from the usage view. With no usable time from either, it offers funds alone and promises no refill. For an org with no free grant (the usage view's `freeTokens.limit` is 0, which cowork-server sends when MindsHub reports `free_grant_eligible: false`), `freeAllowanceState` answers `no_grant` and the card shows the console's no-grant sentence (`NO_FREE_GRANT_SENTENCE`) with no refill time, whatever time the gate sent. `free_serving_paused` has its own card: MindsHub's daily spend fuse has paused free MindsHub Air for every org that cannot pay, which is not the user's allowance, so the card says so and names when it lifts, from the reset time on the failure. Without one, as on a hosted turn from an older cowork-server, it says the pause lasts until the daily budget resets. `model_restricted` is not a billing stop but shares the page: an org admin's model rule refused the model, so the card names the model and an admin, and offers Open Settings only. `budget_exceeded` has its own card: a hard-capped spending budget is used up, which credits do not lift, so the card never asks for funds. Its title names the budget's scope (organization, workspace or API key) from the failure's `budget_scope`, and is neutral when that is missing or unknown. It offers View budgets (the console's Budgets tab, recorded as `billing_opened` with trigger `budget_exceeded`), and Switch to MindsHub Air while the usage view shows the free allowance has room.
+A task that stops on a billing limit gets a card in its timeline, and the card names the limit that fired. The drained-wallet card (`token_limit`) reads the same usage view through `freeAllowanceState` in `lib/usageWarnings.js`, and stops speaking from it once that view shows a wallet that can pay (a balance `isBalanceEmpty` does not flag): the card stays in the task, and the view describes the account as it is now. A view with no balance, which cowork-server sends when its wallet read fails, leaves the stop standing. With free allowance left, it says the priced model is what stopped and offers Switch to MindsHub Air. On Plus or Pro, the view's allowance figure is the plan's windows rather than a free allowance, so the card reads the windows instead (`airRoom`): while none is used up, it offers the same switch and says the plan's allowance still covers MindsHub Air. With the allowance spent, it names both resources and the reset time, in the sentence the spent-allowance card uses for the same state (`allowanceStopCopy`). It keeps the fixed balance copy, with Add funds only, when the view gives it nothing to go on (usage unreachable, no grant, an uncapped grant, no usable time, or a Plus or Pro plan with a window used up), when there is no Switch to offer (the task already runs on MindsHub Air, Air is not offered or is locked, or there is no message to resend), and when the wallet can pay again, as it can after a top up. The spent-allowance card (`included_allowance_exhausted`) names the reset time the gate sent on the failure, on a desktop or a hosted turn. When the failure carries none, as a hosted turn from an older cowork-server does, the card takes the reset time from the usage view. With no usable time from either, it offers funds alone and promises no reset. For an org with no free grant (the usage view's `freeTokens.limit` is 0, which cowork-server sends when MindsHub reports `free_grant_eligible: false`), `freeAllowanceState` answers `no_grant` and the card shows the console's no-grant sentence (`NO_FREE_GRANT_SENTENCE`) with no reset time, whatever time the gate sent. `free_serving_paused` has its own card: MindsHub's daily spend fuse has paused free serving for every org that cannot pay, which is not the user's allowance, so the card says so and names when it lifts, from the reset time on the failure. Without one, as on a hosted turn from an older cowork-server, it says the pause lasts until the daily budget resets. `model_restricted` is not a billing stop but shares the page: an org admin's model rule refused the model, so the card names the model and an admin, and offers Open Settings only. `budget_exceeded` has its own card: a hard-capped spending budget is used up, which credits do not lift, so the card never asks for funds. Its title names the budget's scope (organization, workspace or API key) from the failure's `budget_scope`, and is neutral when that is missing or unknown. It offers View budgets (the console's Budgets tab, recorded as `billing_opened` with trigger `budget_exceeded`), and Switch to MindsHub Air while the usage view shows the free allowance has room or, on Plus or Pro, no plan window used up. While it offers that switch, its sentence names the allowance Air runs on.
 
-To see those cards, open `/billing-stop-fixture.html` under the same dev server. It renders the drained-wallet card in each usage state and after a top up, the spent-allowance card with the gate's refill time, with the usage view's, with no usable time at all, and for an org with no grant, the paused card with and without a time, the restricted-model card with and without a model name, the budget card with and without Air room, and the connect-a-provider card, all from the components ChatView renders. `?theme=dark` works the same way, and each case has a fixed `id` for cropping.
+To see those cards, open `/billing-stop-fixture.html` under the same dev server. It renders the drained-wallet card in each usage state and after a top up, the spent-allowance card with the gate's reset time, with the usage view's, with no usable time at all, and for an org with no grant, the paused card with and without a time, the restricted-model card with and without a model name, the budget card with and without Air room, and the connect-a-provider card, all from the components ChatView renders. `?theme=dark` works the same way, and each case has a fixed `id` for cropping.
 
 Settings > Agent tests configured providers by default on desktop and web, independently of `VITE_PLATFORM_UI`. For the Python-served Docker app, set `COWORK_PROVIDER_TESTS_ENABLED=false` in the container environment to skip provider tests on open, save and retry. Recreate the container and reload the page after changing it; the same image supports either value. The setting accepts `true` or `false` and defaults to `true`. The SPA wrapper supplies the value before the renderer starts. Static hosting and desktop retain enabled defaults.
 
@@ -1373,7 +1383,7 @@ Export-PfxCertificate -Cert $cert -FilePath cowork-dev.pfx -Password (ConvertTo-
 
 ### Release hardening
 
-A packaged build runs only the code MindsDB built into it, so a program running as the user can't start it in a way that loads code of its own.
+A packaged build closes the ways a program running as the user could start the app's own binary and load code of its own into it.
 
 - **Electron fuses.** `electronFuses` in `electron-builder.yml` writes five fuses into every packaged build before signing, on both slices of the universal macOS app. `runAsNode`, `enableNodeOptionsEnvironmentVariable` and `enableNodeCliInspectArguments` are off. `enableEmbeddedAsarIntegrityValidation` and `onlyLoadAppFromAsar` are on. `grantFileProtocolExtraPrivileges` stays at Electron's default (on): with it off, Electron no longer serves `app.asar` over `file://`, and the main window loads its renderer that way, so it can go off only once the renderer loads through a custom scheme. So `ELECTRON_RUN_AS_NODE`, `NODE_OPTIONS` and `--inspect` have no effect, and a changed `app.asar` stops the app at start. `resetAdHocDarwinSignature` re-signs an unsigned local build ad hoc, so it still launches on Apple Silicon. `scripts/release-fuses.mjs` holds the expected values, and `src/main/release-hardening.invariant.test.ts` pins the config to them. To read a build's fuses, use `npx @electron/fuses read --app <path>`. On a universal app, that reads only the first slice, and `checkFuses` in `scripts/release-fuses.mjs` reads every slice.
 - **Entitlements.** The app and its helpers are signed without `allow-dyld-environment-variables` and `disable-library-validation`.
@@ -1387,6 +1397,27 @@ Known limits:
 - Windows installs per user, so a program running as the user can rewrite the installed `.exe`, fuses included. The macOS app installs from a root-owned `.pkg` and keeps its code signature.
 - `app.asar.unpacked` (native modules) falls outside asar integrity. On macOS, library validation still covers those modules.
 - An older bundle MindsDB signed can be put back in the UI cache, as long as it is newer than the bundled renderer.
+
+#### Driving a packaged build with Playwright
+
+Test automation can't drive an installed build. The launch guard refuses `--remote-debugging-port`, and the inspector fuse keeps Node's inspector off, which Playwright's `_electron.launch` waits for. Automation drives a copy instead, which `npm run inspectable-copy` makes from the installed app:
+
+```bash
+npm run inspectable-copy -- "/Applications/MindsHub Cowork (Staging).app" ~/cowork-qa
+```
+
+On Windows, pass the installed `.exe`, for example `"$env:LOCALAPPDATA\Programs\anton\MindsHub Cowork (Staging).exe"`.
+
+The script (`scripts/inspectable-copy.mjs`, the same code the setup smokes run) checks that the installed app carries the release fuses. It copies the app into `<folder>/app` and turns the inspector fuse back on in the copy alone, and on macOS it signs the copy again ad hoc. It checks that the copy differs from the release in that one fuse, and it leaves the installed app as shipped. It also sets up a test profile in `<folder>/profile`, kept across runs. In the `.env` of every account the profile holds, it turns off shell auto-update and pins the UI version, so the build under test stays the same during a run. The app reads `.env` from the signed-in account's own folder, so run the script again after a new test account first signs in. It prints the copy's executable, its build kind, and the environment and arguments that run it in that profile:
+
+```js
+const { executable, env, args } = JSON.parse(printed);
+const app = await _electron.launch({ executablePath: executable, env: { ...process.env, ...env }, args });
+```
+
+Pass `env` as printed. It points the copy's home and temp folders into the profile and fixes the copy's build kind, so a `COWORK_BUILD_KIND` in your shell can't move it to another data home. Without it, the copy runs in your real profile and asks for the installed app's Keychain items, so deny those prompts. To refresh the copy after an update, delete `<folder>/app` and run the script again. A harness that starts the copy itself and attaches with `connectOverCDP` adds `--inspect=0` beside `--remote-debugging-port`. Without it, the copy refuses the switch as the installed app does. DevTools listens on `127.0.0.1` only.
+
+The copy can't stand in for everything. On macOS it no longer carries MindsDB's Developer ID signature, so Keychain access, privacy permissions and auto-update don't behave as they do in the installed app. A test profile also has no connector OAuth client credentials, because the `.pkg` stages them under the user's real home. Test those on the installed app by hand. The script makes no copy on Linux.
 
 ---
 

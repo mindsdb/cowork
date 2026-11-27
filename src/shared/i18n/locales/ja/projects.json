@@ -9,20 +9,20 @@
         "updatePaymentMethod": "支払い方法を更新",
         "upgrade": "{tier, select, plus {Plusにする} pro {Proにアップグレード} other {アップグレード}}"
       },
-      "noFreeGrant": "このアカウントにはMindsHub Airの無料トークンが含まれていません。MindsHub Airも他のモデルと同様に残高を使用します。",
+      "noFreeGrant": "このアカウントには無料トークンが含まれていません。すべてのモデルで残高を使用します。",
       "allowanceStop": {
         "noGrant": "{noGrant}残高がないため、続けるには残高を追加してください。",
-        "withTime": "MindsHub Airの無料枠を使い切り、残高もありません。作業を続けるには残高を追加するか、{time}の補充までお待ちください。",
-        "noTime": "MindsHub Airの無料枠を使い切り、残高もありません。作業を続けるには残高を追加してください。",
-        "noTimeMobile": "MindsHub Airの無料枠を使い切り、残高もありません。",
+        "withTime": "無料枠を使い切り、残高もありません。作業を続けるには残高を追加するか、{time}のリセットまでお待ちください。",
+        "noTime": "無料枠を使い切り、残高もありません。作業を続けるには残高を追加してください。",
+        "noTimeMobile": "無料枠を使い切り、残高もありません。",
         "noGrantMobile": "{noGrant} 残高がありません。",
-        "withTimeMobile": "MindsHub Airの無料枠を使い切り、残高もありません。 {time}にリセットされます。"
+        "withTimeMobile": "無料枠を使い切り、残高もありません。{time}にリセットされます。"
       },
       "freeServingPaused": {
-        "until": "無料のMindsHub Airは、{until}まで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。今すぐ作業を続けるには残高を追加してください。",
-        "dailyReset": "無料のMindsHub Airは、1日の予算がリセットされるまで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。今すぐ作業を続けるには残高を追加してください。",
-        "untilMobile": "無料のMindsHub Airは、{until}まで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。",
-        "dailyResetMobile": "無料のMindsHub Airは、1日の予算がリセットされるまで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。"
+        "until": "無料モデルは、{until}まで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。今すぐ作業を続けるには残高を追加してください。",
+        "dailyReset": "無料モデルは、1日の予算がリセットされるまで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。今すぐ作業を続けるには残高を追加してください。",
+        "untilMobile": "無料モデルは、{until}まで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。",
+        "dailyResetMobile": "無料モデルは、1日の予算がリセットされるまで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。"
       },
       "balanceEmptySentence": "残高がありません。",
       "percentLeft": "無料枠の残り：{percent}",
@@ -34,8 +34,8 @@
       "balanceEmpty": {
         "title": "残高がありません",
         "body": "新しいタスクを開始するには残高を追加してください。",
-        "freeUsedToo": "無料枠も使い切りました。残高を追加するか、無料枠の補充をお待ちください。",
-        "freeUsedTooWithTime": "無料枠も使い切りました。残高を追加するか、{time}の補充までお待ちください。",
+        "freeUsedToo": "無料枠も使い切りました。残高を追加するか、無料枠のリセットをお待ちください。",
+        "freeUsedTooWithTime": "無料枠も使い切りました。残高を追加するか、{time}のリセットまでお待ちください。",
         "freeUsedTooMobile": "無料枠も使い切りました。",
         "freeUsedTooWithTimeMobile": "無料枠も使い切りました。 {time}にリセットされます。",
         "bodyMobile": "残高がありません。有料モデルは利用できません。"
@@ -50,17 +50,16 @@
       },
       "freeUsed": {
         "title": "無料枠を使い切りました",
-        "body": "無料枠が補充されるまで、MindsHub Airは残高を使用します。",
-        "bodyWithTime": "{time}に無料枠が補充されるまで、MindsHub Airは残高を使用します。",
-        "bodyWithUsd": "無料枠が補充されるまで、MindsHub Airは残高（残り{usd}）を使用します。",
-        "bodyWithUsdWithTime": "{time}に無料枠が補充されるまで、MindsHub Airは残高（残り{usd}）を使用します。"
+        "body": "無料枠がリセットされるまで、無料モデルは残高を使用します。",
+        "bodyWithTime": "{time}に無料枠がリセットされるまで、無料モデルは残高を使用します。"
       },
       "freeLow": {
-        "body": "その後は、無料枠が補充されるまでMindsHub Airは残高を使用します。",
-        "bodyWithTime": "その後は、{time}に無料枠が補充されるまでMindsHub Airは残高を使用します。",
+        "body": "その後は、無料枠がリセットされるまで無料モデルは残高を使用します。",
+        "bodyWithTime": "その後は、{time}に無料枠がリセットされるまで無料モデルは残高を使用します。",
         "balanceLowToo": "残高も少なくなっています（{usd}）。"
       },
       "budgetExceeded": {
+        "airOnPlan": "{hasModel, select, true {{scope, select, org {オーナーまたは管理者が「予算」で上限を引き上げるまで、{model} は実行できません。ほかのモデルは引き続き使えます。} other {管理者が「予算」で上限を引き上げるまで、{model} は実行できません。ほかのモデルは引き続き使えます。}}} other {{scope, select, org {オーナーまたは管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。MindsHub Airはプランの利用枠が残っている間は引き続き利用できます。} other {管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。MindsHub Airはプランの利用枠が残っている間は引き続き利用できます。}}}}",
         "raise": "{hasModel, select, true {{scope, select, org {オーナーまたは管理者が「予算」で上限を引き上げるまで、{model} は実行できません。ほかのモデルは引き続き使えます。} other {管理者が「予算」で上限を引き上げるまで、{model} は実行できません。ほかのモデルは引き続き使えます。}}} other {{scope, select, org {オーナーまたは管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。} other {管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。}}}}",
         "airHasRoom": "{hasModel, select, true {{scope, select, org {オーナーまたは管理者が「予算」で上限を引き上げるまで、{model} は実行できません。ほかのモデルは引き続き使えます。} other {管理者が「予算」で上限を引き上げるまで、{model} は実行できません。ほかのモデルは引き続き使えます。}}} other {{scope, select, org {オーナーまたは管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。MindsHub Airは無料枠が残っている間は引き続き利用できます。} other {管理者が「予算」で上限を引き上げるまで、有料モデルは実行できません。MindsHub Airは無料枠が残っている間は引き続き利用できます。}}}}"
       },
@@ -90,7 +89,14 @@
       "daily": "毎日{time}",
       "weekdays": "平日の毎日{time}",
       "weekly": "毎週{weekday} {time}",
-      "weeklyNoDay": "毎週{time}"
+      "weeklyNoDay": "毎週{time}",
+      "monthlyDay": "毎月{day}日 {time}",
+      "monthlyDayOrLast": "毎月{day}日（短い月は末日） {time}",
+      "monthlyFirst": "毎月第1{weekday} {time}",
+      "monthlySecond": "毎月第2{weekday} {time}",
+      "monthlyThird": "毎月第3{weekday} {time}",
+      "monthlyFourth": "毎月第4{weekday} {time}",
+      "monthlyLast": "毎月最終{weekday} {time}"
     },
     "scheduleCopy": {
       "missedOnceServer": "この時刻にサーバーが停止していた場合、1時間以内に復旧すればタスクが実行されます。それを過ぎると「未実行」となり、手動で実行できます。",
@@ -116,8 +122,8 @@
       },
       "row": {
         "walletEmpty": "利用できるクレジットがありません。MindsHubを使用するには残高を追加してください。",
-        "allowanceExhausted": "MindsHub Airの無料トークンがなく、残高もありません。",
-        "freeAirPaused": "無料のMindsHub Airは現在一時停止しています。",
+        "allowanceExhausted": "無料トークンがなく、残高もありません。",
+        "freeAirPaused": "無料モデルは現在一時停止しています。",
         "budgetExceeded": "予算を使い切りました。",
         "walletEmptyMobile": "利用できるクレジットがありません。"
       },
@@ -463,6 +469,13 @@
         "pendingDetail": "認証情報は暗号化して保存されます。確認が完了するとこのページが更新されます。"
       }
     },
+    "httpRefusal": {
+      "uploadTooLarge": "アップロードのサイズが上限を超えています。小さいファイルを選ぶか、一度にアップロードするファイルの数を減らしてください。",
+      "requestTooLarge": "リクエストのサイズが上限を超えています。送信する内容を減らしてみてください。"
+    },
+    "projectUploads": {
+      "notUploaded": "アップロードされなかったファイル：{files}。"
+    },
     "fileDrop": {
       "uploading": "アップロード中…"
     },
@@ -598,7 +611,8 @@
       "hourly": "毎時",
       "daily": "毎日",
       "weekdays": "平日",
-      "weekly": "毎週"
+      "weekly": "毎週",
+      "monthly": "毎月"
     },
     "openProject": "{project}を開く",
     "descriptionWithNext": "{sentence} · 次回：{next}",
@@ -634,7 +648,12 @@
     "succeededTitle": "スケジュールされたタスクが完了しました",
     "succeededBody": "「{title}」の実行が完了しました。クリックして開きます。",
     "succeededToast": "スケジュールされたタスク「{title}」の実行が完了しました。",
-    "openAction": "タスクを開く"
+    "openAction": "タスクを開く",
+    "stoppedTitle": "スケジュールタスクが停止しました",
+    "stoppedBody": "「{title}」は完了前に上限に達して停止しました。クリックして確認してください。",
+    "stoppedToast": "スケジュールタスク「{title}」は完了前に上限に達して停止しました。",
+    "genericTitle": "新しい通知",
+    "genericLine": "新しい通知: {subject}"
   },
   "scheduleNotifyMenu": {
     "label": "通知",
@@ -650,11 +669,13 @@
       "hourly": "1時間ごと",
       "daily": "毎日",
       "weekdays": "平日の毎日",
-      "weekly": "毎週"
+      "weekly": "毎週",
+      "monthly": "毎月"
     },
     "errorNoPrompt": "{agent}にやってほしいことを入力してください。",
     "errorPickFutureTime": "未来の時刻を選択してください。",
     "errorPickTime": "時刻を選択してください。",
+    "errorPickDays": "曜日を1つ以上選択してください。",
     "errorSave": "スケジュールを保存できませんでした。",
     "editTitle": "スケジュール済みタスクを編集",
     "createTitle": "タスクをスケジュール",
@@ -666,6 +687,17 @@
     "when": "日時",
     "howOften": "頻度",
     "dayOfWeek": "曜日",
+    "daysOfWeek": "曜日",
+    "dayOfMonth": "日付",
+    "monthBy": {
+      "label": "毎月のどの日",
+      "day": "日付",
+      "week1": "第1",
+      "week2": "第2",
+      "week3": "第3",
+      "week4": "第4",
+      "weekLast": "最終"
+    },
     "date": "日付",
     "atMinute": "分：",
     "at": "時刻：",
@@ -677,6 +709,7 @@
     "namePlaceholder": "プロンプトから自動で命名",
     "project": "プロジェクト",
     "model": "モデル",
+    "connections": "接続",
     "accountDefault": "アカウントのデフォルト",
     "cancel": "キャンセル",
     "saveAndRunOnce": "保存して1回実行",
@@ -799,6 +832,9 @@
     "folderUnsupported": "このサーバーは、プロジェクトでフォルダを指定する機能に対応していません。「{name}」は通常のプロジェクトとして作成され、フォルダの選択は解除されました。フォルダを使用するにはCoworkをアップデートしてください。不要な場合はそのプロジェクトを削除してください。",
     "couldNotCreate": "プロジェクトを作成できませんでした。",
     "couldNotOpenPicker": "フォルダ選択画面を開けませんでした。",
+    "filesNotUploaded": "「{name}」を作成しましたが、ファイルをアップロードできませんでした。",
+    "someFilesNotUploaded": "「{name}」を作成しましたが、一部のファイルをアップロードできませんでした。",
+    "filesUploadUnconfirmed": "「{name}」を作成しました。もう一度アップロードする前に、プロジェクト内のファイルを確認してください。",
     "title": "新しいプロジェクトを開始",
     "nameLabel": "プロジェクト名",
     "instructionsLabel": "指示",

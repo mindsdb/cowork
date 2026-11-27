@@ -454,7 +454,7 @@
     "connectProvider": {
       "title": "Connectez un fournisseur pour commencer à discuter",
       "operatorTitle": "Un fournisseur doit être configuré",
-      "body": "Commencez avec MindsHub et profitez d’un quota gratuit sur MindsHub Air, puis payez à l’usage. Ou ajoutez votre propre clé API (Anthropic, OpenAI ou tout point de terminaison compatible OpenAI) dans les paramètres.",
+      "body": "Commencez avec MindsHub et profitez d’un quota gratuit, puis payez à l’usage. Ou ajoutez votre propre clé API (Anthropic, OpenAI ou tout point de terminaison compatible OpenAI) dans les paramètres.",
       "operatorBody": "Demandez à votre opérateur de configurer le fournisseur de modèles avant de lancer une tâche.",
       "startFree": "Commencer gratuitement",
       "bodyMobile": "Connectez votre propre fournisseur dans les paramètres."
@@ -477,6 +477,15 @@
     "confirm": "Se déconnecter",
     "failed": "Impossible de terminer la déconnexion. Veuillez réessayer.",
     "waitNote": "Déconnexion en cours. Vous pouvez fermer cette fenêtre, l’opération se terminera d’elle-même."
+  },
+  "notices": {
+    "title": "Notifications",
+    "ariaLabel": "{count, plural, =0 {Notifications} one {Notifications, # non lue} other {Notifications, # non lues}}",
+    "unread": "Non lue :",
+    "markAllRead": "Tout marquer comme lu",
+    "emptyTitle": "Aucune notification",
+    "emptyDescription": "Les exécutions planifiées qui demandent votre attention apparaissent ici.",
+    "loadFailed": "Impossible de charger les notifications."
   },
   "shortcuts": {
     "showBrowser": "Afficher le navigateur"

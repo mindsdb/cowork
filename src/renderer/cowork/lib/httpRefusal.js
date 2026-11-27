@@ -1,7 +1,6 @@
 /* What a refused request (a non-2xx answer) says about itself: the sentence to
-   show, the code to branch on, and when to try again. Pure, so api.js's
-   responseError stays a thin reader of the Response and every body shape is
-   testable on its own. */
+   show, the code to branch on, and when to try again. */
+import i18n from '../../lib/i18n';
 
 /**
  * The sentence and machine code in a refused request's body.
@@ -31,7 +30,8 @@ function firstText(...values) {
  * permission refusals), FastAPI's validation list, RFC 9457's `title`, a
  * top-level `message`, then an OpenAI-style `error.message`. A body that isn't
  * JSON is the server's own text, unless it is markup: an HTML error page from a
- * proxy is noise to a reader, so the caller's fallback shows instead.
+ * proxy is noise to a reader, so it names no sentence and refusalMessage picks
+ * what shows instead.
  *
  * @param {string} text
  * @returns {RefusalBody}
@@ -63,6 +63,24 @@ export function readRefusalBody(text) {
     ),
     code: firstText(data.code, detailObject?.code) || null,
   };
+}
+
+/**
+ * Preserve the server's sentence. For an unexplained 413, give advice for
+ * the request in the current UI language. Each proxy sets its own limit.
+ *
+ * @param {object} refusal
+ * @param {number} refusal.status The response's HTTP status.
+ * @param {string} refusal.message The body's sentence (readRefusalBody), or ''.
+ * @param {string} refusal.fallback The caller's sentence for any other refusal.
+ * @param {boolean} [refusal.fileUpload] Whether the user can reduce a file selection.
+ * @returns {string}
+ */
+export function refusalMessage({ status, message, fallback, fileUpload = false }) {
+  if (message) return message;
+  if (status !== 413) return fallback;
+  const key = fileUpload ? 'messages.httpRefusal.uploadTooLarge' : 'messages.httpRefusal.requestTooLarge';
+  return i18n.t(key, { ns: 'projects' });
 }
 
 /**

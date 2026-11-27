@@ -23,7 +23,7 @@ import { useUpgradeOffer } from '../../hooks/useUpgradeOffer';
 import { isPaidPlan, WINDOW_WARN_PERCENT } from '../../lib/subscriptionPlan';
 
 /* Settings → Usage (ENG-1782). The lightweight view of what the console's
-   billing page shows: the free MindsHub Air allowance with when it refills, the
+   billing page shows: the free allowance with when it refills, the
    paid balance with this period's credit spend, and auto top up when it
    matters. No per-model breakdown. Every action opens the MindsHub console,
    where funds and auto top up are actually managed. */

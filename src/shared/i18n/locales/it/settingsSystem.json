@@ -166,17 +166,17 @@
       "updatePaymentMethod": "Aggiorna metodo di pagamento"
     },
     "free": {
-      "title": "Quota gratuita di Air",
-      "badge": "Solo MindsHub Air",
+      "title": "Quota gratuita",
+      "badge": "Solo modelli gratuiti",
       "resetsAt": "Si azzera alle {time}",
       "unlimited": "Illimitata per questo account.",
       "used": "Hai usato il {percent} della quota",
       "left": "{percent} rimanente",
-      "meterLabel": "Quota gratuita di Air usata",
-      "usedUpUntil": "Esaurita. MindsHub Air usa il tuo saldo finché la quota non si ricarica alle {time}.",
-      "usedUp": "Esaurita. MindsHub Air usa il tuo saldo finché la quota non si ricarica.",
-      "afterUntil": "Dopo, MindsHub Air usa il tuo saldo finché la quota non si ricarica alle {time}.",
-      "after": "Dopo, MindsHub Air usa il tuo saldo."
+      "meterLabel": "Quota gratuita usata",
+      "usedUpUntil": "Esaurita. I modelli gratuiti ora usano il tuo saldo finché la quota non si rinnova alle {time}.",
+      "usedUp": "Esaurita. I modelli gratuiti ora usano il tuo saldo finché la quota non si rinnova.",
+      "afterUntil": "Dopo, i modelli gratuiti usano il tuo saldo finché la quota non si rinnova alle {time}.",
+      "after": "Dopo, i modelli gratuiti usano il tuo saldo."
     },
     "autoTopUp": {
       "off": "La ricarica automatica è disattivata. Attivala per far continuare le attività quando il saldo è basso.",
@@ -202,7 +202,7 @@
     "balance": {
       "title": "Saldo",
       "empty": "Saldo esaurito. I modelli a pagamento non funzioneranno finché non aggiungi fondi.",
-      "usedBy": "Usato dai modelli a pagamento e da MindsHub Air quando i token gratuiti finiscono.",
+      "usedBy": "Usato dai modelli a pagamento e dai modelli gratuiti quando i token gratuiti finiscono.",
       "spentRange": "di credito usato dal {start} al {end}",
       "spentDate": "di credito usato il {date}",
       "spentThisPeriod": "di credito usato in questo periodo",
@@ -211,7 +211,7 @@
     },
     "signIn": {
       "title": "Accedi per vedere l’utilizzo",
-      "body": "La quota gratuita di Air e il saldo compaiono qui dopo aver effettuato l’accesso a MindsHub.",
+      "body": "La quota gratuita e il saldo compaiono qui dopo aver effettuato l’accesso a MindsHub.",
       "goToAccount": "Vai ad Account"
     },
     "loading": "Caricamento utilizzo…",

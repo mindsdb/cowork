@@ -1,11 +1,12 @@
 // The smaller blocks: metrics, code, image, pending, divider.
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Copy, Sparkles, TrendingDown, TrendingUp } from 'lucide-react';
 import { Icon } from '../ui/Icon';
 import EditableText from './EditableText';
 import { useFlushOnUnmount, usePendingEdit } from './useSaveIndicator';
 import { copyText } from '../../lib/clipboard';
 import { useTranslation } from '../../../lib/i18n';
+import { CODE_LANGUAGES, fitsDocCodeLimit, highlightCode, isDocCodeLanguage } from '../markdown/hljs';
 
 /**
  * How the editor fetches an image kept beside the doc (`images/…`): `(src) =>
@@ -77,6 +78,15 @@ export function MetricsBlock({ block, editable, onOps }) {
   );
 }
 
+/**
+ * Whether the editor colours `code`: only where the doc's page colours it too.
+ * The page's Pygments rewrites \r and a leading BOM, so it leaves those plain.
+ */
+function colourable(code, language) {
+  return isDocCodeLanguage(language) && fitsDocCodeLimit(code)
+    && !code.includes('\r') && code.charCodeAt(0) !== 0xfeff;
+}
+
 export function CodeBlock({ block, editable, onOps }) {
   const { t } = useTranslation('docs');
   const ref = useRef(null);
@@ -90,6 +100,23 @@ export function CodeBlock({ block, editable, onOps }) {
   const [lang, setLang] = useState(null);
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef(null);
+  const listId = useId();
+  const layerRef = useRef(null);
+  // The language being typed colours the code at once, before it is saved.
+  const language = lang ?? block.language ?? '';
+  const markup = useMemo(
+    () => (colourable(draft, language) ? highlightCode(draft, language).html : null),
+    [draft, language],
+  );
+  const syncLayer = () => {
+    const layer = layerRef.current;
+    const box = ref.current;
+    if (!layer || !box) return;
+    layer.scrollLeft = box.scrollLeft;
+    layer.scrollTop = box.scrollTop;
+  };
+  // A layer that appears after the box scrolled starts where the box is.
+  useLayoutEffect(syncLayer, [markup]);
   useEffect(() => () => clearTimeout(copiedTimer.current), []);
   useEffect(() => {
     if (document.activeElement !== ref.current) setDraft(block.code || '');
@@ -98,7 +125,8 @@ export function CodeBlock({ block, editable, onOps }) {
     const el = ref.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
+    // The horizontal scrollbar takes height from the box; add it so the box has no vertical scroll.
+    el.style.height = `${el.scrollHeight + (el.offsetHeight - el.clientHeight)}px`;
   }, [draft]);
   const edit = (next) => { setDraft(next); setDirty(true); };
   const commit = () => {
@@ -111,6 +139,7 @@ export function CodeBlock({ block, editable, onOps }) {
       <div className="doc-code__bar">
         <input
           className="doc-code__lang"
+          list={listId}
           value={lang ?? block.language ?? ''}
           placeholder={t('code.plainText')}
           readOnly={!editable}
@@ -123,6 +152,9 @@ export function CodeBlock({ block, editable, onOps }) {
             setLang(null);
           }}
         />
+        <datalist id={listId}>
+          {CODE_LANGUAGES.map((name) => <option key={name} value={name} />)}
+        </datalist>
         <button type="button" className="doc-iconbtn" aria-label={t('code.copy')}
           onClick={async () => {
             if (!await copyText(draft)) return;
@@ -133,26 +165,35 @@ export function CodeBlock({ block, editable, onOps }) {
           {copied ? <span style={{ fontSize: 11 }}>{t('code.copied')}</span> : <Icon of={Copy} size={14} />}
         </button>
       </div>
-      <textarea
-        ref={ref}
-        className="doc-code__text"
-        value={draft}
-        readOnly={!editable}
-        spellCheck={false}
-        aria-label={t('code.label')}
-        rows={1}
-        onChange={(e) => edit(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Tab') {
-            e.preventDefault();
-            const el = e.currentTarget;
-            const s = el.selectionStart;
-            edit(draft.slice(0, s) + '  ' + draft.slice(el.selectionEnd));
-            requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = s + 2; });
-          }
-        }}
-      />
+      <div className="doc-code__body">
+        {markup != null && (
+          <pre ref={layerRef} className="doc-code__hl" aria-hidden="true">
+            {/* hljs escapes the code; its markup holds only its own spans. */}
+            <code dangerouslySetInnerHTML={{ __html: markup }} />
+          </pre>
+        )}
+        <textarea
+          ref={ref}
+          className={markup != null ? 'doc-code__text doc-code__text--hl' : 'doc-code__text'}
+          value={draft}
+          readOnly={!editable}
+          spellCheck={false}
+          aria-label={t('code.label')}
+          rows={1}
+          onChange={(e) => edit(e.target.value)}
+          onScroll={syncLayer}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Tab') {
+              e.preventDefault();
+              const el = e.currentTarget;
+              const s = el.selectionStart;
+              edit(draft.slice(0, s) + '  ' + draft.slice(el.selectionEnd));
+              requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = s + 2; });
+            }
+          }}
+        />
+      </div>
     </div>
   );
 }

@@ -454,7 +454,7 @@
     "connectProvider": {
       "title": "Verbinden Sie einen Anbieter, um zu chatten",
       "operatorTitle": "Anbieter muss eingerichtet werden",
-      "body": "Starten Sie mit MindsHub und erhalten Sie ein Gratiskontingent für MindsHub Air, danach zahlen Sie nach Nutzung. Oder fügen Sie in den Einstellungen Ihren eigenen API-Schlüssel hinzu (Anthropic, OpenAI oder ein beliebiger OpenAI-kompatibler Endpunkt).",
+      "body": "Starten Sie mit MindsHub und erhalten Sie ein Gratiskontingent, danach zahlen Sie nach Nutzung. Oder fügen Sie in den Einstellungen Ihren eigenen API-Schlüssel hinzu (Anthropic, OpenAI oder ein beliebiger OpenAI-kompatibler Endpunkt).",
       "operatorBody": "Bitten Sie Ihren Betreiber, den Modellanbieter zu konfigurieren, bevor Sie eine Aufgabe starten.",
       "startFree": "Kostenlos starten",
       "bodyMobile": "Verbinden Sie Ihren eigenen Anbieter in den Einstellungen."
@@ -477,6 +477,15 @@
     "confirm": "Abmelden",
     "failed": "Die Abmeldung konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.",
     "waitNote": "Die Abmeldung läuft noch. Sie können dieses Fenster schließen, der Vorgang wird automatisch abgeschlossen."
+  },
+  "notices": {
+    "title": "Benachrichtigungen",
+    "ariaLabel": "{count, plural, =0 {Benachrichtigungen} one {Benachrichtigungen, # ungelesen} other {Benachrichtigungen, # ungelesen}}",
+    "unread": "Ungelesen:",
+    "markAllRead": "Alle als gelesen markieren",
+    "emptyTitle": "Keine Benachrichtigungen",
+    "emptyDescription": "Geplante Ausführungen, die deine Aufmerksamkeit brauchen, erscheinen hier.",
+    "loadFailed": "Benachrichtigungen konnten nicht geladen werden."
   },
   "shortcuts": {
     "showBrowser": "Browser anzeigen"

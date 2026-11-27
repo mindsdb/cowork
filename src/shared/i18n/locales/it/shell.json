@@ -454,7 +454,7 @@
     "connectProvider": {
       "title": "Connetti un provider per iniziare a chattare",
       "operatorTitle": "È necessario configurare un provider",
-      "body": "Inizia con MindsHub e ottieni una quota gratuita su MindsHub Air, poi paghi solo quello che usi. Oppure aggiungi la tua chiave API (Anthropic, OpenAI o qualsiasi endpoint compatibile con OpenAI) in Impostazioni.",
+      "body": "Inizia con MindsHub e ottieni una quota gratuita, poi paghi solo quello che usi. Oppure aggiungi la tua chiave API (Anthropic, OpenAI o qualsiasi endpoint compatibile con OpenAI) in Impostazioni.",
       "operatorBody": "Chiedi all’operatore di configurare il provider del modello prima di avviare un’attività.",
       "startFree": "Inizia gratis",
       "bodyMobile": "Collega il tuo provider in Impostazioni."
@@ -477,6 +477,15 @@
     "confirm": "Esci",
     "failed": "Impossibile completare la disconnessione. Riprova.",
     "waitNote": "Disconnessione ancora in corso. Puoi chiudere questa finestra: terminerà da sola."
+  },
+  "notices": {
+    "title": "Notifiche",
+    "ariaLabel": "{count, plural, =0 {Notifiche} one {Notifiche, # non letta} other {Notifiche, # non lette}}",
+    "unread": "Non letta:",
+    "markAllRead": "Segna tutte come lette",
+    "emptyTitle": "Nessuna notifica",
+    "emptyDescription": "Le esecuzioni pianificate che richiedono la tua attenzione compaiono qui.",
+    "loadFailed": "Impossibile caricare le notifiche."
   },
   "shortcuts": {
     "showBrowser": "Mostra il browser"

@@ -66,17 +66,17 @@ const CASES = [
     opts: { model: null },
   },
   {
-    label: 'Free Air allowance running low, balance healthy. Closing this hides the bar: with a wallet to fall through to there is no figure to step down to.',
+    label: 'Free allowance running low, balance healthy. Closing this hides the bar: with a wallet to fall through to there is no figure to step down to.',
     usage: usage({ freeTokens: { percentRemaining: 12, limit: 100, used: 88, remaining: 12, resetsAt: RESET } }),
     opts: AIR,
   },
   {
-    label: 'Free Air allowance running low, no wallet. Closing this steps down to the standing figure, which closes in turn.',
+    label: 'Free allowance running low, no wallet. Closing this steps down to the standing figure, which closes in turn.',
     usage: unpaid({ freeTokens: { percentRemaining: 12, limit: 100, used: 88, remaining: 12, resetsAt: RESET } }),
     opts: AIR,
   },
   {
-    label: 'Free Air allowance used up, paid balance carrying Air.',
+    label: 'Free allowance used up, paid balance carrying Air.',
     usage: usage({ freeTokens: { percentRemaining: 0, limit: 100, used: 100, remaining: 0, resetsAt: RESET } }),
     opts: AIR,
   },

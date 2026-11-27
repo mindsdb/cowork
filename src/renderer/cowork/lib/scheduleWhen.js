@@ -1,16 +1,22 @@
 import i18n, { currentLocale } from '../../lib/i18n';
 
 // When a scheduled task runs, as the create/edit form holds it: a cadence, a
-// time of day, and a weekday (weekly) or a date (once), all in the task's
-// time zone (an IANA name, the device's by default). These helpers turn that into the first run the server is sent,
+// time of day, and the days it runs on (weekly), the day of the month or the
+// weekday of the month (monthly), or a date (once), all in the task's time
+// zone (an IANA name, the device's by default). These helpers turn that into the first run the server is sent,
 // the next few runs the form previews, and a sentence that reads the schedule
 // back, so the form, its preview and what is saved can't disagree.
 
-export const CADENCES = ['once', 'every_15_minutes', 'every_30_minutes', 'hourly', 'daily', 'weekdays', 'weekly'];
+export const CADENCES = ['once', 'every_15_minutes', 'every_30_minutes', 'hourly', 'daily', 'weekdays', 'weekly', 'monthly'];
 // Cadences a fixed number of minutes apart, from the chosen minute.
 export const INTERVAL_MINUTES = { every_15_minutes: 15, every_30_minutes: 30, hourly: 60 };
 export const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+// The server names days by these, in getDay() order (0 = Sunday).
+const API_DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+// Which weekday of the month a monthly task runs on: the first to the fourth,
+// or the last (-1).
+export const MONTH_WEEKS = [1, 2, 3, 4, -1];
 
 const msg = (key, vars) => i18n.t(`messages.scheduleWhen.${key}`, { ns: 'projects', ...vars });
 
@@ -27,6 +33,12 @@ export function weekdayName(day) {
   if (!locale) return WEEKDAY_NAMES[day];
   // 2000-01-02 was a Sunday.
   return new Date(2000, 0, 2 + day).toLocaleDateString(locale, { weekday: 'long' });
+}
+
+// A weekday's shortest name (0 = Sunday), for a row of day toggles: "M",
+// "Mo" or "月" as the app's language writes it.
+export function weekdayInitial(day) {
+  return new Date(2000, 0, 2 + day).toLocaleDateString(dateLocale() || 'en-US', { weekday: 'narrow' });
 }
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -90,12 +102,96 @@ function parseTime(time) {
   return Number.isFinite(h) && Number.isFinite(m) ? { h, m } : null;
 }
 
-// The form's starting point: an hour from now on the hour, or the task's own
-// next run when editing.
-export function whenFromDate(date, cadence = 'daily', zone = deviceZone()) {
-  const p = zoneParts(new Date(date), usableZone(zone));
-  return { cadence, time: `${pad(p.h)}:${pad(p.mi)}`, weekday: p.wd, date: `${p.y}-${pad(p.mo)}-${pad(p.d)}` };
+// The calendar day `d` days into a month, rolled over as Date.UTC does:
+// { y, mo, d, wd }.
+function civil(y, mo, d) {
+  const at = new Date(Date.UTC(y, mo - 1, d));
+  return { y: at.getUTCFullYear(), mo: at.getUTCMonth() + 1, d: at.getUTCDate(), wd: at.getUTCDay() };
 }
+
+const daysInMonth = (y, mo) => new Date(Date.UTC(y, mo, 0)).getUTCDate();
+
+// The day of the month that is its `week`-th `weekday` (-1 = the last).
+function nthWeekday(y, mo, week, weekday) {
+  const first = 1 + ((weekday - civil(y, mo, 1).wd + 7) % 7);
+  if (week === -1) return first + 7 * Math.floor((daysInMonth(y, mo) - first) / 7);
+  return first + 7 * (week - 1);
+}
+
+// Which week of its month a day falls in, as MONTH_WEEKS counts: its last
+// seven days read as "last", so the 29th-31st are never a fifth week.
+function weekOfMonth({ y, mo, d }) {
+  if (d + 7 > daysInMonth(y, mo)) return -1;
+  return Math.ceil(d / 7);
+}
+
+// The form's starting point: an hour from now on the hour, or the task's own
+// next run when editing. `recurrence` is the task's saved rule (see
+// recurrenceFromWhen); without one, a weekly task runs on its next run's
+// weekday and a monthly one on its day of the month.
+export function whenFromDate(date, cadence = 'daily', zone = deviceZone(), recurrence = null) {
+  const p = zoneParts(new Date(date), usableZone(zone));
+  const when = {
+    cadence,
+    time: `${pad(p.h)}:${pad(p.mi)}`,
+    weekday: p.wd,
+    date: `${p.y}-${pad(p.mo)}-${pad(p.d)}`,
+    days: [p.wd],
+    monthBy: 'day',
+    monthDay: p.d,
+    week: weekOfMonth(p),
+  };
+  const rule = recurrence || {};
+  const days = (rule.days || []).map((day) => API_DAYS.indexOf(day)).filter((day) => day >= 0);
+  if (cadence === 'weekly' && days.length) when.days = days;
+  if (cadence === 'monthly') {
+    if (rule.week != null && API_DAYS.includes(rule.weekday)) {
+      Object.assign(when, { monthBy: 'weekday', week: Number(rule.week), weekday: API_DAYS.indexOf(rule.weekday) });
+    } else if (rule.monthDay) {
+      when.monthDay = Number(rule.monthDay);
+    }
+  }
+  return when;
+}
+
+// The rule the server keeps for the form's days: weekly days, or the monthly
+// day or weekday of the month. Null for any other cadence.
+export function recurrenceFromWhen(when) {
+  if (when.cadence === 'weekly') {
+    const days = [...new Set((when.days || []).map(Number))].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7));
+    return days.length ? { days: days.map((day) => API_DAYS[day]) } : null;
+  }
+  if (when.cadence === 'monthly') {
+    return when.monthBy === 'weekday'
+      ? { week: Number(when.week), weekday: API_DAYS[Number(when.weekday)] }
+      : { monthDay: Number(when.monthDay) };
+  }
+  return null;
+}
+
+// The days a weekly task runs on: its chosen days, or its one weekday.
+function weeklyDays(when) {
+  if (Array.isArray(when.days)) return when.days.map(Number);
+  return WEEKDAY_NAMES[Number(when.weekday)] ? [Number(when.weekday)] : [];
+}
+
+// Whether a calendar day ({ y, mo, d, wd }) is one a daily, weekday, weekly
+// or monthly task runs on.
+function runsOn(when, day) {
+  switch (when.cadence) {
+    case 'daily': return true;
+    case 'weekdays': return day.wd >= 1 && day.wd <= 5;
+    case 'weekly': return weeklyDays(when).includes(day.wd);
+    case 'monthly':
+      if (when.monthBy === 'weekday') return day.d === nthWeekday(day.y, day.mo, Number(when.week), Number(when.weekday));
+      return day.d === Math.min(Number(when.monthDay), daysInMonth(day.y, day.mo));
+    default: return false;
+  }
+}
+
+// Long enough for any of those to come round: a monthly day comes every
+// month.
+const SEARCH_DAYS = 62;
 
 export function defaultWhen(now = new Date(), zone = deviceZone()) {
   const tz = usableZone(zone);
@@ -128,24 +224,25 @@ export function nextRuns(when, now = new Date(), count = 3, zone = deviceZone())
     }
     return runs;
   }
-  // Find the first future run using the requested wall-clock time.
-  for (let i = 0; i < 22 && runs.length < Math.min(count, 1); i += 1) {
-    const day = (today.wd + i) % 7;
-    const fits = when.cadence === 'daily'
-      || (when.cadence === 'weekdays' && day >= 1 && day <= 5)
-      || (when.cadence === 'weekly' && day === Number(when.weekday));
-    const at = fits && zonedDate({ ...today, d: today.d + i, h: t.h, mi: t.m }, tz);
-    if (at && at.getTime() > after) runs.push(at);
+  // The first future run at the requested wall-clock time. Today may already
+  // be past it, so look one search span beyond tomorrow.
+  for (let i = 0; i <= SEARCH_DAYS && !runs.length; i += 1) {
+    const day = civil(today.y, today.mo, today.d + i);
+    if (!runsOn(when, day)) continue;
+    const at = zonedDate({ ...day, h: t.h, mi: t.m }, tz);
+    if (at.getTime() > after) runs.push(at);
   }
   // Like the server, advance from each resolved occurrence. A skipped
   // 02:30 becomes 03:30, and subsequent runs keep that resolved time.
   while (runs.length && runs.length < count) {
     const previous = zoneParts(runs[runs.length - 1], tz);
-    let days = when.cadence === 'weekly' ? 7 : 1;
-    if (when.cadence === 'weekdays') {
-      while ([0, 6].includes((previous.wd + days) % 7)) days += 1;
+    let next = null;
+    for (let i = 1; i <= SEARCH_DAYS && !next; i += 1) {
+      const day = civil(previous.y, previous.mo, previous.d + i);
+      if (runsOn(when, day)) next = zonedDate({ ...previous, ...day }, tz);
     }
-    runs.push(zonedDate({ ...previous, d: previous.d + days }, tz));
+    if (!next) break;
+    runs.push(next);
   }
   return runs;
 }
@@ -167,6 +264,15 @@ function clock(time) {
   return d.toLocaleTimeString(dateLocale(), { hour: 'numeric', minute: '2-digit' });
 }
 
+// "Monday, Wednesday and Friday", in the app's language.
+function listOf(items) {
+  try {
+    return new Intl.ListFormat(dateLocale() || 'en', { style: 'long', type: 'conjunction' }).format(items);
+  } catch {
+    return items.join(', ');
+  }
+}
+
 // The schedule read back as one sentence: "Every weekday at 9:00 AM".
 export function describeWhen(when) {
   const at = clock(when.time);
@@ -183,8 +289,19 @@ export function describeWhen(when) {
     case 'daily': return msg('daily', { time: at });
     case 'weekdays': return msg('weekdays', { time: at });
     case 'weekly': {
-      const weekday = WEEKDAY_NAMES[Number(when.weekday)] ? weekdayName(Number(when.weekday)) : null;
-      return weekday ? msg('weekly', { weekday, time: at }) : msg('weeklyNoDay', { time: at });
+      const days = weeklyDays(when).filter((day) => WEEKDAY_NAMES[day])
+        .sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7));
+      if (!days.length) return msg('weeklyNoDay', { time: at });
+      return msg('weekly', { weekday: listOf(days.map(weekdayName)), time: at });
+    }
+    case 'monthly': {
+      if (when.monthBy === 'weekday') {
+        const weekday = weekdayName(Number(when.weekday));
+        const week = Number(when.week) === -1 ? 'Last' : ['First', 'Second', 'Third', 'Fourth'][Number(when.week) - 1];
+        return week ? msg(`monthly${week}`, { weekday, time: at }) : '';
+      }
+      const day = Number(when.monthDay);
+      return msg(day > 28 ? 'monthlyDayOrLast' : 'monthlyDay', { day, time: at });
     }
     default: return '';
   }

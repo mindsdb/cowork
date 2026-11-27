@@ -166,17 +166,17 @@
       "updatePaymentMethod": "Actualizar método de pago"
     },
     "free": {
-      "title": "Cupo gratuito de Air",
-      "badge": "Solo MindsHub Air",
+      "title": "Cupo gratuito",
+      "badge": "Solo modelos gratuitos",
       "resetsAt": "Se renueva a las {time}",
       "unlimited": "Ilimitado en esta cuenta.",
       "used": "{percent} de tu cupo usado",
       "left": "Queda {percent}",
-      "meterLabel": "Cupo gratuito de Air usado",
-      "usedUpUntil": "Agotado. MindsHub Air se cobra de tu saldo hasta que se renueve a las {time}.",
-      "usedUp": "Agotado. MindsHub Air se cobra de tu saldo hasta que se renueve.",
-      "afterUntil": "Después, MindsHub Air usa tu saldo hasta que se renueve a las {time}.",
-      "after": "Después, MindsHub Air usa tu saldo."
+      "meterLabel": "Cupo gratuito usado",
+      "usedUpUntil": "Agotado. Los modelos gratuitos ahora usan tu saldo hasta que se renueve a las {time}.",
+      "usedUp": "Agotado. Los modelos gratuitos ahora usan tu saldo hasta que se renueve.",
+      "afterUntil": "Después, los modelos gratuitos usan tu saldo hasta que se renueve a las {time}.",
+      "after": "Después, los modelos gratuitos usan tu saldo."
     },
     "autoTopUp": {
       "off": "La recarga automática está desactivada. Actívala para que tus tareas sigan ejecutándose cuando tu saldo esté bajo.",
@@ -202,7 +202,7 @@
     "balance": {
       "title": "Saldo",
       "empty": "Vacío. Los modelos de pago no se ejecutarán hasta que agregues fondos.",
-      "usedBy": "Lo usan los modelos de pago, y MindsHub Air cuando se agotan los tokens gratuitos.",
+      "usedBy": "Lo usan los modelos de pago, y los modelos gratuitos cuando se agotan los tokens gratuitos.",
       "spentRange": "de crédito gastado del {start} al {end}",
       "spentDate": "de crédito gastado {date}",
       "spentThisPeriod": "de crédito gastado en este período",
@@ -211,7 +211,7 @@
     },
     "signIn": {
       "title": "Inicia sesión para ver tu uso",
-      "body": "Tu cupo gratuito de Air y tu saldo aparecerán aquí cuando inicies sesión en MindsHub.",
+      "body": "Tu cupo gratuito y tu saldo aparecerán aquí cuando inicies sesión en MindsHub.",
       "goToAccount": "Ir a Cuenta"
     },
     "loading": "Cargando uso…",

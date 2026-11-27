@@ -1,0 +1,660 @@
+{
+  "max_chars": 10000,
+  "languages": {
+    "bash": {
+      "name": "bash",
+      "hljs": "bash",
+      "pygments": "bash"
+    },
+    "sh": {
+      "name": "bash",
+      "hljs": "bash",
+      "pygments": "bash"
+    },
+    "shell": {
+      "name": "shell",
+      "hljs": "shell",
+      "pygments": "console"
+    },
+    "zsh": {
+      "name": "shell",
+      "hljs": "shell",
+      "pygments": "console"
+    },
+    "css": {
+      "name": "css",
+      "hljs": "css",
+      "pygments": "css"
+    },
+    "diff": {
+      "name": "diff",
+      "hljs": "diff",
+      "pygments": "diff"
+    },
+    "patch": {
+      "name": "diff",
+      "hljs": "diff",
+      "pygments": "diff"
+    },
+    "dockerfile": {
+      "name": "dockerfile",
+      "hljs": "dockerfile",
+      "pygments": "docker"
+    },
+    "docker": {
+      "name": "dockerfile",
+      "hljs": "dockerfile",
+      "pygments": "docker"
+    },
+    "go": {
+      "name": "go",
+      "hljs": "go",
+      "pygments": "go"
+    },
+    "golang": {
+      "name": "go",
+      "hljs": "go",
+      "pygments": "go"
+    },
+    "javascript": {
+      "name": "javascript",
+      "hljs": "javascript",
+      "pygments": "javascript"
+    },
+    "js": {
+      "name": "javascript",
+      "hljs": "javascript",
+      "pygments": "javascript"
+    },
+    "jsx": {
+      "name": "javascript",
+      "hljs": "javascript",
+      "pygments": "jsx"
+    },
+    "json": {
+      "name": "json",
+      "hljs": "json",
+      "pygments": "json"
+    },
+    "markdown": {
+      "name": "markdown",
+      "hljs": "markdown",
+      "pygments": "markdown"
+    },
+    "md": {
+      "name": "markdown",
+      "hljs": "markdown",
+      "pygments": "markdown"
+    },
+    "python": {
+      "name": "python",
+      "hljs": "python",
+      "pygments": "python"
+    },
+    "py": {
+      "name": "python",
+      "hljs": "python",
+      "pygments": "python"
+    },
+    "rust": {
+      "name": "rust",
+      "hljs": "rust",
+      "pygments": "rust"
+    },
+    "rs": {
+      "name": "rust",
+      "hljs": "rust",
+      "pygments": "rust"
+    },
+    "sql": {
+      "name": "sql",
+      "hljs": "sql",
+      "pygments": "sql"
+    },
+    "typescript": {
+      "name": "typescript",
+      "hljs": "typescript",
+      "pygments": "typescript"
+    },
+    "ts": {
+      "name": "typescript",
+      "hljs": "typescript",
+      "pygments": "typescript"
+    },
+    "tsx": {
+      "name": "typescript",
+      "hljs": "typescript",
+      "pygments": "tsx"
+    },
+    "xml": {
+      "name": "xml",
+      "hljs": "xml",
+      "pygments": "xml"
+    },
+    "html": {
+      "name": "html",
+      "hljs": "xml",
+      "pygments": "html"
+    },
+    "yaml": {
+      "name": "yaml",
+      "hljs": "yaml",
+      "pygments": "yaml"
+    },
+    "yml": {
+      "name": "yaml",
+      "hljs": "yaml",
+      "pygments": "yaml"
+    }
+  },
+  "colors": {
+    "dark": {
+      "keyword": "rgb(196, 144, 255)",
+      "selector-tag": "rgb(196, 144, 255)",
+      "literal": "rgb(196, 144, 255)",
+      "doctag": "rgb(196, 144, 255)",
+      "string": "rgb(125, 226, 184)",
+      "regexp": "rgb(125, 226, 184)",
+      "attr": "rgb(125, 226, 184)",
+      "symbol": "rgb(125, 226, 184)",
+      "template-tag": "rgb(125, 226, 184)",
+      "template-variable": "rgb(125, 226, 184)",
+      "number": "rgb(246, 199, 121)",
+      "built_in": "rgb(246, 199, 121)",
+      "builtin-name": "rgb(246, 199, 121)",
+      "comment": "var(--ink-4)",
+      "quote": "var(--ink-4)",
+      "title": "var(--ink)",
+      "section": "var(--ink)",
+      "name": "rgb(123, 178, 255)",
+      "tag": "rgb(123, 178, 255)",
+      "meta": "rgb(123, 178, 255)",
+      "variable": "rgb(123, 178, 255)",
+      "bullet": "rgb(123, 178, 255)",
+      "property": "var(--ink-2)",
+      "params": "var(--ink-2)",
+      "deletion": "rgb(255, 122, 145)",
+      "deletion-bg": "rgba(255, 122, 145, 0.12)",
+      "addition": "rgb(125, 226, 184)",
+      "addition-bg": "rgba(125, 226, 184, 0.12)"
+    },
+    "light": {
+      "keyword": "rgb(124, 58, 175)",
+      "selector-tag": "rgb(124, 58, 175)",
+      "literal": "rgb(124, 58, 175)",
+      "doctag": "rgb(124, 58, 175)",
+      "string": "rgb(20, 121, 79)",
+      "regexp": "rgb(20, 121, 79)",
+      "attr": "rgb(20, 121, 79)",
+      "symbol": "rgb(20, 121, 79)",
+      "template-tag": "rgb(20, 121, 79)",
+      "template-variable": "rgb(20, 121, 79)",
+      "number": "rgb(170, 100, 0)",
+      "built_in": "rgb(170, 100, 0)",
+      "builtin-name": "rgb(170, 100, 0)",
+      "comment": "var(--ink-4)",
+      "quote": "var(--ink-4)",
+      "title": "rgb(17, 85, 98)",
+      "section": "rgb(17, 85, 98)",
+      "name": "rgb(28, 76, 169)",
+      "tag": "rgb(28, 76, 169)",
+      "meta": "rgb(28, 76, 169)",
+      "variable": "rgb(28, 76, 169)",
+      "bullet": "rgb(28, 76, 169)",
+      "property": "var(--ink-2)",
+      "params": "var(--ink-2)",
+      "deletion": "rgb(180, 35, 60)",
+      "deletion-bg": "rgba(180, 35, 60, 0.12)",
+      "addition": "rgb(20, 121, 79)",
+      "addition-bg": "rgba(20, 121, 79, 0.12)"
+    }
+  },
+  "anchors": {
+    "python": {
+      "code": "@cache\nclass User:\n    def greet(self, name='x'):\n        # say hi\n        return name and not None or 42",
+      "expect": [
+        [
+          "@cache",
+          "meta"
+        ],
+        [
+          "class",
+          "keyword"
+        ],
+        [
+          "# say hi",
+          "comment"
+        ],
+        [
+          "'x'",
+          "string"
+        ],
+        [
+          "and",
+          "keyword"
+        ],
+        [
+          "None",
+          "literal"
+        ],
+        [
+          "42",
+          "number"
+        ]
+      ]
+    },
+    "json": {
+      "code": "{\"name\": \"anton\", \"count\": 3, \"ok\": true, \"tags\": null}",
+      "expect": [
+        [
+          "\"name\"",
+          "attr"
+        ],
+        [
+          "\"anton\"",
+          "string"
+        ],
+        [
+          "3",
+          "number"
+        ],
+        [
+          "true",
+          "keyword"
+        ],
+        [
+          "null",
+          "keyword"
+        ]
+      ]
+    },
+    "yaml": {
+      "code": "# config\nname: anton\nport: 8080\nenabled: true\nquoted: \"two\"\nrun: |\n  make test",
+      "expect": [
+        [
+          "# config",
+          "comment"
+        ],
+        [
+          "name",
+          "attr"
+        ],
+        [
+          "anton",
+          "string"
+        ],
+        [
+          "8080",
+          "number"
+        ],
+        [
+          "true",
+          "literal"
+        ],
+        [
+          "\"two\"",
+          "string"
+        ],
+        [
+          "make",
+          "string"
+        ]
+      ]
+    },
+    "css": {
+      "code": "/* c */\n@media print {\n  div > p { margin: 4px; color: #fff }\n  .box { top: 0 }\n}",
+      "expect": [
+        [
+          "/* c */",
+          "comment"
+        ],
+        [
+          "media",
+          "keyword"
+        ],
+        [
+          "div",
+          "selector-tag"
+        ],
+        [
+          "margin",
+          "attribute"
+        ],
+        [
+          "4px",
+          "number"
+        ],
+        [
+          "#fff",
+          "number"
+        ],
+        [
+          "box",
+          "selector-class"
+        ]
+      ]
+    },
+    "diff": {
+      "code": "--- a/x.py\n+++ b/x.py\n@@ -1,3 +1,3 @@\n-old line\n+new line\n same",
+      "expect": [
+        [
+          "--- a/x.py",
+          "comment"
+        ],
+        [
+          "+++ b/x.py",
+          "comment"
+        ],
+        [
+          "@@ -1,3 +1,3 @@",
+          "meta"
+        ],
+        [
+          "-old line",
+          "deletion"
+        ],
+        [
+          "+new line",
+          "addition"
+        ],
+        [
+          " same",
+          null
+        ]
+      ]
+    },
+    "rust": {
+      "code": "/// Docs\nfn main() -> i32 {\n    let s = \"hi\"; // c\n    return 42;\n}",
+      "expect": [
+        [
+          "/// Docs",
+          "comment"
+        ],
+        [
+          "fn",
+          "keyword"
+        ],
+        [
+          "let",
+          "keyword"
+        ],
+        [
+          "\"hi\"",
+          "string"
+        ],
+        [
+          "// c",
+          "comment"
+        ],
+        [
+          "42",
+          "number"
+        ]
+      ]
+    },
+    "typescript": {
+      "code": "// c\nconst n: number = 42;\nfunction g(s: string): boolean { return true }",
+      "expect": [
+        [
+          "// c",
+          "comment"
+        ],
+        [
+          "const",
+          "keyword"
+        ],
+        [
+          "number",
+          "built_in"
+        ],
+        [
+          "42",
+          "number"
+        ],
+        [
+          "function",
+          "keyword"
+        ],
+        [
+          "string",
+          "built_in"
+        ],
+        [
+          "true",
+          "literal"
+        ]
+      ]
+    },
+    "tsx": {
+      "code": "const el = <div className=\"x\">{n}</div>; // c",
+      "expect": [
+        [
+          "const",
+          "keyword"
+        ],
+        [
+          "\"x\"",
+          "string"
+        ],
+        [
+          "// c",
+          "comment"
+        ]
+      ]
+    },
+    "javascript": {
+      "code": "// c\nconst s = 'a';\nif (s === null) { return 42 }",
+      "expect": [
+        [
+          "// c",
+          "comment"
+        ],
+        [
+          "const",
+          "keyword"
+        ],
+        [
+          "'a'",
+          "string"
+        ],
+        [
+          "if",
+          "keyword"
+        ],
+        [
+          "null",
+          "literal"
+        ],
+        [
+          "42",
+          "number"
+        ]
+      ]
+    },
+    "jsx": {
+      "code": "const el = <a href=\"/x\">{n}</a>; // c",
+      "expect": [
+        [
+          "const",
+          "keyword"
+        ],
+        [
+          "\"/x\"",
+          "string"
+        ],
+        [
+          "// c",
+          "comment"
+        ]
+      ]
+    },
+    "go": {
+      "code": "// c\nfunc main() {\n\ts := \"hi\"\n\treturn 42\n}",
+      "expect": [
+        [
+          "// c",
+          "comment"
+        ],
+        [
+          "func",
+          "keyword"
+        ],
+        [
+          "\"hi\"",
+          "string"
+        ],
+        [
+          "return",
+          "keyword"
+        ],
+        [
+          "42",
+          "number"
+        ]
+      ]
+    },
+    "bash": {
+      "code": "# c\nif [ -f x ]; then\n  echo \"hi\" 42\nfi",
+      "expect": [
+        [
+          "# c",
+          "comment"
+        ],
+        [
+          "if",
+          "keyword"
+        ],
+        [
+          "echo",
+          "built_in"
+        ],
+        [
+          "\"hi\"",
+          "string"
+        ],
+        [
+          "fi",
+          "keyword"
+        ]
+      ]
+    },
+    "shell": {
+      "code": "$ ls -la\nfile.txt",
+      "expect": [
+        [
+          "$ ",
+          "meta"
+        ]
+      ]
+    },
+    "dockerfile": {
+      "code": "# c\nFROM python:3.13\nRUN pip install x\nENV A=\"b\"",
+      "expect": [
+        [
+          "# c",
+          "comment"
+        ],
+        [
+          "FROM",
+          "keyword"
+        ],
+        [
+          "RUN",
+          "keyword"
+        ],
+        [
+          "\"b\"",
+          "string"
+        ]
+      ]
+    },
+    "sql": {
+      "code": "-- c\nSELECT name, 42 FROM users WHERE ok = 'y';",
+      "expect": [
+        [
+          "-- c",
+          "comment"
+        ],
+        [
+          "SELECT",
+          "keyword"
+        ],
+        [
+          "42",
+          "number"
+        ],
+        [
+          "FROM",
+          "keyword"
+        ],
+        [
+          "'y'",
+          "string"
+        ]
+      ]
+    },
+    "markdown": {
+      "code": "# Title\n\nSome *em* and `x` text\n\n```fan\naaa\n```",
+      "expect": [
+        [
+          "# Title",
+          "section"
+        ],
+        [
+          "`x`",
+          "code"
+        ],
+        [
+          "```fan",
+          "code"
+        ],
+        [
+          "aaa",
+          "code"
+        ]
+      ]
+    },
+    "xml": {
+      "code": "<!-- c -->\n<note id=\"1\">text</note>",
+      "expect": [
+        [
+          "<!-- c -->",
+          "comment"
+        ],
+        [
+          "note",
+          "name"
+        ],
+        [
+          "id",
+          "attr"
+        ],
+        [
+          "\"1\"",
+          "string"
+        ]
+      ]
+    },
+    "html": {
+      "code": "<!-- c -->\n<div class=\"box\">Hi</div>",
+      "expect": [
+        [
+          "<!-- c -->",
+          "comment"
+        ],
+        [
+          "div",
+          "name"
+        ],
+        [
+          "class",
+          "attr"
+        ],
+        [
+          "\"box\"",
+          "string"
+        ]
+      ]
+    }
+  }
+}

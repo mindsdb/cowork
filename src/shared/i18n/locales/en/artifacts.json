@@ -51,7 +51,8 @@
       "onlyYou": "Only you",
       "public": "Public",
       "publicPassword": "Public · password",
-      "restricted": "Restricted"
+      "restricted": "Restricted",
+      "website": "Website"
     },
     "hint": {
       "notSharedYet": "Not shared yet. Open it and choose Share to get a web link.",
@@ -336,7 +337,9 @@
       "restrictedTitle": "Restricted",
       "restrictedDesc": "Who can open the link isn't known yet",
       "specificTitle": "Specific people",
-      "specificDesc": "Only the people you list"
+      "specificDesc": "Only the people you list",
+      "websiteTitle": "Public website",
+      "websiteDesc": "Its own web address, open to anyone on the internet"
     },
     "whoCanAccess": "Who can access your app",
     "whoCanAccessDoc": "Who can access your doc",
@@ -386,7 +389,9 @@
       "ownerOnlyTitle": "Only its owner",
       "ownerOnlyDesc": "Nobody else can open the shared link",
       "listWithheld": "Only the teams and people it's shared with"
-    }
+    },
+    "websiteAddress": "Website address",
+    "websiteEmailGateNotice": "A public website doesn't ask visitors for their email. Anyone can open it."
   },
   "previewErrors": {
     "reported": "{count, plural, one {The preview reported # error} other {The preview reported # errors}}",

@@ -9,20 +9,20 @@
         "updatePaymentMethod": "更新付款方式",
         "upgrade": "{tier, select, plus {开通 Plus} pro {升级到 Pro} other {升级}}"
       },
-      "noFreeGrant": "此账户不含免费的 MindsHub Air 令牌。MindsHub Air 和其他模型一样，会使用你的余额。",
+      "noFreeGrant": "此账户不含免费令牌。所有模型都会使用你的余额。",
       "allowanceStop": {
         "noGrant": "{noGrant}你的余额已用完，请充值后继续。",
-        "withTime": "你的 MindsHub Air 免费额度已用完，余额也已用完。请充值以继续工作，或等待额度在 {time} 恢复。",
-        "noTime": "你的 MindsHub Air 免费额度已用完，余额也已用完。请充值以继续工作。",
-        "noTimeMobile": "你的 MindsHub Air 免费额度已用完，余额也已用完。",
+        "withTime": "你的免费额度已用完，余额也已用完。请充值以继续工作，或等待额度在 {time} 重置。",
+        "noTime": "你的免费额度已用完，余额也已用完。请充值以继续工作。",
+        "noTimeMobile": "你的免费额度已用完，余额也已用完。",
         "noGrantMobile": "{noGrant} 你的余额已用完。",
-        "withTimeMobile": "你的 MindsHub Air 免费额度已用完，余额也已用完。 将于 {time} 重置。"
+        "withTimeMobile": "你的免费额度已用完，余额也已用完。将于 {time} 重置。"
       },
       "freeServingPaused": {
-        "until": "免费 MindsHub Air 已对所有用户暂停，直至 {until}。暂停期间不会消耗你的额度。如需立即继续工作，请充值。",
-        "dailyReset": "免费 MindsHub Air 已对所有用户暂停，直至每日预算重置。暂停期间不会消耗你的额度。如需立即继续工作，请充值。",
-        "untilMobile": "免费 MindsHub Air 已对所有用户暂停，直至 {until}。暂停期间不会消耗你的额度。",
-        "dailyResetMobile": "免费 MindsHub Air 已对所有用户暂停，直至每日预算重置。暂停期间不会消耗你的额度。"
+        "until": "免费模型已对所有用户暂停，直至 {until}。暂停期间不会消耗你的额度。如需立即继续工作，请充值。",
+        "dailyReset": "免费模型已对所有用户暂停，直至每日预算重置。暂停期间不会消耗你的额度。如需立即继续工作，请充值。",
+        "untilMobile": "免费模型已对所有用户暂停，直至 {until}。暂停期间不会消耗你的额度。",
+        "dailyResetMobile": "免费模型已对所有用户暂停，直至每日预算重置。暂停期间不会消耗你的额度。"
       },
       "balanceEmptySentence": "你的余额已用完。",
       "percentLeft": "免费额度剩余 {percent}",
@@ -34,8 +34,8 @@
       "balanceEmpty": {
         "title": "余额已用完",
         "body": "请充值以开始新任务。",
-        "freeUsedToo": "你的免费额度也已用完。请充值，或等待额度恢复。",
-        "freeUsedTooWithTime": "你的免费额度也已用完。请充值，或等待额度在 {time} 恢复。",
+        "freeUsedToo": "你的免费额度也已用完。请充值，或等待额度重置。",
+        "freeUsedTooWithTime": "你的免费额度也已用完。请充值，或等待额度在 {time} 重置。",
         "freeUsedTooMobile": "你的免费额度也已用完。",
         "freeUsedTooWithTimeMobile": "你的免费额度也已用完。 将于 {time} 重置。",
         "bodyMobile": "你的余额已用完。付费模型不可用。"
@@ -50,17 +50,16 @@
       },
       "freeUsed": {
         "title": "免费额度已用完",
-        "body": "在额度恢复前，MindsHub Air 将使用你的余额。",
-        "bodyWithTime": "在额度于 {time} 恢复前，MindsHub Air 将使用你的余额。",
-        "bodyWithUsd": "在额度恢复前，MindsHub Air 将使用你的余额（剩余 {usd}）。",
-        "bodyWithUsdWithTime": "在额度于 {time} 恢复前，MindsHub Air 将使用你的余额（剩余 {usd}）。"
+        "body": "在额度重置前，免费模型将使用你的余额。",
+        "bodyWithTime": "在额度于 {time} 重置前，免费模型将使用你的余额。"
       },
       "freeLow": {
-        "body": "之后，在额度恢复前，MindsHub Air 将使用你的余额。",
-        "bodyWithTime": "之后，在额度于 {time} 恢复前，MindsHub Air 将使用你的余额。",
+        "body": "之后，在额度重置前，免费模型将使用你的余额。",
+        "bodyWithTime": "之后，在额度于 {time} 重置前，免费模型将使用你的余额。",
         "balanceLowToo": "你的余额也不多了（{usd}）。"
       },
       "budgetExceeded": {
+        "airOnPlan": "{hasModel, select, true {{scope, select, org {在所有者或管理员于“预算”中提高上限前，{model} 无法运行。其他模型仍可使用。} other {在管理员于“预算”中提高上限前，{model} 无法运行。其他模型仍可使用。}}} other {{scope, select, org {在所有者或管理员于“预算”中提高上限前，付费模型无法运行。套餐额度未用完时，MindsHub Air 仍可使用。} other {在管理员于“预算”中提高上限前，付费模型无法运行。套餐额度未用完时，MindsHub Air 仍可使用。}}}}",
         "raise": "{hasModel, select, true {{scope, select, org {在所有者或管理员于“预算”中提高上限前，{model} 无法运行。其他模型仍可使用。} other {在管理员于“预算”中提高上限前，{model} 无法运行。其他模型仍可使用。}}} other {{scope, select, org {在所有者或管理员于“预算”中提高上限前，付费模型无法运行。} other {在管理员于“预算”中提高上限前，付费模型无法运行。}}}}",
         "airHasRoom": "{hasModel, select, true {{scope, select, org {在所有者或管理员于“预算”中提高上限前，{model} 无法运行。其他模型仍可使用。} other {在管理员于“预算”中提高上限前，{model} 无法运行。其他模型仍可使用。}}} other {{scope, select, org {在所有者或管理员于“预算”中提高上限前，付费模型无法运行。免费额度未用完时，MindsHub Air 仍可使用。} other {在管理员于“预算”中提高上限前，付费模型无法运行。免费额度未用完时，MindsHub Air 仍可使用。}}}}"
       },
@@ -90,7 +89,14 @@
       "daily": "每天 {time}",
       "weekdays": "每个工作日 {time}",
       "weekly": "每{weekday} {time}",
-      "weeklyNoDay": "每周 {time}"
+      "weeklyNoDay": "每周 {time}",
+      "monthlyDay": "每月 {day} 日 {time}",
+      "monthlyDayOrLast": "每月 {day} 日（较短的月份为最后一天）{time}",
+      "monthlyFirst": "每月第一个{weekday} {time}",
+      "monthlySecond": "每月第二个{weekday} {time}",
+      "monthlyThird": "每月第三个{weekday} {time}",
+      "monthlyFourth": "每月第四个{weekday} {time}",
+      "monthlyLast": "每月最后一个{weekday} {time}"
     },
     "scheduleCopy": {
       "missedOnceServer": "如果此时服务器停机，只要在一小时内恢复，任务就会运行。超过一小时则会标记为“已错过”，你可以手动运行。",
@@ -116,8 +122,8 @@
       },
       "row": {
         "walletEmpty": "没有可用积分。请充值以使用 MindsHub。",
-        "allowanceExhausted": "没有可用的免费 MindsHub Air 令牌，余额也已用完。",
-        "freeAirPaused": "免费 MindsHub Air 目前已暂停。",
+        "allowanceExhausted": "没有可用的免费令牌，余额也已用完。",
+        "freeAirPaused": "免费模型目前已暂停。",
         "budgetExceeded": "预算已用完。",
         "walletEmptyMobile": "没有可用积分。"
       },
@@ -463,6 +469,13 @@
         "pendingDetail": "你的凭据已加密存储。检查完成后，此页面会自动更新。"
       }
     },
+    "httpRefusal": {
+      "uploadTooLarge": "本次上传超过了大小限制。请选择较小的文件，或减少一次上传的文件数量。",
+      "requestTooLarge": "本次请求超过了大小限制。请尝试减少发送的内容。"
+    },
+    "projectUploads": {
+      "notUploaded": "未上传的文件：{files}。"
+    },
     "fileDrop": {
       "uploading": "正在上传…"
     },
@@ -598,7 +611,8 @@
       "hourly": "每小时",
       "daily": "每天",
       "weekdays": "工作日",
-      "weekly": "每周"
+      "weekly": "每周",
+      "monthly": "每月"
     },
     "openProject": "打开 {project}",
     "descriptionWithNext": "{sentence} · 下次：{next}",
@@ -634,7 +648,12 @@
     "succeededTitle": "定时任务已完成",
     "succeededBody": "“{title}”已完成一次运行。点击打开。",
     "succeededToast": "定时任务“{title}”已完成一次运行。",
-    "openAction": "打开任务"
+    "openAction": "打开任务",
+    "stoppedTitle": "计划任务已停止",
+    "stoppedBody": "“{title}”在完成前达到上限并已停止。点击查看。",
+    "stoppedToast": "计划任务“{title}”在完成前达到上限并已停止。",
+    "genericTitle": "新通知",
+    "genericLine": "新通知：{subject}"
   },
   "scheduleNotifyMenu": {
     "label": "通知",
@@ -650,11 +669,13 @@
       "hourly": "每小时",
       "daily": "每天",
       "weekdays": "每个工作日",
-      "weekly": "每周"
+      "weekly": "每周",
+      "monthly": "每月"
     },
     "errorNoPrompt": "请告诉 {agent} 要做什么。",
     "errorPickFutureTime": "请选择一个未来的时间。",
     "errorPickTime": "请选择时间。",
+    "errorPickDays": "请至少选择一个星期几。",
     "errorSave": "无法保存定时任务。",
     "editTitle": "编辑定时任务",
     "createTitle": "创建定时任务",
@@ -666,6 +687,17 @@
     "when": "时间",
     "howOften": "频率",
     "dayOfWeek": "星期",
+    "daysOfWeek": "星期",
+    "dayOfMonth": "日期",
+    "monthBy": {
+      "label": "每月哪一天",
+      "day": "日期",
+      "week1": "第一个",
+      "week2": "第二个",
+      "week3": "第三个",
+      "week4": "第四个",
+      "weekLast": "最后一个"
+    },
     "date": "日期",
     "atMinute": "分钟：",
     "at": "时间：",
@@ -677,6 +709,7 @@
     "namePlaceholder": "根据提示词自动命名",
     "project": "项目",
     "model": "模型",
+    "connections": "连接",
     "accountDefault": "账户默认",
     "cancel": "取消",
     "saveAndRunOnce": "保存并运行一次",
@@ -799,6 +832,9 @@
     "folderUnsupported": "此服务器不支持将项目指向文件夹。它已将“{name}”创建为普通项目，并清除了你选择的文件夹。请更新 Cowork 以使用你的文件夹；如果不需要该项目，也可以将其删除。",
     "couldNotCreate": "无法创建项目。",
     "couldNotOpenPicker": "无法打开文件夹选择器。",
+    "filesNotUploaded": "已创建“{name}”，但其文件未能上传。",
+    "someFilesNotUploaded": "已创建“{name}”，但部分文件未能上传。",
+    "filesUploadUnconfirmed": "已创建“{name}”。请先检查项目中的文件，再决定是否重新上传。",
     "title": "新建项目",
     "nameLabel": "项目名称",
     "instructionsLabel": "说明",

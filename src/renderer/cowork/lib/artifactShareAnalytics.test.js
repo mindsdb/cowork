@@ -180,3 +180,17 @@ describe('reporting', () => {
     expect(() => reportDownloaded(artifact, { entry: 'list' })).not.toThrow();
   });
 });
+
+describe('shareSnapshot of a public website', () => {
+  it('reports its own audience, never a list', () => {
+    const site = restricted({ accessMode: 'website' });
+    expect(shareSnapshot(site)).toEqual({
+      shared: true, audience: 'website', orgWide: false, teamCount: 0, peopleCount: 0, fingerprint: 'website',
+    });
+  });
+
+  it('counts a switch between a public link and a website as a change', () => {
+    const publicLink = shareSnapshot({ publishedUrl: URL, accessMode: 'public' });
+    expect(isReportableAccessChange(publicLink, shareSnapshot(restricted({ accessMode: 'website' })))).toBe(true);
+  });
+});

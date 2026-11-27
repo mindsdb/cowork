@@ -9,20 +9,20 @@
         "updatePaymentMethod": "Mettre à jour le moyen de paiement",
         "upgrade": "{tier, select, plus {Passer à Plus} pro {Passer à Pro} other {Changer de forfait}}"
       },
-      "noFreeGrant": "Ce compte n’inclut pas de jetons MindsHub Air gratuits. MindsHub Air utilise votre solde, comme tous les autres modèles.",
+      "noFreeGrant": "Ce compte n’inclut pas de jetons gratuits. Tous les modèles utilisent votre solde.",
       "allowanceStop": {
         "noGrant": "{noGrant} Votre solde est épuisé : ajoutez des fonds pour continuer.",
-        "withTime": "Votre quota gratuit MindsHub Air est épuisé, tout comme votre solde. Ajoutez des fonds pour continuer, ou attendez qu’il se renouvelle à {time}.",
-        "noTime": "Votre quota gratuit MindsHub Air est épuisé, tout comme votre solde. Ajoutez des fonds pour continuer.",
-        "noTimeMobile": "Votre quota gratuit MindsHub Air est épuisé, tout comme votre solde.",
+        "withTime": "Votre quota gratuit est épuisé, tout comme votre solde. Ajoutez des fonds pour continuer, ou attendez sa réinitialisation à {time}.",
+        "noTime": "Votre quota gratuit est épuisé, tout comme votre solde. Ajoutez des fonds pour continuer.",
+        "noTimeMobile": "Votre quota gratuit est épuisé, tout comme votre solde.",
         "noGrantMobile": "{noGrant} Votre solde est épuisé.",
-        "withTimeMobile": "Votre quota gratuit MindsHub Air est épuisé, tout comme votre solde. Réinitialisation à {time}."
+        "withTimeMobile": "Votre quota gratuit est épuisé, tout comme votre solde. Réinitialisation à {time}."
       },
       "freeServingPaused": {
-        "until": "MindsHub Air gratuit est suspendu pour tout le monde jusqu’à {until}. Votre quota n’est pas consommé. Ajoutez des fonds pour continuer dès maintenant.",
-        "dailyReset": "MindsHub Air gratuit est suspendu pour tout le monde jusqu’à la réinitialisation du budget quotidien. Votre quota n’est pas consommé. Ajoutez des fonds pour continuer dès maintenant.",
-        "untilMobile": "MindsHub Air gratuit est suspendu pour tout le monde jusqu’à {until}. Votre quota n’est pas consommé.",
-        "dailyResetMobile": "MindsHub Air gratuit est suspendu pour tout le monde jusqu’à la réinitialisation du budget quotidien. Votre quota n’est pas consommé."
+        "until": "Les modèles gratuits sont suspendus pour tout le monde jusqu’à {until}. Votre quota n’est pas consommé. Ajoutez des fonds pour continuer dès maintenant.",
+        "dailyReset": "Les modèles gratuits sont suspendus pour tout le monde jusqu’à la réinitialisation du budget quotidien. Votre quota n’est pas consommé. Ajoutez des fonds pour continuer dès maintenant.",
+        "untilMobile": "Les modèles gratuits sont suspendus pour tout le monde jusqu’à {until}. Votre quota n’est pas consommé.",
+        "dailyResetMobile": "Les modèles gratuits sont suspendus pour tout le monde jusqu’à la réinitialisation du budget quotidien. Votre quota n’est pas consommé."
       },
       "balanceEmptySentence": "Votre solde est épuisé.",
       "percentLeft": "{percent} de votre quota gratuit restant",
@@ -34,8 +34,8 @@
       "balanceEmpty": {
         "title": "Solde épuisé",
         "body": "Ajoutez des fonds pour lancer une autre tâche.",
-        "freeUsedToo": "Votre quota gratuit est également épuisé. Ajoutez des fonds ou attendez qu’il se renouvelle.",
-        "freeUsedTooWithTime": "Votre quota gratuit est également épuisé. Ajoutez des fonds ou attendez qu’il se renouvelle à {time}.",
+        "freeUsedToo": "Votre quota gratuit est également épuisé. Ajoutez des fonds ou attendez sa réinitialisation.",
+        "freeUsedTooWithTime": "Votre quota gratuit est également épuisé. Ajoutez des fonds ou attendez sa réinitialisation à {time}.",
         "freeUsedTooMobile": "Votre quota gratuit est également épuisé.",
         "freeUsedTooWithTimeMobile": "Votre quota gratuit est également épuisé. Réinitialisation à {time}.",
         "bodyMobile": "Votre solde est vide. Les modèles payants sont indisponibles."
@@ -50,19 +50,18 @@
       },
       "freeUsed": {
         "title": "Quota gratuit épuisé",
-        "body": "MindsHub Air utilise votre solde jusqu’au renouvellement de votre quota.",
-        "bodyWithTime": "MindsHub Air utilise votre solde jusqu’au renouvellement de votre quota à {time}.",
-        "bodyWithUsd": "MindsHub Air utilise votre solde (il reste {usd}) jusqu’au renouvellement de votre quota.",
-        "bodyWithUsdWithTime": "MindsHub Air utilise votre solde (il reste {usd}) jusqu’au renouvellement de votre quota à {time}."
+        "body": "Les modèles gratuits utilisent désormais votre solde jusqu’à la réinitialisation de votre quota.",
+        "bodyWithTime": "Les modèles gratuits utilisent désormais votre solde jusqu’à la réinitialisation de votre quota à {time}."
       },
       "freeLow": {
-        "body": "Ensuite, MindsHub Air utilisera votre solde jusqu’au renouvellement de votre quota.",
-        "bodyWithTime": "Ensuite, MindsHub Air utilisera votre solde jusqu’au renouvellement de votre quota à {time}.",
+        "body": "Ensuite, les modèles gratuits utiliseront votre solde jusqu’à la réinitialisation de votre quota.",
+        "bodyWithTime": "Ensuite, les modèles gratuits utiliseront votre solde jusqu’à la réinitialisation de votre quota à {time}.",
         "balanceLowToo": "Votre solde est également bas ({usd})."
       },
       "budgetExceeded": {
+        "airOnPlan": "{hasModel, select, true {{scope, select, org {{model} est bloqué jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.} other {{model} est bloqué jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.}}} other {{scope, select, org {Les modèles payants sont bloqués jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ». MindsHub Air reste disponible tant que le quota de votre forfait n’est pas épuisé.} other {Les modèles payants sont bloqués jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ». MindsHub Air reste disponible tant que le quota de votre forfait n’est pas épuisé.}}}}",
         "raise": "{hasModel, select, true {{scope, select, org {{model} est bloqué jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.} other {{model} est bloqué jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.}}} other {{scope, select, org {Les modèles payants sont bloqués jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ».} other {Les modèles payants sont bloqués jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ».}}}}",
-        "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} est bloqué jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.} other {{model} est bloqué jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.}}} other {{scope, select, org {Les modèles payants sont bloqués jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ». MindsHub Air reste disponible tant que son quota gratuit n’est pas épuisé.} other {Les modèles payants sont bloqués jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ». MindsHub Air reste disponible tant que son quota gratuit n’est pas épuisé.}}}}"
+        "airHasRoom": "{hasModel, select, true {{scope, select, org {{model} est bloqué jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.} other {{model} est bloqué jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ». Les autres modèles fonctionnent toujours.}}} other {{scope, select, org {Les modèles payants sont bloqués jusqu’à ce qu’un propriétaire ou un administrateur augmente le budget dans « Budgets ». MindsHub Air reste disponible tant que votre quota gratuit n’est pas épuisé.} other {Les modèles payants sont bloqués jusqu’à ce qu’un administrateur augmente le budget dans « Budgets ». MindsHub Air reste disponible tant que votre quota gratuit n’est pas épuisé.}}}}"
       },
       "window": {
         "usedUpTitle": "{window, select, 7d {Quota hebdomadaire épuisé} other {Quota de 5 heures épuisé}}",
@@ -90,7 +89,14 @@
       "daily": "Tous les jours à {time}",
       "weekdays": "Du lundi au vendredi à {time}",
       "weekly": "Chaque {weekday} à {time}",
-      "weeklyNoDay": "Chaque semaine à {time}"
+      "weeklyNoDay": "Chaque semaine à {time}",
+      "monthlyDay": "Chaque mois le {day} à {time}",
+      "monthlyDayOrLast": "Chaque mois le {day}, ou le dernier jour d’un mois plus court, à {time}",
+      "monthlyFirst": "Chaque mois le premier {weekday} à {time}",
+      "monthlySecond": "Chaque mois le deuxième {weekday} à {time}",
+      "monthlyThird": "Chaque mois le troisième {weekday} à {time}",
+      "monthlyFourth": "Chaque mois le quatrième {weekday} à {time}",
+      "monthlyLast": "Chaque mois le dernier {weekday} à {time}"
     },
     "scheduleCopy": {
       "missedOnceServer": "Si le serveur est indisponible à cette heure-là, la tâche s’exécute à son retour, s’il revient dans l’heure. Passé ce délai, elle est marquée comme manquée et vous pouvez la lancer vous-même.",
@@ -116,8 +122,8 @@
       },
       "row": {
         "walletEmpty": "Aucun crédit disponible. Ajoutez des fonds pour utiliser MindsHub.",
-        "allowanceExhausted": "Aucun jeton MindsHub Air gratuit disponible et le solde est épuisé.",
-        "freeAirPaused": "MindsHub Air gratuit est actuellement suspendu.",
+        "allowanceExhausted": "Aucun jeton gratuit disponible et le solde est épuisé.",
+        "freeAirPaused": "Les modèles gratuits sont actuellement suspendus.",
         "budgetExceeded": "Un budget est épuisé.",
         "walletEmptyMobile": "Aucun crédit disponible."
       },
@@ -463,6 +469,13 @@
         "pendingDetail": "Vos identifiants sont stockés chiffrés. Cette page se met à jour à la fin de la vérification."
       }
     },
+    "httpRefusal": {
+      "uploadTooLarge": "Cette importation dépasse la taille maximale autorisée. Choisissez un fichier plus petit ou importez moins de fichiers à la fois.",
+      "requestTooLarge": "Cette requête dépasse la taille maximale autorisée. Essayez d’envoyer moins de contenu."
+    },
+    "projectUploads": {
+      "notUploaded": "Fichiers non importés : {files}."
+    },
     "fileDrop": {
       "uploading": "Importation…"
     },
@@ -598,7 +611,8 @@
       "hourly": "Toutes les heures",
       "daily": "Tous les jours",
       "weekdays": "En semaine",
-      "weekly": "Chaque semaine"
+      "weekly": "Chaque semaine",
+      "monthly": "Mensuel"
     },
     "openProject": "Ouvrir {project}",
     "descriptionWithNext": "{sentence} · prochaine {next}",
@@ -634,7 +648,12 @@
     "succeededTitle": "Tâche planifiée terminée",
     "succeededBody": "« {title} » a terminé une exécution. Cliquez pour l’ouvrir.",
     "succeededToast": "La tâche planifiée « {title} » a terminé une exécution.",
-    "openAction": "Ouvrir la tâche"
+    "openAction": "Ouvrir la tâche",
+    "stoppedTitle": "Tâche planifiée arrêtée",
+    "stoppedBody": "« {title} » s’est arrêtée à sa limite avant de terminer. Cliquez pour vérifier.",
+    "stoppedToast": "La tâche planifiée « {title} » s’est arrêtée à sa limite avant de terminer.",
+    "genericTitle": "Nouvelle notification",
+    "genericLine": "Nouvelle notification : {subject}"
   },
   "scheduleNotifyMenu": {
     "label": "Notifications",
@@ -650,11 +669,13 @@
       "hourly": "Toutes les heures",
       "daily": "Tous les jours",
       "weekdays": "Du lundi au vendredi",
-      "weekly": "Chaque semaine"
+      "weekly": "Chaque semaine",
+      "monthly": "Chaque mois"
     },
     "errorNoPrompt": "Indiquez à {agent} ce qu’il doit faire.",
     "errorPickFutureTime": "Choisissez une heure dans le futur.",
     "errorPickTime": "Choisissez une heure.",
+    "errorPickDays": "Choisissez au moins un jour de la semaine.",
     "errorSave": "Impossible d’enregistrer la planification.",
     "editTitle": "Modifier la tâche planifiée",
     "createTitle": "Planifier une tâche",
@@ -666,6 +687,17 @@
     "when": "Quand",
     "howOften": "Fréquence",
     "dayOfWeek": "Jour de la semaine",
+    "daysOfWeek": "Jours de la semaine",
+    "dayOfMonth": "Jour du mois",
+    "monthBy": {
+      "label": "Quel jour du mois",
+      "day": "Jour",
+      "week1": "Premier",
+      "week2": "Deuxième",
+      "week3": "Troisième",
+      "week4": "Quatrième",
+      "weekLast": "Dernier"
+    },
     "date": "Date",
     "atMinute": "à la minute",
     "at": "à",
@@ -677,6 +709,7 @@
     "namePlaceholder": "Déduit de la requête",
     "project": "Projet",
     "model": "Modèle",
+    "connections": "Connexions",
     "accountDefault": "Par défaut du compte",
     "cancel": "Annuler",
     "saveAndRunOnce": "Enregistrer et exécuter une fois",
@@ -799,6 +832,9 @@
     "folderUnsupported": "Ce serveur ne permet pas d’associer un projet à un dossier. « {name} » a été créé comme projet standard et votre sélection de dossier a été effacée. Mettez à jour Cowork pour utiliser votre dossier, ou supprimez ce projet si vous n’en voulez pas.",
     "couldNotCreate": "Impossible de créer le projet.",
     "couldNotOpenPicker": "Impossible d’ouvrir le sélecteur de dossier.",
+    "filesNotUploaded": "« {name} » a été créé, mais ses fichiers n’ont pas été importés.",
+    "someFilesNotUploaded": "« {name} » a été créé, mais ses fichiers n’ont pas tous été importés.",
+    "filesUploadUnconfirmed": "« {name} » a été créé. Vérifiez les fichiers du projet avant de réessayer l’importation.",
     "title": "Créer un projet",
     "nameLabel": "Nom du projet",
     "instructionsLabel": "Instructions",

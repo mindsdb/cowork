@@ -72,7 +72,7 @@ const msg = (key, vars) => i18n.t(`scheduleDetail.${key}`, { ns: 'projects', ...
 // time is shown in this computer's zone, so that is the zone it names.
 function scheduleSentence(task) {
   if (!task.nextRunAt || Number.isNaN(new Date(task.nextRunAt).getTime())) return '';
-  return msg('sentence', { when: describeWhen(whenFromDate(task.nextRunAt, task.cadence, task.timezone)), zone: timeZoneLabel(task.timezone) });
+  return msg('sentence', { when: describeWhen(whenFromDate(task.nextRunAt, task.cadence, task.timezone, task.recurrence)), zone: timeZoneLabel(task.timezone) });
 }
 
 function nextRunText(task, state) {
@@ -97,6 +97,7 @@ export default function ScheduleDetailView({
   projects = [],
   models = [],
   modelMeta,
+  connectors,
   onBack,                   // → setRoute('scheduled')
   onOpenRunSession,         // (sessionId) → navigate to that conversation
   onUpdate,                 // (id, payload) → server PUT
@@ -330,6 +331,7 @@ export default function ScheduleDetailView({
         projects={projects}
         models={models}
         modelMeta={modelMeta}
+        connectors={connectors}
         agentLabel={agentLabel}
       />
 
