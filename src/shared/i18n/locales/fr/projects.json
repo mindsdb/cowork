@@ -90,7 +90,14 @@
       "daily": "Tous les jours à {time}",
       "weekdays": "Du lundi au vendredi à {time}",
       "weekly": "Chaque {weekday} à {time}",
-      "weeklyNoDay": "Chaque semaine à {time}"
+      "weeklyNoDay": "Chaque semaine à {time}",
+      "monthlyDay": "Chaque mois le {day} à {time}",
+      "monthlyDayOrLast": "Chaque mois le {day}, ou le dernier jour d’un mois plus court, à {time}",
+      "monthlyFirst": "Chaque mois le premier {weekday} à {time}",
+      "monthlySecond": "Chaque mois le deuxième {weekday} à {time}",
+      "monthlyThird": "Chaque mois le troisième {weekday} à {time}",
+      "monthlyFourth": "Chaque mois le quatrième {weekday} à {time}",
+      "monthlyLast": "Chaque mois le dernier {weekday} à {time}"
     },
     "scheduleCopy": {
       "missedOnceServer": "Si le serveur est indisponible à cette heure-là, la tâche s’exécute à son retour, s’il revient dans l’heure. Passé ce délai, elle est marquée comme manquée et vous pouvez la lancer vous-même.",
@@ -598,7 +605,8 @@
       "hourly": "Toutes les heures",
       "daily": "Tous les jours",
       "weekdays": "En semaine",
-      "weekly": "Chaque semaine"
+      "weekly": "Chaque semaine",
+      "monthly": "Mensuel"
     },
     "openProject": "Ouvrir {project}",
     "descriptionWithNext": "{sentence} · prochaine {next}",
@@ -655,11 +663,13 @@
       "hourly": "Toutes les heures",
       "daily": "Tous les jours",
       "weekdays": "Du lundi au vendredi",
-      "weekly": "Chaque semaine"
+      "weekly": "Chaque semaine",
+      "monthly": "Chaque mois"
     },
     "errorNoPrompt": "Indiquez à {agent} ce qu’il doit faire.",
     "errorPickFutureTime": "Choisissez une heure dans le futur.",
     "errorPickTime": "Choisissez une heure.",
+    "errorPickDays": "Choisissez au moins un jour de la semaine.",
     "errorSave": "Impossible d’enregistrer la planification.",
     "editTitle": "Modifier la tâche planifiée",
     "createTitle": "Planifier une tâche",
@@ -671,6 +681,17 @@
     "when": "Quand",
     "howOften": "Fréquence",
     "dayOfWeek": "Jour de la semaine",
+    "daysOfWeek": "Jours de la semaine",
+    "dayOfMonth": "Jour du mois",
+    "monthBy": {
+      "label": "Quel jour du mois",
+      "day": "Jour",
+      "week1": "Premier",
+      "week2": "Deuxième",
+      "week3": "Troisième",
+      "week4": "Quatrième",
+      "weekLast": "Dernier"
+    },
     "date": "Date",
     "atMinute": "à la minute",
     "at": "à",

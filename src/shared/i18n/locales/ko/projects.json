@@ -90,7 +90,14 @@
       "daily": "매일 {time}",
       "weekdays": "평일 매일 {time}",
       "weekly": "매주 {weekday} {time}",
-      "weeklyNoDay": "매주 {time}"
+      "weeklyNoDay": "매주 {time}",
+      "monthlyDay": "매월 {day}일 {time}",
+      "monthlyDayOrLast": "매월 {day}일(짧은 달은 마지막 날) {time}",
+      "monthlyFirst": "매월 첫째 {weekday} {time}",
+      "monthlySecond": "매월 둘째 {weekday} {time}",
+      "monthlyThird": "매월 셋째 {weekday} {time}",
+      "monthlyFourth": "매월 넷째 {weekday} {time}",
+      "monthlyLast": "매월 마지막 {weekday} {time}"
     },
     "scheduleCopy": {
       "missedOnceServer": "이 시간에 서버가 다운되어 있으면 1시간 이내에 서버가 복구될 때 작업이 실행됩니다. 그 이후에는 누락됨으로 표시되며, 직접 실행할 수 있습니다.",
@@ -598,7 +605,8 @@
       "hourly": "매시간",
       "daily": "매일",
       "weekdays": "평일",
-      "weekly": "매주"
+      "weekly": "매주",
+      "monthly": "매월"
     },
     "openProject": "{project} 열기",
     "descriptionWithNext": "{sentence} · 다음 실행 {next}",
@@ -655,11 +663,13 @@
       "hourly": "매시간",
       "daily": "매일",
       "weekdays": "평일마다",
-      "weekly": "매주"
+      "weekly": "매주",
+      "monthly": "매월"
     },
     "errorNoPrompt": "{agent}에게 할 일을 알려 주세요.",
     "errorPickFutureTime": "미래의 시간을 선택하세요.",
     "errorPickTime": "시간을 선택하세요.",
+    "errorPickDays": "요일을 하나 이상 선택하세요.",
     "errorSave": "일정을 저장하지 못했습니다.",
     "editTitle": "예약된 작업 편집",
     "createTitle": "작업 예약",
@@ -671,6 +681,17 @@
     "when": "시기",
     "howOften": "빈도",
     "dayOfWeek": "요일",
+    "daysOfWeek": "요일",
+    "dayOfMonth": "날짜",
+    "monthBy": {
+      "label": "매월 어느 날",
+      "day": "날짜",
+      "week1": "첫째",
+      "week2": "둘째",
+      "week3": "셋째",
+      "week4": "넷째",
+      "weekLast": "마지막"
+    },
     "date": "날짜",
     "atMinute": "시작 시각",
     "at": "시각",

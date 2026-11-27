@@ -90,7 +90,14 @@
       "daily": "Ogni giorno alle {time}",
       "weekdays": "Ogni giorno feriale alle {time}",
       "weekly": "Ogni {weekday} alle {time}",
-      "weeklyNoDay": "Ogni settimana alle {time}"
+      "weeklyNoDay": "Ogni settimana alle {time}",
+      "monthlyDay": "Ogni mese il giorno {day} alle {time}",
+      "monthlyDayOrLast": "Ogni mese il giorno {day}, o l’ultimo giorno di un mese più breve, alle {time}",
+      "monthlyFirst": "Ogni mese il primo {weekday} alle {time}",
+      "monthlySecond": "Ogni mese il secondo {weekday} alle {time}",
+      "monthlyThird": "Ogni mese il terzo {weekday} alle {time}",
+      "monthlyFourth": "Ogni mese il quarto {weekday} alle {time}",
+      "monthlyLast": "Ogni mese l’ultimo {weekday} alle {time}"
     },
     "scheduleCopy": {
       "missedOnceServer": "Se a quell’ora il server non è attivo, l’attività viene eseguita quando torna disponibile, entro un’ora. Dopo viene segnata come mancata e puoi eseguirla tu.",
@@ -598,7 +605,8 @@
       "hourly": "Ogni ora",
       "daily": "Ogni giorno",
       "weekdays": "Giorni feriali",
-      "weekly": "Ogni settimana"
+      "weekly": "Ogni settimana",
+      "monthly": "Mensile"
     },
     "openProject": "Apri {project}",
     "descriptionWithNext": "{sentence} · prossima {next}",
@@ -655,11 +663,13 @@
       "hourly": "Ogni ora",
       "daily": "Ogni giorno",
       "weekdays": "Ogni giorno feriale",
-      "weekly": "Ogni settimana"
+      "weekly": "Ogni settimana",
+      "monthly": "Ogni mese"
     },
     "errorNoPrompt": "Di’ a {agent} cosa fare.",
     "errorPickFutureTime": "Scegli un orario futuro.",
     "errorPickTime": "Scegli un orario.",
+    "errorPickDays": "Scegli almeno un giorno della settimana.",
     "errorSave": "Impossibile salvare la pianificazione.",
     "editTitle": "Modifica attività pianificata",
     "createTitle": "Pianifica un’attività",
@@ -671,6 +681,17 @@
     "when": "Quando",
     "howOften": "Frequenza",
     "dayOfWeek": "Giorno della settimana",
+    "daysOfWeek": "Giorni della settimana",
+    "dayOfMonth": "Giorno del mese",
+    "monthBy": {
+      "label": "Quale giorno del mese",
+      "day": "Giorno",
+      "week1": "Primo",
+      "week2": "Secondo",
+      "week3": "Terzo",
+      "week4": "Quarto",
+      "weekLast": "Ultimo"
+    },
     "date": "Data",
     "atMinute": "al minuto",
     "at": "alle",

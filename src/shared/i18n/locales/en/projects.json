@@ -90,7 +90,14 @@
       "daily": "Every day at {time}",
       "weekdays": "Every weekday at {time}",
       "weekly": "Every {weekday} at {time}",
-      "weeklyNoDay": "Every week at {time}"
+      "weeklyNoDay": "Every week at {time}",
+      "monthlyDay": "Every month on day {day} at {time}",
+      "monthlyDayOrLast": "Every month on day {day}, or the last day of a shorter month, at {time}",
+      "monthlyFirst": "Every month on the first {weekday} at {time}",
+      "monthlySecond": "Every month on the second {weekday} at {time}",
+      "monthlyThird": "Every month on the third {weekday} at {time}",
+      "monthlyFourth": "Every month on the fourth {weekday} at {time}",
+      "monthlyLast": "Every month on the last {weekday} at {time}"
     },
     "scheduleCopy": {
       "missedOnceServer": "If the server is down at this time, the task runs when it’s back within the hour. After that it’s marked missed, and you can run it yourself.",
@@ -598,7 +605,8 @@
       "hourly": "Hourly",
       "daily": "Daily",
       "weekdays": "Weekdays",
-      "weekly": "Weekly"
+      "weekly": "Weekly",
+      "monthly": "Monthly"
     },
     "openProject": "Open {project}",
     "descriptionWithNext": "{sentence} · next {next}",
@@ -655,11 +663,13 @@
       "hourly": "Every hour",
       "daily": "Every day",
       "weekdays": "Every weekday",
-      "weekly": "Every week"
+      "weekly": "Every week",
+      "monthly": "Every month"
     },
     "errorNoPrompt": "Tell {agent} what to do.",
     "errorPickFutureTime": "Pick a time in the future.",
     "errorPickTime": "Pick a time.",
+    "errorPickDays": "Pick at least one day of the week.",
     "errorSave": "Could not save schedule.",
     "editTitle": "Edit scheduled task",
     "createTitle": "Schedule a task",
@@ -671,6 +681,17 @@
     "when": "When",
     "howOften": "How often",
     "dayOfWeek": "Day of the week",
+    "daysOfWeek": "Days of the week",
+    "dayOfMonth": "Day of the month",
+    "monthBy": {
+      "label": "Which day of the month",
+      "day": "Day",
+      "week1": "First",
+      "week2": "Second",
+      "week3": "Third",
+      "week4": "Fourth",
+      "weekLast": "Last"
+    },
     "date": "Date",
     "atMinute": "at minute",
     "at": "at",

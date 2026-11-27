@@ -90,7 +90,14 @@
       "daily": "Täglich um {time}",
       "weekdays": "Werktags um {time}",
       "weekly": "Jeden {weekday} um {time}",
-      "weeklyNoDay": "Wöchentlich um {time}"
+      "weeklyNoDay": "Wöchentlich um {time}",
+      "monthlyDay": "Monatlich am {day}. um {time}",
+      "monthlyDayOrLast": "Monatlich am {day}., in kürzeren Monaten am letzten Tag, um {time}",
+      "monthlyFirst": "Monatlich am ersten {weekday} um {time}",
+      "monthlySecond": "Monatlich am zweiten {weekday} um {time}",
+      "monthlyThird": "Monatlich am dritten {weekday} um {time}",
+      "monthlyFourth": "Monatlich am vierten {weekday} um {time}",
+      "monthlyLast": "Monatlich am letzten {weekday} um {time}"
     },
     "scheduleCopy": {
       "missedOnceServer": "Ist der Server zu diesem Zeitpunkt nicht erreichbar, wird die Aufgabe ausgeführt, sobald er innerhalb einer Stunde wieder läuft. Danach gilt sie als verpasst und Sie können sie selbst ausführen.",
@@ -598,7 +605,8 @@
       "hourly": "Stündlich",
       "daily": "Täglich",
       "weekdays": "Werktags",
-      "weekly": "Wöchentlich"
+      "weekly": "Wöchentlich",
+      "monthly": "Monatlich"
     },
     "openProject": "{project} öffnen",
     "descriptionWithNext": "{sentence} · nächste Ausführung {next}",
@@ -655,11 +663,13 @@
       "hourly": "Stündlich",
       "daily": "Täglich",
       "weekdays": "Werktags",
-      "weekly": "Wöchentlich"
+      "weekly": "Wöchentlich",
+      "monthly": "Monatlich"
     },
     "errorNoPrompt": "Beschreiben Sie, was {agent} tun soll.",
     "errorPickFutureTime": "Wählen Sie einen Zeitpunkt in der Zukunft.",
     "errorPickTime": "Wählen Sie eine Uhrzeit.",
+    "errorPickDays": "Wählen Sie mindestens einen Wochentag.",
     "errorSave": "Zeitplan konnte nicht gespeichert werden.",
     "editTitle": "Geplante Aufgabe bearbeiten",
     "createTitle": "Aufgabe planen",
@@ -671,6 +681,17 @@
     "when": "Wann",
     "howOften": "Wie oft",
     "dayOfWeek": "Wochentag",
+    "daysOfWeek": "Wochentage",
+    "dayOfMonth": "Tag des Monats",
+    "monthBy": {
+      "label": "Welcher Tag im Monat",
+      "day": "Tag",
+      "week1": "Erster",
+      "week2": "Zweiter",
+      "week3": "Dritter",
+      "week4": "Vierter",
+      "weekLast": "Letzter"
+    },
     "date": "Datum",
     "atMinute": "zur Minute",
     "at": "um",

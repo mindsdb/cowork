@@ -90,7 +90,14 @@
       "daily": "每天 {time}",
       "weekdays": "每个工作日 {time}",
       "weekly": "每{weekday} {time}",
-      "weeklyNoDay": "每周 {time}"
+      "weeklyNoDay": "每周 {time}",
+      "monthlyDay": "每月 {day} 日 {time}",
+      "monthlyDayOrLast": "每月 {day} 日（较短的月份为最后一天）{time}",
+      "monthlyFirst": "每月第一个{weekday} {time}",
+      "monthlySecond": "每月第二个{weekday} {time}",
+      "monthlyThird": "每月第三个{weekday} {time}",
+      "monthlyFourth": "每月第四个{weekday} {time}",
+      "monthlyLast": "每月最后一个{weekday} {time}"
     },
     "scheduleCopy": {
       "missedOnceServer": "如果此时服务器停机，只要在一小时内恢复，任务就会运行。超过一小时则会标记为“已错过”，你可以手动运行。",
@@ -598,7 +605,8 @@
       "hourly": "每小时",
       "daily": "每天",
       "weekdays": "工作日",
-      "weekly": "每周"
+      "weekly": "每周",
+      "monthly": "每月"
     },
     "openProject": "打开 {project}",
     "descriptionWithNext": "{sentence} · 下次：{next}",
@@ -655,11 +663,13 @@
       "hourly": "每小时",
       "daily": "每天",
       "weekdays": "每个工作日",
-      "weekly": "每周"
+      "weekly": "每周",
+      "monthly": "每月"
     },
     "errorNoPrompt": "请告诉 {agent} 要做什么。",
     "errorPickFutureTime": "请选择一个未来的时间。",
     "errorPickTime": "请选择时间。",
+    "errorPickDays": "请至少选择一个星期几。",
     "errorSave": "无法保存定时任务。",
     "editTitle": "编辑定时任务",
     "createTitle": "创建定时任务",
@@ -671,6 +681,17 @@
     "when": "时间",
     "howOften": "频率",
     "dayOfWeek": "星期",
+    "daysOfWeek": "星期",
+    "dayOfMonth": "日期",
+    "monthBy": {
+      "label": "每月哪一天",
+      "day": "日期",
+      "week1": "第一个",
+      "week2": "第二个",
+      "week3": "第三个",
+      "week4": "第四个",
+      "weekLast": "最后一个"
+    },
     "date": "日期",
     "atMinute": "分钟：",
     "at": "时间：",
