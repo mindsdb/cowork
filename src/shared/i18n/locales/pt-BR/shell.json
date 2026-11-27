@@ -240,10 +240,6 @@
   "upToDate": "Atualizado",
   "upToDateSaving": "Salvando…",
   "upToDateSaved": "Salvo",
-  "usageBar": {
-    "hideAllowance": "Ocultar franquia",
-    "hide": "Ocultar"
-  },
   "diagnostics": {
     "copy": "Copiar diagnóstico",
     "copied": "Copiado",
@@ -468,7 +464,8 @@
       "fromDesktop": "Sua conta está pronta. Você pode começar aqui mesmo ou voltar ao app {product} e entrar.",
       "dismiss": "Dispensar"
     },
-    "ownWorkHeading": "No que o {product} deve trabalhar?"
+    "ownWorkHeading": "No que o {product} deve trabalhar?",
+    "galleryHint": "Do exemplo {title}. Altere o que quiser e clique em Enviar."
   },
   "logout": {
     "title": "Sair do {product}?",
@@ -481,7 +478,53 @@
     "failed": "Não foi possível concluir a saída. Tente novamente.",
     "waitNote": "Ainda estamos encerrando sua sessão. Você pode fechar isto: termina sozinho."
   },
+  "notices": {
+    "title": "Notificações",
+    "ariaLabel": "{count, plural, =0 {Notificações} one {Notificações, # não lida} other {Notificações, # não lidas}}",
+    "unread": "Não lida:",
+    "markAllRead": "Marcar todas como lidas",
+    "emptyTitle": "Nenhuma notificação",
+    "emptyDescription": "Execuções agendadas que precisam da sua atenção aparecem aqui.",
+    "loadFailed": "Não foi possível carregar as notificações."
+  },
   "shortcuts": {
     "showBrowser": "Mostrar navegador"
+  },
+  "gallery": {
+    "open": "Galeria de casos de uso",
+    "title": "Galeria de casos de uso",
+    "welcomeTitle": "Boas-vindas ao {product}",
+    "welcomeIntro": "Não sabe por onde começar? Veja coisas que o {product} fez a partir de uma única mensagem. Abra uma para ver o resultado e comece a partir dela.",
+    "intro": "Sem ideias? Veja coisas que o {product} fez a partir de uma única mensagem. Abra uma para ver o resultado e comece a partir dela.",
+    "hide": "Ocultar a galeria",
+    "searchLabel": "Buscar exemplos",
+    "searchPlaceholder": "Buscar: slides, planilha, estudo…",
+    "tabsLabel": "Categorias",
+    "all": "Todos",
+    "startHere": "Comece aqui",
+    "allExamples": "Todos os exemplos",
+    "results": "{count, plural, one {# exemplo corresponde} other {# exemplos correspondem}}",
+    "noResults": "Nada corresponde. Descreva o que você precisa na caixa e o {product} começa a partir daí.",
+    "loading": "Carregando exemplos…",
+    "unavailable": "Não é possível carregar os exemplos agora.",
+    "retry": "Tentar de novo",
+    "minutes": "{count, plural, one {Cerca de # minuto} other {Cerca de # minutos}}",
+    "builtWith": "Feito com {model}",
+    "needs": "Precisa de: {needs}",
+    "backToAll": "Todos os exemplos",
+    "backToResults": "Resultados para “{query}”",
+    "position": "{current} de {total}",
+    "previous": "Exemplo anterior",
+    "next": "Próximo exemplo",
+    "breadcrumb": "Trilha de navegação",
+    "whatItMade": "O que o {product} fez",
+    "download": "Baixar",
+    "sampleInput": "A amostra que demos",
+    "playInBrowser": "Abrir no seu navegador",
+    "start": "Começar com este exemplo",
+    "tryIt": "Testar este exemplo",
+    "startNote": "Coloca a mensagem na caixa. Nada é executado até você clicar em Enviar.",
+    "tryItNote": "Executa agora com dados de exemplo, como uma nova tarefa.",
+    "ownFile": "Usar meu próprio arquivo"
   }
 }

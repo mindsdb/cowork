@@ -93,6 +93,47 @@ export function normalizePreviewView(data) {
 
 // The parent's tag on a `restore` sent down to the shim (preview_shim.js).
 export const PREVIEW_PARENT_SOURCE = 'anton-preview-parent';
+
+/**
+ * Tells the page in a preview frame which theme the app shows, so a page
+ * that follows it (an inline chart, ENG-4684) can match: the shim sets
+ * `data-theme` and `color-scheme` on the page's root. Same channel and tag
+ * as `restore`. A frame with no window yet is skipped.
+ *
+ * @param {Window | null | undefined} win
+ * @param {'light' | 'dark'} mode
+ */
+export function postPreviewTheme(win, mode) {
+  if (!win || typeof win.postMessage !== 'function') return;
+  win.postMessage({ source: PREVIEW_PARENT_SOURCE, type: 'theme', mode: mode === 'dark' ? 'dark' : 'light' }, '*');
+}
+
+/**
+ * Hands the page in an inline frame its saved state (ENG-4684), which the
+ * shim gives the page through `window.anton.getState` / `onState`. Same
+ * channel and tag as the theme. A frame with no window yet is skipped.
+ *
+ * @param {Window | null | undefined} win
+ * @param {unknown} state  JSON-safe value, as the page last set it
+ */
+export function postPreviewState(win, state) {
+  if (!win || typeof win.postMessage !== 'function') return;
+  win.postMessage({ source: PREVIEW_PARENT_SOURCE, type: 'state', state }, '*');
+}
+
+/**
+ * Hands the page in an inline frame the form controls it last reported
+ * (ENG-4684): the shim sets their values again when the page does not keep
+ * its own state. Same channel and tag as the state. A frame with no window
+ * yet is skipped.
+ *
+ * @param {Window | null | undefined} win
+ * @param {{ controls?: Array<{ label?: string, name?: string, type?: string, value?: unknown }>, text?: string }} snapshot
+ */
+export function postPreviewSnapshot(win, snapshot) {
+  if (!win || typeof win.postMessage !== 'function') return;
+  win.postMessage({ source: PREVIEW_PARENT_SOURCE, type: 'snapshot', snapshot }, '*');
+}
 // A place kept for a reload that never produced a new document (the reload
 // failed, the viewer moved on) is not applied to some later one.
 export const KEEP_PLACE_MS = 60000;

@@ -51,11 +51,12 @@
       "onlyYou": "Vous uniquement",
       "public": "Public",
       "publicPassword": "Public · mot de passe",
-      "restricted": "Restreint"
+      "restricted": "Restreint",
+      "website": "Site web"
     },
     "hint": {
       "notSharedYet": "Pas encore partagé. Ouvrez-le et choisissez Partager pour obtenir un lien web.",
-      "notShareable": "Non partagé. Seuls les pages web et les documents Markdown peuvent être partagés sous forme de lien.",
+      "notShareable": "Non partagé. Les pages web, documents, feuilles de calcul, présentations, PDF, CSV et fichiers texte peuvent être partagés sous forme de lien ; ce type de fichier, non.",
       "orgRestricted": "Restreint. Ouvrez Partager pour voir qui peut ouvrir le lien.",
       "ownerOnly": "Partagé, mais vous seul pouvez ouvrir le lien.",
       "password": "Toute personne disposant du lien et du mot de passe peut l’ouvrir.",
@@ -64,10 +65,7 @@
       "sharedWith": "Partagé avec {names}",
       "sharedWithMore": "Partagé avec {names} et {count} autres"
     },
-    "sharingFailed": "Échec du partage",
-    "couldNotShare": "Impossible de partager.",
     "tryAgain": "Réessayer",
-    "sharing": "Partage…",
     "updating": "Mise à jour…",
     "stoppingSharing": "Arrêt du partage…",
     "deleting": "Suppression…",
@@ -339,7 +337,9 @@
       "restrictedTitle": "Restreint",
       "restrictedDesc": "On ne sait pas encore qui peut ouvrir le lien",
       "specificTitle": "Personnes spécifiques",
-      "specificDesc": "Uniquement les personnes de votre liste"
+      "specificDesc": "Uniquement les personnes de votre liste",
+      "websiteTitle": "Site web public",
+      "websiteDesc": "Sa propre adresse web, ouverte à tous sur Internet"
     },
     "whoCanAccess": "Qui peut accéder à votre application",
     "whoCanAccessDoc": "Qui peut accéder à votre document",
@@ -364,7 +364,6 @@
     "makeLive": "Mettre en ligne",
     "shared": "Partagé",
     "share": "Partager",
-    "shareToWeb": "Partager sur le Web",
     "sharingBusy": "Partage en cours",
     "websiteUrl": "URL du site web",
     "change": "Modifier",
@@ -390,7 +389,9 @@
       "ownerOnlyTitle": "Seulement son propriétaire",
       "ownerOnlyDesc": "Personne d’autre ne peut ouvrir le lien partagé",
       "listWithheld": "Seulement les équipes et les personnes avec qui c’est partagé"
-    }
+    },
+    "websiteAddress": "Adresse du site web",
+    "websiteEmailGateNotice": "Un site web public ne demande pas leur e-mail aux visiteurs. Tout le monde peut l’ouvrir."
   },
   "previewErrors": {
     "reported": "{count, plural, one {L’aperçu a signalé # erreur} other {L’aperçu a signalé # erreurs}}",
@@ -481,6 +482,7 @@
     "backendFailed": "Le backend n’a pas pu démarrer",
     "proxyUnavailable": "Proxy d’aperçu indisponible",
     "noMountUrl": "Le montage de l’aperçu n’a renvoyé aucune URL",
+    "appNotPublishedYet": "Cette app s'affiche ici dès qu'elle est publiée, juste après sa création. Réessayez dans un instant.",
     "loadFailed": "Impossible de charger l’artefact",
     "portNotReady": "Le port du backend n’est pas encore disponible — l’aperçu est toujours en cours de chargement.",
     "remoteNoUrl": "Cet artefact est servi par un serveur distant et n’a pas encore d’URL à ouvrir.",
@@ -521,8 +523,6 @@
       "title": "Titre (A–Z)",
       "type": "Type"
     },
-    "shareProtected": "Partage protégé",
-    "shareRestricted": "Partage restreint",
     "downloadFailed": "Impossible de télécharger cet artefact.",
     "menu": "Menu de l’artefact",
     "openProject": "Ouvrir {project}",
@@ -530,9 +530,7 @@
     "openViewer": "Ouvrir la visionneuse",
     "showInExplorer": "Afficher dans l’Explorateur",
     "deleteItem": "Supprimer l’artefact",
-    "onlyHtmlMd": "Seuls les artefacts HTML et Markdown peuvent être partagés.",
-    "sharedToast": "{mode, select, password {Partagé (protégé par mot de passe) — {url}} restricted {Partagé (restreint) — {url}} other {Partagé — {url}}}",
-    "mindsApiKey": "Définissez votre clé API Minds dans Paramètres pour partager des artefacts.",
+    "onlyHtmlMd": "Seuls les pages web, documents, feuilles de calcul, présentations, PDF, CSV et fichiers texte peuvent être partagés.",
     "stoppedOnMindsHub": "Partage arrêté sur MindsHub.",
     "stopped": "Partage arrêté.",
     "updated": "Version partagée mise à jour.",

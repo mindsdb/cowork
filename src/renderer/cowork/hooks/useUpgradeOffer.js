@@ -22,6 +22,8 @@ import { useAccountUser } from './useAccountUser';
  * `tier` is the next plan up from the current one (Free → Plus, Plus → Pro),
  * or null when there is nothing to offer. `canOffer(tier)` answers for a
  * specific tier, e.g. the one a `model_not_in_tier` stop names.
+ * `open(tier, placement)` records the click and opens the plan confirm, whose
+ * link names the placement as its start surface; `manageUrl` names none.
  */
 export function useUpgradeOffer() {
   const usage = useHubUsageContext()?.usage ?? null;
@@ -38,7 +40,7 @@ export function useUpgradeOffer() {
     [eligible, plan?.tier],
   );
   const urlFor = useCallback(
-    (tier) => mindsUpgradeUrl(tier, { organizationId, subject }),
+    (tier, placement) => mindsUpgradeUrl(tier, { organizationId, subject }, placement),
     [organizationId, subject],
   );
   /* The billing page for this organization, where "Manage" sends someone to
@@ -47,9 +49,9 @@ export function useUpgradeOffer() {
     () => consoleUrlFor(MINDS_BILLING_URL, { organizationId, subject }),
     [organizationId, subject],
   );
-  const open = useCallback((tier, surface) => {
-    trackUpgradeClicked(surface, tier, plan?.tier ?? null);
-    host.openExternal(urlFor(tier));
+  const open = useCallback((tier, placement) => {
+    trackUpgradeClicked(placement, tier, plan?.tier ?? null);
+    host.openExternal(urlFor(tier, placement));
   }, [plan?.tier, urlFor]);
 
   return useMemo(() => {
@@ -71,9 +73,9 @@ export function useUpgradeOffer() {
 /**
  * For a surface that paints usage actions (`USAGE_ACTIONS`, `upgradeAction`):
  * `visible(actions)` drops an upgrade this session may not buy, and
- * `isUpgrade(action)` / `openUpgrade(action, surface)` route one that it may
- * through the plan confirm link, with its own analytics event. Every other
- * action is the caller's, exactly as before.
+ * `isUpgrade(action)` / `openUpgrade(action, placement)` route one that it
+ * may through the plan confirm link, with its own analytics event. Every
+ * other action is the caller's, exactly as before.
  */
 export function useUsageActions() {
   const upgrade = useUpgradeOffer();
@@ -82,6 +84,6 @@ export function useUsageActions() {
     (actions) => (actions || []).filter((a) => a?.key !== 'upgrade' || canOffer(a.tier)),
     [canOffer],
   );
-  const openUpgrade = useCallback((action, surface) => open(action.tier, surface), [open]);
+  const openUpgrade = useCallback((action, placement) => open(action.tier, placement), [open]);
   return { visible, isUpgrade: (a) => a?.key === 'upgrade', openUpgrade, upgrade };
 }

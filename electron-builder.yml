@@ -38,6 +38,11 @@ mac:
   # and stay correct on Intel. The terminal is arm64-only on Intel until
   # node-pty gets a real x64 build.
   x64ArchFiles: "**/node-pty/**"
+  # The hardened runtime is what makes macOS ignore DYLD_ variables and refuse
+  # libraries another team signed; the entitlements below grant neither
+  # exemption. The app and its helpers sign with the same file. Leaving either
+  # key unset would sign with app-builder-lib's template instead, which grants
+  # disable-library-validation.
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
@@ -166,3 +171,34 @@ extraResources:
 
 afterPack: scripts/after-pack.js
 afterSign: scripts/notarize.js
+
+# Electron fuses, written into the packaged Electron binary after afterPack and
+# before signing, so the signature covers them (both slices of a universal
+# macOS app). Each closes a way to run code as this signed app without
+# changing it. Fuses not named here keep Electron's defaults. Pinned by
+# src/main/release-hardening.invariant.test.ts.
+electronFuses:
+  # Ignore ELECTRON_RUN_AS_NODE, which turns the app into a plain Node runtime.
+  runAsNode: false
+  # Ignore NODE_OPTIONS (such as --require) and NODE_EXTRA_CA_CERTS. Electron
+  # also removes both from the environment its child processes inherit.
+  enableNodeOptionsEnvironmentVariable: false
+  # Ignore --inspect and its variants, and SIGUSR1, so no debugger attaches to
+  # the main process.
+  enableNodeCliInspectArguments: false
+  # grantFileProtocolExtraPrivileges stays at Electron's default (on). With it
+  # off, Electron no longer reads app.asar over file://, and the main window
+  # loads its renderer from file://.../app.asar, so the app opens blank. It can
+  # go off once the renderer loads through a custom scheme.
+  # Refuse an app.asar whose header no longer matches the hash written at
+  # pack time: ElectronAsarIntegrity in Info.plist on macOS, the INTEGRITY
+  # resource in the .exe on Windows. Linux has no such check.
+  enableEmbeddedAsarIntegrityValidation: true
+  # Load the app only from app.asar, never from a resources/app folder.
+  onlyLoadAppFromAsar: true
+  # Writing the fuses breaks the ad-hoc signature Electron Framework ships
+  # with, and Apple Silicon refuses to run arm64 code with a broken signature.
+  # A signed build replaces this signature when electron-builder signs. An
+  # unsigned build (npm run pack without an identity, a pull-request build,
+  # MAC_PKG_UNSIGNED) launches only because of it. Ignored off macOS.
+  resetAdHocDarwinSignature: true

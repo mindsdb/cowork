@@ -51,11 +51,12 @@
       "onlyYou": "Solo tu",
       "public": "Pubblico",
       "publicPassword": "Pubblico · password",
-      "restricted": "Limitato"
+      "restricted": "Limitato",
+      "website": "Sito web"
     },
     "hint": {
       "notSharedYet": "Non ancora condiviso. Aprilo e scegli Condividi per ottenere un link web.",
-      "notShareable": "Non condiviso. Solo le pagine web e i documenti Markdown possono essere condivisi tramite link.",
+      "notShareable": "Non condiviso. Pagine web, documenti, fogli di calcolo, presentazioni, PDF, CSV e file di testo possono essere condivisi tramite link; questo tipo di file no.",
       "orgRestricted": "Limitato. Apri Condividi per vedere chi può aprire il link.",
       "ownerOnly": "Condiviso, ma solo tu puoi aprire il link.",
       "password": "Chiunque abbia il link e la password può aprirlo.",
@@ -64,10 +65,7 @@
       "sharedWith": "Condiviso con {names}",
       "sharedWithMore": "Condiviso con {names} e altri {count}"
     },
-    "sharingFailed": "Condivisione non riuscita",
-    "couldNotShare": "Impossibile condividere.",
     "tryAgain": "Riprova",
-    "sharing": "Condivisione…",
     "updating": "Aggiornamento…",
     "stoppingSharing": "Interruzione della condivisione…",
     "deleting": "Eliminazione…",
@@ -339,7 +337,9 @@
       "restrictedTitle": "Limitato",
       "restrictedDesc": "Non si sa ancora chi può aprire il link",
       "specificTitle": "Persone specifiche",
-      "specificDesc": "Solo le persone che indichi"
+      "specificDesc": "Solo le persone che indichi",
+      "websiteTitle": "Sito web pubblico",
+      "websiteDesc": "Un proprio indirizzo web, aperto a chiunque su internet"
     },
     "whoCanAccess": "Chi può accedere alla tua app",
     "whoCanAccessDoc": "Chi può accedere al tuo documento",
@@ -364,7 +364,6 @@
     "makeLive": "Metti online",
     "shared": "Condiviso",
     "share": "Condividi",
-    "shareToWeb": "Condividi sul web",
     "sharingBusy": "Condivisione in corso",
     "websiteUrl": "URL del sito web",
     "change": "Cambia",
@@ -390,7 +389,9 @@
       "ownerOnlyTitle": "Solo il proprietario",
       "ownerOnlyDesc": "Nessun altro può aprire il link condiviso",
       "listWithheld": "Solo i team e le persone con cui è condiviso"
-    }
+    },
+    "websiteAddress": "Indirizzo del sito web",
+    "websiteEmailGateNotice": "Un sito web pubblico non chiede l’email ai visitatori. Chiunque può aprirlo."
   },
   "previewErrors": {
     "reported": "{count, plural, one {L’anteprima ha segnalato # errore} other {L’anteprima ha segnalato # errori}}",
@@ -481,6 +482,7 @@
     "backendFailed": "Impossibile avviare il backend",
     "proxyUnavailable": "Proxy dell’anteprima non disponibile",
     "noMountUrl": "Il montaggio dell’anteprima non ha restituito alcun URL",
+    "appNotPublishedYet": "Questa app compare qui quando viene pubblicata, subito dopo la creazione. Riprova tra un momento.",
     "loadFailed": "Impossibile caricare l’artefatto",
     "portNotReady": "La porta del backend non è ancora disponibile: l’anteprima è ancora in caricamento.",
     "remoteNoUrl": "Questo artefatto è servito da un server remoto e non ha ancora un URL da aprire.",
@@ -521,8 +523,6 @@
       "title": "Titolo (A–Z)",
       "type": "Tipo"
     },
-    "shareProtected": "Condivisione protetta",
-    "shareRestricted": "Condivisione limitata",
     "downloadFailed": "Impossibile scaricare questo artefatto.",
     "menu": "Menu dell’artefatto",
     "openProject": "Apri {project}",
@@ -530,9 +530,7 @@
     "openViewer": "Apri visualizzatore",
     "showInExplorer": "Mostra in Esplora file",
     "deleteItem": "Elimina artefatto",
-    "onlyHtmlMd": "Solo gli artefatti HTML e Markdown possono essere condivisi.",
-    "sharedToast": "{mode, select, password {Condiviso (protetto da password): {url}} restricted {Condiviso (limitato): {url}} other {Condiviso: {url}}}",
-    "mindsApiKey": "Imposta la tua chiave API Minds in Impostazioni per condividere gli artefatti.",
+    "onlyHtmlMd": "Solo pagine web, documenti, fogli di calcolo, presentazioni, PDF, CSV e file di testo possono essere condivisi.",
     "stoppedOnMindsHub": "Condivisione su MindsHub interrotta.",
     "stopped": "Condivisione interrotta.",
     "updated": "Versione condivisa aggiornata.",

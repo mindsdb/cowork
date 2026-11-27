@@ -4,14 +4,15 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { createWriteStream, existsSync, appendFileSync, writeFileSync } from 'node:fs';
-import { mkdir, mkdtemp, copyFile, realpath } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, copyFile, realpath } from 'node:fs/promises';
 import { join, resolve, relative, isAbsolute } from 'node:path';
 import { createServer } from 'node:net';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { channelIdentity } from './channel-identity.mjs';
-import { assertAppIdentity, assertSetupPassed, failureStep, packageIdentity, validateManifest, STEP_NAMES } from './macos-setup-contract.mjs';
+import { assertAppIdentity, assertSetupPassed, failureStep, inspectableCopy, packageIdentity, validateManifest, STEP_NAMES } from './macos-setup-contract.mjs';
+import { checkFuses, enableInspector, INSPECTABLE_FUSES } from './release-fuses.mjs';
 import { appEnvironment as isolatedEnvironment, assertRemoved, assertTrimmed, installedExecutable, removalPlan, rootsToRemove, ON_DEMAND_ROOTS, ROOT_AUTO_UPDATE_BACKUP, ROOT_BACKUP, ROOT_STORES } from './windows-setup-contract.mjs';
 
 const execute = promisify(execFile);
@@ -159,12 +160,33 @@ ConvertTo-Json -Compress -InputObject @{ status = [string]$s.Status; signer = $s
   if (signature.status !== 'Valid') throw new Error(`Installer signature is ${signature.status}.`);
   // The assisted NSIS installer installs for the current user, without a prompt, under /S.
   await command(installer, ['/S'], { timeout: 5 * 60_000 });
-  const { installLocation, executable: executablePath } = installedExecutable(await registrations(), productName, join(process.env.LOCALAPPDATA, 'Programs'));
-  save('install.json', { installLocation, executablePath, signer: signature.signer });
+  const installed = installedExecutable(await registrations(), productName, join(process.env.LOCALAPPDATA, 'Programs'));
+  save('install.json', { installLocation: installed.installLocation, executablePath: installed.executable, signer: signature.signer });
   // A launch by the installer would set up the runner's real profile, not the fresh one.
   const stopped = await powershell(`Get-Process | Where-Object { try { $_.Path -and $_.Path.StartsWith($env:COWORK_INSTALL_DIR, [StringComparison]::OrdinalIgnoreCase) } catch { $false } } | Stop-Process -Force -PassThru | ForEach-Object { "$($_.Id) $($_.Path)" }`,
-    { env: { ...process.env, COWORK_INSTALL_DIR: installLocation } });
+    { env: { ...process.env, COWORK_INSTALL_DIR: installed.installLocation } });
   if (stopped) save('stopped-after-install.txt', stopped);
+
+  result.failingStep = 'Check release fuses';
+  const fuses = await checkFuses(installed.executable);
+  save('fuses-installed.json', fuses.states);
+  if (fuses.mismatches.length) throw new Error(`Installed app does not carry the release fuses: ${fuses.mismatches.join('; ')}.`);
+
+  result.failingStep = 'Prepare inspectable copy';
+  /* Playwright attaches through Node's inspector, which the release fuses off,
+     so the smoke drives a copy of the install folder with that one fuse on and
+     leaves the installed app as shipped. The flip breaks the copy's Authenticode
+     signature, which Windows does not check when it starts a program that carries
+     no mark of the web. The smoke makes the copy before the trim, while the image
+     still blocks root downloads, so nothing that verifies the changed file through
+     Windows can bring a root back. */
+  const copy = inspectableCopy(installed.installLocation, installed.executable, await mkdtemp(join(process.env.RUNNER_TEMP, 'cowork-app-')));
+  await cp(installed.installLocation, copy.root, { recursive: true });
+  await enableInspector(copy.executable);
+  const copyFuses = await checkFuses(copy.executable, INSPECTABLE_FUSES);
+  save('fuses-copy.json', copyFuses.states);
+  if (copyFuses.mismatches.length) throw new Error(`Inspectable copy differs from the release in more than its inspector fuse: ${copyFuses.mismatches.join('; ')}.`);
+  const executablePath = copy.executable;
 
   result.failingStep = 'Trim root store';
   // Last, so no earlier step that verifies through Windows (the signature check) downloads a root back.
@@ -206,7 +228,7 @@ ConvertTo-Json -Compress -InputObject @{ status = [string]$s.Status; signer = $s
     };
   }), 15_000, 'App isolation probe timed out.');
   save('isolation.json', isolation);
-  if (!isolation.packaged || await realpath(isolation.executable) !== await realpath(executablePath)) throw new Error('Not running the installed packaged executable.');
+  if (!isolation.packaged || await realpath(isolation.executable) !== await realpath(executablePath)) throw new Error('Not running the inspectable copy\'s packaged executable.');
   // Electron resolves its home folder through Windows' known-folder API, not the
   // environment, so it stays the runner's; every path the app writes setup to must not.
   const { home: _home, ...appPaths } = isolation.paths;

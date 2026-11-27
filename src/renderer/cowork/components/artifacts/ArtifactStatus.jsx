@@ -5,9 +5,10 @@
 // flags + a transient `phase` the parent owns) — no internal state, so the
 // status can't get "stuck": whatever the parent passes is exactly what shows.
 //
-//   <ArtifactStatus artifact={a} phase={statusByPath[a.path]} publishable orgMode={orgMode} onRetry={…} />
+//   <ArtifactStatus artifact={a} phase={statusByPath[a.path]} publishable orgMode={orgMode} />
 //
-// phase: 'publishing' | 'updating' | 'unpublishing' | 'deleting' | 'failed' | undefined(idle)
+// phase: 'updating' | 'unpublishing' | 'deleting' | undefined(idle). Sharing
+// happens in the viewer's Share menu, which shows its own progress and errors.
 
 import { createContext, useContext } from 'react';
 import Ico from '../Icons';
@@ -22,7 +23,7 @@ import { ArtifactAuthorshipBadge } from './ArtifactAuthorshipBadge';
 
 // One badge per artifact for who can open it (ENG-1212, ENG-4647), from its
 // audience (artifactAudienceChoice, the Share panel's AUDIENCE_CHOICE): the same rule in every group and for
-// every kind of file. ONLY a genuinely public artifact gets the green
+// every kind of file. ONLY a genuinely public artifact (a link or a website) gets the green
 // "success" treatment, so a protected one can never read as available to all.
 // A shared artifact's badge carries a `dot` (the "this is live" affordance);
 // one only its owner can open has none until it is shared. Public and
@@ -36,6 +37,7 @@ const AUDIENCE_BADGE = {
   [AUDIENCE_CHOICE.ORG]: { variant: 'default', icon: Ico.building(12), labelKey: null },
   [AUDIENCE_CHOICE.PASSWORD]: { variant: 'default', icon: Ico.lock(12), labelKey: 'status.badge.publicPassword' },
   [AUDIENCE_CHOICE.PUBLIC]: { variant: 'success', icon: Ico.globe(12), labelKey: 'status.badge.public' },
+  [AUDIENCE_CHOICE.WEBSITE]: { variant: 'success', icon: Ico.globe(12), labelKey: 'status.badge.website' },
 };
 
 /** The label of an audience, for its badge and the Access filter. */
@@ -46,7 +48,7 @@ export function audienceChoiceLabel(choice, orgName = null) {
 
 function accessMode(artifact) {
   const mode = artifact.accessMode || (artifact.accessProtected ? 'password' : null);
-  return mode && ['public', 'password', 'restricted'].includes(mode) ? mode : null;
+  return mode && ['public', 'website', 'password', 'restricted'].includes(mode) ? mode : null;
 }
 
 /** The org's name for "Everyone at ‹org›", from the page around the badges:
@@ -127,7 +129,7 @@ export function artifactStatusHint(artifact, publishable = true, { orgMode = fal
 //
 // `orgMode`: MindsHub mode, whose cards don't say who an artifact reaches
 // (artifactStatusHint).
-export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, inlineChanges = false, authorship = null, pageBadge = true, orgMode = false }) {
+export function ArtifactStatus({ artifact, phase, publishable = true, inlineChanges = false, authorship = null, pageBadge = true, orgMode = false }) {
   const { t } = useTranslation('artifacts');
   const orgName = useContext(ArtifactStatusOrgName);
   const teams = useContext(ArtifactStatusTeams);
@@ -137,27 +139,6 @@ export function ArtifactStatus({ artifact, phase, publishable = true, onRetry, i
     : primary);
 
   // Transient phases win over the persisted state.
-  if (phase === 'failed') {
-    return withExtra(
-      <span className="inline-flex items-center gap-2 min-w-0">
-        <Badge variant="danger" size="sm">{t('status.sharingFailed')}</Badge>
-        <span className="font-body text-[12px] text-ink-3 whitespace-nowrap">
-          {t('status.couldNotShare')}{onRetry ? ' ' : ''}
-          {onRetry && (
-            // `all: unset` stays inline — as a utility its ordering vs the
-            // sibling utilities isn't guaranteed, so it could reset them.
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onRetry(); }}
-              onMouseDown={(e) => e.stopPropagation()}
-              style={{ all: 'unset', cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline', textUnderlineOffset: '2px' }}
-            >{t('status.tryAgain')}</button>
-          )}
-        </span>
-      </span>,
-    );
-  }
-  if (phase === 'publishing') return withExtra(<Badge variant="accent" size="sm">{t('status.sharing')}</Badge>);
   if (phase === 'updating') return withExtra(<Badge variant="accent" size="sm">{t('status.updating')}</Badge>);
   if (phase === 'unpublishing') return withExtra(<Badge variant="default" size="sm">{t('status.stoppingSharing')}</Badge>);
   if (phase === 'deleting') return withExtra(<Badge variant="default" size="sm">{t('status.deleting')}</Badge>);

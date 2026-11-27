@@ -43,7 +43,7 @@ async function spawnedEnv(
   write(path.join(serverDir, 'pyproject.toml'), '');
   seedServer(serverDir);
   vi.stubEnv('COWORK_SERVER_DIR', serverDir);
-  spawn.mockReturnValue({ stdout: { on: vi.fn() }, stderr: { on: vi.fn() }, on: vi.fn(), kill: vi.fn() });
+  spawn.mockReturnValue({ stdin: { on: vi.fn(), end: vi.fn() }, stdout: { on: vi.fn() }, stderr: { on: vi.fn() }, on: vi.fn(), kill: vi.fn() });
   const { start } = await loadScript();
   await expect(start({ readyTimeoutMs: 1 })).rejects.toThrow(/did not respond/);
   return spawn.mock.calls[0][2].env;

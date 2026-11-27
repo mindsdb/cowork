@@ -51,11 +51,12 @@
       "onlyYou": "나만",
       "public": "공개",
       "publicPassword": "공개 · 비밀번호",
-      "restricted": "제한됨"
+      "restricted": "제한됨",
+      "website": "웹사이트"
     },
     "hint": {
       "notSharedYet": "아직 공유되지 않았습니다. 웹 링크를 받으려면 열어서 ‘공유’를 선택하세요.",
-      "notShareable": "공유되지 않았습니다. 웹 페이지와 Markdown 문서만 링크로 공유할 수 있습니다.",
+      "notShareable": "공유되지 않았습니다. 웹 페이지, 문서, 스프레드시트, 프레젠테이션, PDF, CSV, 텍스트 파일은 링크로 공유할 수 있지만 이 유형의 파일은 공유할 수 없습니다.",
       "orgRestricted": "제한됨. 링크를 열 수 있는 사람을 보려면 ‘공유’를 여세요.",
       "ownerOnly": "공유되었지만 나만 링크를 열 수 있습니다.",
       "password": "링크와 비밀번호가 있는 사람은 누구나 열 수 있습니다.",
@@ -64,10 +65,7 @@
       "sharedWith": "{names}와(과) 공유됨",
       "sharedWithMore": "{names} 외 {count}명과 공유됨"
     },
-    "sharingFailed": "공유 실패",
-    "couldNotShare": "공유하지 못했습니다.",
     "tryAgain": "다시 시도",
-    "sharing": "공유하는 중…",
     "updating": "업데이트하는 중…",
     "stoppingSharing": "공유를 중지하는 중…",
     "deleting": "삭제하는 중…",
@@ -339,7 +337,9 @@
       "restrictedTitle": "제한됨",
       "restrictedDesc": "링크를 열 수 있는 사람을 아직 알 수 없습니다",
       "specificTitle": "특정 사용자",
-      "specificDesc": "지정한 사람만"
+      "specificDesc": "지정한 사람만",
+      "websiteTitle": "공개 웹사이트",
+      "websiteDesc": "자체 웹 주소로, 인터넷상의 누구나 열 수 있습니다"
     },
     "whoCanAccess": "앱에 액세스할 수 있는 사람",
     "whoCanAccessDoc": "문서에 액세스할 수 있는 사람",
@@ -364,7 +364,6 @@
     "makeLive": "라이브로 전환",
     "shared": "공유됨",
     "share": "공유",
-    "shareToWeb": "웹에 공유",
     "sharingBusy": "공유하는 중",
     "websiteUrl": "웹사이트 URL",
     "change": "변경",
@@ -390,7 +389,9 @@
       "ownerOnlyTitle": "소유자만",
       "ownerOnlyDesc": "다른 사람은 공유 링크를 열 수 없습니다",
       "listWithheld": "공유된 팀과 사람만"
-    }
+    },
+    "websiteAddress": "웹사이트 주소",
+    "websiteEmailGateNotice": "공개 웹사이트는 방문자에게 이메일을 묻지 않습니다. 누구나 열 수 있습니다."
   },
   "previewErrors": {
     "reported": "{count, plural, other {미리 보기에서 오류 #개가 보고되었습니다}}",
@@ -481,6 +482,7 @@
     "backendFailed": "백엔드를 시작하지 못했습니다",
     "proxyUnavailable": "미리 보기 프록시를 사용할 수 없습니다",
     "noMountUrl": "미리 보기 마운트에서 URL이 반환되지 않았습니다",
+    "appNotPublishedYet": "이 앱은 게시되면 여기에 표시되며, 게시는 만든 직후에 이루어집니다. 잠시 후 다시 시도하세요.",
     "loadFailed": "아티팩트를 불러오지 못했습니다",
     "portNotReady": "백엔드 포트를 아직 사용할 수 없습니다. 미리 보기를 계속 불러오는 중입니다.",
     "remoteNoUrl": "이 아티팩트는 원격 서버에서 제공되며 아직 열 수 있는 URL이 없습니다.",
@@ -521,8 +523,6 @@
       "title": "제목(A–Z)",
       "type": "유형"
     },
-    "shareProtected": "보호된 공유",
-    "shareRestricted": "제한된 공유",
     "downloadFailed": "이 아티팩트를 다운로드하지 못했습니다.",
     "menu": "아티팩트 메뉴",
     "openProject": "{project} 열기",
@@ -530,9 +530,7 @@
     "openViewer": "뷰어에서 열기",
     "showInExplorer": "탐색기에서 보기",
     "deleteItem": "아티팩트 삭제",
-    "onlyHtmlMd": "HTML 및 Markdown 아티팩트만 공유할 수 있습니다.",
-    "sharedToast": "{mode, select, password {공유됨(비밀번호 보호) — {url}} restricted {공유됨(제한됨) — {url}} other {공유됨 — {url}}}",
-    "mindsApiKey": "아티팩트를 공유하려면 설정에서 Minds API 키를 설정하세요.",
+    "onlyHtmlMd": "웹 페이지, 문서, 스프레드시트, 프레젠테이션, PDF, CSV, 텍스트 파일만 공유할 수 있습니다.",
     "stoppedOnMindsHub": "MindsHub에서 공유를 중지했습니다.",
     "stopped": "공유를 중지했습니다.",
     "updated": "공유된 버전을 업데이트했습니다.",

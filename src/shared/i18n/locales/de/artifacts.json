@@ -51,11 +51,12 @@
       "onlyYou": "Nur du",
       "public": "Öffentlich",
       "publicPassword": "Öffentlich · Passwort",
-      "restricted": "Eingeschränkt"
+      "restricted": "Eingeschränkt",
+      "website": "Website"
     },
     "hint": {
       "notSharedYet": "Noch nicht geteilt. Öffnen Sie es und wählen Sie „Teilen“, um einen Weblink zu erhalten.",
-      "notShareable": "Nicht geteilt. Nur Webseiten und Markdown-Dokumente können als Link geteilt werden.",
+      "notShareable": "Nicht geteilt. Webseiten, Dokumente, Tabellen, Präsentationen, PDFs, CSV- und Textdateien können als Link geteilt werden, diese Art von Datei nicht.",
       "orgRestricted": "Eingeschränkt. Öffnen Sie „Teilen“, um zu sehen, wer den Link öffnen kann.",
       "ownerOnly": "Geteilt, aber nur Sie können den Link öffnen.",
       "password": "Alle mit dem Link und dem Passwort können es öffnen.",
@@ -64,10 +65,7 @@
       "sharedWith": "Geteilt mit {names}",
       "sharedWithMore": "Geteilt mit {names} und {count} weiteren"
     },
-    "sharingFailed": "Teilen fehlgeschlagen",
-    "couldNotShare": "Teilen nicht möglich.",
     "tryAgain": "Erneut versuchen",
-    "sharing": "Wird geteilt…",
     "updating": "Wird aktualisiert…",
     "stoppingSharing": "Teilen wird beendet…",
     "deleting": "Wird gelöscht…",
@@ -339,7 +337,9 @@
       "restrictedTitle": "Eingeschränkt",
       "restrictedDesc": "Wer den Link öffnen kann, ist noch nicht bekannt",
       "specificTitle": "Bestimmte Personen",
-      "specificDesc": "Nur die von Ihnen angegebenen Personen"
+      "specificDesc": "Nur die von Ihnen angegebenen Personen",
+      "websiteTitle": "Öffentliche Website",
+      "websiteDesc": "Eine eigene Webadresse, für alle im Internet offen"
     },
     "whoCanAccess": "Wer auf Ihre App zugreifen kann",
     "whoCanAccessDoc": "Wer auf Ihr Dokument zugreifen kann",
@@ -364,7 +364,6 @@
     "makeLive": "Live schalten",
     "shared": "Geteilt",
     "share": "Teilen",
-    "shareToWeb": "Im Web teilen",
     "sharingBusy": "Wird geteilt",
     "websiteUrl": "Website-URL",
     "change": "Ändern",
@@ -390,7 +389,9 @@
       "ownerOnlyTitle": "Nur der Eigentümer",
       "ownerOnlyDesc": "Niemand sonst kann den geteilten Link öffnen",
       "listWithheld": "Nur die Teams und Personen, mit denen es geteilt ist"
-    }
+    },
+    "websiteAddress": "Website-Adresse",
+    "websiteEmailGateNotice": "Eine öffentliche Website fragt Besucher nicht nach ihrer E-Mail-Adresse. Alle können sie öffnen."
   },
   "previewErrors": {
     "reported": "{count, plural, one {Die Vorschau hat # Fehler gemeldet} other {Die Vorschau hat # Fehler gemeldet}}",
@@ -481,6 +482,7 @@
     "backendFailed": "Backend konnte nicht gestartet werden",
     "proxyUnavailable": "Vorschau-Proxy nicht verfügbar",
     "noMountUrl": "Die Vorschau-Einbindung hat keine URL zurückgegeben",
+    "appNotPublishedYet": "Diese App wird hier angezeigt, sobald sie veröffentlicht ist – direkt nach dem Erstellen. Versuche es gleich noch einmal.",
     "loadFailed": "Artefakt konnte nicht geladen werden",
     "portNotReady": "Backend-Port noch nicht verfügbar – die Vorschau wird noch geladen.",
     "remoteNoUrl": "Dieses Artefakt wird von einem Remote-Server bereitgestellt und hat noch keine URL zum Öffnen.",
@@ -521,8 +523,6 @@
       "title": "Titel (A–Z)",
       "type": "Typ"
     },
-    "shareProtected": "Geschützt geteilt",
-    "shareRestricted": "Eingeschränkt geteilt",
     "downloadFailed": "Dieses Artefakt konnte nicht heruntergeladen werden.",
     "menu": "Artefakt-Menü",
     "openProject": "{project} öffnen",
@@ -530,9 +530,7 @@
     "openViewer": "Viewer öffnen",
     "showInExplorer": "Im Explorer anzeigen",
     "deleteItem": "Artefakt löschen",
-    "onlyHtmlMd": "Nur HTML- und Markdown-Artefakte können geteilt werden.",
-    "sharedToast": "{mode, select, password {Geteilt (passwortgeschützt) – {url}} restricted {Geteilt (eingeschränkt) – {url}} other {Geteilt – {url}}}",
-    "mindsApiKey": "Legen Sie in den Einstellungen Ihren Minds-API-Schlüssel fest, um Artefakte zu teilen.",
+    "onlyHtmlMd": "Nur Webseiten, Dokumente, Tabellen, Präsentationen, PDFs, CSV- und Textdateien können geteilt werden.",
     "stoppedOnMindsHub": "Teilen auf MindsHub beendet.",
     "stopped": "Teilen beendet.",
     "updated": "Geteilte Version aktualisiert.",

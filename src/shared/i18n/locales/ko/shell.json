@@ -240,10 +240,6 @@
   "upToDate": "최신 상태",
   "upToDateSaving": "저장 중…",
   "upToDateSaved": "저장됨",
-  "usageBar": {
-    "hideAllowance": "제공량 숨기기",
-    "hide": "숨기기"
-  },
   "diagnostics": {
     "copy": "진단 정보 복사",
     "copied": "복사됨",
@@ -468,7 +464,8 @@
       "fromDesktop": "계정이 준비되었습니다. 여기서 바로 시작하거나 {product} 앱으로 돌아가 로그인하세요.",
       "dismiss": "닫기"
     },
-    "ownWorkHeading": "{product}가 무엇을 작업할까요?"
+    "ownWorkHeading": "{product}가 무엇을 작업할까요?",
+    "galleryHint": "예시 {title}에서 가져왔습니다. 원하는 대로 바꾼 뒤 보내기를 누르세요."
   },
   "logout": {
     "title": "{product}에서 로그아웃할까요?",
@@ -481,7 +478,53 @@
     "failed": "로그아웃을 완료하지 못했습니다. 다시 시도하세요.",
     "waitNote": "아직 로그아웃하는 중입니다. 이 창을 닫아도 자동으로 완료됩니다."
   },
+  "notices": {
+    "title": "알림",
+    "ariaLabel": "{count, plural, =0 {알림} other {알림, 읽지 않음 #개}}",
+    "unread": "읽지 않음:",
+    "markAllRead": "모두 읽음으로 표시",
+    "emptyTitle": "알림 없음",
+    "emptyDescription": "확인이 필요한 예약 실행이 여기에 표시됩니다.",
+    "loadFailed": "알림을 불러올 수 없습니다."
+  },
   "shortcuts": {
     "showBrowser": "브라우저 표시"
+  },
+  "gallery": {
+    "open": "사용 사례 갤러리",
+    "title": "사용 사례 갤러리",
+    "welcomeTitle": "{product}에 오신 것을 환영합니다",
+    "welcomeIntro": "어디서 시작할지 모르겠다면 {product}가 메시지 하나로 만든 결과물을 둘러보세요. 하나를 열어 결과를 보고 거기서 시작하세요.",
+    "intro": "아이디어가 떨어졌나요? {product}가 메시지 하나로 만든 결과물을 둘러보세요. 하나를 열어 결과를 보고 거기서 시작하세요.",
+    "hide": "갤러리 숨기기",
+    "searchLabel": "예시 검색",
+    "searchPlaceholder": "검색: 슬라이드, 스프레드시트, 학습…",
+    "tabsLabel": "카테고리",
+    "all": "전체",
+    "startHere": "여기서 시작",
+    "allExamples": "모든 예시",
+    "results": "{count, plural, other {예시 #개 일치}}",
+    "noResults": "일치하는 항목이 없습니다. 입력란에 필요한 내용을 적으면 {product}가 거기서 시작합니다.",
+    "loading": "예시를 불러오는 중…",
+    "unavailable": "지금은 예시를 불러올 수 없습니다.",
+    "retry": "다시 시도",
+    "minutes": "{count, plural, other {약 #분}}",
+    "builtWith": "{model}로 제작",
+    "needs": "필요한 것: {needs}",
+    "backToAll": "모든 예시",
+    "backToResults": "“{query}” 검색 결과",
+    "position": "{current} / {total}",
+    "previous": "이전 예시",
+    "next": "다음 예시",
+    "breadcrumb": "이동 경로",
+    "whatItMade": "{product}가 만든 것",
+    "download": "다운로드",
+    "sampleInput": "제공한 샘플",
+    "playInBrowser": "브라우저에서 열기",
+    "start": "이 예시로 시작",
+    "tryIt": "이 예시 실행해 보기",
+    "startNote": "메시지를 입력란에 넣습니다. 보내기를 누르기 전에는 아무것도 실행되지 않습니다.",
+    "tryItNote": "샘플 데이터로 새 작업을 바로 실행합니다.",
+    "ownFile": "내 파일 사용"
   }
 }

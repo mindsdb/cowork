@@ -51,11 +51,12 @@
       "onlyYou": "Solo tú",
       "public": "Público",
       "publicPassword": "Público · contraseña",
-      "restricted": "Restringido"
+      "restricted": "Restringido",
+      "website": "Sitio web"
     },
     "hint": {
       "notSharedYet": "Aún no se comparte. Ábrelo y elige Compartir para obtener un enlace web.",
-      "notShareable": "No se comparte. Solo las páginas web y los documentos Markdown se pueden compartir como enlace.",
+      "notShareable": "No se comparte. Se pueden compartir como enlace páginas web, documentos, hojas de cálculo, presentaciones, PDF, CSV y archivos de texto; este tipo de archivo no.",
       "orgRestricted": "Restringido. Abre Compartir para ver quién puede abrir el enlace.",
       "ownerOnly": "Compartido, pero solo tú puedes abrir el enlace.",
       "password": "Cualquiera con el enlace y la contraseña puede abrirlo.",
@@ -64,10 +65,7 @@
       "sharedWith": "Compartido con {names}",
       "sharedWithMore": "Compartido con {names} y {count} más"
     },
-    "sharingFailed": "No se pudo compartir",
-    "couldNotShare": "No se pudo compartir.",
     "tryAgain": "Reintentar",
-    "sharing": "Compartiendo…",
     "updating": "Actualizando…",
     "stoppingSharing": "Dejando de compartir…",
     "deleting": "Eliminando…",
@@ -339,7 +337,9 @@
       "restrictedTitle": "Restringido",
       "restrictedDesc": "Aún no se sabe quién puede abrir el enlace",
       "specificTitle": "Personas específicas",
-      "specificDesc": "Solo las personas que indiques"
+      "specificDesc": "Solo las personas que indiques",
+      "websiteTitle": "Sitio web público",
+      "websiteDesc": "Su propia dirección web, abierta a cualquier persona en internet"
     },
     "whoCanAccess": "Quién puede acceder a tu app",
     "whoCanAccessDoc": "Quién puede acceder a tu documento",
@@ -364,7 +364,6 @@
     "makeLive": "Publicar esta",
     "shared": "Compartido",
     "share": "Compartir",
-    "shareToWeb": "Compartir en la web",
     "sharingBusy": "Compartiendo",
     "websiteUrl": "URL del sitio",
     "change": "Cambiar",
@@ -390,7 +389,9 @@
       "ownerOnlyTitle": "Solo su propietario",
       "ownerOnlyDesc": "Nadie más puede abrir el enlace compartido",
       "listWithheld": "Solo los equipos y las personas con quienes se comparte"
-    }
+    },
+    "websiteAddress": "Dirección del sitio",
+    "websiteEmailGateNotice": "Un sitio web público no pide el correo electrónico a los visitantes. Cualquiera puede abrirlo."
   },
   "previewErrors": {
     "reported": "{count, plural, one {La vista previa informó # error} other {La vista previa informó # errores}}",
@@ -481,6 +482,7 @@
     "backendFailed": "El backend no pudo iniciarse",
     "proxyUnavailable": "El proxy de la vista previa no está disponible",
     "noMountUrl": "El montaje de la vista previa no devolvió ninguna URL",
+    "appNotPublishedYet": "Esta app se muestra aquí cuando se publica, justo después de crearse. Vuelve a intentarlo en un momento.",
     "loadFailed": "No se pudo cargar el artefacto",
     "portNotReady": "El puerto del backend aún no está disponible: la vista previa sigue cargando.",
     "remoteNoUrl": "Este artefacto se sirve desde un servidor remoto y aún no tiene una URL para abrir.",
@@ -521,8 +523,6 @@
       "title": "Título (A–Z)",
       "type": "Tipo"
     },
-    "shareProtected": "Compartir con contraseña",
-    "shareRestricted": "Compartir restringido",
     "downloadFailed": "No se pudo descargar este artefacto.",
     "menu": "Menú del artefacto",
     "openProject": "Abrir {project}",
@@ -530,9 +530,7 @@
     "openViewer": "Abrir visor",
     "showInExplorer": "Mostrar en el Explorador",
     "deleteItem": "Eliminar artefacto",
-    "onlyHtmlMd": "Solo se pueden compartir artefactos HTML y Markdown.",
-    "sharedToast": "{mode, select, password {Compartido (con contraseña): {url}} restricted {Compartido (restringido): {url}} other {Compartido: {url}}}",
-    "mindsApiKey": "Configura tu clave de API de Minds en Configuración para compartir artefactos.",
+    "onlyHtmlMd": "Solo se pueden compartir páginas web, documentos, hojas de cálculo, presentaciones, PDF, CSV y archivos de texto.",
     "stoppedOnMindsHub": "Se dejó de compartir en MindsHub.",
     "stopped": "Se dejó de compartir.",
     "updated": "Se actualizó la versión compartida.",

@@ -240,10 +240,6 @@
   "upToDate": "已是最新版本",
   "upToDateSaving": "正在保存…",
   "upToDateSaved": "已保存",
-  "usageBar": {
-    "hideAllowance": "隐藏额度",
-    "hide": "隐藏"
-  },
   "diagnostics": {
     "copy": "复制诊断信息",
     "copied": "已复制",
@@ -468,7 +464,8 @@
       "fromDesktop": "你的账户已准备就绪。你可以直接在这里开始，或返回 {product} 应用并登录。",
       "dismiss": "关闭"
     },
-    "ownWorkHeading": "{product} 应该处理什么？"
+    "ownWorkHeading": "{product} 应该处理什么？",
+    "galleryHint": "来自示例“{title}”。按需修改，然后点击发送。"
   },
   "logout": {
     "title": "退出 {product} 登录？",
@@ -481,7 +478,53 @@
     "failed": "无法完成退出登录。请重试。",
     "waitNote": "仍在退出登录。你可以关闭此窗口，退出会自动完成。"
   },
+  "notices": {
+    "title": "通知",
+    "ariaLabel": "{count, plural, =0 {通知} other {通知，# 条未读}}",
+    "unread": "未读：",
+    "markAllRead": "全部标为已读",
+    "emptyTitle": "没有通知",
+    "emptyDescription": "需要你关注的计划运行会显示在这里。",
+    "loadFailed": "无法加载通知。"
+  },
   "shortcuts": {
     "showBrowser": "显示浏览器"
+  },
+  "gallery": {
+    "open": "用例库",
+    "title": "用例库",
+    "welcomeTitle": "欢迎使用 {product}",
+    "welcomeIntro": "不知道从哪里开始？这些都是 {product} 根据一条消息完成的。打开一个查看结果，再从它开始。",
+    "intro": "没有灵感了？这些都是 {product} 根据一条消息完成的。打开一个查看结果，再从它开始。",
+    "hide": "隐藏用例库",
+    "searchLabel": "搜索示例",
+    "searchPlaceholder": "搜索：幻灯片、电子表格、学习…",
+    "tabsLabel": "类别",
+    "all": "全部",
+    "startHere": "从这里开始",
+    "allExamples": "所有示例",
+    "results": "{count, plural, other {# 个示例匹配}}",
+    "noResults": "没有匹配项。在输入框中描述你的需求，{product} 会从那里开始。",
+    "loading": "正在加载示例…",
+    "unavailable": "示例暂时无法加载。",
+    "retry": "重试",
+    "minutes": "{count, plural, other {约 # 分钟}}",
+    "builtWith": "使用 {model} 完成",
+    "needs": "需要：{needs}",
+    "backToAll": "所有示例",
+    "backToResults": "“{query}”的结果",
+    "position": "{current} / {total}",
+    "previous": "上一个示例",
+    "next": "下一个示例",
+    "breadcrumb": "导航路径",
+    "whatItMade": "{product} 完成的内容",
+    "download": "下载",
+    "sampleInput": "我们提供的样本",
+    "playInBrowser": "在浏览器中打开",
+    "start": "从这个示例开始",
+    "tryIt": "试试这个示例",
+    "startNote": "会把消息放进输入框。在你点击发送之前不会运行任何内容。",
+    "tryItNote": "立即用示例数据作为新任务运行。",
+    "ownFile": "使用我自己的文件"
   }
 }

@@ -20,7 +20,8 @@
       "deleting": "Deleting…",
       "copyMessage": "Copy message",
       "copyResponse": "Copy response",
-      "agentFallback": "Agent"
+      "agentFallback": "Agent",
+      "submittedData": "Submitted data"
     },
     "incomplete": {
       "spendCeiling": "Stopped early: this task reached its token budget.",
@@ -74,7 +75,13 @@
       "liveArtifact": "live artifact",
       "deletedBadge": "Deleted",
       "share": "Share",
-      "shareTooltip": "Choose who can open it"
+      "shareTooltip": "Choose who can open it",
+      "goToLatestTooltip": "Scroll to the latest version",
+      "openLink": "Open link",
+      "openLinkTooltip": "Open the artifact's link in a new tab",
+      "updatedSeeBelow": "This was updated. See the latest version below.",
+      "previewThisVersion": "Preview this version",
+      "hideVersionPreview": "Hide this version"
     },
     "kinds": {
       "provider": "Provider",
@@ -506,7 +513,19 @@
       "missingType": "Missing chart type",
       "unsupportedType": "Unsupported chart type: \"{type}\". Supported: {supported}.",
       "invalidJson": "Invalid JSON in chart specification",
-      "error": "ERROR: {error}"
+      "error": "ERROR: {error}",
+      "loading": "Drawing chart…",
+      "chartLabel": "Chart",
+      "diagramLabel": "Diagram",
+      "copyImage": "Copy as image",
+      "downloadPng": "Download PNG",
+      "showSource": "Show source",
+      "hideSource": "Hide source",
+      "tooLarge": "The specification is larger than {limit} KB",
+      "tooManyDatasets": "Too many datasets ({count}); the limit is {limit}",
+      "tooManyPoints": "Too many data points ({count}); the limit is {limit}",
+      "tooManyNodes": "Too many nodes ({count}); the limit is {limit}",
+      "emptyDiagram": "The diagram is empty"
     }
   },
   "taskModes": {
@@ -760,7 +779,11 @@
     "phoneWorking": "Working on it…",
     "phoneDone": "Done. Minimize to see the answer.",
     "phoneMinimize": "Minimize",
-    "talkTo": "Talk to {agent}"
+    "talkTo": "Talk to {agent}",
+    "overlayQuestion": "{agent} has a question waiting in the chat.",
+    "overlayHandOver": "Your turn on {site}: {reason}.",
+    "overlayHandOverWatching": "Your turn on {site}: {reason}. {agent} carries on by itself once it's done.",
+    "overlayGoToQuestion": "Go to the question"
   },
   "voiceCall": {
     "dialogLabel": "Voice mode",

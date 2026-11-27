@@ -163,9 +163,11 @@ export interface DesktopRestrictedAccessPayload {
   notify?: NotifyPayload;
 }
 
-/** The `access` an artifact save sends. */
+/** The `access` an artifact save sends. A website (MindsHub mode only)
+    carries no other field. */
 export type ArtifactAccessPayload =
   | { mode: 'public' }
+  | { mode: 'website' }
   | { mode: 'password'; password: string }
   | OrgRestrictedAccessPayload
   | DesktopRestrictedAccessPayload;

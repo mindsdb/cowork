@@ -74,7 +74,6 @@ vi.mock('../platform/host', async (importOriginal) => {
       onUpdateStatus: () => () => {},
       onOAuthRefreshError: () => () => {},
       onMindsHubAuthChanged: () => () => {},
-      getKeychainPref: vi.fn(async () => false),
       serverDiagnostics: vi.fn(async () => ({})),
       getShellUpdate: vi.fn(async () => null),
       removeCodingTask: vi.fn(async () => ({})),

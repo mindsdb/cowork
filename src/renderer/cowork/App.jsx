@@ -30,6 +30,9 @@ import { Modal, ModalHeader, ModalBody, ModalFooter } from './components/ui/Moda
 import { Button, EmptyState, Tooltip } from './components/ui';
 import { ToastProvider, useToastManager } from './components/ui/Toast';
 import HomeView from './views/HomeView';
+import GalleryColumn from './components/gallery/GalleryColumn';
+import { composerPrefillHandler } from './lib/composerPrefill';
+import { useHomeGallery } from './components/gallery/useHomeGallery';
 import ChatView, { warmBrowser } from './views/ChatView';
 import ProjectsView from './views/ProjectsView';
 import ScheduledView from './views/ScheduledView';
@@ -116,6 +119,7 @@ import { useSchedules } from './hooks/useSchedules';
 import { stopScheduleRun } from './lib/stopScheduleRun';
 import { useAutoPauseNotifications } from './hooks/useAutoPauseNotifications';
 import { useScheduleRunNotifications } from './hooks/useScheduleRunNotifications';
+import { useNotices } from './hooks/useNotices';
 import { shouldKeepAwake } from './lib/scheduleKeepAwake';
 import { fetchSessions, fetchSession, fetchSessionResult, fetchConversationStatus, fetchOlderMessages, fetchConversationList, fetchProjects, fetchArtifactsStrict, fetchSettings, fetchHealth,
          createProject, updateSettings, streamNewSession, streamMessage,
@@ -191,13 +195,14 @@ import { useVoiceCall, voiceCallRunning } from './lib/voice/useVoiceCall';
 import { askInTask, createCallWork, createQueueWatch, sendForOwnTurn } from './lib/voice/callWork';
 import { describeFound, describeScreen, describeSteps, findTasks, isRunning, runOperator } from './lib/voice/operator';
 import { artifactsOnScreen } from './lib/voice/screenArtifacts';
+import { widgetActions, widgetsOnScreen } from './lib/voice/screenWidgets';
 import { createSeenCallBack } from './lib/voice/seenCallBack';
 import {
   callNeedActions, createCallNeeds, openNeeds,
 } from './lib/voice/callNeeds';
 import { handBackBrowser } from './lib/browserHandBack';
 import {
-  desktopTaskSession, latestBrowserSessionIdIn, offTaskBrowserId, pageOriginForContext,
+  carriedPageFor, desktopTaskSession, latestBrowserSessionIdIn, offTaskBrowserId, pageOriginForContext,
 } from './lib/browserSession';
 import { VOICES, getVoicePrefs, llmViaMindsHub, setVoicePrefs, subscribeVoicePrefs, useVoicePrefs, voiceLabel } from './lib/voice/voicePrefs';
 import { warmBrowserForSession } from './lib/browserWarmUp';
@@ -2528,6 +2533,8 @@ function AppCore() {
   // Keep a ref of the live route so the keydown listener (bound
   // once on mount) can read it without a re-bind on every nav.
   routeRef.current = effectiveWorkspaceMode === 'code' ? 'code' : route;
+  // The Use Case Gallery column beside Home.
+  const gallery = useHomeGallery({ onHome: route === 'home' && effectiveWorkspaceMode === 'cowork', tasks, tasksStatus });
   // Route-aware gravity-field intensity: dense work surfaces quiet the
   // light-mode field (gf-quiet + gravity-field.css) so it never competes
   // with content; the home stage keeps the full ambient motion.
@@ -4404,7 +4411,7 @@ function AppCore() {
     const suppliedConversationId = meta?.conversationId || null;
     // The browser open beside Home or the project on a page: the task is
     // about it, and its own browser opens there, so it needs its real id now.
-    const carried = carriedBrowserPage();
+    const carried = carriedPageFor(meta, carriedBrowserPage);
     const taskId = suppliedConversationId
       || (hasPendingFiles || carried ? allocateConversationId() : `tmp-${Date.now()}`);
     // Flag the not-yet-persisted id so the route loader renders from local
@@ -5556,6 +5563,10 @@ function AppCore() {
       submit: submitAnswer,
       agentLabel,
     }),
+    // An inline artifact or widget live on screen (ENG-4684): its state set,
+    // or its Submit sent, as the person's own change in its frame would
+    // (lib/voice/screenWidgets.js).
+    ...widgetActions(),
     // Saved like a pick in Settings; the prefs listener above moves the call
     // to it, a moment later so this answer gets back first.
     change_voice: ({ voice }) => {
@@ -5581,6 +5592,7 @@ function AppCore() {
         .map((t) => ({ id: t.id, title: t.title, needs: openNeeds(liveStepsRef.current[t.id]) }))
         .filter((w) => w.needs.length),
     }),
+    widgets: widgetsOnScreen,
     actions: callActions,
   });
   // The current task's project's tasks, for the browser pane's list of the
@@ -5596,7 +5608,9 @@ function AppCore() {
   /* Show browser from Home or Projects: the task view's pane, beside the page
      on a wide screen and over it otherwise, so the page stays usable. On the
      web it shows at once, with the start page, while the browser opens. */
-  const offTaskPaneFloats = isNarrow || isMobile || !(route === 'home' || route === 'projects');
+  // The Use Case Gallery takes the docked spot beside Home, so a browser
+  // opened there floats over the page instead of hiding the gallery.
+  const offTaskPaneFloats = isNarrow || isMobile || !(route === 'home' || route === 'projects') || (route === 'home' && gallery.open);
   const offTaskPaneProps = {
     floating: offTaskPaneFloats,
     taskKey: route,
@@ -5625,6 +5639,40 @@ function AppCore() {
     <div className={`flex-1 min-h-0 ${dockOffTask ? 'grid grid-cols-[minmax(0,1fr)_minmax(440px,50%)]' : 'flex flex-col'}`}>
       <div className="min-w-0 min-h-0 flex-1 flex flex-col">{view}</div>
       {dockOffTask && offTaskPane}
+    </div>
+  );
+  // The Use Case Gallery column: docked beside Home while the browser pane is
+  // not, a sheet over Home on a phone. The wrapper is the same element open or
+  // shut, so Home, and what is typed in it, is not remounted when it opens.
+  const galleryColumn = gallery.open && route === 'home' && (
+    <GalleryColumn
+      manifest={gallery.manifest}
+      failure={gallery.failure}
+      onRetry={gallery.retry}
+      onHide={gallery.hide}
+      onStart={gallery.start}
+      filesAttached={composerAttachments.length > 0}
+      setupNeeded={(health.config_ready ?? settings.configReady) !== true}
+      onOwnWork={() => {
+        gallery.hide('own_work');
+        setOwnWorkRequest(Date.now());
+      }}
+      openExternal={(url) => host.openExternal(url)}
+      focusSearch={gallery.focusSearch}
+      place={gallery.place}
+      onPlaceChange={gallery.setPlace}
+      welcome={gallery.welcome}
+      variant={isMobile ? 'sheet' : 'panel'}
+      reserveCorner={!isMobile}
+    />
+  );
+  const galleryDocked = Boolean(galleryColumn) && !isMobile && !dockOffTask;
+  const galleryShown = galleryDocked || (isMobile && Boolean(galleryColumn));
+  const besideGallery = (view) => (
+    <div className={`flex-1 min-h-0 ${galleryDocked ? 'grid grid-cols-[minmax(0,1fr)_minmax(340px,440px)]' : 'flex flex-col'}`}>
+      <div className="min-w-0 min-h-0 flex-1 flex flex-col">{view}</div>
+      {/* Inset like the sidebar, so the two read as a pair of columns. */}
+      {galleryDocked && <div className="min-h-0 flex flex-col py-[9px] pr-[9px]">{galleryColumn}</div>}
     </div>
   );
   // An ended voice call only shows its card: the call button dismisses it and starts anew.
@@ -7015,22 +7063,61 @@ function AppCore() {
     },
   );
 
-  // The same for a run that fails, or succeeds if the user asked to hear
-  // about those: a notification where the OS allows one, a toast otherwise.
-  // Clicking opens the task's page, which says why and offers the run.
+  const openScheduleRun = (sessionId) => {
+    if (!sessionId) return;
+    // Scheduled runs create real conversations on the
+    // server, but they may not be in our local recents list
+    // yet (e.g. the run fired while we were on another
+    // device or before this session's last fetch). Refresh
+    // tasks in parallel so currentTask resolves once the
+    // server response lands, and route immediately so the
+    // user sees the navigation happen.
+    fetchSessions().then((data) => {
+      if (Array.isArray(data)) {
+        setTasks((prev) =>
+          mergeTasksFromServer(data, prev)
+            .filter((t) => !deletedTaskIdsRef.current.has(t.id))
+        );
+      }
+    }).catch(() => {});
+    setActiveTaskId(sessionId);
+    setRoute('task');
+  };
+
+  // Which run endings post a notice: account settings, edited from the
+  // Scheduled Tasks page.
   const {
     prefs: scheduleNotifyPrefs,
     setPrefs: setScheduleNotifyPrefs,
     canEdit: canEditScheduleNotifyPrefs,
-  } = useScheduleRunNotifications(scheduled, {
-    settings,
-    settingsLoaded,
-    saveSettings,
-    onOpen: (schedule) => {
+  } = useScheduleRunNotifications({ settings, settingsLoaded, saveSettings });
+
+  // The sidebar bell: the account's notices, polled about once a minute and
+  // on every navigation. A notice that has just arrived also raises a
+  // notification where the OS allows one, a toast otherwise. A scheduled-run
+  // notice opens its run, or the schedule if no conversation was created.
+  const notices = useNotices({
+    routeKey: `${effectiveWorkspaceMode}:${route}:${activeTaskId || ''}:${selectedScheduleId || ''}`,
+    onOpen: (notice) => {
+      const destination = notice?.fallback?.destination;
+      const supported = typeof destination?.id === 'string'
+        && (destination.kind === 'schedule' || destination.kind === 'conversation');
+      const { conversationId, scheduleId } = supported
+        ? {
+          conversationId: destination.kind === 'conversation' ? destination.id : null,
+          scheduleId: destination.kind === 'schedule' ? destination.id : null,
+        }
+        : notice?.target || {};
+      if (!conversationId && !scheduleId) return;
       setWorkspaceMode('cowork');
-      setSelectedScheduleId(schedule.id);
+      if (conversationId) {
+        openScheduleRun(conversationId);
+        return;
+      }
+      setSelectedScheduleId(scheduleId);
       setRoute('schedule-detail');
     },
+    resolveSchedules: refreshSchedules,
     toast: (notice) => toastManager.add(notice),
     closeToast: (id) => toastManager.close(id),
   });
@@ -7353,6 +7440,7 @@ function AppCore() {
       >
         <Sidebar
           tasks={tasks}
+          notices={notices}
           showCompare={showCompare}
           tasksStatus={tasksStatus}
           onRetryTasks={refreshData}
@@ -7440,7 +7528,8 @@ function AppCore() {
           // showing. newTask also closes the popout drawer.
           onOpenExamples={() => {
             newTask();
-            setExamplesRequest(Date.now());
+            if (gallery.available) gallery.show('checklist');
+            else setExamplesRequest(Date.now());
           }}
           // Home's drafted files stay: they are the material that mode asks for.
           onOpenOwnWork={() => {
@@ -7504,7 +7593,12 @@ function AppCore() {
           hidden={effectiveWorkspaceMode !== 'cowork'}
           aria-hidden={effectiveWorkspaceMode !== 'cowork'}
         >
-        {route === 'home' && besideOffTask(
+        {route === 'home' && isMobile && galleryColumn && (
+          <div className="fixed inset-0 z-40 flex flex-col justify-end bg-[rgba(4,8,16,0.6)]">
+            <div className="h-[92%] rounded-t-2xl overflow-hidden border-t border-line">{galleryColumn}</div>
+          </div>
+        )}
+        {route === 'home' && besideOffTask(besideGallery(
           <HomeView
             onComposeTask={offerMobileTaskNotifications}
             greeting={look.greeting}
@@ -7548,15 +7642,20 @@ function AppCore() {
             onShowServerHelp={() => openSettings('backend')}
             skipIntro={bootIntroDone}
             prefill={composerPrefill}
-            onPrefill={(text, select) => setComposerPrefill({ text, bump: Date.now(), select })}
+            onPrefill={composerPrefillHandler(setComposerPrefill)}
             onPrefillConsumed={() => setComposerPrefill(null)}
             examplesRequest={examplesRequest}
             onExamplesRequestConsumed={() => setExamplesRequest(0)}
             ownWorkRequest={ownWorkRequest}
             onOwnWorkRequestConsumed={() => setOwnWorkRequest(0)}
+            galleryPick={gallery.pick}
+            onGalleryPickConsumed={gallery.clearPick}
+            onGalleryPickHeld={gallery.holdPick}
+            active={effectiveWorkspaceMode === 'cowork'}
+            onOpenGallery={gallery.available && !galleryShown ? () => gallery.show('button') : null}
             codingModeEnabled={false}
           />
-        )}
+        ))}
 
         {route === 'task' && showConversationError && <ConversationUnavailable />}
 
@@ -7781,6 +7880,7 @@ function AppCore() {
             projects={runnableProjects}
             models={modelOptions}
             modelMeta={modelMeta}
+            connectors={composerConnectors}
             selectedProject={runnableSelectedProject}
             selectedModel={selectedModel}
             onCreate={handleCreateSchedule}
@@ -7815,6 +7915,7 @@ function AppCore() {
           models={modelOptions}
           modelMeta={modelMeta}
           defaultProjectPath={scheduleDraft?.projectPath || ''}
+          connectors={composerConnectors}
           agentLabel={agentLabel}
         />
 
@@ -7824,6 +7925,7 @@ function AppCore() {
             projects={runnableProjects}
             models={modelOptions}
             modelMeta={modelMeta}
+            connectors={composerConnectors}
             agentLabel={agentLabel}
             onBack={() => { setSelectedScheduleId(null); setRoute('scheduled'); }}
             onUpdate={handleUpdateSchedule}
@@ -7838,26 +7940,7 @@ function AppCore() {
             onReviewedAutoPause={markAutoPauseReviewed}
             onStopRun={handleStopScheduleRun}
             onOpenSettings={openSettings}
-            onOpenRunSession={(sessionId) => {
-              if (!sessionId) return;
-              // Scheduled runs create real conversations on the
-              // server, but they may not be in our local recents list
-              // yet (e.g. the run fired while we were on another
-              // device or before this session's last fetch). Refresh
-              // tasks in parallel so currentTask resolves once the
-              // server response lands, and route immediately so the
-              // user sees the navigation happen.
-              fetchSessions().then((data) => {
-                if (Array.isArray(data)) {
-                  setTasks((prev) =>
-                    mergeTasksFromServer(data, prev)
-                      .filter((t) => !deletedTaskIdsRef.current.has(t.id))
-                  );
-                }
-              }).catch(() => {});
-              setActiveTaskId(sessionId);
-              setRoute('task');
-            }}
+            onOpenRunSession={openScheduleRun}
           />
         )}
 

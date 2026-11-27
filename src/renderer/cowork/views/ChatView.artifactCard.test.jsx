@@ -222,19 +222,22 @@ describe('inline artifact banner in org mode', () => {
     expect(screen.queryByRole('button', { name: 'Shared link' })).toBeNull();
   });
 
-  it('opens the shared page for a draft it cannot render', async () => {
+  it('previews a published full-stack app beside Share, like a page (ENG-4687)', async () => {
     /*
-     * A fullstack app needs the loopback proxy only Desktop runs, so nothing
-     * here can render it and the published page is the only destination left.
+     * The server can't start its backend here, but the app runs at its
+     * published address, which the viewer frames: Preview, not the shared
+     * page in a tab.
      */
     setOrgMode(true);
     const user = userEvent.setup();
     render(<ChatView task={taskWithArtifact(artifactStep({ type: 'fullstack-stateless-app' }))} />);
 
-    await user.click(screen.getByRole('button', { name: 'Open' }));
+    expect(screen.queryByRole('button', { name: 'Open' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Share' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Preview' }));
 
-    expect(openExternal).toHaveBeenCalledWith(PUBLISHED_URL);
-    expect(screen.queryByTestId('artifact-viewer')).toBeNull();
+    expect(openExternal).not.toHaveBeenCalled();
+    expect(screen.getByTestId('artifact-viewer')).toBeInTheDocument();
   });
 
   it('offers no button when it can neither preview nor share', () => {
@@ -491,6 +494,22 @@ describe('inline artifact banner in org mode', () => {
 
     expect(screen.getByRole('button', { name: 'Preview' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Shared link' })).toBeInTheDocument();
+  });
+
+  it('reads "Open link", not "Shared link", while the link reaches only its owner', async () => {
+    setOrgMode(true);
+    render(<ChatView task={taskWithArtifact(artifactStep({
+      ext: '',
+      action: 'report',
+      file_path: '/proj/.anton/artifacts/weekly/report.md',
+      path: '/proj/.anton/artifacts/weekly/report.md',
+      draftUrl: `/api/v1/artifacts/drafts/proj-1/${ARTIFACT_ID}/report.md`,
+      accessMode: 'restricted',
+      ownerOnly: true,
+    }))} />);
+
+    expect(screen.getByRole('button', { name: 'Open link' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Shared link' })).toBeNull();
   });
 
   it('stays clickable when the client could not canonicalize the path', async () => {
@@ -1121,7 +1140,16 @@ describe('Share on the inline artifact card', () => {
     expect(share()).not.toBeNull();
   });
 
-  it.each(['.csv', '.png', '.xlsx'])('offers no Share on a %s file, which has no link to share', (ext) => {
+  // ENG-4687: a CSV, spreadsheet, PDF, Word or PowerPoint file shares as a page of its own.
+  it.each(['.csv', '.xlsx', '.pdf', '.docx'])('offers Share on a %s file, which shares as a page of its own', (ext) => {
+    const path = `/proj/.anton/artifacts/data/file${ext}`;
+    setOrgMode(true);
+    hostIsWeb = true;
+    render(<ChatView task={taskWithArtifact(artifactStep({ ext, file_path: path, path }))} />);
+    expect(share()).not.toBeNull();
+  });
+
+  it.each(['.png', '.zip'])('offers no Share on a %s file, which has no page to share', (ext) => {
     const path = `/proj/.anton/artifacts/data/file${ext}`;
     setOrgMode(true);
     hostIsWeb = true;

@@ -4,7 +4,7 @@
 // A Base UI Popover anchored to the trigger, driving the full publish
 // state machine off `usePublish`:
 //
-//   not published → "Share to the Web" (access chooser + Share)
+//   not published → "Share" (the same access dropdown + Share)
 //   publishing    → button shows a spinner
 //   published     → URL + current access + Unpublish + Update button, or an
 //                    "Up to date" status when there is nothing to publish
@@ -35,7 +35,7 @@ import {
   parseEmailList,
 } from './AccessChooser';
 import { SharedWithList, useRecipientItems } from '../../RecipientRows';
-import { AUDIENCE_CHOICE, mindsHubUnreachablePermissions, recipientSummary } from '../../../lib/orgSharing';
+import { AUDIENCE_CHOICE, hasViewerAnalytics, mindsHubUnreachablePermissions, offersViewerAnalytics, recipientSummary } from '../../../lib/orgSharing';
 import { LOAD_STATUS } from '../../../lib/sharingContract';
 import { LoadStatus, RetryAlert } from '../../LoadStatus';
 import { useArtifactShareState } from './useArtifactShareState';
@@ -43,6 +43,8 @@ import { shareStateIcon } from '../../ShareStateLabel';
 import { UpToDateTag, useSaveStatus } from '../../UpToDateTag';
 import { useArtifactStats } from '../stats/useArtifactStats';
 import { ViewerAnalyticsSettings } from './ViewerAnalyticsSettings';
+import { isBackendArtifact } from '../../../lib/artifactKinds';
+import { useArtifactWebsites } from '../../../../lib/artifactWebsites';
 import { DatasourceApprovalNotice } from './DatasourceApprovalNotice';
 
 const FONT_BODY = "'Inter', system-ui, sans-serif";
@@ -54,7 +56,7 @@ const FONT_DISPLAY = "var(--font-display, 'Inter', sans-serif)";
 function draftDiffers(draft, current) {
   if (draft.mode !== current.mode) return true;
   // Nothing else to compare: the mode IS the whole selection.
-  if (draft.mode === AUDIENCE_CHOICE.PRIVATE) return false;
+  if (draft.mode === AUDIENCE_CHOICE.PRIVATE || draft.mode === AUDIENCE_CHOICE.WEBSITE) return false;
   if (draft.mode === AUDIENCE_CHOICE.PASSWORD) return (draft.password || '') !== (current.password || '');
   if (draft.mode === AUDIENCE_CHOICE.SPECIFIC) {
     const a = parseEmailList(draft.emailsText).valid.join(',');
@@ -353,7 +355,10 @@ export function PublishMenu({
   const [view, setView] = useState('summary');
   // Viewer analytics settings (ENG-4455), read with the stats while the panel
   // is open on a published artifact.
-  const analytics = useArtifactStats(pub.artifact, { enabled: open && isPublished && !!pub.artifact });
+  // Not for a public website: its stats routes answer 404.
+  const analytics = useArtifactStats(pub.artifact, {
+    enabled: open && isPublished && !!pub.artifact && hasViewerAnalytics(pub.accessMode),
+  });
   // The analytics switches save as they flip; the footer says so.
   const analyticsSave = useSaveStatus(!!analytics.trackingBusy, !!analytics.error);
   // Which reads the panel waits on, and whether it may claim "Shared"
@@ -362,6 +367,12 @@ export function PublishMenu({
     orgMode, sharing, orgName, sharingStatus, sharingReady, accessStatus, shareState, isSharedWithSomeone,
     permissionsUnreachable,
   } = useArtifactShareState(pub);
+  // "Public website": MindsHub mode, a deployment that allows it (/health's
+  // artifact_websites) and a static artifact; the publisher refuses it for a
+  // fullstack app, live apps included.
+  const artifactWebsites = useArtifactWebsites();
+  const offerWebsite = orgMode && artifactWebsites && !!pub.artifact && !isBackendArtifact(pub.artifact);
+  const isWebsite = pub.accessMode === AUDIENCE_CHOICE.WEBSITE;
   const sharingSettingsStatus = !sharingReady && (
     <LoadStatus status={sharingStatus} what={t('publish.load.sharingSettings')} onRetry={pub.orgSharing.retry} />
   );
@@ -494,9 +505,9 @@ export function PublishMenu({
     cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.55 : 1,
     fontFamily: FONT_BODY, fontWeight: 600, fontSize: 13, lineHeight: 1,
     display: 'inline-flex', alignItems: 'center', gap: 6, borderRadius: 8,
-    ...(isPublished
-      ? { background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--line)', padding: '7px 8px 7px 10px' }
-      : { background: 'var(--accent)', color: '#fff', border: '1px solid var(--accent)', padding: '7px 16px' }),
+    // One look whether or not it's published yet (ENG-4687).
+    background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--line)',
+    padding: '7px 8px 7px 10px',
   };
 
   const reportOpened = () => reportShareOpened(pub.artifact, {
@@ -588,16 +599,18 @@ export function PublishMenu({
               maxHeight: 'var(--available-height, 80vh)',
               display: 'flex', flexDirection: 'column',
             }}>
-              {/* NOT PUBLISHED — Share to the Web */}
+              {/* NOT PUBLISHED: the same panel as a published artifact's
+                  (ENG-4687), without the address it doesn't have yet, and
+                  the same access dropdown; the footer shares it. */}
               {!isPublished && (
                 <>
-                  <PanelHeader title={t('publish.shareToWeb')} />
+                  <PanelHeader title={t('publish.share')} />
                   <div className={`py-3 px-4 ${SCROLL_BODY}`} data-testid="publish-menu-body">
                     <SectionLabel>{whoCanAccess}</SectionLabel>
                     {sharingSettingsStatus || (
                       <>
                         {permissionsNotice}
-                        <AccessChooser value={draft} onChange={editDraft} onSubmit={doPublish} sharing={sharing} ariaLabel={whoCanAccess} />
+                        <AccessChooser value={draft} onChange={editDraft} onSubmit={doPublish} sharing={sharing} ariaLabel={whoCanAccess} website={offerWebsite} />
                       </>
                     )}
                   </div>
@@ -625,7 +638,7 @@ export function PublishMenu({
   
                   <div className={SCROLL_BODY} data-testid="publish-menu-body">
                     <div className="py-3 px-4 border-b border-t-0 border-x-0 border-solid border-line">
-                      <SectionLabel>{t('publish.websiteUrl')}</SectionLabel>
+                      <SectionLabel>{isWebsite ? t('publish.websiteAddress') : t('publish.websiteUrl')}</SectionLabel>
                       <UrlField url={pub.publishedUrl} onCopied={() => reportLinkCopied(pub.artifact, { entry })} />
                     </div>
 
@@ -650,12 +663,12 @@ export function PublishMenu({
                               // over it, and would not be re-seeded (ENG-931).
                               picker={current.mode && pub.accessLoaded ? (desc) => (
                                 <AccessChooser
-                                  layout="dropdown"
                                   showEditor={false}
                                   chosenDesc={desc}
                                   ariaLabel={whoCanAccess}
                                   value={current}
                                   sharing={sharing}
+                                  website={offerWebsite}
                                   onChange={(d) => {
                                     if (d.mode === current.mode) return;
                                     editDraft(d);
@@ -687,7 +700,10 @@ export function PublishMenu({
                           {sharingSettingsStatus || accessLoadStatus || (
                             <>
                               {permissionsNotice}
-                              <AccessChooser layout="dropdown" value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} ariaLabel={whoCanAccess} />
+                              <AccessChooser value={draft} onChange={(d) => { editDraft(d); setDraftDirty(true); }} onSubmit={doApplyAccess} sharing={sharing} ariaLabel={whoCanAccess} website={offerWebsite} />
+                              {draft.mode === AUDIENCE_CHOICE.WEBSITE && analytics.data?.require_email === true && (
+                                <Alert variant="info" className="mt-2">{t('publish.websiteEmailGateNotice')}</Alert>
+                              )}
                             </>
                           )}
                         </>
@@ -736,10 +752,10 @@ export function PublishMenu({
                     </div>
 
                     {/* Whatever access is picked or being changed: analytics
-                        is its own setting, saved as it flips. Not for Only
-                        me, which nobody else opens. */}
+                        is its own setting, saved as it flips
+                        (offersViewerAnalytics says where it is not offered). */}
                     {pub.artifact && view !== 'versions'
-                      && (view === 'access' ? draft.mode : current.mode) !== AUDIENCE_CHOICE.PRIVATE && (
+                      && offersViewerAnalytics(view === 'access' ? draft.mode : current.mode) && (
                       <div className="py-3 px-4 border-t border-b-0 border-x-0 border-solid border-line">
                         <SectionLabel>{t('analytics.title')}</SectionLabel>
                         <ViewerAnalyticsSettings controller={analytics} />

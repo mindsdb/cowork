@@ -24,10 +24,6 @@
         "untilMobile": "無料のMindsHub Airは、{until}まで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。",
         "dailyResetMobile": "無料のMindsHub Airは、1日の予算がリセットされるまで全ユーザーを対象に一時停止しています。この間、無料枠は消費されません。"
       },
-      "resting": {
-        "resetsAt": "{time}にリセットされます。",
-        "noReset": "Airは無料トークンを使い切るまで利用できます。"
-      },
       "balanceEmptySentence": "残高がありません。",
       "percentLeft": "無料枠の残り：{percent}",
       "autoTopUpFailed": {
@@ -46,8 +42,6 @@
       },
       "balanceLow": {
         "title": "残高が少なくなっています",
-        "autoRefills": "残り{usd}です。{floor}を下回ると、自動チャージで{target}まで補充されます。",
-        "autoCovers": "残り{usd}です。自動チャージで補充されます。",
         "autoPending": "残り{usd}です。自動チャージは銀行の処理を待っています。",
         "autoCapReached": "残り{usd}です。月間上限を超えないよう、自動チャージは一時停止しています。続けるには残高を追加してください。",
         "body": "残り{usd}です。残高を追加するか、自動チャージをオンにしてください。",
@@ -83,7 +77,8 @@
         "lowThenWalletWithTime": "その後は、{time}にリセットされるまで残高からAPI料金で支払います。",
         "lowThenPause": "その後は、リセットされるまでタスクが一時停止します。",
         "lowThenPauseWithTime": "その後は、{time}までタスクが一時停止します。"
-      }
+      },
+      "resetsAt": "{time}にリセットされます。"
     },
     "scheduleWhen": {
       "timeZone": "{city}時間",
@@ -95,7 +90,14 @@
       "daily": "毎日{time}",
       "weekdays": "平日の毎日{time}",
       "weekly": "毎週{weekday} {time}",
-      "weeklyNoDay": "毎週{time}"
+      "weeklyNoDay": "毎週{time}",
+      "monthlyDay": "毎月{day}日 {time}",
+      "monthlyDayOrLast": "毎月{day}日（短い月は末日） {time}",
+      "monthlyFirst": "毎月第1{weekday} {time}",
+      "monthlySecond": "毎月第2{weekday} {time}",
+      "monthlyThird": "毎月第3{weekday} {time}",
+      "monthlyFourth": "毎月第4{weekday} {time}",
+      "monthlyLast": "毎月最終{weekday} {time}"
     },
     "scheduleCopy": {
       "missedOnceServer": "この時刻にサーバーが停止していた場合、1時間以内に復旧すればタスクが実行されます。それを過ぎると「未実行」となり、手動で実行できます。",
@@ -468,6 +470,13 @@
         "pendingDetail": "認証情報は暗号化して保存されます。確認が完了するとこのページが更新されます。"
       }
     },
+    "httpRefusal": {
+      "uploadTooLarge": "アップロードのサイズが上限を超えています。小さいファイルを選ぶか、一度にアップロードするファイルの数を減らしてください。",
+      "requestTooLarge": "リクエストのサイズが上限を超えています。送信する内容を減らしてみてください。"
+    },
+    "projectUploads": {
+      "notUploaded": "アップロードされなかったファイル：{files}。"
+    },
     "fileDrop": {
       "uploading": "アップロード中…"
     },
@@ -603,7 +612,8 @@
       "hourly": "毎時",
       "daily": "毎日",
       "weekdays": "平日",
-      "weekly": "毎週"
+      "weekly": "毎週",
+      "monthly": "毎月"
     },
     "openProject": "{project}を開く",
     "descriptionWithNext": "{sentence} · 次回：{next}",
@@ -639,7 +649,12 @@
     "succeededTitle": "スケジュールされたタスクが完了しました",
     "succeededBody": "「{title}」の実行が完了しました。クリックして開きます。",
     "succeededToast": "スケジュールされたタスク「{title}」の実行が完了しました。",
-    "openAction": "タスクを開く"
+    "openAction": "タスクを開く",
+    "stoppedTitle": "スケジュールタスクが停止しました",
+    "stoppedBody": "「{title}」は完了前に上限に達して停止しました。クリックして確認してください。",
+    "stoppedToast": "スケジュールタスク「{title}」は完了前に上限に達して停止しました。",
+    "genericTitle": "新しい通知",
+    "genericLine": "新しい通知: {subject}"
   },
   "scheduleNotifyMenu": {
     "label": "通知",
@@ -655,11 +670,13 @@
       "hourly": "1時間ごと",
       "daily": "毎日",
       "weekdays": "平日の毎日",
-      "weekly": "毎週"
+      "weekly": "毎週",
+      "monthly": "毎月"
     },
     "errorNoPrompt": "{agent}にやってほしいことを入力してください。",
     "errorPickFutureTime": "未来の時刻を選択してください。",
     "errorPickTime": "時刻を選択してください。",
+    "errorPickDays": "曜日を1つ以上選択してください。",
     "errorSave": "スケジュールを保存できませんでした。",
     "editTitle": "スケジュール済みタスクを編集",
     "createTitle": "タスクをスケジュール",
@@ -671,6 +688,17 @@
     "when": "日時",
     "howOften": "頻度",
     "dayOfWeek": "曜日",
+    "daysOfWeek": "曜日",
+    "dayOfMonth": "日付",
+    "monthBy": {
+      "label": "毎月のどの日",
+      "day": "日付",
+      "week1": "第1",
+      "week2": "第2",
+      "week3": "第3",
+      "week4": "第4",
+      "weekLast": "最終"
+    },
     "date": "日付",
     "atMinute": "分：",
     "at": "時刻：",
@@ -682,6 +710,7 @@
     "namePlaceholder": "プロンプトから自動で命名",
     "project": "プロジェクト",
     "model": "モデル",
+    "connections": "接続",
     "accountDefault": "アカウントのデフォルト",
     "cancel": "キャンセル",
     "saveAndRunOnce": "保存して1回実行",
@@ -804,6 +833,9 @@
     "folderUnsupported": "このサーバーは、プロジェクトでフォルダを指定する機能に対応していません。「{name}」は通常のプロジェクトとして作成され、フォルダの選択は解除されました。フォルダを使用するにはCoworkをアップデートしてください。不要な場合はそのプロジェクトを削除してください。",
     "couldNotCreate": "プロジェクトを作成できませんでした。",
     "couldNotOpenPicker": "フォルダ選択画面を開けませんでした。",
+    "filesNotUploaded": "「{name}」を作成しましたが、ファイルをアップロードできませんでした。",
+    "someFilesNotUploaded": "「{name}」を作成しましたが、一部のファイルをアップロードできませんでした。",
+    "filesUploadUnconfirmed": "「{name}」を作成しました。もう一度アップロードする前に、プロジェクト内のファイルを確認してください。",
     "title": "新しいプロジェクトを開始",
     "nameLabel": "プロジェクト名",
     "instructionsLabel": "指示",

@@ -20,7 +20,8 @@
       "deleting": "Eliminazione…",
       "copyMessage": "Copia messaggio",
       "copyResponse": "Copia risposta",
-      "agentFallback": "Agente"
+      "agentFallback": "Agente",
+      "submittedData": "Dati inviati"
     },
     "incomplete": {
       "spendCeiling": "Interrotta in anticipo: l’attività ha raggiunto il budget di token.",
@@ -74,7 +75,13 @@
       "liveArtifact": "artefatto live",
       "deletedBadge": "Eliminato",
       "share": "Condividi",
-      "shareTooltip": "Scegli chi può aprirlo"
+      "shareTooltip": "Scegli chi può aprirlo",
+      "goToLatestTooltip": "Scorri all'ultima versione",
+      "openLink": "Apri link",
+      "openLinkTooltip": "Apri il link dell'artefatto in una nuova scheda",
+      "updatedSeeBelow": "È stato aggiornato. Vedi l'ultima versione qui sotto.",
+      "previewThisVersion": "Anteprima di questa versione",
+      "hideVersionPreview": "Nascondi questa versione"
     },
     "kinds": {
       "provider": "Provider",
@@ -506,7 +513,19 @@
       "missingType": "Tipo di grafico mancante",
       "unsupportedType": "Tipo di grafico non supportato: «{type}». Supportati: {supported}.",
       "invalidJson": "JSON non valido nella specifica del grafico",
-      "error": "ERRORE: {error}"
+      "error": "ERRORE: {error}",
+      "loading": "Disegno del grafico…",
+      "chartLabel": "Grafico",
+      "diagramLabel": "Diagramma",
+      "copyImage": "Copia come immagine",
+      "downloadPng": "Scarica PNG",
+      "showSource": "Mostra sorgente",
+      "hideSource": "Nascondi sorgente",
+      "tooLarge": "La specifica supera {limit} KB",
+      "tooManyDatasets": "Troppe serie di dati ({count}); il limite è {limit}",
+      "tooManyPoints": "Troppi punti dati ({count}); il limite è {limit}",
+      "tooManyNodes": "Troppi nodi ({count}); il limite è {limit}",
+      "emptyDiagram": "Il diagramma è vuoto"
     }
   },
   "taskModes": {
@@ -760,6 +779,10 @@
     "phoneWorking": "Ci sto lavorando…",
     "phoneDone": "Fatto. Riduci per vedere la risposta.",
     "phoneMinimize": "Riduci",
+    "overlayQuestion": "{agent} ha una domanda in attesa nella chat.",
+    "overlayHandOver": "Tocca a te su {site}: {reason}.",
+    "overlayHandOverWatching": "Tocca a te su {site}: {reason}. {agent} riprende da solo quando è fatto.",
+    "overlayGoToQuestion": "Vai alla domanda",
     "talkTo": "Parla con {agent}"
   },
   "voiceCall": {

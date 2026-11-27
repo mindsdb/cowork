@@ -197,7 +197,7 @@ describe('DocModal panel rail', () => {
     fireEvent.change(box, { target: { value: 'Too vague' } });
     fireEvent.keyDown(box, { key: 'Enter' });
     await waitFor(() => expect(comments.current.create).toHaveBeenCalledWith(expect.objectContaining({
-      selector: JSON.stringify({ type: 'doc-block', tab: 't_1', blocks: ['b_1'], quote: '' }),
+      selector: JSON.stringify({ type: 'doc-block', tab: 't_1', blocks: ['b_1'], css: '#blk-b_1', quote: '' }),
       text: 'Too vague',
     })));
   });

@@ -10,6 +10,7 @@ import Composer from '../cowork/components/Composer';
 import ChatView from '../cowork/views/ChatView';
 import HomeView from '../cowork/views/HomeView';
 import { Modal, ModalHeader, ModalBody } from '../cowork/components/ui/Modal';
+import { ToastProvider } from '../cowork/components/ui/Toast';
 
 /* Render the real components against synthetic data, using the build's platform
    flag. With BUILD_TARGET=web, use Vite's /@fs/ URL for this checkout's
@@ -89,11 +90,15 @@ document.body.style.overflow = 'auto';
 document.body.style.height = 'auto';
 
 const view = params.get('view');
+/* The "+ New project" dialog, which the composer opens, needs a toast provider,
+   as the app's own root gives it. */
 createRoot(document.getElementById('root')).render(
-  view === 'composer' ? <ComposerFixture />
-    : view === 'card' ? <CardFixture />
-      : view === 'home' ? <div style={{ width: 1000, height: 600, margin: 32 }}>
-        <HomeView greeting="Good morning" activeTasks={[]} skipIntro serverOnline configReady={false} onOpenSettings={noop} />
-      </div>
-        : <SettingsFixture />,
+  <ToastProvider>
+    {view === 'composer' ? <ComposerFixture />
+      : view === 'card' ? <CardFixture />
+        : view === 'home' ? <div style={{ width: 1000, height: 600, margin: 32 }}>
+          <HomeView greeting="Good morning" activeTasks={[]} skipIntro serverOnline configReady={false} onOpenSettings={noop} />
+        </div>
+          : <SettingsFixture />}
+  </ToastProvider>,
 );

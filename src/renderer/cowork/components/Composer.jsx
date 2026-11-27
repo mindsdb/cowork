@@ -34,7 +34,7 @@ import { PLATFORM_UI } from '../../lib/deployment';
 import { modelPickerMode, operatorEffortLevels } from '../../lib/modelPicker';
 import UsageBar from './UsageBar';
 import { HubUsageContext } from '../lib/hubUsageContext';
-import { deriveComposerWarning, countsAsWarning } from '../lib/usageWarnings';
+import { deriveComposerWarning } from '../lib/usageWarnings';
 import { connectionMuteKey } from '../lib/connectionMutes';
 import { useTranslation } from '../../lib/i18n';
 import { useDocsEnabled } from '../../lib/docsEnabled';
@@ -734,6 +734,8 @@ export default function Composer({
     taRef.current?.focus();
   }, [taskMode]);
 
+  const pendingSendRef = useRef(null);
+  const [sendTick, setSendTick] = useState(0);
   // Edit-and-resend: when ChatView bumps `prefill`, drop the supplied
   // text into the composer and focus the textarea so the user can
   // immediately tweak + send. Guarded on `bump > 0` so the initial
@@ -783,8 +785,22 @@ export default function Composer({
       setValue(text);
       ta?.focus();
     }
+    // `prefill.send` sends the text as if Send were pressed, once it is the
+    // composer's value and onSend is this render's, so the model and the
+    // caller's state ride along as on any send. The tick re-renders even when
+    // the text was already there.
+    if (prefill.send && text.trim()) {
+      pendingSendRef.current = text;
+      setSendTick((n) => n + 1);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefill?.bump]);
+  useEffect(() => {
+    if (pendingSendRef.current === null || value !== pendingSendRef.current) return;
+    pendingSendRef.current = null;
+    handleSend();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, sendTick]);
 
   // Close the open meta-pill menu on any press that isn't on the menu
   // popup itself or a trigger pill. The previous version only closed on
@@ -981,16 +997,8 @@ export default function Composer({
     [hubUsage],
   );
   // "Healthy" means nothing to WARN about for any pick, not merely that the
-  // current paid model hides the free-token warnings. `countsAsWarning` owns
-  // the resting-is-not-a-warning rule, so it is stated and tested once.
-  const usageHealthy = !!hubUsage?.usage?.reachable && !countsAsWarning(anyPickWarning);
-  // An explicit paid pick cannot spend the grant, so it gets no figure — but
-  // the account still has one, and letting the bar come and go with the pick
-  // moved the whole composer by the bar's height on every switch. Reserve
-  // exactly that height with the same component instead of a magic number:
-  // `visibility: hidden` keeps the layout and drops it out of the tab order,
-  // and aria-hidden keeps it out of the accessibility tree.
-  const reservedBar = !usageWarning && anyPickWarning?.resting ? anyPickWarning : null;
+  // current paid model hides the free-token warnings.
+  const usageHealthy = !!hubUsage?.usage?.reachable && !anyPickWarning;
   const [noConnectorsBefore, noConnectorsAfter = ''] = t('composer.menu.noConnectors', { link: INLINE_SLOT }).split(INLINE_SLOT);
 
   return (
@@ -1013,11 +1021,6 @@ export default function Composer({
           isBillingOwner={!!hubUsage?.usage?.isBillingOwner}
           usageKnown={usageHealthy}
         />
-        {reservedBar && (
-          <div className="invisible pointer-events-none" aria-hidden="true" data-usage-bar-reserved="true">
-            <UsageBar warning={reservedBar} />
-          </div>
-        )}
         <ComposerFrame className={`composer-wrap${inFence ? ' in-fence' : ''}`} focused={focused}>
 
           {/* "/" slash-command menu — anchored to composer-wrap so it appears

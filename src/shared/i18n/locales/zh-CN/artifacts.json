@@ -51,11 +51,12 @@
       "onlyYou": "仅自己",
       "public": "公开",
       "publicPassword": "公开 · 密码",
-      "restricted": "受限"
+      "restricted": "受限",
+      "website": "网站"
     },
     "hint": {
       "notSharedYet": "尚未分享。打开后选择“分享”即可获取网页链接。",
-      "notShareable": "未分享。只有网页和 Markdown 文档可以通过链接分享。",
+      "notShareable": "未分享。网页、文档、电子表格、演示文稿、PDF、CSV 和文本文件可以通过链接分享；这种文件不能。",
       "orgRestricted": "受限。打开“分享”可查看谁能打开此链接。",
       "ownerOnly": "已分享，但只有你能打开此链接。",
       "password": "任何拥有链接和密码的人都可以打开。",
@@ -64,10 +65,7 @@
       "sharedWith": "已与 {names} 共享",
       "sharedWithMore": "已与 {names} 及另外 {count} 个对象共享"
     },
-    "sharingFailed": "分享失败",
-    "couldNotShare": "无法分享。",
     "tryAgain": "重试",
-    "sharing": "正在分享…",
     "updating": "正在更新…",
     "stoppingSharing": "正在停止分享…",
     "deleting": "正在删除…",
@@ -339,7 +337,9 @@
       "restrictedTitle": "受限",
       "restrictedDesc": "尚不清楚谁能打开此链接",
       "specificTitle": "特定人员",
-      "specificDesc": "仅限你列出的人"
+      "specificDesc": "仅限你列出的人",
+      "websiteTitle": "公开网站",
+      "websiteDesc": "拥有独立网址，互联网上的任何人都能打开"
     },
     "whoCanAccess": "谁可以访问你的应用",
     "whoCanAccessDoc": "谁可以访问你的文档",
@@ -364,7 +364,6 @@
     "makeLive": "设为上线版本",
     "shared": "已分享",
     "share": "分享",
-    "shareToWeb": "分享到网页",
     "sharingBusy": "正在分享",
     "websiteUrl": "网站 URL",
     "change": "更改",
@@ -390,7 +389,9 @@
       "ownerOnlyTitle": "仅所有者",
       "ownerOnlyDesc": "其他人无法打开分享链接",
       "listWithheld": "仅限分享给的团队和人员"
-    }
+    },
+    "websiteAddress": "网站地址",
+    "websiteEmailGateNotice": "公开网站不会要求访客提供邮箱，任何人都能打开。"
   },
   "previewErrors": {
     "reported": "{count, plural, other {预览报告了 # 个错误}}",
@@ -481,6 +482,7 @@
     "backendFailed": "后端启动失败",
     "proxyUnavailable": "预览代理不可用",
     "noMountUrl": "预览挂载未返回 URL",
+    "appNotPublishedYet": "此应用发布后会显示在这里，发布会在创建后立即进行。请稍后再试。",
     "loadFailed": "无法加载产物",
     "portNotReady": "后端端口尚不可用 — 预览仍在加载中。",
     "remoteNoUrl": "此产物由远程服务器提供，暂时还没有可打开的 URL。",
@@ -521,8 +523,6 @@
       "title": "标题（A–Z）",
       "type": "类型"
     },
-    "shareProtected": "分享受密码保护",
-    "shareRestricted": "分享受限",
     "downloadFailed": "无法下载此产物。",
     "menu": "产物菜单",
     "openProject": "打开 {project}",
@@ -530,9 +530,7 @@
     "openViewer": "打开查看器",
     "showInExplorer": "在资源管理器中显示",
     "deleteItem": "删除产物",
-    "onlyHtmlMd": "只有 HTML 和 Markdown 产物可以分享。",
-    "sharedToast": "{mode, select, password {已分享（密码保护）— {url}} restricted {已分享（受限）— {url}} other {已分享 — {url}}}",
-    "mindsApiKey": "请先在“设置”中填写你的 Minds API 密钥，然后再分享产物。",
+    "onlyHtmlMd": "只有网页、文档、电子表格、演示文稿、PDF、CSV 和文本文件可以分享。",
     "stoppedOnMindsHub": "已停止在 MindsHub 上分享。",
     "stopped": "已停止分享。",
     "updated": "已更新分享的版本。",
