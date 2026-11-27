@@ -228,10 +228,10 @@ export function ArtifactViewer({
   // The preview's signed link has expired: pages and files the draft loads
   // from now on are refused until a reload asks for a new link.
   const [draftLinkExpired, setDraftLinkExpired] = useState(false);
-  // A published app's preview: why it has none (a publishedFrameCredential
-  // reason), and whether its frame token is past the deadline, after which
-  // its requests fail.
-  const [publishedFailureReason, setPublishedFailureReason] = useState('');
+  // A published app's preview: why it has none ({ reason, message }, the
+  // reason from publishedFrameCredential and the error it showed), and whether
+  // its frame token is past the deadline, after which its requests fail.
+  const [publishedFailure, setPublishedFailure] = useState(null);
   const [publishedSessionEnded, setPublishedSessionEnded] = useState(false);
   const publishedDeadlineRef = useRef(0);
   const [backendPort, setBackendPort] = useState(null);
@@ -310,6 +310,9 @@ export function ArtifactViewer({
   const pub = usePublish(artifact, { onChange: reportChange, enabled: open, entry: panelEntry });
   // The card's address stands in until the publish state has loaded.
   const publishedAddress = pub.publishedUrl || artifact?.publishedUrl || '';
+  // What a full-stack app's preview loads from in org mode, and nothing for
+  // any other artifact, so publishing a draft never reloads its preview.
+  const publishedFrameAddress = orgMode && isBackendArtifact ? publishedAddress : '';
   const workspace = useArtifactWorkspace(artifact, {
     open,
     onChange: reportChange,
@@ -877,7 +880,7 @@ export function ArtifactViewer({
     setBackendPort(null);
     setTextPreview(null);
     setDraftLinkExpired(false);
-    setPublishedFailureReason('');
+    setPublishedFailure(null);
     setPublishedSessionEnded(false);
     publishedDeadlineRef.current = 0;
     let cancelled = false;
@@ -960,7 +963,7 @@ export function ArtifactViewer({
       draftLinkEnabled,
       signal: reading.signal,
       // A fullstack app in org mode shows from its artifact host, once published.
-      publishedApp: orgMode ? { url: publishedAddress } : null,
+      publishedApp: orgMode ? { url: publishedFrameAddress } : null,
     })
       .then((source) => {
         if (cancelled) return;
@@ -991,7 +994,7 @@ export function ArtifactViewer({
         // Links off reruns this effect, which then takes the srcdoc path.
         if (e?.stage === 'draft-link' && await withdrawDraftLinks(e.cause)) return;
         if (cancelled) return;
-        if (e?.stage === 'published' && e.reason) setPublishedFailureReason(e.reason);
+        if (e?.stage === 'published' && e.reason) setPublishedFailure({ reason: e.reason, message: e.message });
         setErr(e?.message || t('viewer.loadFailed'));
       })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -1001,7 +1004,19 @@ export function ArtifactViewer({
       clearTimeout(expiry);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, textExt, isImage, liveAppView, showDocumentPreview, reloadNonce, draftLinkEnabled, orgMode, pub.publishedUrl, pub.accessMode, artifact?.publishedUrl]);
+  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, textExt, isImage, liveAppView, showDocumentPreview, reloadNonce, draftLinkEnabled, orgMode, publishedFrameAddress]);
+
+  // A change of a published app's access needs another kind of credential
+  // (a link key or a token), so the frame loads again. The access loading
+  // for the first time is no change: the frame already has the right one.
+  const frameAccessRef = useRef(pub.accessMode);
+  useEffect(() => {
+    const previous = frameAccessRef.current;
+    frameAccessRef.current = pub.accessMode;
+    if (publishedFrameAddress && previous && pub.accessMode && previous !== pub.accessMode) {
+      setReloadNonce((n) => n + 1);
+    }
+  }, [pub.accessMode, publishedFrameAddress]);
 
   // A timer runs late in a sleeping laptop or a throttled background tab, so
   // the deadline is checked again whenever the page comes back.
@@ -1841,7 +1856,10 @@ export function ArtifactViewer({
     url: previewUrl,
     doc: previewDoc,
     kind: previewKind,
-    publishedFailure: publishedFailureReason ? { reason: publishedFailureReason, url: publishedAddress } : null,
+    // Only while the error on screen is still the one the load failed with.
+    publishedFailure: publishedFailure && err === publishedFailure.message
+      ? { reason: publishedFailure.reason, url: publishedAddress }
+      : null,
     sessionEnded: publishedSessionEnded,
     iframeRef,
     view: previewView,

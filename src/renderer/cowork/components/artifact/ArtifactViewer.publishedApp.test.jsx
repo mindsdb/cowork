@@ -147,6 +147,7 @@ vi.mock('../ConfirmModal', () => ({ ConfirmModal: () => null }));
 import { ArtifactViewer } from './ArtifactViewer';
 import { publishedAppUrl } from './htmlPreviewSource';
 import { mountArtifactPreview } from '../../api';
+import { host } from '../../../platform/host';
 
 // A full-stack app on an org deployment (ENG-4687): the server can't start its
 // backend (preview-mount is desktop-only), so the preview frames the app at its
@@ -232,6 +233,49 @@ describe('ArtifactViewer: a full-stack app on an org deployment', () => {
     expect(await screen.findByText(/You don't have access to this app's published page/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Open the published page/ })).toBeInTheDocument();
     expect(screen.queryByTitle('Team Shared Todo')).toBeNull();
+  });
+
+  it('shows a later, unrelated error as itself, not inside the published app notice', async () => {
+    published.url = LIVE;
+    publishedFrameCredential.mockResolvedValue({ error: 'retry' });
+    vi.mocked(host.openExternal).mockRejectedValueOnce(new Error('Popup blocked'));
+    render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
+    await screen.findByRole('button', { name: /Open the published page/ });
+
+    await act(async () => { await headerProps.current.actions.onOpenOS(); });
+
+    expect(await screen.findByText('Popup blocked')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Open the published page/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Reload preview/ })).toBeNull();
+  });
+
+  it('asks for one credential while the publish state loads behind the card', async () => {
+    published.accessMode = '';
+    publishedFrameCredential.mockResolvedValue({ origin: ORIGIN, credential: 'v1.p.s', exp: null });
+    const card = { ...app, publishedUrl: LIVE };
+    const { rerender } = render(<ArtifactViewer open artifact={card} onClose={vi.fn()} />);
+    await frameOf();
+
+    // The publish state arrives: the same address, and the access first known.
+    published.url = LIVE;
+    published.accessMode = 'restricted';
+    rerender(<ArtifactViewer open artifact={card} onClose={vi.fn()} />);
+    await frameOf();
+
+    expect(publishedFrameCredential).toHaveBeenCalledTimes(1);
+  });
+
+  it('loads again with a new credential when the access changes', async () => {
+    published.url = LIVE;
+    published.accessMode = 'restricted';
+    publishedFrameCredential.mockResolvedValue({ origin: ORIGIN, credential: 'v1.p.s', exp: null });
+    const { rerender } = render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
+    await frameOf();
+
+    published.accessMode = 'public';
+    rerender(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
+
+    await waitFor(() => expect(publishedFrameCredential).toHaveBeenCalledTimes(2));
   });
 
   it('loads again from the notice after a transient failure', async () => {
