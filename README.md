@@ -1383,7 +1383,7 @@ Export-PfxCertificate -Cert $cert -FilePath cowork-dev.pfx -Password (ConvertTo-
 
 ### Release hardening
 
-A packaged build runs only the code MindsDB built into it, so a program running as the user can't start it in a way that loads code of its own.
+A packaged build closes the ways a program running as the user could start the app's own binary and load code of its own into it.
 
 - **Electron fuses.** `electronFuses` in `electron-builder.yml` writes five fuses into every packaged build before signing, on both slices of the universal macOS app. `runAsNode`, `enableNodeOptionsEnvironmentVariable` and `enableNodeCliInspectArguments` are off. `enableEmbeddedAsarIntegrityValidation` and `onlyLoadAppFromAsar` are on. `grantFileProtocolExtraPrivileges` stays at Electron's default (on): with it off, Electron no longer serves `app.asar` over `file://`, and the main window loads its renderer that way, so it can go off only once the renderer loads through a custom scheme. So `ELECTRON_RUN_AS_NODE`, `NODE_OPTIONS` and `--inspect` have no effect, and a changed `app.asar` stops the app at start. `resetAdHocDarwinSignature` re-signs an unsigned local build ad hoc, so it still launches on Apple Silicon. `scripts/release-fuses.mjs` holds the expected values, and `src/main/release-hardening.invariant.test.ts` pins the config to them. To read a build's fuses, use `npx @electron/fuses read --app <path>`. On a universal app, that reads only the first slice, and `checkFuses` in `scripts/release-fuses.mjs` reads every slice.
 - **Entitlements.** The app and its helpers are signed without `allow-dyld-environment-variables` and `disable-library-validation`.
@@ -1397,6 +1397,27 @@ Known limits:
 - Windows installs per user, so a program running as the user can rewrite the installed `.exe`, fuses included. The macOS app installs from a root-owned `.pkg` and keeps its code signature.
 - `app.asar.unpacked` (native modules) falls outside asar integrity. On macOS, library validation still covers those modules.
 - An older bundle MindsDB signed can be put back in the UI cache, as long as it is newer than the bundled renderer.
+
+#### Driving a packaged build with Playwright
+
+Test automation can't drive an installed build. The launch guard refuses `--remote-debugging-port`, and the inspector fuse keeps Node's inspector off, which Playwright's `_electron.launch` waits for. Automation drives a copy instead, which `npm run inspectable-copy` makes from the installed app:
+
+```bash
+npm run inspectable-copy -- "/Applications/MindsHub Cowork (Staging).app" ~/cowork-qa
+```
+
+On Windows, pass the installed `.exe`, for example `"$env:LOCALAPPDATA\Programs\anton\MindsHub Cowork (Staging).exe"`.
+
+The script (`scripts/inspectable-copy.mjs`, the same code the setup smokes run) checks that the installed app carries the release fuses. It copies the app into `<folder>/app` and turns the inspector fuse back on in the copy alone, and on macOS it signs the copy again ad hoc. It checks that the copy differs from the release in that one fuse, and it leaves the installed app as shipped. It also sets up a test profile in `<folder>/profile`, kept across runs. In the `.env` of every account the profile holds, it turns off shell auto-update and pins the UI version, so the build under test stays the same during a run. The app reads `.env` from the signed-in account's own folder, so run the script again after a new test account first signs in. It prints the copy's executable, its build kind, and the environment and arguments that run it in that profile:
+
+```js
+const { executable, env, args } = JSON.parse(printed);
+const app = await _electron.launch({ executablePath: executable, env: { ...process.env, ...env }, args });
+```
+
+Pass `env` as printed. It points the copy's home and temp folders into the profile and fixes the copy's build kind, so a `COWORK_BUILD_KIND` in your shell can't move it to another data home. Without it, the copy runs in your real profile and asks for the installed app's Keychain items, so deny those prompts. To refresh the copy after an update, delete `<folder>/app` and run the script again. A harness that starts the copy itself and attaches with `connectOverCDP` adds `--inspect=0` beside `--remote-debugging-port`. Without it, the copy refuses the switch as the installed app does. DevTools listens on `127.0.0.1` only.
+
+The copy can't stand in for everything. On macOS it no longer carries MindsDB's Developer ID signature, so Keychain access, privacy permissions and auto-update don't behave as they do in the installed app. A test profile also has no connector OAuth client credentials, because the `.pkg` stages them under the user's real home. Test those on the installed app by hand. The script makes no copy on Linux.
 
 ---
 
