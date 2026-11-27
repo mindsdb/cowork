@@ -26,7 +26,7 @@ import {
 
 const BYTES = readFileSync(resolve(__dirname, '../../__fixtures__/docs-code-highlight/contract.json'));
 // The same digest is pinned in cowork-server's tests/test_docs_highlight.py.
-const SHA256 = '49bff234452131da4bbf58257056fbd66bb75e9e078cf047bb3dd34a09ba0f17';
+const SHA256 = 'a97667de812fe9c197838c019da8ce0d43986e7181132e26f4fdcaf73ed4645e';
 const contract = JSON.parse(BYTES);
 const MODULES = { bash, css, diff, dockerfile, go, javascript, json, markdown, python, rust, shell, sql, typescript, xml, yaml };
 const ENTITIES = { '&lt;': '<', '&gt;': '>', '&amp;': '&', '&quot;': '"', '&#x27;': "'" };

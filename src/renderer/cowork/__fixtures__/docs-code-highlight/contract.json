@@ -594,11 +594,23 @@
       ]
     },
     "markdown": {
-      "code": "# Title\n\nSome *em* text\n\n```\ncode\n```",
+      "code": "# Title\n\nSome *em* and `x` text\n\n```fan\naaa\n```",
       "expect": [
         [
           "# Title",
           "section"
+        ],
+        [
+          "`x`",
+          "code"
+        ],
+        [
+          "```fan",
+          "code"
+        ],
+        [
+          "aaa",
+          "code"
         ]
       ]
     },
