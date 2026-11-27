@@ -33,6 +33,7 @@ import { RailShowMore } from './RailShowMore';
 import * as host from '../../../platform/host';
 import { useFileDrop, FileDropOverlay } from '../../lib/useFileDrop';
 import { openAuthenticatedResource } from '../../lib/authenticatedResource';
+import { notUploadedSentence } from '../../lib/projectUploads';
 import { canUseSharedResource } from '../../lib/sharedResourceAccess';
 import { useOrgMode } from '../../../lib/orgMode';
 import { ChatFoldersSection } from './ChatFoldersSection';
@@ -689,8 +690,9 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
     setUploadError('');
     setUploadBusy(true);
     try {
-      await uploadProjectFiles(project.name, files);
+      const uploaded = await uploadProjectFiles(project.name, files);
       reloadFiles();
+      setUploadError(notUploadedSentence(uploaded));
     } catch (err) {
       setUploadError(err?.message || t('rail.context.uploadFailed'));
     } finally {
@@ -793,8 +795,9 @@ export function ContextCard({ project, conversationId, refreshKey = 0, onAddGoog
               setUploadBusy(true);
               setUploadError('');
               try {
-                await uploadProjectFiles(project.name, files);
+                const uploaded = await uploadProjectFiles(project.name, files);
                 reloadFiles();
+                setUploadError(notUploadedSentence(uploaded));
               } catch (err) {
                 setUploadError(err?.message || t('rail.context.uploadFailed'));
               } finally {

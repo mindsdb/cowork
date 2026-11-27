@@ -13,10 +13,17 @@ vi.mock('../../api', () => ({
 }));
 
 import NewProjectModal from './NewProjectModal';
+import { ToastProvider } from '../ui/Toast';
 
 describe('NewProjectModal instructions', () => {
   it('writes initial instructions immediately after creating the project', async () => {
-    render(<NewProjectModal open onClose={vi.fn()} onCreated={vi.fn()} />);
+    /* The dialog calls useToastManager(), which throws outside a provider. The
+       real tree always has one (App wraps AppCore), so the test wraps it too. */
+    render(
+      <ToastProvider>
+        <NewProjectModal open onClose={vi.fn()} onCreated={vi.fn()} />
+      </ToastProvider>,
+    );
 
     fireEvent.change(screen.getByPlaceholderText('acme-engineering'), {
       target: { value: 'billing' },

@@ -470,6 +470,13 @@
         "pendingDetail": "你的凭据已加密存储。检查完成后，此页面会自动更新。"
       }
     },
+    "httpRefusal": {
+      "uploadTooLarge": "本次上传超过了大小限制。请选择较小的文件，或减少一次上传的文件数量。",
+      "requestTooLarge": "本次请求超过了大小限制。请尝试减少发送的内容。"
+    },
+    "projectUploads": {
+      "notUploaded": "未上传的文件：{files}。"
+    },
     "fileDrop": {
       "uploading": "正在上传…"
     },
@@ -826,6 +833,9 @@
     "folderUnsupported": "此服务器不支持将项目指向文件夹。它已将“{name}”创建为普通项目，并清除了你选择的文件夹。请更新 Cowork 以使用你的文件夹；如果不需要该项目，也可以将其删除。",
     "couldNotCreate": "无法创建项目。",
     "couldNotOpenPicker": "无法打开文件夹选择器。",
+    "filesNotUploaded": "已创建“{name}”，但其文件未能上传。",
+    "someFilesNotUploaded": "已创建“{name}”，但部分文件未能上传。",
+    "filesUploadUnconfirmed": "已创建“{name}”。请先检查项目中的文件，再决定是否重新上传。",
     "title": "新建项目",
     "nameLabel": "项目名称",
     "instructionsLabel": "说明",

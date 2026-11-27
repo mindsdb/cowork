@@ -470,6 +470,13 @@
         "pendingDetail": "Ihre Zugangsdaten werden verschlüsselt gespeichert. Diese Seite wird aktualisiert, sobald die Prüfung abgeschlossen ist."
       }
     },
+    "httpRefusal": {
+      "uploadTooLarge": "Dieser Upload überschreitet die zulässige Größe. Wählen Sie eine kleinere Datei oder weniger Dateien auf einmal aus.",
+      "requestTooLarge": "Diese Anfrage überschreitet die zulässige Größe. Versuchen Sie, weniger Inhalt zu senden."
+    },
+    "projectUploads": {
+      "notUploaded": "Nicht hochgeladene Dateien: {files}."
+    },
     "fileDrop": {
       "uploading": "Wird hochgeladen…"
     },
@@ -826,6 +833,9 @@
     "folderUnsupported": "Dieser Server unterstützt keine Projekte, die auf einen Ordner verweisen. „{name}“ wurde als normales Projekt erstellt und Ihre Ordnerauswahl wurde zurückgesetzt. Aktualisieren Sie Cowork, um Ihren Ordner zu nutzen, oder löschen Sie das Projekt, wenn Sie es nicht möchten.",
     "couldNotCreate": "Projekt konnte nicht erstellt werden.",
     "couldNotOpenPicker": "Die Ordnerauswahl konnte nicht geöffnet werden.",
+    "filesNotUploaded": "„{name}“ wurde erstellt, aber die Dateien wurden nicht hochgeladen.",
+    "someFilesNotUploaded": "„{name}“ wurde erstellt, aber nicht alle Dateien wurden hochgeladen.",
+    "filesUploadUnconfirmed": "„{name}“ wurde erstellt. Prüfen Sie die Dateien im Projekt, bevor Sie den Upload erneut versuchen.",
     "title": "Neues Projekt starten",
     "nameLabel": "Projektname",
     "instructionsLabel": "Anweisungen",

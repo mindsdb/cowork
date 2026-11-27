@@ -470,6 +470,13 @@
         "pendingDetail": "Vos identifiants sont stockés chiffrés. Cette page se met à jour à la fin de la vérification."
       }
     },
+    "httpRefusal": {
+      "uploadTooLarge": "Cette importation dépasse la taille maximale autorisée. Choisissez un fichier plus petit ou importez moins de fichiers à la fois.",
+      "requestTooLarge": "Cette requête dépasse la taille maximale autorisée. Essayez d’envoyer moins de contenu."
+    },
+    "projectUploads": {
+      "notUploaded": "Fichiers non importés : {files}."
+    },
     "fileDrop": {
       "uploading": "Importation…"
     },
@@ -826,6 +833,9 @@
     "folderUnsupported": "Ce serveur ne permet pas d’associer un projet à un dossier. « {name} » a été créé comme projet standard et votre sélection de dossier a été effacée. Mettez à jour Cowork pour utiliser votre dossier, ou supprimez ce projet si vous n’en voulez pas.",
     "couldNotCreate": "Impossible de créer le projet.",
     "couldNotOpenPicker": "Impossible d’ouvrir le sélecteur de dossier.",
+    "filesNotUploaded": "« {name} » a été créé, mais ses fichiers n’ont pas été importés.",
+    "someFilesNotUploaded": "« {name} » a été créé, mais ses fichiers n’ont pas tous été importés.",
+    "filesUploadUnconfirmed": "« {name} » a été créé. Vérifiez les fichiers du projet avant de réessayer l’importation.",
     "title": "Créer un projet",
     "nameLabel": "Nom du projet",
     "instructionsLabel": "Instructions",

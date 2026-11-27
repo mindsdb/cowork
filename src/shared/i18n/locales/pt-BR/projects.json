@@ -470,6 +470,13 @@
         "pendingDetail": "Suas credenciais são armazenadas criptografadas. Esta página é atualizada quando a verificação termina."
       }
     },
+    "httpRefusal": {
+      "uploadTooLarge": "Este envio excede o limite de tamanho. Escolha um arquivo menor ou envie menos arquivos por vez.",
+      "requestTooLarge": "Esta solicitação excede o limite de tamanho. Tente enviar menos conteúdo."
+    },
+    "projectUploads": {
+      "notUploaded": "Arquivos não enviados: {files}."
+    },
     "fileDrop": {
       "uploading": "Enviando…"
     },
@@ -826,6 +833,9 @@
     "folderUnsupported": "Este servidor não permite apontar um projeto para uma pasta. Ele criou \"{name}\" como um projeto normal e limpou a pasta que você escolheu. Atualize o Cowork para usar sua pasta ou exclua esse projeto se não quiser mantê-lo.",
     "couldNotCreate": "Não foi possível criar o projeto.",
     "couldNotOpenPicker": "Não foi possível abrir o seletor de pastas.",
+    "filesNotUploaded": "\"{name}\" foi criado, mas os arquivos não foram enviados.",
+    "someFilesNotUploaded": "\"{name}\" foi criado, mas nem todos os arquivos foram enviados.",
+    "filesUploadUnconfirmed": "\"{name}\" foi criado. Verifique os arquivos do projeto antes de tentar enviá-los novamente.",
     "title": "Criar um projeto",
     "nameLabel": "Nome do projeto",
     "instructionsLabel": "Instruções",
