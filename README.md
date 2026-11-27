@@ -594,7 +594,7 @@ if you need one for that.
 
 ### The MindsHub hub routes
 
-**Nothing under `/api/v1/hub/*` calls MindsHub directly.** The renderer calls its own sidecar, which forwards on the caller's behalf. `/api/v1/hub/usage/` carries the free MindsHub Air allowance, the balance, the period's credit spend and auto top up state, and backs Settings → Usage and the stopped-task cards. `/api/v1/hub/workspaces/` answers the MindsHub workspace listing and backs the workspace selector described in the next section.
+**Nothing under `/api/v1/hub/*` calls MindsHub directly.** The renderer calls its own sidecar, which forwards on the caller's behalf. `/api/v1/hub/usage/` carries the free allowance, the balance, the period's credit spend and auto top up state, and backs Settings → Usage and the stopped-task cards. `/api/v1/hub/workspaces/` answers the MindsHub workspace listing and backs the workspace selector described in the next section.
 
 MindsHub's ingress allows the console origins and no Cowork host, and a per-PR Cowork host cannot be added to a static allow-list. A direct call would therefore work in the packaged app (`webSecurity` is off there) and fail in the web SPA. Going through the sidecar is what lets both hosts read the same thing, which is why Settings → Usage is offered on the hosted build and not filtered off it.
 
@@ -915,10 +915,10 @@ as available, so a degraded response can never empty a picker.
 The app reads `GET /hub/usage/` on the sidecar every 30 seconds while signed in,
 and again whenever the window regains focus, so a top-up made in a browser shows
 up without a relaunch. `useHubUsage` holds the answer. One read carries the free
-MindsHub Air allowance, the paid balance, auto top up state and credit spend for
-the period. `reachable: false` is the resting state, so every surface renders exactly
-as it did before this existed until the sidecar says otherwise. A sidecar too old
-to serve the route answers 404, which reads as unreachable and paints nothing.
+allowance, the paid balance, auto top up state and credit spend for the period.
+`reachable: false` is the resting state, so every surface renders exactly as it
+did before this existed until the sidecar says otherwise. A sidecar too old to
+serve the route answers 404, which reads as unreachable and paints nothing.
 
 `deriveComposerWarning` in `lib/usageWarnings.js` turns that read into at most one
 notice, and it is the only thing that decides which. The notice sits above the
@@ -930,11 +930,16 @@ instead, because that turn is still running and the person has not come back to
 the composer yet. It reads the same BYOK gate the bar does, so a task billing
 someone else's key never hears about these tokens.
 
-Which resource the warning names depends on what the next turn will spend. An
-explicit MindsHub Air pick runs on the free tokens, an explicit paid model only
-ever bills the balance, and the router can land on either, so both matter for it.
-The two resources are always named apart. "Out of tokens" on its own is never one
-of the outputs.
+Which resource the warning names depends on what the next turn will spend.
+Without a paid plan, an explicit MindsHub Air pick runs on the free allowance,
+and so does an explicit pick the Free tier covers, one whose `coveredByTier` is
+`free`. Without a paid plan, any other explicit pick, including one whose
+coverage is unknown, only ever bills the balance. The router can land on either,
+so both matter for it. On Plus or Pro no pick spends a free allowance: auth
+serves the plan's own windows in the same fields, so `usageTransitions` sends no
+free-allowance notice there, and `freeAllowanceState` gives the stopped-task
+cards no figure to speak from. The two resources are always named apart. "Out of
+tokens" on its own is never one of the outputs.
 
 When nothing is wrong, the bar still says where the free grant stands: "3.4M of
 5M free tokens left. Resets on Oct 1." A warning a person first meets at 20% left
@@ -947,10 +952,10 @@ here too, in the same words the warning uses, because it is true and actionable
 from the moment it empties rather than from the moment the grant crosses 20%.
 The tone stays neutral: while the grant can still pay, nothing is blocked.
 
-An explicit paid pick cannot spend the grant, so it gets no figure, but the bar's
-height is reserved with a hidden copy of it. Otherwise switching picks moved the
-whole composer up and down, and for a free user the healthy state is the state
-they are in nearly all month.
+An explicit pick that only bills the balance cannot spend the grant, so it gets
+no figure, but the bar's height is reserved with a hidden copy of it. Otherwise
+switching picks moved the whole composer up and down, and for a free user the
+healthy state is the state they are in nearly all month.
 
 Announcing is a separate, permanently mounted `sr-only` region rather than a role
 on the bar. `aria-live` announces content CHANGES, so a region has to be in the
@@ -1001,7 +1006,7 @@ and open `/usage-bar-fixture.html`. It renders every state from the real
 `?theme=dark` for the dark pass. Each case carries an `id` off its label, so a
 screenshot run can crop to one state rather than a page too tall to read.
 
-A task that stops on a billing limit gets a card in its timeline, and the card names the limit that fired. The drained-wallet card (`token_limit`) reads the same usage view through `freeAllowanceState` in `lib/usageWarnings.js`, and stops speaking from it once that view shows a wallet that can pay (a balance `isBalanceEmpty` does not flag): the card stays in the task, and the view describes the account as it is now. A view with no balance, which cowork-server sends when its wallet read fails, leaves the stop standing. With free allowance left, it says the priced model is what stopped and offers Switch to MindsHub Air. With the allowance spent, it names both resources and the refill time, in the sentence the spent-allowance card uses for the same state (`allowanceStopCopy`). It keeps the fixed balance copy, with Add funds only, when the view gives it nothing to go on (usage unreachable, no grant, an uncapped grant, or no usable time), when there is no Switch to offer (the task already runs on MindsHub Air, Air is not offered or is locked, or there is no message to resend), and when the wallet can pay again, as it can after a top up. The spent-allowance card (`included_allowance_exhausted`) names the refill time the gate sent on the failure, on a desktop or a hosted turn. When the failure carries none, as a hosted turn from an older cowork-server does, the card takes the refill time from the usage view. With no usable time from either, it offers funds alone and promises no refill. For an org with no free grant (the usage view's `freeTokens.limit` is 0, which cowork-server sends when MindsHub reports `free_grant_eligible: false`), `freeAllowanceState` answers `no_grant` and the card shows the console's no-grant sentence (`NO_FREE_GRANT_SENTENCE`) with no refill time, whatever time the gate sent. `free_serving_paused` has its own card: MindsHub's daily spend fuse has paused free MindsHub Air for every org that cannot pay, which is not the user's allowance, so the card says so and names when it lifts, from the reset time on the failure. Without one, as on a hosted turn from an older cowork-server, it says the pause lasts until the daily budget resets. `model_restricted` is not a billing stop but shares the page: an org admin's model rule refused the model, so the card names the model and an admin, and offers Open Settings only. `budget_exceeded` has its own card: a hard-capped spending budget is used up, which credits do not lift, so the card never asks for funds. Its title names the budget's scope (organization, workspace or API key) from the failure's `budget_scope`, and is neutral when that is missing or unknown. It offers View budgets (the console's Budgets tab, recorded as `billing_opened` with trigger `budget_exceeded`), and Switch to MindsHub Air while the usage view shows the free allowance has room.
+A task that stops on a billing limit gets a card in its timeline, and the card names the limit that fired. The drained-wallet card (`token_limit`) reads the same usage view through `freeAllowanceState` in `lib/usageWarnings.js`, and stops speaking from it once that view shows a wallet that can pay (a balance `isBalanceEmpty` does not flag): the card stays in the task, and the view describes the account as it is now. A view with no balance, which cowork-server sends when its wallet read fails, leaves the stop standing. With free allowance left, it says the priced model is what stopped and offers Switch to MindsHub Air. On Plus or Pro, the view's allowance figure is the plan's windows rather than a free allowance, so the card reads the windows instead (`airRoom`): while none is used up, it offers the same switch and says the plan's allowance still covers MindsHub Air. With the allowance spent, it names both resources and the reset time, in the sentence the spent-allowance card uses for the same state (`allowanceStopCopy`). It keeps the fixed balance copy, with Add funds only, when the view gives it nothing to go on (usage unreachable, no grant, an uncapped grant, no usable time, or a Plus or Pro plan with a window used up), when there is no Switch to offer (the task already runs on MindsHub Air, Air is not offered or is locked, or there is no message to resend), and when the wallet can pay again, as it can after a top up. The spent-allowance card (`included_allowance_exhausted`) names the reset time the gate sent on the failure, on a desktop or a hosted turn. When the failure carries none, as a hosted turn from an older cowork-server does, the card takes the reset time from the usage view. With no usable time from either, it offers funds alone and promises no reset. For an org with no free grant (the usage view's `freeTokens.limit` is 0, which cowork-server sends when MindsHub reports `free_grant_eligible: false`), `freeAllowanceState` answers `no_grant` and the card shows the console's no-grant sentence (`NO_FREE_GRANT_SENTENCE`) with no reset time, whatever time the gate sent. `free_serving_paused` has its own card: MindsHub's daily spend fuse has paused free serving for every org that cannot pay, which is not the user's allowance, so the card says so and names when it lifts, from the reset time on the failure. Without one, as on a hosted turn from an older cowork-server, it says the pause lasts until the daily budget resets. `model_restricted` is not a billing stop but shares the page: an org admin's model rule refused the model, so the card names the model and an admin, and offers Open Settings only. `budget_exceeded` has its own card: a hard-capped spending budget is used up, which credits do not lift, so the card never asks for funds. Its title names the budget's scope (organization, workspace or API key) from the failure's `budget_scope`, and is neutral when that is missing or unknown. It offers View budgets (the console's Budgets tab, recorded as `billing_opened` with trigger `budget_exceeded`), and Switch to MindsHub Air while the usage view shows the free allowance has room or, on Plus or Pro, no plan window used up. While it offers that switch, its sentence names the allowance Air runs on.
 
 To see those cards, open `/billing-stop-fixture.html` under the same dev server. It renders the drained-wallet card in each usage state and after a top up, the spent-allowance card with the gate's refill time, with the usage view's, with no usable time at all, and for an org with no grant, the paused card with and without a time, the restricted-model card with and without a model name, the budget card with and without Air room, and the connect-a-provider card, all from the components ChatView renders. `?theme=dark` works the same way, and each case has a fixed `id` for cropping.
 

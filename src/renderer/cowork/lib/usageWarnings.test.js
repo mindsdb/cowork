@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   deriveComposerWarning,
+  deriveUsageWarning,
   usageTransitions,
   usageActionUrl,
   balanceDismissStep,
@@ -10,6 +11,7 @@ import {
   formatResetDate,
   formatResetTime,
   freeAllowanceState,
+  airRoom,
   isBalanceEmpty,
   isBalanceUsable,
   modelAccessSignature,
@@ -23,6 +25,7 @@ import {
   upgradeAction,
 } from './usageWarnings';
 import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL } from '../../lib/mindsUrls';
+import { compareCreditNotice } from './compareSides';
 
 const RESET = '2099-09-11T12:00:00Z';
 
@@ -1023,6 +1026,210 @@ describe('usageTransitions on a plan', () => {
     // A model the plan covers still hears about it.
     expect(usageTransitions(plus(82, EMPTY_WALLET), plus(91, EMPTY_WALLET), { coveredByTier: 'plus' }).map((t) => t.kind)).toEqual(['window_low']);
     expect(usageTransitions(plus(95, EMPTY_WALLET), plus(100, EMPTY_WALLET), { coveredByTier: 'free' }).map((t) => t.kind)).toEqual(['window_exhausted']);
+  });
+
+  it('never tells a task on Air or the router about a free allowance, since the figure is the plan window', () => {
+    /* On Plus and Pro, auth's /me serves the plan's own windows in the flat
+       allowance fields that cowork-server relays as freeTokens, so the figure
+       falls as the fuller window fills. Only the window kinds are news. The
+       short wallet keeps the wallet rule for free_used out of the way, so the
+       plan alone has to silence it. */
+    const following = (tier, remaining, wallet) => planRead(tier, [
+      { window: '5h', percentUsed: 100 - remaining, resetsAt: IN_2H },
+      { window: '7d', percentUsed: 20, resetsAt: IN_2D },
+    ], { ...wallet, freeTokens: at(remaining) });
+    const kinds = (tier, from, to, wallet, opts) => usageTransitions(
+      following(tier, from, wallet), following(tier, to, wallet), opts,
+    ).map((t) => t.kind);
+    for (const tier of ['plus', 'pro']) {
+      for (const wallet of [EMPTY_WALLET, SHORT_WALLET]) {
+        for (const model of [null, 'model-router', 'mindshub_air']) {
+          for (const coveredByTier of [null, 'free']) {
+            expect(kinds(tier, 18, 8, wallet, { model, coveredByTier })).toEqual(['window_low']);
+            expect(kinds(tier, 8, 0, wallet, { model, coveredByTier })).toEqual(['window_exhausted']);
+          }
+        }
+      }
+    }
+    // A Free plan's figure is the free allowance, so a task on Air still hears it.
+    const freePlan = (remaining) => planRead('free', [], { ...SHORT_WALLET, freeTokens: at(remaining) });
+    expect(usageTransitions(freePlan(18), freePlan(8), { model: 'mindshub_air' }).map((t) => t.kind)).toEqual(['free_low']);
+    expect(usageTransitions(freePlan(8), freePlan(0), { model: 'mindshub_air' }).map((t) => t.kind)).toEqual(['free_used']);
+  });
+});
+
+describe('freeAllowanceState on a plan', () => {
+  it('gives no figure on Plus or Pro, whose allowance fields carry the plan windows', () => {
+    for (const tier of ['plus', 'pro']) {
+      for (const freeTokens of [at(0), at(40), { limit: 0, used: 0, remaining: 0, resetsAt: RESET }]) {
+        expect(freeAllowanceState(planRead(tier, [], { freeTokens }))).toEqual({ status: 'no_figure', resetsAt: null });
+      }
+    }
+  });
+
+  it('reads a Free plan exactly as no plan', () => {
+    for (const freeTokens of [at(0), at(40), { limit: 0, used: 0, remaining: 0 }, null]) {
+      expect(freeAllowanceState(planRead('free', [], { freeTokens }))).toEqual(freeAllowanceState(usage({ freeTokens })));
+    }
+  });
+
+  it('leaves the stop sentences on Plus as they read with no allowance figure', () => {
+    const noFigure = planRead('plus', [], { freeTokens: null });
+    expect(allowanceStopCopy({ usage: planRead('plus', [], { freeTokens: at(0) }) }))
+      .toBe(allowanceStopCopy({ usage: noFigure }));
+    expect(budgetExceededCopy({ usage: planRead('plus', [], { freeTokens: at(40) }) }))
+      .toBe(budgetExceededCopy({ usage: noFigure }));
+  });
+});
+
+describe('airRoom', () => {
+  const FULL_5H = [{ window: '5h', percentUsed: 100, resetsAt: IN_2H }, { window: '7d', percentUsed: 40, resetsAt: IN_2D }];
+  const ROOMY = [{ window: '5h', percentUsed: 60, resetsAt: IN_2H }, { window: '7d', percentUsed: 40, resetsAt: IN_2D }];
+
+  it('answers from the free allowance without a paid plan', () => {
+    for (const read of [(over) => usage(over), (over) => planRead('free', [], over)]) {
+      expect(airRoom(read({ freeTokens: at(28) }))).toBe('free');
+      expect(airRoom(read({ freeTokens: at(0) }))).toBeNull();
+      expect(airRoom(read({ freeTokens: { limit: 0, used: 0, remaining: 0 } }))).toBeNull();
+      expect(airRoom(read({ freeTokens: null }))).toBeNull();
+    }
+    expect(airRoom({ reachable: false })).toBeNull();
+    expect(airRoom(null)).toBeNull();
+  });
+
+  it('answers from the plan windows on Plus or Pro, whatever the allowance figure says', () => {
+    for (const tier of ['plus', 'pro']) {
+      for (const freeTokens of [at(0), at(40), null]) {
+        expect(airRoom(planRead(tier, ROOMY, { freeTokens }))).toBe('plan');
+        expect(airRoom(planRead(tier, [], { freeTokens }))).toBe('plan');
+        expect(airRoom(planRead(tier, FULL_5H, { freeTokens }))).toBeNull();
+      }
+    }
+  });
+
+  it('names the plan allowance in the budget sentence while a window has room', () => {
+    const RAISE = "Paid models can't run until an administrator raises it in Budgets.";
+    expect(budgetExceededCopy({ usage: planRead('plus', ROOMY, { freeTokens: at(0) }) }))
+      .toBe(`${RAISE} MindsHub Air still works while your plan's allowance lasts.`);
+    expect(budgetExceededCopy({ usage: planRead('pro', FULL_5H, { freeTokens: at(40) }) })).toBe(RAISE);
+    // A per-model budget names its model and never Air, on a plan too.
+    expect(budgetExceededCopy({ usage: planRead('plus', ROOMY), budgetModelLabel: 'Claude Haiku' }))
+      .toBe("Claude Haiku can't run until an administrator raises it in Budgets. Other models still work.");
+  });
+});
+
+describe('a pick the Free tier covers', () => {
+  const FREE_PICK = { model: 'glm-5-3-flash', coveredByTier: 'free' };
+  const PLUS_PICK = { model: 'glm-5-3-flash', coveredByTier: 'plus' };
+  const AIR = { model: 'mindshub_air' };
+  /* An org with no paid plan and an empty wallet: no plan block at all, and a
+     Free plan, which read the same. */
+  const unfunded = (freeTokens) => [
+    usage({ ...EMPTY_WALLET, freeTokens }),
+    planRead('free', [], { ...EMPTY_WALLET, freeTokens }),
+  ];
+  // Compare's Start is disabled exactly when the combined notice blocks.
+  const compareBlocks = (read, a, b) => !!compareCreditNotice([deriveUsageWarning(read, a), deriveUsageWarning(read, b)])?.blocks;
+
+  it('runs on the free allowance like Air: no balance_empty stop while it has room, and Compare starts', () => {
+    for (const read of unfunded(at(28))) {
+      expect(deriveUsageWarning(read, FREE_PICK)).toBeNull();
+      expect(deriveComposerWarning(read, FREE_PICK)).toBeNull();
+      expect(compareBlocks(read, FREE_PICK, AIR)).toBe(false);
+      expect(compareBlocks(read, FREE_PICK, FREE_PICK)).toBe(false);
+    }
+  });
+
+  it('gets the allowance warnings as it runs low, and the stop once it is spent', () => {
+    for (const read of unfunded(at(8))) {
+      expect(deriveComposerWarning(read, FREE_PICK)).toEqual(deriveComposerWarning(read, AIR));
+      expect(deriveComposerWarning(read, FREE_PICK).kind).toBe('free_low');
+    }
+    for (const read of unfunded(at(0))) {
+      expect(deriveComposerWarning(read, FREE_PICK)).toEqual(deriveComposerWarning(read, AIR));
+      expect(deriveComposerWarning(read, FREE_PICK).kind).toBe('balance_empty');
+      expect(compareBlocks(read, FREE_PICK, AIR)).toBe(true);
+    }
+  });
+
+  it('never tells a task on an empty wallet that it now runs on the balance', () => {
+    /* The wallet holds nothing, so the next call is refused and the stop card
+       speaks for it. A free pick, Air, and the router alike, with no plan and
+       on a Free plan. */
+    const [noPlanBefore, freePlanBefore] = unfunded(at(8));
+    const [noPlanAfter, freePlanAfter] = unfunded(at(0));
+    const zero = (freeTokens) => usage({ balance: { usd: 0, canConsume: true, alert: null }, freeTokens });
+    for (const opts of [FREE_PICK, AIR, { model: 'model-router' }, { model: null }]) {
+      expect(usageTransitions(noPlanBefore, noPlanAfter, opts)).toEqual([]);
+      expect(usageTransitions(freePlanBefore, freePlanAfter, opts)).toEqual([]);
+      // An unflagged wallet that holds $0 has nothing to fall through to either.
+      expect(usageTransitions(zero(at(8)), zero(at(0)), opts)).toEqual([]);
+    }
+  });
+
+  it('reads a member wallet from walletCanConsume when the read carries no balance', () => {
+    /* A member without billing access gets no balance, but /me still says
+       whether the wallet can pay. A wallet that cannot is never named as what
+       the task now runs on. One that can, or a read that says nothing about
+       it, keeps the notice. */
+    const member = (freeTokens, walletCanConsume) => usage({
+      isBillingOwner: false, balance: null, autoTopUp: null, walletCanConsume, freeTokens,
+    });
+    const kinds = (walletCanConsume, opts) => usageTransitions(
+      member(at(8), walletCanConsume), member(at(0), walletCanConsume), opts,
+    ).map((t) => t.kind);
+    for (const opts of [FREE_PICK, AIR, { model: 'model-router' }, { model: null }]) {
+      expect(kinds(false, opts)).toEqual([]);
+      for (const walletCanConsume of [true, null, undefined]) {
+        expect(kinds(walletCanConsume, opts)).toEqual(['free_used']);
+      }
+    }
+  });
+
+  it('prefers walletCanConsume over a balance that still looks usable', () => {
+    // The same preference modelAccessSignature applies.
+    const short = (freeTokens, walletCanConsume) => usage({ balance: SHORT, walletCanConsume, freeTokens });
+    expect(usageTransitions(short(at(8), false), short(at(0), false), AIR)).toEqual([]);
+    expect(usageTransitions(short(at(8), true), short(at(0), true), AIR).map((t) => t.kind)).toEqual(['free_used']);
+  });
+
+  it('tells a running task on it when the allowance runs low or out', () => {
+    expect(usageTransitions(unpaid({ freeTokens: at(18) }), unpaid({ freeTokens: at(8) }), FREE_PICK)
+      .map((t) => t.kind)).toEqual(['free_low']);
+    expect(usageTransitions(unpaid({ freeTokens: at(8) }), unpaid({ freeTokens: at(0) }), FREE_PICK)
+      .map((t) => t.kind)).toEqual(['free_used']);
+    expect(usageTransitions(unpaid({ freeTokens: at(18) }), unpaid({ freeTokens: at(8) }), PLUS_PICK)).toEqual([]);
+  });
+
+  it('a model only Plus covers still bills the wallet, so an empty one stops it', () => {
+    for (const read of unfunded(at(28))) {
+      expect(deriveComposerWarning(read, PLUS_PICK)).toMatchObject({ kind: 'balance_empty', tone: 'danger' });
+      expect(compareBlocks(read, PLUS_PICK, AIR)).toBe(true);
+      // A model other than Air or the router with unknown coverage too.
+      expect(deriveComposerWarning(read, { model: 'glm-5-3-flash' }).kind).toBe('balance_empty');
+    }
+  });
+
+  it('leaves Air and the router free whatever the coverage, including none', () => {
+    for (const read of unfunded(at(28))) {
+      for (const model of ['mindshub_air', 'model-router', null]) {
+        for (const coveredByTier of [null, 'free']) {
+          expect(deriveComposerWarning(read, { model, coveredByTier })).toBeNull();
+        }
+      }
+      expect(compareBlocks(read, AIR, { model: 'model-router' })).toBe(false);
+    }
+  });
+
+  it('reads the same on Plus, where the plan windows carry it', () => {
+    const plus = (percentUsed, over) => planRead('plus', [{ window: '5h', percentUsed, resetsAt: IN_2H }], over);
+    expect(deriveComposerWarning(plus(30, EMPTY_WALLET), FREE_PICK)).toBeNull();
+    expect(deriveComposerWarning(plus(100, EMPTY_WALLET), FREE_PICK).kind).toBe('window_exhausted');
+    expect(deriveComposerWarning(plus(30, EMPTY_WALLET), { model: 'claude-opus-5-5', coveredByTier: 'pro' }).kind)
+      .toBe('balance_empty');
+    // The free allowance draining is not news to a task the plan carries.
+    const draining = (percent) => plus(30, { balance: SHORT, freeTokens: at(percent) });
+    expect(usageTransitions(draining(18), draining(8), FREE_PICK)).toEqual([]);
   });
 });
 

@@ -110,7 +110,7 @@ import { cleanRequiredTier } from '../lib/subscriptionPlan';
 import { trackBillingOpened, trackKeyProvisioningRefused } from '../lib/analytics';
 import { useHubUsageContext } from '../lib/hubUsageContext';
 import { budgetPeriodOf, budgetScopeOf, budgetModelName } from '../lib/budgetScope';
-import { USAGE_ACTIONS, upgradeAction, usageActionUrl, formatResetTime, formatPercentShort, freeAllowanceState, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy, budgetExceededCopy } from '../lib/usageWarnings';
+import { USAGE_ACTIONS, upgradeAction, usageActionUrl, formatResetTime, formatPercentShort, freeAllowanceState, airRoom, isBalanceEmpty, allowanceStopCopy, freeServingPausedCopy, budgetExceededCopy } from '../lib/usageWarnings';
 import { MINDSHUB_AIR_MODEL_ID } from '../lib/modelCatalog';
 import { usageNoticeBuckets } from '../lib/usageNoticePlacement';
 import { ChatScroller } from '../components/chat/ChatScroller';
@@ -1645,18 +1645,25 @@ function switchToAirButtons(onSwitchToAir) {
  * `isBalanceEmpty` does not flag), as after a top up, today's allowance says
  * nothing about why this task stopped, so neither branch below speaks from it.
  * A read with no balance says nothing about the wallet either way:
- * cowork-server's `HubUsageView` leaves it null when the wallet read fails or
- * the caller may not see the wallet, as in a starter-tier org. The stop stands
- * then, and both branches stay open.
+ * cowork-server's `MindsHubUsageView` (`cowork/schemas/mindshub_usage.py`)
+ * leaves it null when the wallet read fails or the caller may not see the
+ * wallet, as in a starter-tier org. The stop stands then, and both branches
+ * stay open.
  *
- * - The free allowance has room. auth's `access.py` always lets a free-bucket
- *   model run while its allowance lasts, whatever the wallet holds, so the stop
- *   was a priced model. Offer the switch, when the caller has one.
+ * - Air has room (`airRoom`). Without a paid plan that is the free allowance:
+ *   auth's `access.py` always lets a free-bucket model run while its allowance
+ *   lasts, whatever the wallet holds, so the stop was a priced model. On Plus
+ *   or Pro, Air runs on the plan's windows, so it has room while none is used
+ *   up, and the sentence names the plan's allowance instead. Offer the switch,
+ *   when the caller has one.
  * - The free allowance is spent and its refill time is usable. Name both
  *   resources and the free way forward, in `allowanceStopCopy`'s words, which
  *   the spent-allowance card uses for the same state.
  * - Anything else (usage dark, no grant, uncapped, no usable time, no switch
- *   to offer, a wallet that can pay now): the fixed copy, exactly as before.
+ *   to offer, a wallet that can pay now, a Plus or Pro plan with a window used
+ *   up): the fixed copy, exactly as before. On Plus or Pro, `freeAllowanceState`
+ *   gives no figure, because the read's allowance figure is the plan's windows
+ *   there, not a free allowance, so the spent branch never speaks there.
  *
  * `usage` is the `/hub/usage/` view (null outside the provider).
  */
@@ -1667,11 +1674,12 @@ export function BalanceEmptyCard({
   const consoleLink = useConsoleLink();
   if (!PLATFORM_UI) return <ProviderLimitCard time={time} agentLabel={agentLabel} deleting={deleting} />;
   const free = freeAllowanceState(usage);
+  const room = airRoom(usage);
   if (!offersBilling()) {
     return <ActionCard time={time} agentLabel={agentLabel} deleting={deleting}
       kind={t('chatView.kinds.usage')} title={t('chatView.cards.taskStopped')}
       body={free.status === 'spent' ? allowanceStopCopy({ usage }) : t('chatView.cards.providerLimitBody')}
-      buttons={free.status === 'has_room' ? switchToAirButtons(onSwitchToAir) : []} />;
+      buttons={room ? switchToAirButtons(onSwitchToAir) : []} />;
   }
   const walletPaysNow = !!usage?.balance && !isBalanceEmpty(usage.balance);
   const refill = formatResetTime(free.resetsAt);
@@ -1691,8 +1699,8 @@ export function BalanceEmptyCard({
   // gateway's wording predates pay as you go.
   let body = t(billingCopyKey('chatView.cards.balanceRanOut'));
   let buttons = billingActions([addFunds]);
-  if (!walletPaysNow && free.status === 'has_room' && onSwitchToAir) {
-    body = t('chatView.cards.balanceEmptyAirLeft');
+  if (!walletPaysNow && room && onSwitchToAir) {
+    body = t(room === 'plan' ? 'chatView.cards.balanceEmptyAirOnPlan' : 'chatView.cards.balanceEmptyAirLeft');
     buttons = [...billingActions([addFunds]), ...switchToAirButtons(onSwitchToAir)];
   } else if (!walletPaysNow && free.status === 'spent' && refill) {
     body = allowanceStopCopy({ usage });
@@ -1713,8 +1721,8 @@ export function BalanceEmptyCard({
 }
 
 /*
- * Free MindsHub Air paused for everyone (`free_serving_paused`): auth's daily
- * free-Air spend fuse tripped (`free_air_daily_spend_fuse_exceeded`, issued by
+ * Free serving paused for everyone (`free_serving_paused`): auth's daily
+ * free spend fuse tripped (`free_air_daily_spend_fuse_exceeded`, issued by
  * auth's `entitlements/views/inference_authorize.py`). It stops only orgs whose
  * wallet cannot pay, it is not this user's allowance, and it lifts at the next
  * UTC midnight, which the gate sends as reset_at on a desktop or a hosted turn.
@@ -1770,8 +1778,10 @@ export function FreeServingPausedCard({
  * A spending budget is used up (`budget_exceeded`): the gateway's 402
  * on a hard-capped budget, with no reset time. Credits do not lift it, so the
  * card never asks for funds; it links to Budgets, where an administrator
- * raises it. Air may still run on its free allowance, so the switch is offered
- * while the hub read shows room, as on the balance card.
+ * raises it. Air may still run on the free allowance, or on Plus or Pro on the
+ * plan's windows, so the switch is offered while the hub read shows room
+ * (`airRoom`), as on the balance card, and `budgetExceededCopy` names the
+ * allowance Air runs on.
  */
 export function BudgetExceededCard({
   time, agentLabel, usage, onSwitchToAir, budgetScope = null, budgetPeriod = null, budgetModelLabel = null,
@@ -1783,7 +1793,7 @@ export function BudgetExceededCard({
     return <ActionCard time={time} agentLabel={agentLabel} deleting={deleting}
       kind={t('chatView.kinds.usage')} title={t('chatView.cards.taskStopped')}
       body={t('chatView.cards.providerLimitBody')}
-      buttons={freeAllowanceState(usage).status === 'has_room' ? switchToAirButtons(onSwitchToAir) : []} />;
+      buttons={airRoom(usage) ? switchToAirButtons(onSwitchToAir) : []} />;
   }
   if (!PLATFORM_UI) {
     return (
@@ -1797,7 +1807,7 @@ export function BudgetExceededCard({
       />
     );
   }
-  const airHasRoom = freeAllowanceState(usage).status === 'has_room';
+  const airHasRoom = !!airRoom(usage);
   return (
     <ActionCard
       deleting={deleting}
@@ -3836,8 +3846,8 @@ export default function ChatView({
                     />
                   );
                 }
-                /* Free MindsHub Air paused fleet-wide by auth's daily spend
-                   fuse: not this user's allowance, and funds get them going. */
+                /* Free serving paused fleet-wide by auth's daily spend fuse:
+                   not this user's allowance, and funds get them going. */
                 if (m.code === 'free_serving_paused') {
                   return (
                     <FreeServingPausedCard

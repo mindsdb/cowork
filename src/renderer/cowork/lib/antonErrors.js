@@ -23,7 +23,7 @@ export function isAntonConfigError(message, event) {
 export function normalizeAntonError(message, event) {
   if (isAntonConfigError(message, event)) {
     /* Pay-as-you-go wording (ENG-1305): there is no subscription to sell.
-       A MindsHub account starts on the free MindsHub Air allowance. */
+       A MindsHub account starts on the free allowance. */
     return tr(billingCopyKey('noProvider'));
   }
   const text = String(message || '');

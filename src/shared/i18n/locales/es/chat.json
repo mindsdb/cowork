@@ -99,6 +99,7 @@
       "taskStopped": "Tarea detenida",
       "providerLimitBody": "Se alcanzó el límite de uso del proveedor. Contacta a tu administrador antes de iniciar otra tarea.",
       "addFunds": "Agregar fondos",
+      "balanceEmptyAirOnPlan": "Tu saldo está vacío, así que este modelo no puede ejecutarse. El cupo de tu plan todavía cubre MindsHub Air.",
       "switchToAir": "Cambiar a MindsHub Air",
       "balanceRanOut": "Tu saldo se agotó antes de que terminara esta tarea. Agrega fondos antes de iniciar otra tarea.",
       "balanceEmptyAirLeft": "Tu saldo está vacío, así que este modelo no puede ejecutarse. MindsHub Air todavía tiene asignación gratuita disponible.",

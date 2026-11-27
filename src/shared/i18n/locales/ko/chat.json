@@ -99,6 +99,7 @@
       "taskStopped": "작업이 중지됨",
       "providerLimitBody": "공급자의 사용 한도에 도달했습니다. 다른 작업을 시작하기 전에 관리자에게 문의하세요.",
       "addFunds": "잔액 충전",
+      "balanceEmptyAirOnPlan": "잔액이 없어 이 모델을 실행할 수 없습니다. MindsHub Air는 아직 플랜 제공량으로 사용할 수 있습니다.",
       "switchToAir": "MindsHub Air로 전환",
       "balanceRanOut": "이 작업이 끝나기 전에 잔액이 모두 소진되었습니다. 다른 작업을 시작하기 전에 잔액을 충전하세요.",
       "balanceEmptyAirLeft": "잔액이 없어 이 모델을 실행할 수 없습니다. MindsHub Air에는 아직 무료 제공량이 남아 있습니다.",

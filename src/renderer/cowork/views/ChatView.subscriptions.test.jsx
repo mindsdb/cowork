@@ -30,7 +30,9 @@ vi.mock('../lib/analytics', async (orig) => ({
   trackBillingOpened: vi.fn(),
 }));
 
-import ChatView, { ModelUnavailableCard, WindowAllowanceExhaustedCard } from './ChatView';
+import ChatView, {
+  BalanceEmptyCard, BudgetExceededCard, ModelUnavailableCard, WindowAllowanceExhaustedCard,
+} from './ChatView';
 import { HubUsageContext } from '../lib/hubUsageContext';
 import { host } from '../../platform/host';
 import { trackUpgradeClicked, trackBillingOpened } from '../lib/analytics';
@@ -209,5 +211,113 @@ describe('ModelUnavailableCard: model_not_in_tier', () => {
     expect(screen.getByRole('button', { name: 'Get Plus' })).toBeEnabled();
     // A third action goes in the card's overflow menu.
     expect(card(screen.getByText(/isn't in your plan/).textContent).getByRole('button', { name: 'More actions' })).toBeEnabled();
+  });
+});
+
+describe('stopped-task cards on Plus or Pro', () => {
+  /* On a paid plan, auth's /me serves the plan's own windows in the flat
+     allowance fields that cowork-server relays as freeTokens. That figure is
+     no free allowance, so each card renders exactly as it does for a read
+     with no allowance figure at all. Render against render, so the check
+     holds whatever the copy says. PLUS and PRO have the 5-hour window used
+     up, so Air, which runs on the plan's windows there, has no room either. */
+  const SPENT = { limit: 100, used: 100, remaining: 0, resetsAt: inHours(2) };
+  const ROOM = { limit: 100, used: 20, remaining: 80, resetsAt: inHours(2) };
+  const textOf = (ui) => {
+    const { container, unmount } = render(ui);
+    const text = container.textContent;
+    unmount();
+    return text;
+  };
+  const balanceCard = (usage) => textOf(withUsage(usage, (
+    <BalanceEmptyCard usage={usage} onSwitchToAir={() => {}} isBillingOwner />
+  )));
+  const budgetCard = (usage) => textOf(withUsage(usage, (
+    <BudgetExceededCard usage={usage} onSwitchToAir={() => {}} />
+  )));
+
+  it.each([
+    ['on desktop', false],
+    ['inside the mobile app', true],
+  ])('the drained-wallet card reads a Plus or Pro figure as no figure, %s', (_label, isMobile) => {
+    mobile.current = isMobile;
+    for (const plan of [PLUS, PRO]) {
+      const noFigure = balanceCard(usageWith(plan, { freeTokens: null }));
+      // usageWith's own figure is spent at 0, with an empty wallet.
+      expect(balanceCard(usageWith(plan))).toBe(noFigure);
+      expect(balanceCard(usageWith(plan, { freeTokens: ROOM }))).toBe(noFigure);
+    }
+    // On a Free plan the figure is the free allowance, and the card speaks from it.
+    const freeNoFigure = balanceCard(usageWith(FREE, { freeTokens: null }));
+    expect(balanceCard(usageWith(FREE, { freeTokens: SPENT }))).not.toBe(freeNoFigure);
+    expect(balanceCard(usageWith(FREE, { freeTokens: ROOM }))).not.toBe(freeNoFigure);
+  });
+
+  it.each([
+    ['on desktop', false],
+    ['inside the mobile app', true],
+  ])('the budget card reads a Plus or Pro figure with room as no figure, %s', (_label, isMobile) => {
+    mobile.current = isMobile;
+    for (const plan of [PLUS, PRO]) {
+      expect(budgetCard(usageWith(plan, { freeTokens: ROOM }))).toBe(budgetCard(usageWith(plan, { freeTokens: null })));
+    }
+    expect(budgetCard(usageWith(FREE, { freeTokens: ROOM }))).not.toBe(budgetCard(usageWith(FREE, { freeTokens: null })));
+  });
+
+  /* With no window used up, Air runs on the plan's windows, so both cards
+     offer the switch, and the drained-wallet card names the plan's allowance
+     rather than a free one. The spent allowance figure must not hide it. */
+  const open = (plan) => ({
+    ...plan,
+    windows: [
+      { window: '5h', percentUsed: 60, resetsAt: inHours(2) },
+      { window: '7d', percentUsed: 40, resetsAt: inHours(48) },
+    ],
+  });
+
+  it('the drained-wallet card offers Air on the plan while no window is used up', async () => {
+    for (const plan of [PLUS, PRO]) {
+      const onSwitchToAir = vi.fn();
+      const usage = usageWith(open(plan), { freeTokens: SPENT });
+      const { unmount } = render(withUsage(usage, (
+        <BalanceEmptyCard usage={usage} onSwitchToAir={onSwitchToAir} isBillingOwner />
+      )));
+      expect(screen.getByText("Your balance is empty, so this model can't run. Your plan's allowance still covers MindsHub Air."))
+        .toBeInTheDocument();
+      expect(screen.queryByText(/free allowance/)).toBeNull();
+      expect(screen.getByRole('button', { name: 'Add funds' })).toBeEnabled();
+      await userEvent.click(screen.getByRole('button', { name: 'Switch to MindsHub Air' }));
+      expect(onSwitchToAir).toHaveBeenCalledTimes(1);
+      unmount();
+    }
+  });
+
+  it('the budget card offers Air on the plan while no window is used up', async () => {
+    for (const plan of [PLUS, PRO]) {
+      const onSwitchToAir = vi.fn();
+      const usage = usageWith(open(plan), { freeTokens: SPENT });
+      const { unmount } = render(withUsage(usage, (
+        <BudgetExceededCard usage={usage} onSwitchToAir={onSwitchToAir} />
+      )));
+      expect(screen.getByText(/MindsHub Air still works while your plan's allowance lasts\./)).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Switch to MindsHub Air' }));
+      expect(onSwitchToAir).toHaveBeenCalledTimes(1);
+      unmount();
+    }
+  });
+
+  it('both cards offer Air on the plan inside the mobile app too', () => {
+    mobile.current = true;
+    for (const plan of [PLUS, PRO]) {
+      const usage = usageWith(open(plan), { freeTokens: SPENT });
+      const { unmount } = render(withUsage(usage, (
+        <>
+          <BalanceEmptyCard usage={usage} onSwitchToAir={() => {}} isBillingOwner />
+          <BudgetExceededCard usage={usage} onSwitchToAir={() => {}} />
+        </>
+      )));
+      expect(screen.getAllByRole('button', { name: 'Switch to MindsHub Air' })).toHaveLength(2);
+      unmount();
+    }
   });
 });

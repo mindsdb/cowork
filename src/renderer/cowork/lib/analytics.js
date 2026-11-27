@@ -1121,7 +1121,7 @@ export function trackTurnFailed(conversationId, event) {
 //   model_not_in_tier         "Add funds" on a model the plan does not cover
 //                             (ENG-4186); pairs with token_cap_hit. The
 //                             upgrade on both cards is upgrade_clicked instead
-//   free_serving_paused       free MindsHub Air is paused for everyone by the
+//   free_serving_paused       free serving is paused for everyone by the
 //                             daily spend fuse; NOT paired with token_cap_hit,
 //                             because it is not this user's cap
 //   budget_exceeded           a spending budget is used up; "View
@@ -1141,7 +1141,7 @@ export function trackTurnFailed(conversationId, event) {
 //   allowance_used_notice     Settings, after a minds-cloud provider test came
 //                             back included_allowance_exhausted
 //   free_air_paused_notice    Settings, after a minds-cloud provider test hit
-//                             the daily free-Air spend fuse; not this user's cap
+//                             the daily free spend fuse; not this user's cap
 //   budget_notice             Settings, after a minds-cloud provider test came
 //                             back budget_exceeded, or the hint under a current
 //                             model the spent budget stops

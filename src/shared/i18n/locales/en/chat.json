@@ -99,6 +99,7 @@
       "taskStopped": "Task stopped",
       "providerLimitBody": "The provider's usage limit was reached. Contact your administrator before starting another task.",
       "addFunds": "Add funds",
+      "balanceEmptyAirOnPlan": "Your balance is empty, so this model can't run. Your plan's allowance still covers MindsHub Air.",
       "switchToAir": "Switch to MindsHub Air",
       "balanceRanOut": "Your balance ran out before this task finished. Add funds before starting another task.",
       "balanceEmptyAirLeft": "Your balance is empty, so this model can't run. MindsHub Air still has free allowance left.",

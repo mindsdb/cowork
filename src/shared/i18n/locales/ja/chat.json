@@ -99,6 +99,7 @@
       "taskStopped": "タスクを停止しました",
       "providerLimitBody": "プロバイダーの使用量上限に達しました。新しいタスクを始める前に管理者にお問い合わせください。",
       "addFunds": "残高を追加",
+      "balanceEmptyAirOnPlan": "残高がないため、このモデルは実行できません。MindsHub Airはプランの利用枠でまだ利用できます。",
       "switchToAir": "MindsHub Airに切り替える",
       "balanceRanOut": "タスクの完了前に残高がなくなりました。新しいタスクを始める前に残高を追加してください。",
       "balanceEmptyAirLeft": "残高がないため、このモデルは実行できません。MindsHub Airの無料枠はまだ残っています。",

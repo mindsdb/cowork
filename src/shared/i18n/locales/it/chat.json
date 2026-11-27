@@ -99,6 +99,7 @@
       "taskStopped": "Attività interrotta",
       "providerLimitBody": "È stato raggiunto il limite di utilizzo del provider. Contatta l’amministratore prima di avviare un’altra attività.",
       "addFunds": "Aggiungi fondi",
+      "balanceEmptyAirOnPlan": "Il saldo è esaurito, quindi questo modello non può essere eseguito. La quota del tuo piano copre ancora MindsHub Air.",
       "switchToAir": "Passa a MindsHub Air",
       "balanceRanOut": "Il saldo si è esaurito prima del completamento dell’attività. Aggiungi fondi prima di avviarne un’altra.",
       "balanceEmptyAirLeft": "Il saldo è esaurito, quindi questo modello non può essere eseguito. Su MindsHub Air hai ancora quota gratuita disponibile.",

@@ -99,6 +99,7 @@
       "taskStopped": "Tarefa interrompida",
       "providerLimitBody": "O limite de uso do provedor foi atingido. Fale com seu administrador antes de iniciar outra tarefa.",
       "addFunds": "Adicionar fundos",
+      "balanceEmptyAirOnPlan": "Seu saldo está vazio, então este modelo não pode ser executado. A cota do seu plano ainda cobre o MindsHub Air.",
       "switchToAir": "Mudar para MindsHub Air",
       "balanceRanOut": "Seu saldo acabou antes de esta tarefa terminar. Adicione fundos antes de iniciar outra tarefa.",
       "balanceEmptyAirLeft": "Seu saldo está vazio, então este modelo não pode ser executado. O MindsHub Air ainda tem cota gratuita disponível.",
