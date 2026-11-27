@@ -751,5 +751,17 @@
       "done": "Sesión iniciada. Puedes cerrar esta ventana.",
       "close": "Cerrar ventana"
     }
+  },
+  "connectorSignIn": {
+    "finish": {
+      "title": "Inicio de sesión del conector",
+      "working": "Finalizando el inicio de sesión…",
+      "done": "Conectado. Puedes cerrar esta ventana.",
+      "notYours": "Otra persona inició este enlace de inicio de sesión, así que no se conectó nada. Usa solo enlaces de inicio de sesión que hayas iniciado tú en Cowork.",
+      "expired": "Este enlace de inicio de sesión ha caducado o ya se usó. Vuelve a conectar desde Cowork.",
+      "wrongOrganization": "Este inicio de sesión se inició en otra organización. Cambia a ella en Cowork y vuelve a conectar.",
+      "failed": "No se pudo finalizar el inicio de sesión. Vuelve a conectar desde Cowork.",
+      "close": "Cerrar ventana"
+    }
   }
 }

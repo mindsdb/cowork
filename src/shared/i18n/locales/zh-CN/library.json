@@ -751,5 +751,17 @@
       "done": "已登录。你可以关闭此窗口。",
       "close": "关闭窗口"
     }
+  },
+  "connectorSignIn": {
+    "finish": {
+      "title": "连接器登录",
+      "working": "正在完成登录…",
+      "done": "已连接。你可以关闭此窗口。",
+      "notYours": "此登录链接由其他人发起，因此未连接任何内容。请只使用你自己在 Cowork 中发起的登录链接。",
+      "expired": "此登录链接已过期或已被使用。请在 Cowork 中重新连接。",
+      "wrongOrganization": "此登录是在另一个组织中发起的。请在 Cowork 中切换到该组织后重新连接。",
+      "failed": "无法完成登录。请在 Cowork 中重新连接。",
+      "close": "关闭窗口"
+    }
   }
 }

@@ -751,5 +751,17 @@
       "done": "Angemeldet. Du kannst dieses Fenster schließen.",
       "close": "Fenster schließen"
     }
+  },
+  "connectorSignIn": {
+    "finish": {
+      "title": "Anmeldung für Connector",
+      "working": "Anmeldung wird abgeschlossen…",
+      "done": "Verbunden. Du kannst dieses Fenster schließen.",
+      "notYours": "Dieser Anmeldelink wurde von jemand anderem gestartet, daher wurde nichts verbunden. Verwende nur Anmeldelinks, die du selbst in Cowork gestartet hast.",
+      "expired": "Dieser Anmeldelink ist abgelaufen oder wurde bereits verwendet. Verbinde dich erneut über Cowork.",
+      "wrongOrganization": "Diese Anmeldung wurde in einer anderen Organisation gestartet. Wechsle in Cowork zu ihr und verbinde dich erneut.",
+      "failed": "Die Anmeldung konnte nicht abgeschlossen werden. Verbinde dich erneut über Cowork.",
+      "close": "Fenster schließen"
+    }
   }
 }

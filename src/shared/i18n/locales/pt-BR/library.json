@@ -751,5 +751,17 @@
       "done": "Login feito. Você pode fechar esta janela.",
       "close": "Fechar janela"
     }
+  },
+  "connectorSignIn": {
+    "finish": {
+      "title": "Login do conector",
+      "working": "Concluindo o login…",
+      "done": "Conectado. Você pode fechar esta janela.",
+      "notYours": "Este link de login foi iniciado por outra pessoa, então nada foi conectado. Use apenas links de login que você mesmo iniciou no Cowork.",
+      "expired": "Este link de login expirou ou já foi usado. Conecte novamente pelo Cowork.",
+      "wrongOrganization": "Este login foi iniciado em outra organização. Mude para ela no Cowork e conecte novamente.",
+      "failed": "Não foi possível concluir o login. Conecte novamente pelo Cowork.",
+      "close": "Fechar janela"
+    }
   }
 }
