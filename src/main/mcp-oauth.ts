@@ -62,9 +62,9 @@ export interface TokenSet {
   scope?: string;
 }
 
-// The registered error codes (RFC 6749 5.2, RFC 8707): only these reach
-// messages, which may land in logs and on screen; any other text a server
-// sends could carry a token.
+// The registered error codes (RFC 6749 5.2, RFC 8707), plus GitHub's own:
+// only these reach messages, which may land in logs and on screen; any other
+// text a server sends could carry a token.
 const OAUTH_ERROR_CODES = new Set([
   'invalid_request',
   'invalid_client',
@@ -73,8 +73,19 @@ const OAUTH_ERROR_CODES = new Set([
   'unsupported_grant_type',
   'invalid_scope',
   'invalid_target',
+  'bad_verification_code',
+  'redirect_uri_mismatch',
+  'incorrect_client_credentials',
+  'bad_refresh_token',
 ]);
-const REFUSED_GRANT_CODES = new Set(['invalid_grant', 'invalid_client', 'unauthorized_client']);
+// The codes that mean the grant or the client is dead, GitHub's two included.
+const REFUSED_GRANT_CODES = new Set([
+  'invalid_grant',
+  'invalid_client',
+  'unauthorized_client',
+  'bad_refresh_token',
+  'incorrect_client_credentials',
+]);
 const MAX_LIFETIME_SECONDS = 365 * 24 * 60 * 60;
 
 const INITIALIZE_BODY = JSON.stringify({
@@ -220,16 +231,21 @@ async function tokenRequest(
 ): Promise<TokenSet> {
   const { headers, body } = authenticated(client, params);
   const response = await fetchFn(authorizationServer.tokenEndpoint, { method: 'POST', headers, body });
-  if (response.status !== 200) {
-    const error = await jsonObject(response, 'token_failed').catch(() => ({} as Record<string, unknown>));
-    const code = typeof error.error === 'string' && OAUTH_ERROR_CODES.has(error.error) ? `: ${error.error}` : '';
+  // A failed answer's body is optional; a 200 must be a JSON object.
+  const data = await jsonObject(response, 'token_failed').catch((err: unknown) => {
+    if (response.status === 200) throw err;
+    return {} as Record<string, unknown>;
+  });
+  // Some servers, GitHub among them, refuse with 200 and an error field, so
+  // an error fails the answer at any status and no token is taken from it.
+  if (response.status !== 200 || (data.error !== undefined && data.error !== null)) {
+    const error = data.error;
+    const code = typeof error === 'string' && OAUTH_ERROR_CODES.has(error) ? `: ${error}` : '';
     // Only these mean the grant or client itself is refused (RFC 6749 5.2);
     // a rate limit, an outage or an error page is worth retrying.
-    const refused = response.status === 401
-      || (response.status === 400 && typeof error.error === 'string' && REFUSED_GRANT_CODES.has(error.error));
+    const refused = response.status === 401 || (typeof error === 'string' && REFUSED_GRANT_CODES.has(error));
     throw new McpOAuthError(refused ? 'grant_refused' : 'token_failed', `the token endpoint answered ${response.status}${code}`);
   }
-  const data = await jsonObject(response, 'token_failed');
   if (typeof data.access_token !== 'string' || !data.access_token) {
     throw new McpOAuthError('token_failed', 'the token answer has no access token');
   }

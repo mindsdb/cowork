@@ -544,6 +544,24 @@ describe('connectCustomMcp', () => {
     expect(server.records.size).toBe(0);
   });
 
+  it('names the code of a login GitHub refuses with 200, and keeps no token from that answer', async () => {
+    const refused = {
+      ...LOGIN_SERVER,
+      [`POST ${AUTH}/token`]: {
+        status: 200,
+        json: { error: 'redirect_uri_mismatch', error_description: 'rt-SECRET-VALUE', access_token: 'AT-1', refresh_token: 'RT-1', token_type: 'Bearer' },
+      },
+    };
+    const { deps: d } = deps(refused);
+
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['auth.example.com'] }, d);
+
+    expect(result).toEqual({ ok: false, code: 'token_failed', reason: 'the token endpoint answered 200: redirect_uri_mismatch' });
+    expect(server.records.size).toBe(0);
+    expect(server.held.size).toBe(0);
+    expect(keychain.entries.size).toBe(0);
+  });
+
   it('keeps the access token in the keychain only when the login brought no refresh token', async () => {
     const noRefresh = { ...LOGIN_SERVER, [`POST ${AUTH}/token`]: { status: 200, json: { access_token: 'AT-only', token_type: 'Bearer', expires_in: 3600 } } };
 
