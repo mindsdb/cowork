@@ -266,8 +266,8 @@ No `badge`: nothing would ever clear it.
   Capacitor 8 requires.
 - Entitlements: Release signs with `App/App.entitlements`
   (`aps-environment = production`). Debug signs with `App/App.Debug.entitlements`
-  (`development`, the APNs sandbox). The CI smoke build has
-  `CODE_SIGNING_ALLOWED=NO`, so it doesn't check them.
+  (`development`, the APNs sandbox). The simulator smoke build uses Xcode's
+  simulator signing so Cowork can save its session in Keychain.
 - **The App ID `ai.mindshub.cowork` needs the Push Notifications capability,
   and the App Store profile (`IOS_PROFILE_APP_B64`) must be regenerated after
   that.** `build-ios.yml` checks that the profile has
@@ -362,9 +362,8 @@ Developer account (needs the device token). On Android, use Firebase console
 ## CI
 
 `.github/workflows/mobile-smoke.yml` runs on PRs that touch `mobile/` (called
-from `dev-build-deploy.yml`): an unsigned iOS simulator build (`xcodebuild
--scheme App -configuration Release -sdk iphonesimulator
-CODE_SIGNING_ALLOWED=NO`), an Android `./gradlew assembleDebug`, and a
+from `dev-build-deploy.yml`): a Release iOS simulator build and relaunch
+(`mobile/scripts/ios-simulator-smoke.sh`), an Android `./gradlew assembleDebug`, and a
 `bundleRelease` signed with a throwaway key to keep the release signing config
 honest. Signed store builds are under [Releasing](#releasing).
 
