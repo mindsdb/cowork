@@ -2,10 +2,13 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   type Bitmap,
   drawLabels,
+  FRAME_LOOK_MAX_PX,
+  frameLook,
   type ImageLike,
   jpegQuality,
   LABEL_HEIGHT,
   labelWidth,
+  nearlyOneColor,
   renderScreenshot,
   screenshotScale,
   screenshotWidth,
@@ -128,7 +131,7 @@ describe('renderScreenshot', () => {
       drawn = data;
       return { getSize: () => size, resize: () => image, toBitmap: () => data, toJPEG: () => Buffer.from('labelled') };
     });
-    const shot = renderScreenshot(image, 1600, [{ id: 1, x: 160, y: 160, width: 320, height: 80 }], 70, fromBitmap);
+    const shot = renderScreenshot(image, 1600, [{ id: 1, x: 160, y: 160, width: 320, height: 80 }], 70, fromBitmap, []);
     expect(resized).toHaveBeenCalledWith({ width: 1024, quality: 'good' });
     expect(shot).toEqual({ jpeg: Buffer.from('labelled'), width: 1024, height: 384 });
     const bitmap = { data: drawn!, width: 1024, height: 384 };
@@ -140,7 +143,95 @@ describe('renderScreenshot', () => {
   it('skips drawing when not annotated', () => {
     const { image } = capture(800, 1);
     const fromBitmap = vi.fn();
-    expect(renderScreenshot(image, 800, null, 70, fromBitmap)).toEqual({ jpeg: Buffer.from('plain'), width: 800, height: 600 });
+    expect(renderScreenshot(image, 800, null, 70, fromBitmap, [])).toEqual({ jpeg: Buffer.from('plain'), width: 800, height: 600 });
     expect(fromBitmap).not.toHaveBeenCalled();
+  });
+
+  const BLACK = [0, 0, 0, 0xff];
+  const GREY = [0x80, 0x80, 0x80, 0x80];
+  function drawnTo(): { fromBitmap: (data: Buffer, size: { width: number; height: number }) => ImageLike; bitmap: () => Bitmap } {
+    let drawn: Bitmap | null = null;
+    return {
+      fromBitmap: (data, size) => {
+        drawn = { data, ...size };
+        return { getSize: () => size, resize: () => { throw new Error('unused'); }, toBitmap: () => data, toJPEG: () => Buffer.from('drawn') };
+      },
+      bitmap: () => drawn!,
+    };
+  }
+
+  it('blacks out each mask, scaled like the labels, before it draws them', () => {
+    const { image } = capture(1600, 2);
+    const out = drawnTo();
+    const shot = renderScreenshot(image, 1600, [{ id: 1, x: 160, y: 160, width: 320, height: 80 }], 70, out.fromBitmap, [{ x: 160, y: 320, width: 320, height: 160 }]);
+    expect(shot.jpeg).toEqual(Buffer.from('drawn'));
+    // 160 to 480 CSS px is 102.4 to 307.2 in the 1024-wide image, and the mask covers its edge pixels.
+    expect(pixel(out.bitmap(), 102, 204)).toEqual(BLACK);
+    expect(pixel(out.bitmap(), 307, 307)).toEqual(BLACK);
+    expect(pixel(out.bitmap(), 200, 250)).toEqual(BLACK);
+    expect(pixel(out.bitmap(), 90, 250)).toEqual(GREY);
+    expect(pixel(out.bitmap(), 102, 102)).not.toEqual(GREY);
+  });
+
+  it('masks a screenshot taken without labels too', () => {
+    const { image } = capture(800, 1);
+    const out = drawnTo();
+    renderScreenshot(image, 800, null, 70, out.fromBitmap, [{ x: 10, y: 10, width: 100, height: 20 }]);
+    expect(pixel(out.bitmap(), 50, 15)).toEqual(BLACK);
+    expect(pixel(out.bitmap(), 50, 40)).toEqual(GREY);
+  });
+
+  it('answers no image when it cannot mask one, and an unlabelled one when it only cannot label it', () => {
+    const odd: ImageLike = { getSize: () => ({ width: 800, height: 600 }), resize: () => odd, toBitmap: () => Buffer.alloc(16), toJPEG: () => Buffer.from('plain') };
+    expect(() => renderScreenshot(odd, 800, null, 70, vi.fn(), [{ x: 10, y: 10, width: 100, height: 20 }])).toThrow(expect.objectContaining({ code: 'internal' }));
+    expect(renderScreenshot(odd, 800, [{ id: 1, x: 0, y: 0, width: 10, height: 10 }], 70, vi.fn(), [])).toEqual({ jpeg: Buffer.from('plain'), width: 800, height: 600 });
+  });
+});
+
+describe("a page read's look at a frame", () => {
+  /* A box `width` by `height` of one gray, with `drawn` of its pixels, top
+     left first, in another. */
+  function box(width: number, height: number, background: number, drawn = 0, ink = 0): Bitmap {
+    const bitmap = { data: Buffer.alloc(width * height * 4, background), width, height };
+    for (let at = 0; at < drawn; at += 1) bitmap.data.fill(ink, at * 4, at * 4 + 3);
+    return bitmap;
+  }
+  const PIXELS = 160 * 80;
+
+  it('reads a box of one color, or of one color with a few pinholes or a text too faint to read, as one color', () => {
+    expect(nearlyOneColor(box(160, 80, 0xff))).toBe(true);
+    expect(nearlyOneColor(box(160, 80, 0xff, 25, 0))).toBe(true);
+    // Text under a white cover nine tenths opaque: 25 levels off the white.
+    expect(nearlyOneColor(box(160, 80, 0xff, PIXELS / 10, 230))).toBe(true);
+  });
+
+  it('reads a box that draws text, dimmed, in a dark mode or sparse, as more than one color', () => {
+    expect(nearlyOneColor(box(160, 80, 0xff, PIXELS / 10, 0))).toBe(false);
+    // Dimmed: the white is light gray, the text darker gray.
+    expect(nearlyOneColor(box(160, 80, 230, PIXELS / 20, 120))).toBe(false);
+    // A dark mode: light text on a dark ground.
+    expect(nearlyOneColor(box(160, 80, 20, PIXELS / 20, 220))).toBe(false);
+    // One short word in a large box.
+    expect(nearlyOneColor(box(160, 80, 0xff, 60, 60))).toBe(false);
+  });
+
+  it('scales a capture of the box down to half its CSS width, at most FRAME_LOOK_MAX_PX, and reads none it cannot', () => {
+    const resized = vi.fn((options: { width: number }) => {
+      const scaled: ImageLike = {
+        getSize: () => ({ width: options.width, height: 40 }),
+        resize: () => scaled,
+        toBitmap: () => Buffer.alloc(options.width * 40 * 4, 0xff),
+        toJPEG: () => Buffer.from(''),
+      };
+      return scaled;
+    });
+    const capture: ImageLike = { getSize: () => ({ width: 800, height: 160 }), resize: resized, toBitmap: () => Buffer.alloc(0), toJPEG: () => Buffer.from('') };
+    expect(frameLook(capture, 400)).toMatchObject({ width: Math.min(200, FRAME_LOOK_MAX_PX), height: 40 });
+    expect(frameLook(capture, 1000)).toMatchObject({ width: FRAME_LOOK_MAX_PX });
+    expect(resized).toHaveBeenLastCalledWith({ width: FRAME_LOOK_MAX_PX, quality: 'good' });
+    const empty: ImageLike = { getSize: () => ({ width: 0, height: 0 }), resize: () => empty, toBitmap: () => Buffer.alloc(0), toJPEG: () => Buffer.from('') };
+    expect(frameLook(empty, 400)).toBeNull();
+    const odd: ImageLike = { getSize: () => ({ width: 800, height: 160 }), resize: () => odd, toBitmap: () => Buffer.alloc(16), toJPEG: () => Buffer.from('') };
+    expect(frameLook(odd, 400)).toBeNull();
   });
 });

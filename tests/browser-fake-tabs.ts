@@ -22,6 +22,7 @@ export const FAKE_PAGE: PageSnapshot = {
   text: 'Sign in to Example Shop.',
   truncated: false,
   challenges: [],
+  frames: [],
 };
 
 export interface FakeTab extends TabView {
@@ -46,6 +47,7 @@ export function fakeFactory(): TabFactory & { tabs: FakeTab[] } {
         read: vi.fn(async () => ({ ...FAKE_PAGE, url: current })),
         act: vi.fn(async (request: StepRequest) => {
           tab.actions.push(request);
+          return { changed: null };
         }),
         screenshot: vi.fn(async () => ({ jpeg: Buffer.from([0xff, 0xd8, 0xff, 0xd9]), width: 1024, height: 640 })),
         load: vi.fn(async (next: string) => {
@@ -58,6 +60,7 @@ export function fakeFactory(): TabFactory & { tabs: FakeTab[] } {
         park: vi.fn(),
         abortInput: vi.fn(),
         watchSecrets: vi.fn(),
+        handbackElement: vi.fn(async () => null),
         close: vi.fn(),
       };
       tabs.push(tab);

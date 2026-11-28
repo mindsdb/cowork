@@ -36,12 +36,14 @@ import {
   type SessionInfo,
   type Site,
   type StepAction,
+  type StepOutcome,
   type StepRequest,
   type Tab,
   type WaitFor,
 } from '../shared/browser-contract';
 import { diagnostic } from '../shared/diagnostics';
-import { type HandOverWatch, WATCH_TICK_MS, watchTick } from './browser-handover-watch';
+import { type HandOverWatch, WATCH_TICK_MS, watchTick, type WatchRead } from './browser-handover-watch';
+import type { HandbackElement } from './browser-page-script';
 import { refusedDestination } from './browser-profile';
 import type { Screenshot } from './browser-screenshot';
 
@@ -75,6 +77,18 @@ export const MIN_VIEW_PX = 200;
 
 const usable = (bounds: ViewBounds): boolean => bounds.width >= MIN_VIEW_PX && bounds.height >= MIN_VIEW_PX;
 
+/** How a page read reads. `focus`: page.json's `focus`, the focused node,
+    which the tab names through the debugger. Only anton's reads ask for it
+    (page, and a step's include_page), which run in the session's queue, so
+    a read outside it (the hand-over watch's every second) never holds the
+    debugger a step that starts then needs. `frames` false: every frame is
+    listed unread, so the page's world reads none and the tab looks at
+    none, as the hand-over watch, which compares no frame, reads the page. */
+export interface PageReadOptions {
+  focus?: boolean;
+  frames?: boolean;
+}
+
 /** One tab: a native view the host drives. browser-view.ts implements it. */
 export interface TabView {
   url(): string;
@@ -82,8 +96,14 @@ export interface TabView {
   loading(): boolean;
   canGoBack(): boolean;
   canGoForward(): boolean;
-  read(maxText: number): Promise<PageSnapshot>;
-  act(request: StepRequest): Promise<void>;
+  read(maxText: number, options?: PageReadOptions): Promise<PageSnapshot>;
+  /** Whether element `id` of the page's last read is checked and whether it
+      holds anything, never what, a secret field included; null once it
+      left the page. The hand-over watch reads it. */
+  handbackElement(id: number): Promise<HandbackElement | null>;
+  /** Runs a step and lets it settle. `onInputDone` runs once its input is
+      over, before the settle. */
+  act(request: StepRequest, onInputDone: () => void): Promise<StepOutcome>;
   screenshot(annotate: boolean, quality: number): Promise<Screenshot>;
   load(url: string): Promise<void>;
   back(): Promise<void>;
@@ -106,10 +126,15 @@ export interface LoginRequest {
   respond(answer: BrowserLoginAnswer | null): void;
 }
 
+/** The person's input that reached a tab's page: a mouse press or
+    release, a key, a wheel, or the pointer entering, moving over or
+    leaving the page (browser-view.ts tells these from the agent's). */
+export type PersonInput = 'press' | 'release' | 'key' | 'wheel' | 'move';
+
 /** What a tab tells its session. */
 export interface TabHooks {
   changed(): void;
-  personInput(): void;
+  personInput(input: PersonInput): void;
   popupAllowed(): boolean;
   adopt(tab: TabView): void;
   login(request: LoginRequest): void;
@@ -164,11 +189,20 @@ interface TaskSession {
   createdAt: number;
   lastUsed: number;
   lastAgentStepAt: number;
+  /** The person's last press or key in a page, or use of the pane's Back,
+      Forward, Reload or address: a popup may follow it, and a watched
+      hand-over waits for it. */
   lastPersonInputAt: number;
+  /** How many of the person's inputs reached a page, a pane button or
+      address included: a step one reached the page during can't tell its
+      own change from theirs (`action`). */
+  personInputs: number;
   login: LoginRequest | null;
   downloads: BrowserDownload[];
   /** A hand-over that comes back by itself once the person did what it waits for. */
   watch: HandOverWatch | null;
+  /** The watch's read is in flight, so a tick starts none. */
+  watchReading: boolean;
 }
 
 const unavailable = () => new BridgeError('browser_unavailable', "the app's window is closed");
@@ -258,9 +292,11 @@ export class BrowserSessions {
       lastUsed: now,
       lastAgentStepAt: 0,
       lastPersonInputAt: 0,
+      personInputs: 0,
       login: null,
       downloads: [],
       watch: null,
+      watchReading: false,
     };
     this.sessions.set(id, session);
     // A task whose first tab fails to build is not kept.
@@ -285,9 +321,12 @@ export class BrowserSessions {
   private hooksFor(session: TaskSession): TabHooks {
     return {
       changed: () => this.emitState(session),
-      personInput: () => {
-        session.lastPersonInputAt = this.now();
-        session.lastUsed = session.lastPersonInputAt;
+      personInput: (input) => {
+        session.personInputs += 1;
+        session.lastUsed = this.now();
+        /* A move or a wheel isn't a gesture Chromium lets open a window,
+           and a release follows a press that counted. */
+        if (input === 'press' || input === 'key') session.lastPersonInputAt = session.lastUsed;
       },
       popupAllowed: () => {
         if (!this.sessions.has(session.id)) return false;
@@ -425,31 +464,51 @@ export class BrowserSessions {
 
   page(id: string, maxText: number): Promise<PageSnapshot> {
     const session = this.ensure(id);
-    return this.enqueue(session, () => this.agentRead(session, () => this.active(session).view.read(maxText)));
+    return this.enqueue(session, () => this.agentRead(session, () => this.active(session).view.read(maxText, { focus: true })));
   }
 
   action(id: string, request: StepRequest): Promise<ActionAnswer> {
     const session = this.ensure(id);
     return this.enqueue(session, async () => {
       const tab = this.active(session);
+      const seq = session.control.seq;
+      const personInputs = session.personInputs;
       session.stepRunning = INPUT_STEPS.has(request.step.action);
-      try {
-        await tab.view.act(request);
-      } finally {
+      let inputOver = false;
+      /* A popup may open while the step's input runs and for
+         POPUP_INPUT_WINDOW_MS after it, not through the settle that follows. */
+      const endInput = () => {
+        if (inputOver) return;
+        inputOver = true;
         session.stepRunning = false;
         session.lastAgentStepAt = this.now();
+      };
+      let outcome: StepOutcome;
+      try {
+        outcome = await tab.view.act(request, endInput);
+      } finally {
+        endInput();
       }
       this.emitState(session);
       const current = this.active(session);
-      const answer: ActionAnswer = { ok: true, url: current.view.url() };
+      const answer: ActionAnswer = { ok: true, url: current.view.url(), changed: outcome.changed };
+      /* The person's input reaches the page while a step runs and settles,
+         since the desktop holds none of it back: when any did, a change the
+         settle saw may be theirs, so a true becomes null. A false stays
+         false, and a wait's null stays null. Input during the page read
+         below comes after the settle answered. */
+      if (answer.changed && session.personInputs !== personInputs) answer.changed = null;
       /* The step ran, so it answers 200 even when the browser passed to the
-         person during it or during its read, but without the page. anton then
-         asks for the page, and that call gets 409 while the person holds it. */
+         person during it or during its read, but without the page, and
+         without saying what changed: the person may have changed it. anton
+         then asks for the page, and that call gets 409 while the person
+         holds it. */
       if (request.includePage && session.control.holder !== 'human') {
-        const seq = session.control.seq;
-        const page = await current.view.read(3000);
-        if (session.control.seq === seq) answer.page = page;
+        const readSeq = session.control.seq;
+        const page = await current.view.read(3000, { focus: true });
+        if (session.control.seq === readSeq) answer.page = page;
       }
+      if (session.control.seq !== seq) answer.changed = null;
       return answer;
     });
   }
@@ -470,20 +529,30 @@ export class BrowserSessions {
     return { ...control, watching };
   }
 
-  /* One read of a watched hand-over's page, in the isolated world, and the
-     hand back when it's done. A read that fails, or that control changed
-     under, counts for nothing. */
+  /* One read of a watched hand-over's page, in the isolated world, its
+     frames listed unread, with the state of the element an element wait
+     waits for, and the hand back when it's done. A tick while the last read
+     is still in flight starts none. A read that fails, or that control
+     changed under, counts for nothing. */
   private async readWatched(session: TaskSession): Promise<void> {
     const watch = session.watch;
-    if (!watch || session.login) return;
-    let page: PageSnapshot;
+    if (!watch || session.login || session.watchReading) return;
+    session.watchReading = true;
+    let read: WatchRead;
     try {
-      page = await this.active(session).view.read(0);
+      const view = this.active(session).view;
+      const [page, element] = await Promise.all([
+        view.read(0, { frames: false }),
+        'element' in watch.waitFor ? view.handbackElement(watch.waitFor.element) : null,
+      ]);
+      read = { page, element };
     } catch {
       return;
+    } finally {
+      session.watchReading = false;
     }
     if (session.watch !== watch || session.control.seq !== watch.seq || !this.sessions.has(session.id)) return;
-    if (watchTick(watch, page, { now: this.now(), lastPersonInputAt: session.lastPersonInputAt })) {
+    if (watchTick(watch, read, { now: this.now(), lastPersonInputAt: session.lastPersonInputAt })) {
       this.setControl(session, 'agent', '', 'person');
     }
   }
@@ -674,6 +743,7 @@ export class BrowserSessions {
     const session = this.person(id);
     if (!session) return;
     session.lastPersonInputAt = this.now();
+    session.personInputs += 1;
     const view = this.active(session).view;
     await (where === 'back' ? view.back() : where === 'forward' ? view.forward() : view.reload());
   }
@@ -693,6 +763,7 @@ export class BrowserSessions {
     if (url === null) return;
     existing.lastUsed = this.now();
     existing.lastPersonInputAt = this.now();
+    existing.personInputs += 1;
     await this.active(existing).view.load(url);
   }
 
