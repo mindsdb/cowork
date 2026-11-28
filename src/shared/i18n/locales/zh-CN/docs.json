@@ -310,5 +310,19 @@
     "justNow": "刚刚",
     "minutesAgo": "{count, plural, other {# 分钟前}}",
     "hoursAgo": "{count, plural, other {# 小时前}}"
+  },
+  "web": {
+    "signIn": "这是你的文档？登录后编辑",
+    "waiting": "正在等待你的电脑",
+    "canEdit": "你可以编辑",
+    "viewOnly": "仅可查看",
+    "stopped": "所有者已停止共享此文档。此页面将不再更新。",
+    "lapsed": "此页面已打开一段时间。请重新加载以继续编辑。",
+    "lapsedUnsaved": "此页面已打开一段时间。请重新加载以继续编辑。你的最后一次更改尚未保存。",
+    "reload": "重新加载",
+    "openApp": "请在你的电脑上打开 {product} 进行编辑。此文档存放并保存在那里。",
+    "stale": "该块已先在你的电脑上被更改，你的编辑未被应用。",
+    "deferred": "你的编辑正在等待你电脑上的 {product}。应用打开后将会应用这些编辑。",
+    "notSaved": "该编辑未保存：{reason}"
   }
 }

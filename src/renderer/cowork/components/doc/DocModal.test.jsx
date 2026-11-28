@@ -122,7 +122,7 @@ describe('DocModal panel rail', () => {
     fireEvent.click(adds[0]);
     await waitFor(() => expect(api.postDocOps).toHaveBeenCalledWith('p1', 'a1', expect.objectContaining({
       ops: [{ op: 'add_tab', title: 'Untitled' }],
-    })));
+    }), expect.anything()));
     // The new tab's list has no add of its own in a preview.
     expect(await screen.findByRole('tab', { name: 'Risks' })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Add tab' })).toHaveLength(1);

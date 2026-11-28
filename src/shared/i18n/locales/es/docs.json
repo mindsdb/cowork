@@ -310,5 +310,19 @@
     "justNow": "justo ahora",
     "minutesAgo": "{count, plural, other {hace # min}}",
     "hoursAgo": "{count, plural, other {hace # h}}"
+  },
+  "web": {
+    "signIn": "¿Es tu documento? Inicia sesión para editarlo",
+    "waiting": "Esperando a tu computadora",
+    "canEdit": "Puedes editarlo",
+    "viewOnly": "Solo lectura",
+    "stopped": "El propietario dejó de compartir este documento. Esta página ya no cambiará.",
+    "lapsed": "Esta página lleva un rato abierta. Vuelve a cargarla para seguir editando.",
+    "lapsedUnsaved": "Esta página lleva un rato abierta. Vuelve a cargarla para seguir editando. Tu último cambio aún no se ha guardado.",
+    "reload": "Volver a cargar",
+    "openApp": "Abre {product} en tu computadora para editar. Este documento vive allí y se guarda allí.",
+    "stale": "Ese bloque cambió primero en tu computadora; tu edición no se aplicó.",
+    "deferred": "Tus ediciones esperan a {product} en tu computadora. Se aplicarán cuando la app esté abierta.",
+    "notSaved": "Esa edición no se guardó: {reason}"
   }
 }

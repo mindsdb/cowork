@@ -11,7 +11,9 @@ const shared = JSON.parse(RULES_BYTES);
 const RULES_SHA256 = '621c3295182af196d7977c5c911ccc3e2fc9fc2fa51f7dfb49d5f3adb42be10d';
 
 const read = (name) => readFileSync(resolve(__dirname, name), 'utf8');
-const GLOBALS = readFileSync(resolve(__dirname, '../../styles/globals.css'), 'utf8');
+// The design tokens live in tokens.css, which globals.css imports.
+const GLOBALS = ['tokens.css', 'globals.css']
+  .map((name) => readFileSync(resolve(__dirname, '../../styles', name), 'utf8')).join('\n');
 const SIDES = ['top', 'right', 'bottom', 'left'];
 
 function splitTopLevel(text, sep) {

@@ -310,5 +310,19 @@
     "justNow": "gerade eben",
     "minutesAgo": "{count, plural, other {vor # Min.}}",
     "hoursAgo": "{count, plural, other {vor # Std.}}"
+  },
+  "web": {
+    "signIn": "Ihr Dokument? Zum Bearbeiten anmelden",
+    "waiting": "Warten auf Ihren Computer",
+    "canEdit": "Sie können dies bearbeiten",
+    "viewOnly": "Nur ansehen",
+    "stopped": "Der Eigentümer teilt dieses Dokument nicht mehr. Diese Seite ändert sich nicht mehr.",
+    "lapsed": "Diese Seite ist schon eine Weile geöffnet. Laden Sie sie neu, um weiter zu bearbeiten.",
+    "lapsedUnsaved": "Diese Seite ist schon eine Weile geöffnet. Laden Sie sie neu, um weiter zu bearbeiten. Ihre letzte Änderung ist noch nicht gespeichert.",
+    "reload": "Neu laden",
+    "openApp": "Öffnen Sie {product} auf Ihrem Computer, um zu bearbeiten. Dieses Dokument liegt dort und wird dort gespeichert.",
+    "stale": "Dieser Block wurde zuerst auf Ihrem Computer geändert; Ihre Änderung wurde nicht übernommen.",
+    "deferred": "Ihre Änderungen warten auf {product} auf Ihrem Computer. Sie werden übernommen, sobald die App geöffnet ist.",
+    "notSaved": "Diese Änderung wurde nicht gespeichert: {reason}"
   }
 }
