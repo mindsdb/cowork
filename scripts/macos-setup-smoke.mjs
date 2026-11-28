@@ -3,13 +3,15 @@ import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createWriteStream, existsSync, appendFileSync, writeFileSync } from 'node:fs';
-import { mkdir, mkdtemp, copyFile, realpath } from 'node:fs/promises';
-import { join, resolve, relative, isAbsolute } from 'node:path';
+import { mkdir, mkdtemp, copyFile, readdir, realpath } from 'node:fs/promises';
+import { basename, join, resolve } from 'node:path';
 import { createServer } from 'node:net';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { setTimeout as delay } from 'node:timers/promises';
-import { assertAppIdentity, assertSetupPassed, failureStep, packageIdentity, validateManifest, STEP_NAMES } from './macos-setup-contract.mjs';
+import { assertAppIdentity, assertSetupPassed, failureStep, forbiddenEntitlements, packageIdentity, validateManifest, within, STEP_NAMES } from './macos-setup-contract.mjs';
+import { checkFuses } from './release-fuses.mjs';
+import { makeInspectableCopy } from './inspectable-copy.mjs';
 
 const execute = promisify(execFile);
 const channel = process.env.MACOS_SETUP_CHANNEL;
@@ -25,11 +27,6 @@ const started = Date.now();
 
 function save(name, value) {
   writeFileSync(join(output, name), typeof value === 'string' ? value : `${JSON.stringify(value, null, 2)}\n`);
-}
-
-function within(parent, child) {
-  const path = relative(parent, child);
-  return path === '' || (!path.startsWith('..') && !isAbsolute(path));
 }
 
 async function bounded(promise, milliseconds, message) {
@@ -101,7 +98,35 @@ async function run() {
   await command('/usr/bin/sudo', ['-n', '/usr/sbin/installer', '-pkg', pkg, '-target', '/'], { timeout: 5 * 60_000 });
   const executableName = await command('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleExecutable', join(bundle, 'Contents/Info.plist')]);
   if (!executableName || executableName.includes('/')) throw new Error('Invalid installed executable name.');
-  const executablePath = join(bundle, 'Contents/MacOS', executableName);
+
+  result.failingStep = 'Check release fuses';
+  const fuses = await checkFuses(bundle);
+  save('fuses-installed.json', fuses.states);
+  if (fuses.mismatches.length) throw new Error(`Installed app does not carry the release fuses: ${fuses.mismatches.join('; ')}.`);
+
+  result.failingStep = 'Check entitlements';
+  const frameworks = join(bundle, 'Contents/Frameworks');
+  const helpers = (await readdir(frameworks)).filter((name) => name.includes('Helper') && name.endsWith('.app')).map((name) => join(frameworks, name));
+  if (!helpers.length) throw new Error('Installed app has no helper apps to check.');
+  const held = [];
+  for (const code of [bundle, ...helpers]) {
+    for (const key of forbiddenEntitlements(await command('/usr/bin/codesign', ['-d', '--entitlements', '-', '--xml', code]))) held.push(`${basename(code)} holds ${key}`);
+  }
+  if (held.length) throw new Error(`${held.join('; ')}.`);
+
+  result.failingStep = 'Prepare inspectable copy';
+  /* Playwright attaches through Node's inspector, which the release fuses off,
+     so the smoke drives the copy that testers make with scripts/inspectable-copy.mjs,
+     and leaves the installed app as shipped. */
+  const copy = await makeInspectableCopy({
+    installed: bundle, executable: join(bundle, 'Contents/MacOS', executableName),
+    folder: await mkdtemp(join(process.env.RUNNER_TEMP, 'cowork-app-')), exec: command,
+  }).catch((error) => {
+    if (error.fuses) save('fuses-copy.json', error.fuses);
+    throw error;
+  });
+  save('fuses-copy.json', copy.fuses);
+  const executablePath = copy.executable;
 
   result.failingStep = 'Launch and isolate app';
   profile = await mkdtemp(join(process.env.RUNNER_TEMP, 'cowork-profile-'));
@@ -133,7 +158,7 @@ async function run() {
     };
   }), 15_000, 'App isolation probe timed out.');
   save('isolation.json', isolation);
-  if (!isolation.packaged || await realpath(isolation.executable) !== await realpath(executablePath)) throw new Error('Not running the installed packaged executable.');
+  if (!isolation.packaged || await realpath(isolation.executable) !== await realpath(executablePath)) throw new Error('Not running the inspectable copy\'s packaged executable.');
   for (const path of [isolation.nodeHome, isolation.coworkHome, isolation.serverLog, ...Object.values(isolation.paths), isolation.toolDir, isolation.toolBinDir].filter(Boolean)) {
     if (!within(profile, path)) throw new Error(`App path escapes the fresh profile: ${path}`);
   }

@@ -1,0 +1,470 @@
+{
+  "description": "Inline Markdown of a doc block and the HTML it renders to. cowork-server (docs/render.inline_html) renders exactly `html`; the editor (cowork docModel.inlineToHtml) renders the same marks, compared after its own attributes are set aside (a link's target and rel, a chip's classes and data). Both repositories keep an identical copy of this file.",
+  "cases": [
+    {
+      "name": "plain text",
+      "text": "Plain words.",
+      "html": "Plain words."
+    },
+    {
+      "name": "strong, emphasis and code",
+      "text": "**Acme** is *cheapest* at `$12k`",
+      "html": "<strong>Acme</strong> is <em>cheapest</em> at <code>$12k</code>"
+    },
+    {
+      "name": "marks nest inside strong",
+      "text": "**bold with *italic* and [a link](https://x.io) inside**",
+      "html": "<strong>bold with <em>italic</em> and <a href=\"https://x.io\">a link</a> inside</strong>"
+    },
+    {
+      "name": "text is escaped and never becomes markup",
+      "text": "<script>alert(1)</script> & \"q\" 'r'",
+      "html": "&lt;script&gt;alert(1)&lt;/script&gt; &amp; &quot;q&quot; 'r'"
+    },
+    {
+      "name": "only http(s):// and mailto: addresses link",
+      "text": "[x](javascript:alert(1))",
+      "html": "[x](javascript:alert(1))"
+    },
+    {
+      "name": "a NUL character is dropped",
+      "text": "a\u0000b",
+      "html": "ab"
+    },
+    {
+      "name": "strong inside emphasis",
+      "text": "*a **b** c*",
+      "html": "<em>a <strong>b</strong> c</em>"
+    },
+    {
+      "name": "a * in a link address never ends emphasis",
+      "text": "*[x](https://x.com/*y*)*",
+      "html": "<em><a href=\"https://x.com/*y*\">x</a></em>"
+    },
+    {
+      "name": "emphasis never crosses a link boundary",
+      "text": "*a [b*](http://x.io)",
+      "html": "*a <a href=\"http://x.io\">b*</a>"
+    },
+    {
+      "name": "emphasis nests in emphasis",
+      "text": "*a *b**",
+      "html": "<em>a <em>b</em></em>"
+    },
+    {
+      "name": "emphasis nests with both marks",
+      "text": "*_a_*",
+      "html": "<em><em>a</em></em>"
+    },
+    {
+      "name": "* opens inside a word",
+      "text": "é*a*",
+      "html": "é<em>a</em>"
+    },
+    {
+      "name": "_ never opens inside a word, and letters are Unicode",
+      "text": "é_a_",
+      "html": "é_a_"
+    },
+    {
+      "name": "_ around a Unicode letter",
+      "text": "_é_",
+      "html": "<em>é</em>"
+    },
+    {
+      "name": "emphasis spans a carriage return",
+      "text": "*a\rb*",
+      "html": "<em>a\rb</em>"
+    },
+    {
+      "name": "emphasis spans a line feed, shown as a line break",
+      "text": "*a\nb*",
+      "html": "<em>a<br>b</em>"
+    },
+    {
+      "name": "U+2028 is neither white space nor a line end",
+      "text": "*a\u2028b*",
+      "html": "<em>a\u2028b</em>"
+    },
+    {
+      "name": "an address needs scheme://",
+      "text": "[a](https:x)",
+      "html": "[a](https:x)"
+    },
+    {
+      "name": "an address needs a character after the scheme",
+      "text": "[a](http://)",
+      "html": "[a](http://)"
+    },
+    {
+      "name": "mailto: needs a character after it",
+      "text": "[a](mailto:)",
+      "html": "[a](mailto:)"
+    },
+    {
+      "name": "emphasis inside strong",
+      "text": "**a *b* c**",
+      "html": "<strong>a <em>b</em> c</strong>"
+    },
+    {
+      "name": "three marks are emphasis around strong",
+      "text": "***a***",
+      "html": "<em><strong>a</strong></em>"
+    },
+    {
+      "name": "a spare opening mark stays",
+      "text": "**a*",
+      "html": "*<em>a</em>"
+    },
+    {
+      "name": "a spare closing mark stays",
+      "text": "*a**",
+      "html": "<em>a</em>*"
+    },
+    {
+      "name": "rule of 3: one emphasis, not two",
+      "text": "*a**b*",
+      "html": "<em>a**b</em>"
+    },
+    {
+      "name": "a closing mark with no opener stays",
+      "text": "*a* b* c*",
+      "html": "<em>a</em> b* c*"
+    },
+    {
+      "name": "underscore emphasis nests",
+      "text": "_a _b_ c_",
+      "html": "<em>a <em>b</em> c</em>"
+    },
+    {
+      "name": "an inner underscore stays",
+      "text": "_a_b_",
+      "html": "<em>a_b</em>"
+    },
+    {
+      "name": "snake_case stays",
+      "text": "snake_case_name",
+      "html": "snake_case_name"
+    },
+    {
+      "name": "* emphasis inside a word",
+      "text": "foo*bar*baz",
+      "html": "foo<em>bar</em>baz"
+    },
+    {
+      "name": "double underscore is strong",
+      "text": "__a__",
+      "html": "<strong>a</strong>"
+    },
+    {
+      "name": "a mark between spaces stays",
+      "text": "a * b * c",
+      "html": "a * b * c"
+    },
+    {
+      "name": "a closing mark after a space stays",
+      "text": "*a *",
+      "html": "*a *"
+    },
+    {
+      "name": "an opening mark before a space stays",
+      "text": "* a*",
+      "html": "* a*"
+    },
+    {
+      "name": "punctuation inside the marks",
+      "text": "*(a)*",
+      "html": "<em>(a)</em>"
+    },
+    {
+      "name": "* opens and closes beside punctuation inside a word",
+      "text": "a*(b)*c",
+      "html": "a<em>(b)</em>c"
+    },
+    {
+      "name": "bold ending in punctuation before a word",
+      "text": "**Note:**text",
+      "html": "<strong>Note:</strong>text"
+    },
+    {
+      "name": "bold around a price inside CJK text",
+      "text": "价格**$5**起",
+      "html": "价格<strong>$5</strong>起"
+    },
+    {
+      "name": "bold ending in a CJK colon",
+      "text": "**注意：**这是重点",
+      "html": "<strong>注意：</strong>这是重点"
+    },
+    {
+      "name": "bold around CJK quotes",
+      "text": "これは**「重要」**です",
+      "html": "これは<strong>「重要」</strong>です"
+    },
+    {
+      "name": "bold around a link inside a word",
+      "text": "x**[link](http://x)**y",
+      "html": "x<strong><a href=\"http://x\">link</a></strong>y"
+    },
+    {
+      "name": "_ keeps CommonMark's rule beside punctuation",
+      "text": "_Note:_text",
+      "html": "_Note:_text"
+    },
+    {
+      "name": "emphasis spans a blank line",
+      "text": "*a\n\nb*",
+      "html": "<em>a<br><br>b</em>"
+    },
+    {
+      "name": "emphasis inside strike",
+      "text": "~~a *b* c~~",
+      "html": "<s>a <em>b</em> c</s>"
+    },
+    {
+      "name": "strike never crosses emphasis",
+      "text": "*a ~~b* c~~",
+      "html": "<em>a ~~b</em> c~~"
+    },
+    {
+      "name": "strike inside a word",
+      "text": "a~~b~~c",
+      "html": "a<s>b</s>c"
+    },
+    {
+      "name": "strike around parentheses inside a word",
+      "text": "a~~(b)~~c",
+      "html": "a<s>(b)</s>c"
+    },
+    {
+      "name": "strike marks hug the words",
+      "text": "~~ a ~~",
+      "html": "~~ a ~~"
+    },
+    {
+      "name": "strike is exactly two tildes",
+      "text": "~a~ ~~~b~~~",
+      "html": "~a~ ~~~b~~~"
+    },
+    {
+      "name": "the last [ before ] opens the link",
+      "text": "[[a](http://x.io)",
+      "html": "[<a href=\"http://x.io\">a</a>"
+    },
+    {
+      "name": "no link inside a link",
+      "text": "[a [b](http://x) c](http://y)",
+      "html": "[a <a href=\"http://x\">b</a> c](http://y)"
+    },
+    {
+      "name": "emphasis in link words",
+      "text": "[*a*](mailto:me@x.io)",
+      "html": "<a href=\"mailto:me@x.io\"><em>a</em></a>"
+    },
+    {
+      "name": "an address keeps its underscores and is escaped once",
+      "text": "[the **plan**](https://x.com/_p_/?a=1&b=2)",
+      "html": "<a href=\"https://x.com/_p_/?a=1&amp;b=2\">the <strong>plan</strong></a>"
+    },
+    {
+      "name": "a space ends the address",
+      "text": "[a](http://x y)",
+      "html": "[a](http://x y)"
+    },
+    {
+      "name": "words end at the first ]",
+      "text": "[a]](http://x.io)",
+      "html": "[a]](http://x.io)"
+    },
+    {
+      "name": "a link needs words",
+      "text": "[](http://x.io)",
+      "html": "[](http://x.io)"
+    },
+    {
+      "name": "a code span in link words keeps its ]",
+      "text": "[a `]` b](http://x)",
+      "html": "<a href=\"http://x\">a <code>]</code> b</a>"
+    },
+    {
+      "name": "a code span binds tighter than a link",
+      "text": "[a `b](http://x)`",
+      "html": "[a <code>b](http://x)</code>"
+    },
+    {
+      "name": "an escape in the address",
+      "text": "[a](http://x/\\_y)",
+      "html": "<a href=\"http://x/_y\">a</a>"
+    },
+    {
+      "name": "an escaped ] in link words",
+      "text": "[a\\]b](http://x)",
+      "html": "<a href=\"http://x\">a]b</a>"
+    },
+    {
+      "name": "an escaped [ opens no link",
+      "text": "\\[a](http://x)",
+      "html": "[a](http://x)"
+    },
+    {
+      "name": "a quote in the address is escaped",
+      "text": "[a](http://x\"b)",
+      "html": "<a href=\"http://x&quot;b\">a</a>"
+    },
+    {
+      "name": "the address ends at the first )",
+      "text": "[a](http://x(b))",
+      "html": "<a href=\"http://x(b\">a</a>)"
+    },
+    {
+      "name": "two links",
+      "text": "[a](http://x.io) [b](mailto:me@x.io)",
+      "html": "<a href=\"http://x.io\">a</a> <a href=\"mailto:me@x.io\">b</a>"
+    },
+    {
+      "name": "strong in a link in emphasis",
+      "text": "*a [**b**](http://x) c*",
+      "html": "<em>a <a href=\"http://x\"><strong>b</strong></a> c</em>"
+    },
+    {
+      "name": "escaped underscores",
+      "text": "\\_draft\\_",
+      "html": "_draft_"
+    },
+    {
+      "name": "escaped asterisks",
+      "text": "\\*not bold\\*",
+      "html": "*not bold*"
+    },
+    {
+      "name": "an escaped backslash",
+      "text": "a \\\\ b",
+      "html": "a \\ b"
+    },
+    {
+      "name": "a backslash in code is the code's own",
+      "text": "`C:\\path\\_x_`",
+      "html": "<code>C:\\path\\_x_</code>"
+    },
+    {
+      "name": "escaped backticks open no code",
+      "text": "\\`not code\\`",
+      "html": "`not code`"
+    },
+    {
+      "name": "an escaped * inside emphasis",
+      "text": "*a \\* b*",
+      "html": "<em>a * b</em>"
+    },
+    {
+      "name": "an escaped * before emphasis",
+      "text": "\\**a*",
+      "html": "*<em>a</em>"
+    },
+    {
+      "name": "a backslash before other punctuation stays",
+      "text": "\\(a\\)",
+      "html": "\\(a\\)"
+    },
+    {
+      "name": "a * in code never ends emphasis",
+      "text": "*a `b*` c*",
+      "html": "<em>a <code>b*</code> c</em>"
+    },
+    {
+      "name": "code is escaped",
+      "text": "`<b>`",
+      "html": "<code>&lt;b&gt;</code>"
+    },
+    {
+      "name": "a lone backtick stays",
+      "text": "` alone",
+      "html": "` alone"
+    },
+    {
+      "name": "empty code stays",
+      "text": "a `` b",
+      "html": "a `` b"
+    },
+    {
+      "name": "a date chip",
+      "text": "{{ date : 2026-10-21 }}",
+      "html": "<span class=\"chip chip-date\">Oct 21, 2026</span>"
+    },
+    {
+      "name": "status and user chips",
+      "text": "{{status: in progress  }} and {{user:Ann}}",
+      "html": "<span class=\"chip chip-status\">in progress</span> and <span class=\"chip chip-user\">Ann</span>"
+    },
+    {
+      "name": "a blank chip keeps one space",
+      "text": "{{status:   }}",
+      "html": "<span class=\"chip chip-status\"> </span>"
+    },
+    {
+      "name": "a chip value runs to the first }",
+      "text": "{{user: {{status: done}}",
+      "html": "<span class=\"chip chip-user\">{{status: done</span>"
+    },
+    {
+      "name": "a chip needs }}",
+      "text": "{{date:a}",
+      "html": "{{date:a}"
+    },
+    {
+      "name": "marks in a chip stay",
+      "text": "{{status: *x*}}",
+      "html": "<span class=\"chip chip-status\">*x*</span>"
+    },
+    {
+      "name": "emphasis never ends inside a chip",
+      "text": "*a {{status: b*}}",
+      "html": "*a <span class=\"chip chip-status\">b*</span>"
+    },
+    {
+      "name": "emphasis around a chip",
+      "text": "*{{status: x}}*",
+      "html": "<em><span class=\"chip chip-status\">x</span></em>"
+    },
+    {
+      "name": "a day the calendar lacks stays as typed",
+      "text": "{{date:2026-02-31}}",
+      "html": "<span class=\"chip chip-date\">2026-02-31</span>"
+    },
+    {
+      "name": "a year below 1000 stays as typed",
+      "text": "{{date:0999-01-01}}",
+      "html": "<span class=\"chip chip-date\">0999-01-01</span>"
+    },
+    {
+      "name": "only ASCII digits make a date",
+      "text": "{{date:\u0662\u0660\u0662\u0666-\u0661\u0660-\u0662\u0661}}",
+      "html": "<span class=\"chip chip-date\">\u0662\u0660\u0662\u0666-\u0661\u0660-\u0662\u0661</span>"
+    },
+    {
+      "name": "a chip value is escaped",
+      "text": "{{status: <b>}}",
+      "html": "<span class=\"chip chip-status\">&lt;b&gt;</span>"
+    },
+    {
+      "name": "an emoji is one symbol, so punctuation",
+      "text": "😀_a_",
+      "html": "😀<em>a</em>"
+    },
+    {
+      "name": "an ideographic space is white space",
+      "text": "*\u3000a*",
+      "html": "*\u3000a*"
+    },
+    {
+      "name": "a no-break space is white space",
+      "text": "*a\u00a0*",
+      "html": "*a\u00a0*"
+    },
+    {
+      "name": "U+2028 after a mark is not white space",
+      "text": "*\u2028a*",
+      "html": "<em>\u2028a</em>"
+    }
+  ]
+}

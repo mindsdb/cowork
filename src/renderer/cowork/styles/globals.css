@@ -248,6 +248,19 @@ body, body[data-theme="light"] {
   --stone-200: var(--surface-3);
   --stone-300: var(--line-2);
   --stone-400: var(--ink-4);
+
+  /* Docs' status tones and chart series. With the theme, not on the doc pane:
+     a status cell's menu portals out of the pane and still needs them.
+     Status chips: each tone a tinted wash + an ink that clears 4.5:1 on it. */
+  --tone-gray-bg: #EEEFF0;   --tone-gray-ink: #4A4F55;
+  --tone-blue-bg: #E3EEFB;   --tone-blue-ink: #1C5296;
+  --tone-green-bg: #E1F3E6;  --tone-green-ink: #1C6236;
+  --tone-yellow-bg: #FBF0D5; --tone-yellow-ink: #6E5010;
+  --tone-red-bg: #FBE5E2;    --tone-red-ink: #922B20;
+  --tone-purple-bg: #EEE7FA; --tone-purple-ink: #553789;
+  /* Charts: the validated reference categorical order (dataviz palette.md). */
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
+  --series-5: #e87ba4; --series-6: #008300; --series-7: #4a3aa7; --series-8: #e34948;
 }
 
 /* ─── Motion tokens ──────────────────────────────────────────────────────
@@ -416,6 +429,16 @@ body[data-theme="dark"] {
   /* Primary-tinted chips / nav.primary hover still point at the light
      --primary-50 ice colour; swap to the dark accent wash. */
   --primary-50: var(--accent-bg);
+
+  /* Status tones and chart series (docs), stepped for dark. */
+  --tone-gray-bg: #2C2F33;   --tone-gray-ink: #C9CDD2;
+  --tone-blue-bg: #18304D;   --tone-blue-ink: #A9CBF5;
+  --tone-green-bg: #173826;  --tone-green-ink: #9FDCB2;
+  --tone-yellow-bg: #3B3014; --tone-yellow-ink: #F0D08A;
+  --tone-red-bg: #45201C;    --tone-red-ink: #F4ADA4;
+  --tone-purple-bg: #2E2346; --tone-purple-ink: #CDB8F3;
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-4: #c98500;
+  --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-8: #e66767;
 }
 
 /* Emphasis in dark mode: bold is the brightest ink, italics stay italic.
@@ -1027,6 +1050,31 @@ button.meta-pill:active { background: var(--ghost-press); }
   box-shadow: none;
 }
 .send-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, black); }
+/* Dictate (ENG-4630): the mic between the model picker and Send. Quiet at
+   rest, like the toolbar's pills; accent while it listens. */
+.dictate-btn {
+  width: 30px; height: 30px; border-radius: var(--r-8);
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; background: transparent; color: var(--ink-2, var(--text-muted));
+  transition: background var(--dur-hover), color var(--dur-hover);
+}
+.dictate-btn:hover:not(:disabled) { background: var(--ghost-hover, var(--stone-150)); color: var(--text-strong); }
+.dictate-btn:disabled { cursor: progress; opacity: 0.6; }
+.dictate-btn.is-live { background: var(--accent-bg); color: var(--accent); }
+.dictate-btn.is-live:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.dictate-btn.is-live > svg { animation: dictate-pulse 1.4s ease-in-out infinite; }
+.dictate-btn__dot {
+  width: 8px; height: 8px; border-radius: 999px; background: currentColor;
+  animation: dictate-pulse 1s ease-in-out infinite;
+}
+@keyframes dictate-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) {
+  .dictate-btn.is-live > svg, .dictate-btn__dot { animation: none; }
+}
+.dictate-error {
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12px; color: var(--danger);
+}
 .send-btn:active:not(:disabled) { transform: scale(0.97); }
 .send-btn:disabled {
   /* Dormant, not dead: the composer is its page's primary action, so the
@@ -1939,6 +1987,13 @@ body .first-artifact-tip .btn:focus-visible { box-shadow: 0 0 0 2px var(--surfac
   justify-content: center;
   font-weight: 500;
   letter-spacing: -0.01em;
+}
+/* With a tag beside Code (the web build's Desktop tag), equal halves are too
+   narrow for Code in a 240px sidebar, and it runs into Cowork. Each half
+   sizes to its content, on one line, and shares what is left. */
+.workspace-mode-switch--tagged > button {
+  flex: 1 1 auto;
+  white-space: nowrap;
 }
 
 .anton-sidebar__cta-wrap { padding: 8px 10px 10px; }
@@ -3633,6 +3688,19 @@ body[data-theme="dark"] .mshell__drawer-title {
     "loc  loc  tools";
   align-items: center;
 }
+/* An inline artifact (ENG-4684): its live page runs the card's full width
+   between the head and the location bar. */
+.card.chat-artifact-card.is-inline {
+  grid-template-areas:
+    "tile  text  actions"
+    "frame frame frame"
+    "loc   loc   tools";
+}
+.chat-artifact-card__frame {
+  grid-area: frame;
+  min-width: 0;
+  border-top: 1px solid var(--line);
+}
 /* Head spacing lives on the cells, not a grid gap, so the footer cells meet
    with no seam of card surface between them. */
 .chat-artifact-card__tile    { grid-area: tile;    margin: 12px 12px 10px; }
@@ -3681,6 +3749,13 @@ body[data-theme="dark"] .mshell__drawer-title {
       "tile actions actions"
       "loc  loc     tools";
     align-items: start;
+  }
+  .card.chat-artifact-card.is-inline {
+    grid-template-areas:
+      "tile  text    text"
+      "tile  actions actions"
+      "frame frame   frame"
+      "loc   loc     tools";
   }
   .chat-artifact-card__text    { margin-bottom: 0; }
   .chat-artifact-card__actions { margin: 8px 12px 10px 0; }
@@ -4082,66 +4157,102 @@ body[data-theme] .markdown-steps :is(strong, b) {
   color: var(--ink-3);
 }
 
+/* A ```chartjs / ```mermaid block (ChartBlock in markdown/ChartStates):
+   the code block's card and header, the drawing as its body, and the
+   fence's source as an ordinary code block under it on demand. */
+.anton-chart-block-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+/* Copy as image / Download PNG only once something has drawn. */
+.anton-chart-block:not(:has(.anton-chart-canvas, .anton-mermaid-svg)) .anton-chart-block-export {
+  display: none;
+}
+.anton-chart-block-body {
+  padding: 4px 14px 14px;
+  font-family: var(--font-body);
+}
+.anton-mermaid-svg {
+  display: flex;
+  justify-content: center;
+  max-height: 560px;
+  overflow: auto;
+}
+.anton-mermaid-svg svg {
+  max-width: 100%;
+  height: auto;
+}
+.anton-chart-block-source .anton-code-block {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+}
+
 /* Scoped highlight.js theme — dark (default). Only matches tokens
    inside our wrapper so the page can't accidentally inherit hljs
    styling elsewhere. The palette pulls from the cyberpunk accent set:
    cyan for names/titles, mint for strings, purple for keywords,
-   sand for numbers/built-ins, low-contrast ink-4 for comments. */
-.anton-code-block .hljs-keyword,
-.anton-code-block .hljs-selector-tag,
-.anton-code-block .hljs-literal,
-.anton-code-block .hljs-doctag { color: rgb(196, 144, 255); }
-.anton-code-block .hljs-string,
-.anton-code-block .hljs-regexp,
-.anton-code-block .hljs-attr,
-.anton-code-block .hljs-symbol,
-.anton-code-block .hljs-template-tag,
-.anton-code-block .hljs-template-variable { color: rgb(125, 226, 184); }
-.anton-code-block .hljs-number,
-.anton-code-block .hljs-built_in,
-.anton-code-block .hljs-builtin-name { color: rgb(246, 199, 121); }
-.anton-code-block .hljs-comment,
-.anton-code-block .hljs-quote { color: var(--ink-4); }
-.anton-code-block .hljs-title,
-.anton-code-block .hljs-title.class_,
-.anton-code-block .hljs-title.function_,
-.anton-code-block .hljs-section { color: var(--ink); }
-.anton-code-block .hljs-name,
-.anton-code-block .hljs-tag,
-.anton-code-block .hljs-meta,
-.anton-code-block .hljs-variable,
-.anton-code-block .hljs-bullet { color: rgb(123, 178, 255); }
-.anton-code-block .hljs-property,
-.anton-code-block .hljs-params { color: var(--ink-2); }
-.anton-code-block .hljs-deletion { color: rgb(255, 122, 145); background: color-mix(in srgb, rgb(255, 122, 145) 12%, transparent); }
-.anton-code-block .hljs-addition { color: rgb(125, 226, 184); background: color-mix(in srgb, rgb(125, 226, 184) 12%, transparent); }
+   sand for numbers/built-ins, low-contrast ink-4 for comments.
+   A doc's code block (.doc-code) takes the same palette; cowork-server's page copies it (__fixtures__/docs-code-highlight/contract.json). */
+:is(.anton-code-block, .doc-code) .hljs-keyword,
+:is(.anton-code-block, .doc-code) .hljs-selector-tag,
+:is(.anton-code-block, .doc-code) .hljs-literal,
+:is(.anton-code-block, .doc-code) .hljs-doctag { color: rgb(196, 144, 255); }
+:is(.anton-code-block, .doc-code) .hljs-string,
+:is(.anton-code-block, .doc-code) .hljs-regexp,
+:is(.anton-code-block, .doc-code) .hljs-attr,
+:is(.anton-code-block, .doc-code) .hljs-symbol,
+:is(.anton-code-block, .doc-code) .hljs-template-tag,
+:is(.anton-code-block, .doc-code) .hljs-template-variable { color: rgb(125, 226, 184); }
+:is(.anton-code-block, .doc-code) .hljs-number,
+:is(.anton-code-block, .doc-code) .hljs-built_in,
+:is(.anton-code-block, .doc-code) .hljs-builtin-name { color: rgb(246, 199, 121); }
+:is(.anton-code-block, .doc-code) .hljs-comment,
+:is(.anton-code-block, .doc-code) .hljs-quote { color: var(--ink-4); }
+:is(.anton-code-block, .doc-code) .hljs-title,
+:is(.anton-code-block, .doc-code) .hljs-title.class_,
+:is(.anton-code-block, .doc-code) .hljs-title.function_,
+:is(.anton-code-block, .doc-code) .hljs-section { color: var(--ink); }
+:is(.anton-code-block, .doc-code) .hljs-name,
+:is(.anton-code-block, .doc-code) .hljs-tag,
+:is(.anton-code-block, .doc-code) .hljs-meta,
+:is(.anton-code-block, .doc-code) .hljs-variable,
+:is(.anton-code-block, .doc-code) .hljs-bullet { color: rgb(123, 178, 255); }
+:is(.anton-code-block, .doc-code) .hljs-property,
+:is(.anton-code-block, .doc-code) .hljs-params { color: var(--ink-2); }
+:is(.anton-code-block, .doc-code) .hljs-deletion { color: rgb(255, 122, 145); background: rgba(255, 122, 145, 0.12); }
+:is(.anton-code-block, .doc-code) .hljs-addition { color: rgb(125, 226, 184); background: rgba(125, 226, 184, 0.12); }
 .anton-code-block .hljs-emphasis { font-style: italic; }
 .anton-code-block .hljs-strong { font-weight: 600; }
 
 /* Light-mode palette — same hue families, lower brightness so they
    stay readable against the pale surface tokens. */
-body[data-theme="light"] .anton-code-block .hljs-keyword,
-body[data-theme="light"] .anton-code-block .hljs-selector-tag,
-body[data-theme="light"] .anton-code-block .hljs-literal,
-body[data-theme="light"] .anton-code-block .hljs-doctag { color: rgb(124, 58, 175); }
-body[data-theme="light"] .anton-code-block .hljs-string,
-body[data-theme="light"] .anton-code-block .hljs-regexp,
-body[data-theme="light"] .anton-code-block .hljs-attr,
-body[data-theme="light"] .anton-code-block .hljs-symbol,
-body[data-theme="light"] .anton-code-block .hljs-template-tag,
-body[data-theme="light"] .anton-code-block .hljs-template-variable { color: rgb(20, 121, 79); }
-body[data-theme="light"] .anton-code-block .hljs-number,
-body[data-theme="light"] .anton-code-block .hljs-built_in,
-body[data-theme="light"] .anton-code-block .hljs-builtin-name { color: rgb(170, 100, 0); }
-body[data-theme="light"] .anton-code-block .hljs-title,
-body[data-theme="light"] .anton-code-block .hljs-title.class_,
-body[data-theme="light"] .anton-code-block .hljs-title.function_,
-body[data-theme="light"] .anton-code-block .hljs-section { color: rgb(17, 85, 98); }
-body[data-theme="light"] .anton-code-block .hljs-name,
-body[data-theme="light"] .anton-code-block .hljs-tag,
-body[data-theme="light"] .anton-code-block .hljs-meta,
-body[data-theme="light"] .anton-code-block .hljs-variable,
-body[data-theme="light"] .anton-code-block .hljs-bullet { color: rgb(28, 76, 169); }
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-keyword,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-selector-tag,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-literal,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-doctag { color: rgb(124, 58, 175); }
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-string,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-regexp,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-attr,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-symbol,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-template-tag,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-template-variable { color: rgb(20, 121, 79); }
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-number,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-built_in,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-builtin-name { color: rgb(170, 100, 0); }
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-title,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-title.class_,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-title.function_,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-section { color: rgb(17, 85, 98); }
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-name,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-tag,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-meta,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-variable,
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-bullet { color: rgb(28, 76, 169); }
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-deletion { color: rgb(180, 35, 60); background: rgba(180, 35, 60, 0.12); }
+body[data-theme="light"] :is(.anton-code-block, .doc-code) .hljs-addition { color: rgb(20, 121, 79); background: rgba(20, 121, 79, 0.12); }
 
 /* ─── iOS auto-zoom suppression (mobile only) ─────────────────────────
    iOS Safari auto-zooms when a text input with computed font-size < 16px
@@ -4450,6 +4561,7 @@ button.artifact-ref-pill:focus-visible { outline: 2px solid color-mix(in srgb, v
    bubble's own fill. The bubble sizes to the wider of the text and the chip,
    so a short message widens to fit it rather than jumping. */
 .user-turn-artifact-ref { display: flex; justify-content: flex-start; margin-top: 8px; min-width: 0; }
+.user-turn-artifact-state { margin-top: 4px; min-width: 0; max-width: 100%; }
 .user-turn-bubble .artifact-ref-pill {
   height: 24px;
   padding: 0 9px 0 7px;

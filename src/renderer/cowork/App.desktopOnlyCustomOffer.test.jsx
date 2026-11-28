@@ -113,7 +113,7 @@ describe('a connector only the desktop app runs, in cloud', () => {
 
     await pickHasDataFromTheDirectory(user);
     expect(await screen.findByText(/connect it now as a custom connector/)).toBeTruthy();
-    expect(screen.queryByText('Download the app')).toBeNull();
+    expect(screen.queryByText('Download the Desktop app')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Connect your custom HasData' }));
 
     expect(spies.fetchConnector).toHaveBeenCalledWith('hasdata_custom');
@@ -141,7 +141,7 @@ describe('a connector only the desktop app runs, in cloud', () => {
 
     await pickHasDataFromTheDirectory(user);
 
-    expect(await screen.findByText('Download the app')).toBeTruthy();
+    expect(await screen.findByText('Download the Desktop app')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /custom/i })).toBeNull();
   });
 });

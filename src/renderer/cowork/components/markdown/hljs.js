@@ -2,10 +2,11 @@
 // in chat code blocks are registered. Keeping the list curated holds
 // bundle size down (each language module is 1–5 KB gzipped; the full
 // pack is ~250 KB). Unknown languages fall back to plaintext.
+// The same table decides what a doc's code block highlights.
 //
 // Token classes emitted by hljs (`.hljs-keyword`, `.hljs-string`, …)
-// are styled in cowork/styles/globals.css under a `.anton-code-block
-// code.hljs` scope so they can't leak into other surfaces.
+// are styled in cowork/styles/globals.css only under the code-block
+// scopes (`.anton-code-block`, `.doc-code`) so they can't leak into other surfaces.
 
 import hljs from 'highlight.js/lib/core';
 
@@ -25,35 +26,54 @@ import typescript from 'highlight.js/lib/languages/typescript';
 import xml from 'highlight.js/lib/languages/xml';
 import yaml from 'highlight.js/lib/languages/yaml';
 
-hljs.registerLanguage('bash', bash);
-hljs.registerLanguage('sh', bash);
-hljs.registerLanguage('shell', shell);
-hljs.registerLanguage('zsh', shell);
-hljs.registerLanguage('css', css);
-hljs.registerLanguage('diff', diff);
-hljs.registerLanguage('patch', diff);
-hljs.registerLanguage('dockerfile', dockerfile);
-hljs.registerLanguage('docker', dockerfile);
-hljs.registerLanguage('go', go);
-hljs.registerLanguage('golang', go);
-hljs.registerLanguage('javascript', javascript);
-hljs.registerLanguage('js', javascript);
-hljs.registerLanguage('jsx', javascript);
-hljs.registerLanguage('json', json);
-hljs.registerLanguage('markdown', markdown);
-hljs.registerLanguage('md', markdown);
-hljs.registerLanguage('python', python);
-hljs.registerLanguage('py', python);
-hljs.registerLanguage('rust', rust);
-hljs.registerLanguage('rs', rust);
-hljs.registerLanguage('sql', sql);
-hljs.registerLanguage('typescript', typescript);
-hljs.registerLanguage('ts', typescript);
-hljs.registerLanguage('tsx', typescript);
-hljs.registerLanguage('xml', xml);
-hljs.registerLanguage('html', xml);
-hljs.registerLanguage('yaml', yaml);
-hljs.registerLanguage('yml', yaml);
+const MODULES = {
+  bash, css, diff, dockerfile, go, javascript, json, markdown, python, rust, shell, sql, typescript, xml, yaml,
+};
+
+// Each spelling registered here, as [hljs module, a doc's canonical name]. A
+// doc's code block highlights only these: cowork-server colours the same ones
+// with Pygments (cowork/docs/highlight.py), and
+// __fixtures__/docs-code-highlight/contract.json pins both.
+export const DOC_CODE_SPELLINGS = Object.freeze({
+  bash: ['bash', 'bash'], sh: ['bash', 'bash'],
+  shell: ['shell', 'shell'], zsh: ['shell', 'shell'],
+  css: ['css', 'css'],
+  diff: ['diff', 'diff'], patch: ['diff', 'diff'],
+  dockerfile: ['dockerfile', 'dockerfile'], docker: ['dockerfile', 'dockerfile'],
+  go: ['go', 'go'], golang: ['go', 'go'],
+  javascript: ['javascript', 'javascript'], js: ['javascript', 'javascript'], jsx: ['javascript', 'javascript'],
+  json: ['json', 'json'],
+  markdown: ['markdown', 'markdown'], md: ['markdown', 'markdown'],
+  python: ['python', 'python'], py: ['python', 'python'],
+  rust: ['rust', 'rust'], rs: ['rust', 'rust'],
+  sql: ['sql', 'sql'],
+  typescript: ['typescript', 'typescript'], ts: ['typescript', 'typescript'], tsx: ['typescript', 'typescript'],
+  xml: ['xml', 'xml'], html: ['xml', 'html'],
+  yaml: ['yaml', 'yaml'], yml: ['yaml', 'yaml'],
+});
+
+for (const [spelling, [module]] of Object.entries(DOC_CODE_SPELLINGS)) {
+  hljs.registerLanguage(spelling, MODULES[module]);
+}
+
+/** The names a doc's language box suggests. */
+export const CODE_LANGUAGES = [...new Set(Object.values(DOC_CODE_SPELLINGS).map(([, name]) => name))];
+
+/** Over this many code points a doc's code block is plain text, on its page too. */
+export const DOC_CODE_MAX_CHARS = 10000;
+
+/**
+ * Whether a doc's code block highlights `lang`. hljs also knows its modules'
+ * own aliases (svg, mjs…), which the page cannot colour.
+ */
+export function isDocCodeLanguage(lang) {
+  return Object.hasOwn(DOC_CODE_SPELLINGS, String(lang ?? '').trim().toLowerCase());
+}
+
+/** Whether `code` is within DOC_CODE_MAX_CHARS code points (the page counts them, not UTF-16 units). */
+export function fitsDocCodeLimit(code) {
+  return code.length <= DOC_CODE_MAX_CHARS || [...code].length <= DOC_CODE_MAX_CHARS;
+}
 
 // Lower-case the lang tag once so callers don't have to. Returns the
 // canonical hljs language name (after alias resolution) for the

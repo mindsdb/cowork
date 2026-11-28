@@ -20,7 +20,8 @@
       "deleting": "삭제하는 중…",
       "copyMessage": "메시지 복사",
       "copyResponse": "응답 복사",
-      "agentFallback": "에이전트"
+      "agentFallback": "에이전트",
+      "submittedData": "보낸 데이터"
     },
     "incomplete": {
       "spendCeiling": "조기 중단됨: 이 작업이 토큰 예산에 도달했습니다.",
@@ -74,7 +75,13 @@
       "liveArtifact": "라이브 아티팩트",
       "deletedBadge": "삭제됨",
       "share": "공유",
-      "shareTooltip": "열 수 있는 사람 선택"
+      "shareTooltip": "열 수 있는 사람 선택",
+      "goToLatestTooltip": "최신 버전으로 스크롤",
+      "openLink": "링크 열기",
+      "openLinkTooltip": "아티팩트 링크를 새 탭에서 엽니다",
+      "updatedSeeBelow": "업데이트되었습니다. 최신 버전은 아래에 있습니다.",
+      "previewThisVersion": "이 버전 미리 보기",
+      "hideVersionPreview": "이 버전 숨기기"
     },
     "kinds": {
       "provider": "공급자",
@@ -92,15 +99,16 @@
       "taskStopped": "작업이 중지됨",
       "providerLimitBody": "공급자의 사용 한도에 도달했습니다. 다른 작업을 시작하기 전에 관리자에게 문의하세요.",
       "addFunds": "잔액 충전",
+      "balanceEmptyAirOnPlan": "잔액이 없어 이 모델을 실행할 수 없습니다. MindsHub Air는 아직 플랜 제공량으로 사용할 수 있습니다.",
       "switchToAir": "MindsHub Air로 전환",
       "balanceRanOut": "이 작업이 끝나기 전에 잔액이 모두 소진되었습니다. 다른 작업을 시작하기 전에 잔액을 충전하세요.",
-      "balanceEmptyAirLeft": "잔액이 없어 이 모델을 실행할 수 없습니다. MindsHub Air에는 아직 무료 제공량이 남아 있습니다.",
+      "balanceEmptyAirLeft": "잔액이 없어 이 모델을 실행할 수 없습니다. MindsHub Air는 아직 무료 제공량으로 실행할 수 있습니다.",
       "providerUnavailableTitle": "공급자를 일시적으로 사용할 수 없습니다",
       "providerPausedBody": "공급자가 요청을 일시 중지했습니다. 나중에 다시 시도하거나 관리자에게 문의하세요.",
-      "freeAirPausedTitle": "무료 MindsHub Air가 일시 중지되었습니다",
+      "freeAirPausedTitle": "무료 모델이 일시 중지되었습니다",
       "connectProviderTitle": "채팅을 시작하려면 공급자를 연결하세요",
       "providerSetupRequiredTitle": "공급자 설정이 필요합니다",
-      "connectProviderBody": "MindsHub로 시작하면 MindsHub Air 무료 제공량을 받고, 이후에는 사용한 만큼만 지불합니다. 또는 설정에서 직접 API 키를 추가하세요.",
+      "connectProviderBody": "MindsHub로 시작하면 무료 제공량을 받고, 이후에는 사용한 만큼만 지불합니다. 또는 설정에서 직접 API 키를 추가하세요.",
       "providerSetupRequiredBody": "작업을 시작하기 전에 운영자에게 모델 공급자 설정을 요청하세요.",
       "startForFree": "무료로 시작",
       "openSettings": "설정 열기",
@@ -122,10 +130,10 @@
       "windowPausedMobile": "{window, select, 7d {주간} 5h {5시간} other {플랜}} 제공량을 모두 사용했습니다. 초기화될 때까지 일시 중지됩니다."
     },
     "usageAlert": {
-      "freeLow": "Air 무료 제공량 {percent} 남음",
-      "freeLowRefills": "Air 무료 제공량 {percent} 남음 · {time}에 충전",
-      "freeUsed": "Air 무료 제공량 모두 사용 · 이제 잔액에서 차감됨",
-      "freeUsedUntil": "Air 무료 제공량 모두 사용 · {time}까지 잔액에서 차감됨",
+      "freeLow": "무료 제공량 {percent} 남음",
+      "freeLowRefills": "무료 제공량 {percent} 남음 · {time}에 초기화",
+      "freeUsed": "무료 제공량 모두 사용 · 이제 잔액에서 차감됨",
+      "freeUsedUntil": "무료 제공량 모두 사용 · {time}까지 잔액에서 차감됨",
       "windowLow": "{window, select, 7d {주간} other {5시간}} 제공량의 {percent} 사용함",
       "windowLowResets": "{window, select, 7d {주간} other {5시간}} 제공량의 {percent} 사용함 · {time}에 초기화",
       "windowUsed": "{window, select, 7d {주간 제공량 모두 사용} other {5시간 제공량 모두 사용}}",
@@ -286,11 +294,17 @@
     },
     "dropFiles": "파일을 놓아 첨부",
     "addContext": "컨텍스트 추가",
+    "docOutput": {
+      "chip": "문서",
+      "remove": "출력: 문서. 제거",
+      "title": "답변이 문서로 작성됩니다. 클릭하여 제거하세요."
+    },
     "menu": {
       "attachFiles": "파일 또는 사진 첨부",
       "openingGoogleDrive": "Google Drive를 여는 중…",
       "addFromGoogleDrive": "Google Drive에서 파일 추가",
       "addFromSharePoint": "SharePoint에서 파일 추가",
+      "writeAsDoc": "문서로 작성",
       "browserTitle": "이 작업에서 {agent}이(가) 브라우저 모드를 사용할 수 있습니다. 끄면 다음 메시지부터 적용됩니다.",
       "browser": "브라우저",
       "browserOff": "이 작업에서 브라우저 끄기",
@@ -309,7 +323,11 @@
       "none": "프로젝트 없음"
     },
     "chooseHarness": "하네스 선택",
-    "voiceCall": "음성 통화"
+    "voiceCall": "음성 모드",
+    "dictation": {
+      "start": "받아쓰기",
+      "stop": "받아쓰기 중지"
+    }
   },
   "attachmentThumbnail": {
     "open": "이미지 열기",
@@ -496,7 +514,19 @@
       "missingType": "차트 유형 누락",
       "unsupportedType": "지원되지 않는 차트 유형: ‘{type}’. 지원되는 유형: {supported}.",
       "invalidJson": "차트 사양의 JSON이 잘못되었습니다",
-      "error": "오류: {error}"
+      "error": "오류: {error}",
+      "loading": "차트를 그리는 중…",
+      "chartLabel": "차트",
+      "diagramLabel": "다이어그램",
+      "copyImage": "이미지로 복사",
+      "downloadPng": "PNG 다운로드",
+      "showSource": "소스 보기",
+      "hideSource": "소스 숨기기",
+      "tooLarge": "사양이 {limit}KB를 초과합니다",
+      "tooManyDatasets": "데이터 세트가 너무 많습니다({count}개). 한도는 {limit}개입니다",
+      "tooManyPoints": "데이터 포인트가 너무 많습니다({count}개). 한도는 {limit}개입니다",
+      "tooManyNodes": "노드가 너무 많습니다({count}개). 한도는 {limit}개입니다",
+      "emptyDiagram": "다이어그램이 비어 있습니다"
     }
   },
   "taskModes": {
@@ -750,10 +780,14 @@
     "phoneWorking": "작업 중…",
     "phoneDone": "완료되었습니다. 최소화하여 답변을 확인하세요.",
     "phoneMinimize": "최소화",
+    "overlayQuestion": "{agent}의 질문이 채팅에서 기다리고 있습니다.",
+    "overlayHandOver": "{site}에서 직접 진행할 차례입니다: {reason}.",
+    "overlayHandOverWatching": "{site}에서 직접 진행할 차례입니다: {reason}. 완료되면 {agent}이(가) 알아서 이어 갑니다.",
+    "overlayGoToQuestion": "질문으로 이동",
     "talkTo": "{agent}와(과) 대화"
   },
   "voiceCall": {
-    "dialogLabel": "{agent}와(과)의 음성 통화",
+    "dialogLabel": "음성 모드",
     "connecting": "연결 중…",
     "ending": "종료 중…",
     "working": "작업 중…",

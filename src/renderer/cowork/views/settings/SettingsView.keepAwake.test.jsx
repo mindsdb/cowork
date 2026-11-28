@@ -11,7 +11,6 @@ vi.mock('../../api', () => ({
 vi.mock('../../../platform/host', () => ({
   host: {
     isWeb: false, isElectron: true, isMac: () => true, openExternal: vi.fn(),
-    getKeychainPref: vi.fn(async () => false), setKeychainPref: vi.fn(async () => true),
   },
   getVersionInfo: vi.fn(async () => ({ app: '', ui: null, source: 'electron' })),
   isElectron: true, getAccessToken: vi.fn(async () => ''),

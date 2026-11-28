@@ -118,12 +118,17 @@ function ToastBubble({ toast }: { toast: any }) {
       )}
     >
       {icon && <span className="shrink-0 inline-flex">{icon}</span>}
-      <BaseToast.Title className="flex-1 min-w-0 m-0 text-[13px] font-medium leading-snug">
-        {toast.title}
-      </BaseToast.Title>
-      {toast.description && (
-        <BaseToast.Description className="text-ink-3 text-[12px]">{toast.description}</BaseToast.Description>
-      )}
+      {/* The title and the description stack in one column that takes the
+          row's free width. Side by side, a sentence-long description took
+          its own width first and squeezed the title to a word per line. */}
+      <div className="flex-1 min-w-0 flex flex-col gap-[2px]">
+        <BaseToast.Title className="m-0 text-[13px] font-medium leading-snug">
+          {toast.title}
+        </BaseToast.Title>
+        {toast.description && (
+          <BaseToast.Description className="m-0 text-ink-3 text-[12px] leading-snug">{toast.description}</BaseToast.Description>
+        )}
+      </div>
       {/* Renders nothing unless the toast carries actionProps. */}
       <BaseToast.Action className="shrink-0 bg-transparent border-0 p-0 cursor-pointer font-body text-[13px] font-medium underline underline-offset-2 text-current hover:opacity-80" />
       <BaseToast.Close

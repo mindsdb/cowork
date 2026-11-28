@@ -20,7 +20,8 @@
       "deleting": "Wird gelöscht…",
       "copyMessage": "Nachricht kopieren",
       "copyResponse": "Antwort kopieren",
-      "agentFallback": "Agent"
+      "agentFallback": "Agent",
+      "submittedData": "Gesendete Daten"
     },
     "incomplete": {
       "spendCeiling": "Vorzeitig beendet: Diese Aufgabe hat ihr Token-Budget erreicht.",
@@ -74,7 +75,13 @@
       "liveArtifact": "Live-Artefakt",
       "deletedBadge": "Gelöscht",
       "share": "Teilen",
-      "shareTooltip": "Festlegen, wer es öffnen kann"
+      "shareTooltip": "Festlegen, wer es öffnen kann",
+      "goToLatestTooltip": "Zur neuesten Version scrollen",
+      "openLink": "Link öffnen",
+      "openLinkTooltip": "Den Link des Artefakts in einem neuen Tab öffnen",
+      "updatedSeeBelow": "Das wurde aktualisiert. Die neueste Version finden Sie unten.",
+      "previewThisVersion": "Diese Version anzeigen",
+      "hideVersionPreview": "Diese Version ausblenden"
     },
     "kinds": {
       "provider": "Anbieter",
@@ -92,15 +99,16 @@
       "taskStopped": "Aufgabe gestoppt",
       "providerLimitBody": "Das Nutzungslimit des Anbieters wurde erreicht. Wenden Sie sich an Ihren Administrator, bevor Sie eine weitere Aufgabe starten.",
       "addFunds": "Guthaben aufladen",
+      "balanceEmptyAirOnPlan": "Ihr Guthaben ist leer, daher kann dieses Modell nicht ausgeführt werden. Das Kontingent Ihres Plans deckt MindsHub Air weiterhin ab.",
       "switchToAir": "Zu MindsHub Air wechseln",
       "balanceRanOut": "Ihr Guthaben war aufgebraucht, bevor diese Aufgabe abgeschlossen war. Laden Sie Guthaben auf, bevor Sie eine weitere Aufgabe starten.",
-      "balanceEmptyAirLeft": "Ihr Guthaben ist leer, daher kann dieses Modell nicht ausgeführt werden. Für MindsHub Air ist noch Gratiskontingent übrig.",
+      "balanceEmptyAirLeft": "Ihr Guthaben ist leer, daher kann dieses Modell nicht ausgeführt werden. MindsHub Air läuft weiterhin über Ihr Gratiskontingent.",
       "providerUnavailableTitle": "Der Anbieter ist vorübergehend nicht verfügbar",
       "providerPausedBody": "Der Anbieter hat Anfragen pausiert. Versuchen Sie es später erneut, oder wenden Sie sich an Ihren Administrator.",
-      "freeAirPausedTitle": "Das kostenlose MindsHub Air ist pausiert",
+      "freeAirPausedTitle": "Kostenlose Modelle sind pausiert",
       "connectProviderTitle": "Verbinden Sie einen Anbieter, um zu chatten",
       "providerSetupRequiredTitle": "Anbieter muss eingerichtet werden",
-      "connectProviderBody": "Starten Sie mit MindsHub und erhalten Sie ein Gratiskontingent für MindsHub Air. Danach zahlen Sie nur, was Sie nutzen. Oder fügen Sie in den Einstellungen Ihren eigenen API-Schlüssel hinzu.",
+      "connectProviderBody": "Starten Sie mit MindsHub und erhalten Sie ein Gratiskontingent. Danach zahlen Sie nur, was Sie nutzen. Oder fügen Sie in den Einstellungen Ihren eigenen API-Schlüssel hinzu.",
       "providerSetupRequiredBody": "Bitten Sie Ihren Betreiber, den Modellanbieter zu konfigurieren, bevor Sie eine Aufgabe starten.",
       "startForFree": "Kostenlos starten",
       "openSettings": "Einstellungen öffnen",
@@ -122,10 +130,10 @@
       "windowPausedMobile": "Ihr {window, select, 7d {Wochenkontingent} 5h {5-Stunden-Kontingent} other {Plan-Kontingent}} ist aufgebraucht. Pausiert bis zum Zurücksetzen."
     },
     "usageAlert": {
-      "freeLow": "Air-Gratiskontingent: noch {percent}",
-      "freeLowRefills": "Air-Gratiskontingent: noch {percent} · wird um {time} aufgefüllt",
-      "freeUsed": "Air-Gratiskontingent aufgebraucht · Ihr Guthaben wird jetzt verwendet",
-      "freeUsedUntil": "Air-Gratiskontingent aufgebraucht · Ihr Guthaben wird bis {time} verwendet",
+      "freeLow": "Gratiskontingent: noch {percent}",
+      "freeLowRefills": "Gratiskontingent: noch {percent} · wird um {time} zurückgesetzt",
+      "freeUsed": "Gratiskontingent aufgebraucht · Ihr Guthaben wird jetzt verwendet",
+      "freeUsedUntil": "Gratiskontingent aufgebraucht · Ihr Guthaben wird bis {time} verwendet",
       "windowLow": "{percent} Ihres {window, select, 7d {Wochenkontingents} other {5-Stunden-Kontingents}} verbraucht",
       "windowLowResets": "{percent} Ihres {window, select, 7d {Wochenkontingents} other {5-Stunden-Kontingents}} verbraucht · wird um {time} zurückgesetzt",
       "windowUsed": "{window, select, 7d {Wochenkontingent aufgebraucht} other {5-Stunden-Kontingent aufgebraucht}}",
@@ -286,11 +294,17 @@
     },
     "dropFiles": "Dateien zum Anhängen hier ablegen",
     "addContext": "Kontext hinzufügen",
+    "docOutput": {
+      "chip": "Dokument",
+      "remove": "Ausgabe: Dokument. Entfernen",
+      "title": "Die Antwort wird als Dokument geschrieben. Zum Entfernen klicken."
+    },
     "menu": {
       "attachFiles": "Dateien oder Fotos anhängen",
       "openingGoogleDrive": "Google Drive wird geöffnet…",
       "addFromGoogleDrive": "Dateien aus Google Drive hinzufügen",
       "addFromSharePoint": "Dateien aus SharePoint hinzufügen",
+      "writeAsDoc": "Als Dokument schreiben",
       "browserTitle": "{agent} kann in dieser Aufgabe den Browsermodus verwenden. Das Ausschalten gilt ab Ihrer nächsten Nachricht.",
       "browser": "Browser",
       "browserOff": "Browser für diese Aufgabe ausschalten",
@@ -309,7 +323,11 @@
       "none": "Kein Projekt"
     },
     "chooseHarness": "Harness wählen",
-    "voiceCall": "Sprachanruf"
+    "voiceCall": "Sprachmodus",
+    "dictation": {
+      "start": "Diktieren",
+      "stop": "Diktieren beenden"
+    }
   },
   "attachmentThumbnail": {
     "open": "Bild öffnen",
@@ -496,7 +514,19 @@
       "missingType": "Diagrammtyp fehlt",
       "unsupportedType": "Nicht unterstützter Diagrammtyp: „{type}“. Unterstützt: {supported}.",
       "invalidJson": "Ungültiges JSON in der Diagrammspezifikation",
-      "error": "FEHLER: {error}"
+      "error": "FEHLER: {error}",
+      "loading": "Diagramm wird gezeichnet…",
+      "chartLabel": "Diagramm",
+      "diagramLabel": "Schaubild",
+      "copyImage": "Als Bild kopieren",
+      "downloadPng": "PNG herunterladen",
+      "showSource": "Quelltext anzeigen",
+      "hideSource": "Quelltext ausblenden",
+      "tooLarge": "Die Spezifikation ist größer als {limit} KB",
+      "tooManyDatasets": "Zu viele Datenreihen ({count}); das Limit ist {limit}",
+      "tooManyPoints": "Zu viele Datenpunkte ({count}); das Limit ist {limit}",
+      "tooManyNodes": "Zu viele Knoten ({count}); das Limit ist {limit}",
+      "emptyDiagram": "Das Schaubild ist leer"
     }
   },
   "taskModes": {
@@ -750,10 +780,14 @@
     "phoneWorking": "In Arbeit…",
     "phoneDone": "Fertig. Minimieren Sie, um die Antwort zu sehen.",
     "phoneMinimize": "Minimieren",
+    "overlayQuestion": "{agent} hat eine Frage, die im Chat wartet.",
+    "overlayHandOver": "Sie sind auf {site} an der Reihe: {reason}.",
+    "overlayHandOverWatching": "Sie sind auf {site} an der Reihe: {reason}. {agent} macht von selbst weiter, sobald es erledigt ist.",
+    "overlayGoToQuestion": "Zur Frage",
     "talkTo": "Mit {agent} sprechen"
   },
   "voiceCall": {
-    "dialogLabel": "Sprachanruf mit {agent}",
+    "dialogLabel": "Sprachmodus",
     "connecting": "Verbindung wird hergestellt…",
     "ending": "Wird beendet…",
     "working": "In Arbeit…",

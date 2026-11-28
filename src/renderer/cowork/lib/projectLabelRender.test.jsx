@@ -92,7 +92,8 @@ describe('ENG-1676 render coverage — components no other test mounts', () => {
 
   it('ProjectsView shows the display name on the project card', async () => {
     const { default: ProjectsView } = await import('../views/ProjectsView');
-    render(<ProjectsView projects={PROJECTS} onSelectProject={() => {}} />);
+    // ProjectsView always mounts NewProjectModal, which calls useToastManager().
+    render(<ToastProvider><ProjectsView projects={PROJECTS} onSelectProject={() => {}} /></ToastProvider>);
     expectLabelNotSlug();
   });
 

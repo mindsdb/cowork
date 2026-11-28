@@ -177,10 +177,10 @@ export function useMindsOrgs(accountUser) {
           notifyOrganizationChanged(sub);
           return result;
         }
-        prepareForOrganizationReload({
+        const reloadQueued = prepareForOrganizationReload({
           clearTenantState: result.clearTenantState !== false,
         });
-        return result;
+        return { ...result, reloadQueued };
       }
       // Desktop has handed the new credential to the sidecar before success.
       // Its readers must refresh even if this menu unmounted during the switch.

@@ -5,12 +5,15 @@ import userEvent from '@testing-library/user-event';
 const hostMock = vi.hoisted(() => ({ host: { isElectron: true, isWeb: false, openExternal: vi.fn() } }));
 vi.mock('../../../platform/host', () => hostMock);
 vi.mock('../../lib/analytics', () => ({ trackBillingOpened: vi.fn(), trackUpgradeClicked: vi.fn() }));
-const accountMock = vi.hoisted(() => ({ user: { sub: 'u1', name: 'Hazem' } }));
+const accountMock = vi.hoisted(() => ({ user: { orgId: 'org-1', sub: 'u1', name: 'Hazem' } }));
 vi.mock('../../hooks/useAccountUser', () => ({ useAccountUser: () => accountMock.user }));
 
 import UsageSection from './UsageSection';
 import { HubUsageContext } from '../../lib/hubUsageContext';
-import { MINDS_ADD_FUNDS_URL, MINDS_BILLING_URL } from '../../../lib/mindsUrls';
+import { MINDS_ADD_FUNDS_URL, MINDS_BILLING_URL, consoleUrlFor } from '../../../lib/mindsUrls';
+
+// Console links name the session's organization and account (ENG-4333).
+const forOrg = (url) => consoleUrlFor(url, { organizationId: 'org-1', subject: 'u1' });
 
 const RESET = '2099-09-11T12:00:00Z';
 const usage = (over = {}) => ({
@@ -31,7 +34,7 @@ const renderWith = (u) => render(
 );
 
 beforeEach(() => {
-  accountMock.user = { sub: 'u1', name: 'Hazem' };
+  accountMock.user = { orgId: 'org-1', sub: 'u1', name: 'Hazem' };
   hostMock.host.openExternal.mockClear();
   refresh.mockClear();
 });
@@ -58,10 +61,11 @@ describe('UsageSection', () => {
     expect(screen.getByText(/87% left/)).toBeInTheDocument();
     // A clock time; the period spend below it stays a date range.
     expect(screen.getByText(/Resets at Sep 1[12], 12:00 PM/)).toBeInTheDocument();
+    expect(screen.getByText(/^After that, free models use your balance until it resets at Sep 1[12], 12:00 PM\.$/)).toBeInTheDocument();
     expect(screen.getByText('$99.63')).toBeInTheDocument();
     expect(screen.getByText('$0.37')).toBeInTheDocument();
     expect(screen.getByText(/credit spent Aug 1 to Sep 1/)).toBeInTheDocument();
-    expect(screen.getByRole('progressbar', { name: 'Free Air allowance used' })).toHaveAttribute('aria-valuenow', '13');
+    expect(screen.getByRole('progressbar', { name: 'Free allowance used' })).toHaveAttribute('aria-valuenow', '13');
   });
 
   it('derives the meter from what is left, not from a used count the server may not send', () => {
@@ -73,7 +77,7 @@ describe('UsageSection', () => {
       freeTokens: { percentRemaining: 87.2, limit: 100, used: 4_380_000, remaining: 87.2, resetsAt: RESET },
     }));
 
-    expect(screen.getByRole('progressbar', { name: 'Free Air allowance used' })).toHaveAttribute('aria-valuenow', '13');
+    expect(screen.getByRole('progressbar', { name: 'Free allowance used' })).toHaveAttribute('aria-valuenow', '13');
     expect(screen.getByText('13%')).toBeInTheDocument();
     expect(screen.getByText(/87% left/)).toBeInTheDocument();
   });
@@ -89,6 +93,20 @@ describe('UsageSection', () => {
     expect(screen.getByText('99.6%')).toBeInTheDocument();
     expect(screen.getByText(/0\.4% left/)).toBeInTheDocument();
     expect(screen.queryByText('100%')).toBeNull();
+  });
+
+  it('says a spent allowance resets, at the time auth gave or with no time', () => {
+    /* At the time auth gives (refresh_at in auth's plan_windows.py) only the
+       oldest spend ages out, so the copy says the allowance resets then and
+       never that it refills. */
+    const { unmount } = renderWith(usage({
+      freeTokens: { percentRemaining: 0, limit: 100, used: 100, remaining: 0, resetsAt: RESET },
+    }));
+    expect(screen.getByText(/^Used up\. Free models now use your balance until it resets at Sep 1[12], 12:00 PM\.$/)).toBeInTheDocument();
+    unmount();
+
+    renderWith(usage({ freeTokens: { percentRemaining: 0, limit: 100, used: 100, remaining: 0, resetsAt: null } }));
+    expect(screen.getByText('Used up. Free models now use your balance until it resets.')).toBeInTheDocument();
   });
 
   it('is quiet while the first read is in flight, not an error', () => {
@@ -116,7 +134,7 @@ describe('UsageSection', () => {
     expect(screen.getByText('Unlimited on this account.')).toBeInTheDocument();
     unmount();
     renderWith(usage({ freeTokens: { percentRemaining: 0, limit: 0, used: 0, remaining: 0 } }));
-    expect(screen.queryByText('Free Air allowance')).toBeNull();
+    expect(screen.queryByText('Free allowance')).toBeNull();
   });
 
   it('describes auto top up per status', () => {
@@ -153,11 +171,11 @@ describe('UsageSection', () => {
     const { unmount } = renderWith(usage({ isBillingOwner: false }));
     expect(screen.getByText(/Only your organization's billing owner/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Add funds/ }));
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
     unmount();
     renderWith(usage());
     await user.click(screen.getByRole('button', { name: /Add funds/ }));
-    expect(hostMock.host.openExternal).toHaveBeenCalledWith(MINDS_ADD_FUNDS_URL);
+    expect(hostMock.host.openExternal).toHaveBeenCalledWith(forOrg(MINDS_ADD_FUNDS_URL));
   });
 });
 
@@ -207,7 +225,7 @@ describe('UsageSection plan card', () => {
   it('on Free, keeps the allowance as it was and adds Get Plus to it', async () => {
     personal();
     renderWith(usage({ plan: plan('free') }));
-    expect(screen.getByText('Free Air allowance')).toBeInTheDocument();
+    expect(screen.getByText('Free allowance')).toBeInTheDocument();
     expect(screen.queryByText('Plus plan')).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: /Get Plus/ }));
     const url = new URL(hostMock.host.openExternal.mock.calls.at(-1)[0]);
@@ -253,12 +271,12 @@ describe('UsageSection plan card', () => {
     expect(screen.queryByRole('button', { name: /Manage/ })).toBeNull();
   });
 
-  it.each(['plus', 'pro'])('on %s, drops the Free Air allowance card, since the plan pays for Air', (tier) => {
+  it.each(['plus', 'pro'])('on %s, drops the free allowance card, since the plan pays instead', (tier) => {
     personal();
     renderWith(usage({ plan: plan(tier), freeTokens: { limit: 100, used: 100, remaining: 0, resetsAt: RESET } }));
     expect(screen.getByText(tier === 'plus' ? 'Plus plan' : 'Pro plan')).toBeInTheDocument();
-    expect(screen.queryByText('Free Air allowance')).toBeNull();
-    expect(document.body.textContent).not.toMatch(/MindsHub Air is billing your balance/);
+    expect(screen.queryByText('Free allowance')).toBeNull();
+    expect(document.body.textContent).not.toMatch(/Free models now use your balance/);
   });
 
   it('on a paid plan with no allowance and no balance, says nothing about having no usage', () => {
@@ -275,7 +293,7 @@ describe('UsageSection plan card', () => {
       const { unmount } = renderWith(usage({ plan: plan('plus') }));
       expect(screen.getByText('Plus plan')).toBeInTheDocument();
       expect(screen.getByText('5-hour allowance')).toBeInTheDocument();
-      expect(screen.queryByText('Free Air allowance')).toBeNull();
+      expect(screen.queryByText('Free allowance')).toBeNull();
       for (const name of [/Upgrade/, /Manage/, /Get Plus/, /Add funds/]) {
         expect(screen.queryByRole('button', { name })).toBeNull();
       }
@@ -290,7 +308,7 @@ describe('UsageSection plan card', () => {
       pastDue.unmount();
 
       renderWith(usage({ plan: plan('free') }));
-      expect(screen.getByText('Free Air allowance')).toBeInTheDocument();
+      expect(screen.getByText('Free allowance')).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /Get Plus/ })).toBeNull();
     } finally {
       hostMock.host.isMobileShell = false;

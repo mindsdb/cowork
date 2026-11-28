@@ -48,29 +48,28 @@
   },
   "status": {
     "badge": {
+      "onlyYou": "Só você",
       "public": "Público",
-      "password": "Senha",
-      "restricted": "Restrito"
+      "publicPassword": "Público · senha",
+      "restricted": "Restrito",
+      "website": "Site"
     },
     "hint": {
       "notSharedYet": "Ainda não compartilhado. Abra e escolha Compartilhar para obter um link da web.",
-      "notShareable": "Não compartilhado. Só páginas web e documentos Markdown podem ser compartilhados como link.",
+      "notShareable": "Não compartilhado. Páginas web, documentos, planilhas, apresentações, PDFs, CSV e arquivos de texto podem ser compartilhados como link; este tipo de arquivo não.",
       "orgRestricted": "Restrito. Abra Compartilhar para ver quem pode abrir o link.",
       "ownerOnly": "Compartilhado, mas só você pode abrir o link.",
+      "password": "Qualquer pessoa com o link e a senha pode abrir.",
       "chosenPeople": "Compartilhado. Só as pessoas que você escolheu podem abrir o link.",
       "unknown": "Compartilhado. Não foi possível confirmar quem pode abrir o link, então ele é tratado como restrito.",
       "sharedWith": "Compartilhado com {names}",
       "sharedWithMore": "Compartilhado com {names} e mais {count}"
     },
-    "sharingFailed": "Falha ao compartilhar",
-    "couldNotShare": "Não foi possível compartilhar.",
     "tryAgain": "Tentar novamente",
-    "sharing": "Compartilhando…",
     "updating": "Atualizando…",
     "stoppingSharing": "Parando de compartilhar…",
     "deleting": "Excluindo…",
     "notShared": "Não compartilhado",
-    "draft": "Rascunho",
     "unsharedChanges": "Alterações não compartilhadas"
   },
   "liveAppShare": {
@@ -133,6 +132,8 @@
       "hoursAgo": "{count, plural, one {há # hora} other {há # horas}}",
       "daysAgo": "{count, plural, one {há # dia} other {há # dias}}",
       "replies": "{count, plural, one {# resposta} other {# respostas}}",
+      "replyPlaceholder": "Responder…",
+      "replyAriaLabel": "Responder a este comentário",
       "edited": "(editado)",
       "unattachedTip": "A parte do artefato a que este comentário se referia não está mais disponível.",
       "generalTip": "Comentário geral sobre o artefato inteiro.",
@@ -306,6 +307,12 @@
   },
   "publish": {
     "ownedByOther": "Outro dono publicou este artefato.",
+    "datasources": {
+      "notice": "Publicar envia as credenciais destas conexões: {list}",
+      "review": "Este app envia credenciais de conexões que você não aprovou. Revise-as em Compartilhar e publique novamente.",
+      "updateApp": "Atualize o aplicativo para publicar este app com suas conexões. Você também pode pedir ao agente para publicá-lo pelo chat.",
+      "unapproved": "Publicado sem as credenciais de: {list}"
+    },
     "linkLeftLive": {
       "unrecorded": "Este link foi compartilhado antes de o {product} registrar quem compartilha cada página, então o {product} não pode atualizá-lo nem tirá-lo do ar. Atualizar compartilha um novo link, e parar de compartilhar ou excluir o artefato deixa este aberto para quem o tiver. Peça ao seu administrador para removê-lo.",
       "otherArtifact": "Nada foi tirado do ar: o registro deste artefato apontava para a página de outro artefato, {link}.",
@@ -330,9 +337,13 @@
       "restrictedTitle": "Restrito",
       "restrictedDesc": "Ainda não se sabe quem pode abrir o link",
       "specificTitle": "Pessoas específicas",
-      "specificDesc": "Só as pessoas que você listar"
+      "specificDesc": "Só as pessoas que você listar",
+      "websiteTitle": "Site público",
+      "websiteDesc": "Um endereço próprio na web, aberto a qualquer pessoa na internet"
     },
     "whoCanAccess": "Quem pode acessar seu app",
+    "whoCanAccessDoc": "Quem pode acessar seu documento",
+    "updatesAsYouEdit": "Atualiza conforme você edita",
     "addPassword": "Adicione uma senha",
     "hide": "Ocultar",
     "show": "Mostrar",
@@ -353,7 +364,6 @@
     "makeLive": "Colocar no ar",
     "shared": "Compartilhado",
     "share": "Compartilhar",
-    "shareToWeb": "Compartilhar na web",
     "sharingBusy": "Compartilhando",
     "websiteUrl": "URL do site",
     "change": "Alterar",
@@ -379,7 +389,9 @@
       "ownerOnlyTitle": "Somente o proprietário",
       "ownerOnlyDesc": "Ninguém mais pode abrir o link compartilhado",
       "listWithheld": "Somente as equipes e pessoas com quem está compartilhado"
-    }
+    },
+    "websiteAddress": "Endereço do site",
+    "websiteEmailGateNotice": "Um site público não pede o e-mail dos visitantes. Qualquer pessoa pode abri-lo."
   },
   "previewErrors": {
     "reported": "{count, plural, one {A visualização relatou # erro} other {A visualização relatou # erros}}",
@@ -470,6 +482,7 @@
     "backendFailed": "O backend não conseguiu iniciar",
     "proxyUnavailable": "O proxy da visualização não está disponível",
     "noMountUrl": "A montagem da visualização não retornou nenhuma URL",
+    "appNotPublishedYet": "Este app aparece aqui quando é publicado, logo depois de ser criado. Tente de novo em instantes.",
     "loadFailed": "Não foi possível carregar o artefato",
     "portNotReady": "A porta do backend ainda não está disponível: a visualização ainda está carregando.",
     "remoteNoUrl": "Este artefato é servido por um servidor remoto e ainda não tem uma URL para abrir.",
@@ -510,8 +523,6 @@
       "title": "Título (A–Z)",
       "type": "Tipo"
     },
-    "shareProtected": "Compartilhar com senha",
-    "shareRestricted": "Compartilhar restrito",
     "downloadFailed": "Não foi possível baixar este artefato.",
     "menu": "Menu do artefato",
     "openProject": "Abrir {project}",
@@ -519,9 +530,7 @@
     "openViewer": "Abrir visualizador",
     "showInExplorer": "Mostrar no Explorador",
     "deleteItem": "Excluir artefato",
-    "onlyHtmlMd": "Só artefatos HTML e Markdown podem ser compartilhados.",
-    "sharedToast": "{mode, select, password {Compartilhado (protegido por senha): {url}} restricted {Compartilhado (restrito): {url}} other {Compartilhado: {url}}}",
-    "mindsApiKey": "Defina sua chave de API do Minds em Configurações para compartilhar artefatos.",
+    "onlyHtmlMd": "Só páginas web, documentos, planilhas, apresentações, PDFs, CSV e arquivos de texto podem ser compartilhados.",
     "stoppedOnMindsHub": "Compartilhamento interrompido no MindsHub.",
     "stopped": "Compartilhamento interrompido.",
     "updated": "A versão compartilhada foi atualizada.",
@@ -546,11 +555,9 @@
       "noMatch": "Nenhum artefato corresponde a estes filtros.",
       "clear": "Limpar filtros",
       "status": "Status",
-      "allStatuses": "Todos os status"
-    },
-    "owner": {
-      "you": "Você",
-      "youHint": "Seu, compartilhado com outras pessoas."
+      "allStatuses": "Todos os status",
+      "access": "Acesso",
+      "allAccess": "Todos os níveis de acesso"
     },
     "openComments": "{count, plural, one {# comentário aberto} other {# comentários abertos}}",
     "openCommentsHint": "Abrir a pré-visualização nos comentários"
@@ -595,7 +602,7 @@
     "search": "Buscar instruções e modelos",
     "modelFilter": "Modelo",
     "openComparison": "Abrir comparação: {title}",
-    "costTitle": "Estimado pelo preço de tabela, na última leitura",
+    "costTitle": "Estimado pelo preço de tabela, na última leitura. As chamadas que seu plano cobriu não são contadas.",
     "costAria": "Custo estimado {cost}",
     "costUnread": "Custo ainda não lido",
     "noMatch": "Nenhuma comparação corresponde.",
@@ -625,7 +632,7 @@
     "actions": "Ações da comparação",
     "deleteComparison": "Excluir comparação",
     "byline": "{a} vs. {b} · Iniciada {started}",
-    "combinedCostTitle": "Os dois lados juntos, estimado pelo preço de tabela. Inclui as chamadas que o agente faz por conta própria, como conferir a resposta.",
+    "combinedCostTitle": "Os dois lados juntos, estimado pelo preço de tabela. As chamadas que seu plano cobriu não são contadas. Inclui as chamadas que o agente faz por conta própria, como conferir a resposta.",
     "firstSendFailed": "A tarefa não foi enviada a nenhum modelo. {error}",
     "diverged": "Os lados divergiram no turno {turn}: a partir daí não receberam o mesmo pedido.",
     "followUp": "Mensagem de acompanhamento",
@@ -655,8 +662,9 @@
     "sendTo": "Enviar para",
     "usageByTurn": "Uso por turno",
     "usageSummary": "{count, plural, one {# turno} other {# turnos}} · {tokens} tokens",
+    "includedInPlan": "Incluído no seu plano",
     "sideUsage": "Uso por turno do lado {side}",
-    "listPriceNote": "Estimado pelo preço de tabela. Inclui as chamadas que o agente faz por conta própria, como conferir a resposta.",
+    "listPriceNote": "Estimado pelo preço de tabela. As chamadas que seu plano cobriu não são contadas. Inclui as chamadas que o agente faz por conta própria, como conferir a resposta.",
     "carryIncomplete": "Alguns arquivos que {name} criou ainda estão nesta comparação e não chegaram à tarefa.",
     "copyRestFailed": "Não foi possível copiar os arquivos restantes.",
     "copyRest": "Copiar os arquivos restantes",
@@ -923,7 +931,15 @@
     "sourceHint": "Altere o texto e o layout da página",
     "commentsHint": "Deixe e revise feedback",
     "statsHint": "Quem viu e por quanto tempo",
-    "commentsOpen": "Comentários, {count} abertos"
+    "commentsOpen": "Comentários, {count} abertos",
+    "openChat": "Abrir chat",
+    "openChatHint": "Feche a pré-visualização e vá para o chat em que isto foi criado",
+    "openChatUnavailable": {
+      "noOrigin": "Não foi criado em um chat, ou foi criado antes de os chats serem registrados",
+      "deleted": "O chat em que isto foi criado foi excluído",
+      "colleague": "Criado no chat de um colega, que só essa pessoa pode abrir",
+      "unreachable": "Não é possível acessar agora o chat em que isto foi criado"
+    }
   },
   "liveEditPanel": {
     "close": "Fechar o painel de edição ao vivo",

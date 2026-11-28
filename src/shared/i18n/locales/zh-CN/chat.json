@@ -20,7 +20,8 @@
       "deleting": "正在删除…",
       "copyMessage": "复制消息",
       "copyResponse": "复制回复",
-      "agentFallback": "智能体"
+      "agentFallback": "智能体",
+      "submittedData": "已提交的数据"
     },
     "incomplete": {
       "spendCeiling": "已提前停止：此任务已达到 token 预算上限。",
@@ -74,7 +75,13 @@
       "liveArtifact": "实时产物",
       "deletedBadge": "已删除",
       "share": "分享",
-      "shareTooltip": "选择谁可以打开"
+      "shareTooltip": "选择谁可以打开",
+      "goToLatestTooltip": "滚动到最新版本",
+      "openLink": "打开链接",
+      "openLinkTooltip": "在新标签页中打开产物的链接",
+      "updatedSeeBelow": "已更新。最新版本见下方。",
+      "previewThisVersion": "预览此版本",
+      "hideVersionPreview": "隐藏此版本"
     },
     "kinds": {
       "provider": "提供商",
@@ -92,15 +99,16 @@
       "taskStopped": "任务已停止",
       "providerLimitBody": "已达到提供商的用量上限。开始其他任务前，请联系管理员。",
       "addFunds": "充值",
+      "balanceEmptyAirOnPlan": "你的余额为零，因此无法运行此模型。你的套餐额度仍可用于 MindsHub Air。",
       "switchToAir": "切换到 MindsHub Air",
       "balanceRanOut": "任务完成前你的余额已用完。开始其他任务前，请先充值。",
-      "balanceEmptyAirLeft": "你的余额为零，因此无法运行此模型。MindsHub Air 仍有免费额度可用。",
+      "balanceEmptyAirLeft": "你的余额为零，因此无法运行此模型。MindsHub Air 仍可使用你的免费额度运行。",
       "providerUnavailableTitle": "提供商暂时不可用",
       "providerPausedBody": "提供商已暂停处理请求。请稍后重试，或联系管理员。",
-      "freeAirPausedTitle": "免费的 MindsHub Air 已暂停",
+      "freeAirPausedTitle": "免费模型已暂停",
       "connectProviderTitle": "连接提供商，开始对话",
       "providerSetupRequiredTitle": "需要设置提供商",
-      "connectProviderBody": "从 MindsHub 开始，即可获得 MindsHub Air 的免费额度，之后按用量付费。你也可以在“设置”中添加自己的 API 密钥。",
+      "connectProviderBody": "从 MindsHub 开始，即可获得免费额度，之后按用量付费。你也可以在“设置”中添加自己的 API 密钥。",
       "providerSetupRequiredBody": "开始任务前，请让运营方配置模型提供商。",
       "startForFree": "免费开始",
       "openSettings": "打开设置",
@@ -122,10 +130,10 @@
       "windowPausedMobile": "你已用完{window, select, 7d {每周} 5h {5 小时} other {套餐}}额度。已暂停，直到额度重置。"
     },
     "usageAlert": {
-      "freeLow": "Air 免费额度剩余 {percent}",
-      "freeLowRefills": "Air 免费额度剩余 {percent} · {time} 恢复",
-      "freeUsed": "Air 免费额度已用完 · 正在使用你的余额",
-      "freeUsedUntil": "Air 免费额度已用完 · {time} 前将使用你的余额",
+      "freeLow": "免费额度剩余 {percent}",
+      "freeLowRefills": "免费额度剩余 {percent} · {time} 重置",
+      "freeUsed": "免费额度已用完 · 正在使用你的余额",
+      "freeUsedUntil": "免费额度已用完 · {time} 前将使用你的余额",
       "windowLow": "已使用 {percent} 的{window, select, 7d {每周} other {5 小时}}额度",
       "windowLowResets": "已使用 {percent} 的{window, select, 7d {每周} other {5 小时}}额度 · {time} 重置",
       "windowUsed": "{window, select, 7d {每周额度已用完} other {5 小时额度已用完}}",
@@ -286,11 +294,17 @@
     },
     "dropFiles": "拖放文件以添加附件",
     "addContext": "添加上下文",
+    "docOutput": {
+      "chip": "文档",
+      "remove": "输出：文档。移除",
+      "title": "回答将写成文档。点击可移除。"
+    },
     "menu": {
       "attachFiles": "添加文件或照片",
       "openingGoogleDrive": "正在打开 Google Drive…",
       "addFromGoogleDrive": "从 Google Drive 添加文件",
       "addFromSharePoint": "从 SharePoint 添加文件",
+      "writeAsDoc": "写成文档",
       "browserTitle": "{agent} 可以在此任务中使用浏览器模式。关闭后从你的下一条消息起生效。",
       "browser": "浏览器",
       "browserOff": "为此任务关闭浏览器",
@@ -309,7 +323,11 @@
       "none": "无项目"
     },
     "chooseHarness": "选择运行环境",
-    "voiceCall": "语音通话"
+    "voiceCall": "语音模式",
+    "dictation": {
+      "start": "听写",
+      "stop": "停止听写"
+    }
   },
   "attachmentThumbnail": {
     "open": "打开图片",
@@ -496,7 +514,19 @@
       "missingType": "缺少图表类型",
       "unsupportedType": "不支持的图表类型：“{type}”。支持的类型：{supported}。",
       "invalidJson": "图表规范中的 JSON 无效",
-      "error": "错误：{error}"
+      "error": "错误：{error}",
+      "loading": "正在绘制图表…",
+      "chartLabel": "图表",
+      "diagramLabel": "示意图",
+      "copyImage": "复制为图片",
+      "downloadPng": "下载 PNG",
+      "showSource": "显示源码",
+      "hideSource": "隐藏源码",
+      "tooLarge": "规格超过 {limit} KB",
+      "tooManyDatasets": "数据集过多（{count}），上限为 {limit}",
+      "tooManyPoints": "数据点过多（{count}），上限为 {limit}",
+      "tooManyNodes": "节点过多（{count}），上限为 {limit}",
+      "emptyDiagram": "示意图为空"
     }
   },
   "taskModes": {
@@ -750,10 +780,14 @@
     "phoneWorking": "正在处理…",
     "phoneDone": "已完成。最小化即可查看回答。",
     "phoneMinimize": "最小化",
+    "overlayQuestion": "{agent} 有个问题正在聊天中等待。",
+    "overlayHandOver": "轮到你操作 {site} 了：{reason}。",
+    "overlayHandOverWatching": "轮到你操作 {site} 了：{reason}。完成后 {agent} 会自动继续。",
+    "overlayGoToQuestion": "前往问题",
     "talkTo": "与 {agent} 通话"
   },
   "voiceCall": {
-    "dialogLabel": "与 {agent} 语音通话",
+    "dialogLabel": "语音模式",
     "connecting": "正在连接…",
     "ending": "正在结束…",
     "working": "正在处理…",

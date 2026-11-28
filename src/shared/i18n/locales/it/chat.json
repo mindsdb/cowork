@@ -20,7 +20,8 @@
       "deleting": "Eliminazione…",
       "copyMessage": "Copia messaggio",
       "copyResponse": "Copia risposta",
-      "agentFallback": "Agente"
+      "agentFallback": "Agente",
+      "submittedData": "Dati inviati"
     },
     "incomplete": {
       "spendCeiling": "Interrotta in anticipo: l’attività ha raggiunto il budget di token.",
@@ -74,7 +75,13 @@
       "liveArtifact": "artefatto live",
       "deletedBadge": "Eliminato",
       "share": "Condividi",
-      "shareTooltip": "Scegli chi può aprirlo"
+      "shareTooltip": "Scegli chi può aprirlo",
+      "goToLatestTooltip": "Scorri all'ultima versione",
+      "openLink": "Apri link",
+      "openLinkTooltip": "Apri il link dell'artefatto in una nuova scheda",
+      "updatedSeeBelow": "È stato aggiornato. Vedi l'ultima versione qui sotto.",
+      "previewThisVersion": "Anteprima di questa versione",
+      "hideVersionPreview": "Nascondi questa versione"
     },
     "kinds": {
       "provider": "Provider",
@@ -92,15 +99,16 @@
       "taskStopped": "Attività interrotta",
       "providerLimitBody": "È stato raggiunto il limite di utilizzo del provider. Contatta l’amministratore prima di avviare un’altra attività.",
       "addFunds": "Aggiungi fondi",
+      "balanceEmptyAirOnPlan": "Il saldo è esaurito, quindi questo modello non può essere eseguito. La quota del tuo piano copre ancora MindsHub Air.",
       "switchToAir": "Passa a MindsHub Air",
       "balanceRanOut": "Il saldo si è esaurito prima del completamento dell’attività. Aggiungi fondi prima di avviarne un’altra.",
-      "balanceEmptyAirLeft": "Il saldo è esaurito, quindi questo modello non può essere eseguito. Su MindsHub Air hai ancora quota gratuita disponibile.",
+      "balanceEmptyAirLeft": "Il saldo è esaurito, quindi questo modello non può essere eseguito. MindsHub Air può ancora funzionare con la tua quota gratuita.",
       "providerUnavailableTitle": "Il provider è temporaneamente non disponibile",
       "providerPausedBody": "Il provider ha sospeso le richieste. Riprova più tardi o contatta l’amministratore.",
-      "freeAirPausedTitle": "MindsHub Air gratuito è sospeso",
+      "freeAirPausedTitle": "I modelli gratuiti sono sospesi",
       "connectProviderTitle": "Connetti un provider per iniziare a chattare",
       "providerSetupRequiredTitle": "È necessario configurare un provider",
-      "connectProviderBody": "Inizia con MindsHub e ottieni una quota gratuita su MindsHub Air, poi paghi solo quello che usi. Oppure aggiungi la tua chiave API in Impostazioni.",
+      "connectProviderBody": "Inizia con MindsHub e ottieni una quota gratuita, poi paghi solo quello che usi. Oppure aggiungi la tua chiave API in Impostazioni.",
       "providerSetupRequiredBody": "Chiedi all’operatore di configurare il provider del modello prima di avviare un’attività.",
       "startForFree": "Inizia gratis",
       "openSettings": "Apri Impostazioni",
@@ -122,10 +130,10 @@
       "windowPausedMobile": "Hai usato la quota {window, select, 7d {settimanale} 5h {di 5 ore} other {del piano}}. In pausa fino al rinnovo."
     },
     "usageAlert": {
-      "freeLow": "Quota gratuita di Air rimanente: {percent}",
-      "freeLowRefills": "Quota gratuita di Air rimanente: {percent} · si ricarica alle {time}",
-      "freeUsed": "Quota gratuita di Air esaurita · ora usi il tuo saldo",
-      "freeUsedUntil": "Quota gratuita di Air esaurita · usi il tuo saldo fino alle {time}",
+      "freeLow": "Quota gratuita rimanente: {percent}",
+      "freeLowRefills": "Quota gratuita rimanente: {percent} · si rinnova alle {time}",
+      "freeUsed": "Quota gratuita esaurita · ora usi il tuo saldo",
+      "freeUsedUntil": "Quota gratuita esaurita · usi il tuo saldo fino alle {time}",
       "windowLow": "Hai usato il {percent} della quota {window, select, 7d {settimanale} other {di 5 ore}}",
       "windowLowResets": "Hai usato il {percent} della quota {window, select, 7d {settimanale} other {di 5 ore}} · si rinnova alle {time}",
       "windowUsed": "{window, select, 7d {Quota settimanale esaurita} other {Quota di 5 ore esaurita}}",
@@ -286,11 +294,17 @@
     },
     "dropFiles": "Rilascia i file per allegarli",
     "addContext": "Aggiungi contesto",
+    "docOutput": {
+      "chip": "Documento",
+      "remove": "Output: documento. Rimuovi",
+      "title": "La risposta verrà scritta come documento. Fai clic per rimuovere."
+    },
     "menu": {
       "attachFiles": "Allega file o foto",
       "openingGoogleDrive": "Apertura di Google Drive…",
       "addFromGoogleDrive": "Aggiungi file da Google Drive",
       "addFromSharePoint": "Aggiungi file da SharePoint",
+      "writeAsDoc": "Scrivi come documento",
       "browserTitle": "{agent} può usare la modalità browser in questa attività. La disattivazione vale dal tuo prossimo messaggio.",
       "browser": "Browser",
       "browserOff": "Disattiva il browser per questa attività",
@@ -309,7 +323,11 @@
       "none": "Nessun progetto"
     },
     "chooseHarness": "Scegli ambiente di esecuzione",
-    "voiceCall": "Chiamata vocale"
+    "voiceCall": "Modalità vocale",
+    "dictation": {
+      "start": "Detta",
+      "stop": "Interrompi la dettatura"
+    }
   },
   "attachmentThumbnail": {
     "open": "Apri immagine",
@@ -496,7 +514,19 @@
       "missingType": "Tipo di grafico mancante",
       "unsupportedType": "Tipo di grafico non supportato: «{type}». Supportati: {supported}.",
       "invalidJson": "JSON non valido nella specifica del grafico",
-      "error": "ERRORE: {error}"
+      "error": "ERRORE: {error}",
+      "loading": "Disegno del grafico…",
+      "chartLabel": "Grafico",
+      "diagramLabel": "Diagramma",
+      "copyImage": "Copia come immagine",
+      "downloadPng": "Scarica PNG",
+      "showSource": "Mostra sorgente",
+      "hideSource": "Nascondi sorgente",
+      "tooLarge": "La specifica supera {limit} KB",
+      "tooManyDatasets": "Troppe serie di dati ({count}); il limite è {limit}",
+      "tooManyPoints": "Troppi punti dati ({count}); il limite è {limit}",
+      "tooManyNodes": "Troppi nodi ({count}); il limite è {limit}",
+      "emptyDiagram": "Il diagramma è vuoto"
     }
   },
   "taskModes": {
@@ -750,10 +780,14 @@
     "phoneWorking": "Ci sto lavorando…",
     "phoneDone": "Fatto. Riduci per vedere la risposta.",
     "phoneMinimize": "Riduci",
+    "overlayQuestion": "{agent} ha una domanda in attesa nella chat.",
+    "overlayHandOver": "Tocca a te su {site}: {reason}.",
+    "overlayHandOverWatching": "Tocca a te su {site}: {reason}. {agent} riprende da solo quando è fatto.",
+    "overlayGoToQuestion": "Vai alla domanda",
     "talkTo": "Parla con {agent}"
   },
   "voiceCall": {
-    "dialogLabel": "Chiamata vocale con {agent}",
+    "dialogLabel": "Modalità vocale",
     "connecting": "Connessione…",
     "ending": "Chiusura…",
     "working": "Ci sto lavorando…",

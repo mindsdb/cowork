@@ -282,6 +282,38 @@ describe('resolveBootTarget draftLinks', () => {
   });
 });
 
+describe('resolveBootTarget docsEnabled', () => {
+  it.each([true, false])('passes docsEnabled=%s through on every route', async (value) => {
+    const flag = async () => ({ ...CONFIGURED, orgMode: true, docsEnabled: value });
+    const terminal = makeHost({ readSettings: async () => ({ ANTON_TERMS_CONSENT: 'true' }), checkConfigured: flag });
+    const setup = makeHost({
+      readSettings: async () => ({ ANTON_TERMS_CONSENT: 'true' }),
+      checkConfigured: flag,
+      checkInstall: async () => ({ antonInstalled: false, serverDepsReady: true }),
+    });
+    const auth = makeHost({ readSettings: async () => ({}), checkConfigured: flag });
+
+    expect(await resolveBootTarget(terminal, true)).toMatchObject({ target: 'terminal', docsEnabled: value });
+    expect(await resolveBootTarget(setup, true)).toMatchObject({ target: 'setup', docsEnabled: value });
+    expect(await resolveBootTarget(auth, false)).toMatchObject({ target: 'auth', docsEnabled: value });
+  });
+
+  // The caller resolves a missing value after its orgMode fail-safe.
+  it('leaves docsEnabled unset when the server does not report it', async () => {
+    const absent = makeHost({ checkConfigured: async () => ({ ...CONFIGURED, orgMode: true }) });
+    expect((await resolveBootTarget(absent, true)).docsEnabled).toBeUndefined();
+  });
+
+  it('leaves docsEnabled unset when the health read failed', async () => {
+    const host = makeHost({
+      checkConfigured: async () => {
+        throw new Error('offline');
+      },
+    });
+    expect((await resolveBootTarget(host, true)).docsEnabled).toBeUndefined();
+  });
+});
+
 describe('resolveRegistrationConsent', () => {
   // The keycloak module is imported dynamically at every call site precisely so
   // keycloak-js never loads on Electron (see the auto-finalize effect in
@@ -312,5 +344,39 @@ describe('resolveRegistrationConsent', () => {
   it('returns false when the keycloak module fails to load', async () => {
     const load = async () => { throw new Error('chunk load failed'); };
     expect(await resolveRegistrationConsent(true, load)).toBe(false);
+  });
+});
+
+describe('resolveBootTarget artifactWebsites', () => {
+  it('reports artifactWebsites from checkConfigured on every route', async () => {
+    const sites = async () => ({ ...CONFIGURED, artifactWebsites: true });
+    const terminal = makeHost({ readSettings: async () => ({ ANTON_TERMS_CONSENT: 'true' }), checkConfigured: sites });
+    const setup = makeHost({
+      readSettings: async () => ({ ANTON_TERMS_CONSENT: 'true' }),
+      checkConfigured: sites,
+      checkInstall: async () => ({ antonInstalled: false, serverDepsReady: true }),
+    });
+    const auth = makeHost({ readSettings: async () => ({}), checkConfigured: sites });
+
+    expect(await resolveBootTarget(terminal, true)).toMatchObject({ target: 'terminal', artifactWebsites: true });
+    expect(await resolveBootTarget(setup, true)).toMatchObject({ target: 'setup', artifactWebsites: true });
+    expect(await resolveBootTarget(auth, false)).toMatchObject({ target: 'auth', artifactWebsites: true });
+  });
+
+  it('reports artifactWebsites false when the server does not say true', async () => {
+    const absent = makeHost({ checkConfigured: async () => CONFIGURED });
+    const off = makeHost({ checkConfigured: async () => ({ ...CONFIGURED, artifactWebsites: false }) });
+    expect((await resolveBootTarget(absent, true)).artifactWebsites).toBe(false);
+    expect((await resolveBootTarget(off, true)).artifactWebsites).toBe(false);
+  });
+
+  // False hides the card, which is the safe answer when /health can't be read.
+  it('reports artifactWebsites false when the health read failed', async () => {
+    const host = makeHost({
+      checkConfigured: async () => {
+        throw new Error('offline');
+      },
+    });
+    expect((await resolveBootTarget(host, true)).artifactWebsites).toBe(false);
   });
 });

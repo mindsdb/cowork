@@ -1,3 +1,4 @@
+import nodePath from 'node:path';
 import { installerVersionFromFileName } from './write-download-manifest.mjs';
 
 export const STEP_NAMES = Object.freeze({
@@ -66,6 +67,45 @@ export function assertAppIdentity(info, manifestVersion, channel) {
   if (!identity || !display || identity[1] !== display[1] || !display[2].startsWith(identity[2])) {
     throw new Error('Installed Stable app release/commit differs from the manifest.');
   }
+}
+
+/* Entitlements a release must not hold: each lets code from outside the signed
+   app load into it, one through DYLD_ variables and one through libraries any
+   team signed. */
+export const FORBIDDEN_ENTITLEMENTS = Object.freeze([
+  'com.apple.security.cs.allow-dyld-environment-variables',
+  'com.apple.security.cs.disable-library-validation',
+]);
+
+/* The forbidden entitlements named in what `codesign -d --entitlements - --xml`
+   prints. A key counts whatever its value, since a release has no reason to
+   name it. Code signed without entitlements prints nothing; any other print
+   that is not a plist throws, so an unreadable answer never passes as an
+   empty one. */
+export function forbiddenEntitlements(xml) {
+  const text = xml.trim();
+  if (!text) return [];
+  if (!/^(?:<\?xml[^>]*\?>\s*)?(?:<!DOCTYPE[^>]*>\s*)?<plist[\s>][\s\S]*<\/plist>$/.test(text)) throw new Error('codesign did not print an entitlements plist.');
+  return FORBIDDEN_ENTITLEMENTS.filter((key) => text.includes(`<key>${key}</key>`));
+}
+
+/* Whether `child` is `parent` or a path below it. It compares the paths as
+   given, so a caller that must not be fooled by a symlink or a case variant
+   resolves both with fs/promises realpath first. A name that starts with two
+   dots, such as `..qa`, is below its parent. */
+export function within(parent, child, path = nodePath) {
+  const relative = path.relative(parent, child);
+  return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+}
+
+/* Where the setup smokes put their inspectable copy of the installed app: the
+   installed folder's own name inside a fresh folder, with the executable at the
+   same place inside it. */
+export function inspectableCopy(installed, executable, folder, path = nodePath) {
+  const inside = path.relative(installed, executable);
+  if (!inside || !within(installed, executable, path)) throw new Error(`The executable is not inside the installed app: ${executable}`);
+  const root = path.join(folder, path.basename(installed));
+  return { root, executable: path.join(root, inside) };
 }
 
 /** @param {SetupResult} result */

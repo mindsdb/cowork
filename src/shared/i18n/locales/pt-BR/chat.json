@@ -20,7 +20,8 @@
       "deleting": "Excluindo…",
       "copyMessage": "Copiar mensagem",
       "copyResponse": "Copiar resposta",
-      "agentFallback": "Agente"
+      "agentFallback": "Agente",
+      "submittedData": "Dados enviados"
     },
     "incomplete": {
       "spendCeiling": "Parou antes: esta tarefa atingiu seu orçamento de tokens.",
@@ -74,7 +75,13 @@
       "liveArtifact": "artefato ao vivo",
       "deletedBadge": "Excluído",
       "share": "Compartilhar",
-      "shareTooltip": "Escolha quem pode abrir"
+      "shareTooltip": "Escolha quem pode abrir",
+      "goToLatestTooltip": "Rolar até a versão mais recente",
+      "openLink": "Abrir link",
+      "openLinkTooltip": "Abrir o link do artefato em uma nova aba",
+      "updatedSeeBelow": "Isto foi atualizado. Veja a versão mais recente abaixo.",
+      "previewThisVersion": "Visualizar esta versão",
+      "hideVersionPreview": "Ocultar esta versão"
     },
     "kinds": {
       "provider": "Provedor",
@@ -92,15 +99,16 @@
       "taskStopped": "Tarefa interrompida",
       "providerLimitBody": "O limite de uso do provedor foi atingido. Fale com seu administrador antes de iniciar outra tarefa.",
       "addFunds": "Adicionar fundos",
+      "balanceEmptyAirOnPlan": "Seu saldo está vazio, então este modelo não pode ser executado. A cota do seu plano ainda cobre o MindsHub Air.",
       "switchToAir": "Mudar para MindsHub Air",
       "balanceRanOut": "Seu saldo acabou antes de esta tarefa terminar. Adicione fundos antes de iniciar outra tarefa.",
-      "balanceEmptyAirLeft": "Seu saldo está vazio, então este modelo não pode ser executado. O MindsHub Air ainda tem cota gratuita disponível.",
+      "balanceEmptyAirLeft": "Seu saldo está vazio, então este modelo não pode ser executado. O MindsHub Air ainda pode ser executado com sua cota gratuita.",
       "providerUnavailableTitle": "O provedor está temporariamente indisponível",
       "providerPausedBody": "O provedor pausou as solicitações. Tente novamente mais tarde ou fale com seu administrador.",
-      "freeAirPausedTitle": "O MindsHub Air gratuito está pausado",
+      "freeAirPausedTitle": "Os modelos gratuitos estão pausados",
       "connectProviderTitle": "Conecte um provedor para começar a conversar",
       "providerSetupRequiredTitle": "É preciso configurar o provedor",
-      "connectProviderBody": "Comece com o MindsHub e ganhe uma cota gratuita no MindsHub Air; depois pague conforme o uso. Ou adicione sua própria chave de API em Configurações.",
+      "connectProviderBody": "Comece com o MindsHub e ganhe uma cota gratuita; depois pague conforme o uso. Ou adicione sua própria chave de API em Configurações.",
       "providerSetupRequiredBody": "Peça ao seu operador para configurar o provedor do modelo antes de iniciar uma tarefa.",
       "startForFree": "Começar grátis",
       "openSettings": "Abrir Configurações",
@@ -122,10 +130,10 @@
       "windowPausedMobile": "Você usou sua cota {window, select, 7d {semanal} 5h {de 5 horas} other {do plano}}. Pausado até a renovação."
     },
     "usageAlert": {
-      "freeLow": "Resta {percent} da cota gratuita do Air",
-      "freeLowRefills": "Resta {percent} da cota gratuita do Air · renova às {time}",
-      "freeUsed": "Cota gratuita do Air esgotada · usando seu saldo agora",
-      "freeUsedUntil": "Cota gratuita do Air esgotada · usando seu saldo até {time}",
+      "freeLow": "Resta {percent} da cota gratuita",
+      "freeLowRefills": "Resta {percent} da cota gratuita · renova às {time}",
+      "freeUsed": "Cota gratuita esgotada · usando seu saldo agora",
+      "freeUsedUntil": "Cota gratuita esgotada · usando seu saldo até {time}",
       "windowLow": "{percent} da sua cota {window, select, 7d {semanal} other {de 5 horas}} usados",
       "windowLowResets": "{percent} da sua cota {window, select, 7d {semanal} other {de 5 horas}} usados · renova às {time}",
       "windowUsed": "{window, select, 7d {Cota semanal esgotada} other {Cota de 5 horas esgotada}}",
@@ -286,11 +294,17 @@
     },
     "dropFiles": "Solte arquivos para anexar",
     "addContext": "Adicionar contexto",
+    "docOutput": {
+      "chip": "Documento",
+      "remove": "Saída: documento. Remover",
+      "title": "A resposta será escrita como documento. Clique para remover."
+    },
     "menu": {
       "attachFiles": "Anexar arquivos ou fotos",
       "openingGoogleDrive": "Abrindo o Google Drive…",
       "addFromGoogleDrive": "Adicionar arquivos do Google Drive",
       "addFromSharePoint": "Adicionar arquivos do SharePoint",
+      "writeAsDoc": "Escrever como documento",
       "browserTitle": "{agent} pode usar o modo navegador nesta tarefa. Desativar vale a partir da sua próxima mensagem.",
       "browser": "Navegador",
       "browserOff": "Desativar o navegador nesta tarefa",
@@ -309,7 +323,11 @@
       "none": "Sem projeto"
     },
     "chooseHarness": "Escolher ambiente de execução",
-    "voiceCall": "Chamada de voz"
+    "voiceCall": "Modo de voz",
+    "dictation": {
+      "start": "Ditar",
+      "stop": "Parar de ditar"
+    }
   },
   "attachmentThumbnail": {
     "open": "Abrir imagem",
@@ -496,7 +514,19 @@
       "missingType": "Tipo de gráfico ausente",
       "unsupportedType": "Tipo de gráfico não compatível: \"{type}\". Compatíveis: {supported}.",
       "invalidJson": "JSON inválido na especificação do gráfico",
-      "error": "ERRO: {error}"
+      "error": "ERRO: {error}",
+      "loading": "Desenhando gráfico…",
+      "chartLabel": "Gráfico",
+      "diagramLabel": "Diagrama",
+      "copyImage": "Copiar como imagem",
+      "downloadPng": "Baixar PNG",
+      "showSource": "Ver código",
+      "hideSource": "Ocultar código",
+      "tooLarge": "A especificação ultrapassa {limit} KB",
+      "tooManyDatasets": "Séries de dados demais ({count}); o limite é {limit}",
+      "tooManyPoints": "Pontos de dados demais ({count}); o limite é {limit}",
+      "tooManyNodes": "Nós demais ({count}); o limite é {limit}",
+      "emptyDiagram": "O diagrama está vazio"
     }
   },
   "taskModes": {
@@ -750,10 +780,14 @@
     "phoneWorking": "Trabalhando nisso…",
     "phoneDone": "Pronto. Minimize para ver a resposta.",
     "phoneMinimize": "Minimizar",
+    "overlayQuestion": "{agent} tem uma pergunta esperando no chat.",
+    "overlayHandOver": "Sua vez em {site}: {reason}.",
+    "overlayHandOverWatching": "Sua vez em {site}: {reason}. {agent} continua sozinho quando estiver feito.",
+    "overlayGoToQuestion": "Ir para a pergunta",
     "talkTo": "Falar com {agent}"
   },
   "voiceCall": {
-    "dialogLabel": "Chamada de voz com {agent}",
+    "dialogLabel": "Modo de voz",
     "connecting": "Conectando…",
     "ending": "Encerrando…",
     "working": "Trabalhando nisso…",

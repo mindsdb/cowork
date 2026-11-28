@@ -166,17 +166,17 @@
       "updatePaymentMethod": "Atualizar forma de pagamento"
     },
     "free": {
-      "title": "Cota gratuita do Air",
-      "badge": "Somente MindsHub Air",
+      "title": "Cota gratuita",
+      "badge": "Somente modelos gratuitos",
       "resetsAt": "Renova às {time}",
       "unlimited": "Ilimitado nesta conta.",
       "used": "{percent} da sua cota usados",
       "left": "Restam {percent}",
-      "meterLabel": "Cota gratuita do Air usada",
-      "usedUpUntil": "Esgotada. O MindsHub Air está sendo cobrado do seu saldo até a renovação às {time}.",
-      "usedUp": "Esgotada. O MindsHub Air está sendo cobrado do seu saldo até a renovação.",
-      "afterUntil": "Depois disso, o MindsHub Air usa seu saldo até a renovação às {time}.",
-      "after": "Depois disso, o MindsHub Air usa seu saldo."
+      "meterLabel": "Cota gratuita usada",
+      "usedUpUntil": "Esgotada. Os modelos gratuitos agora usam seu saldo até a renovação às {time}.",
+      "usedUp": "Esgotada. Os modelos gratuitos agora usam seu saldo até a renovação.",
+      "afterUntil": "Depois disso, os modelos gratuitos usam seu saldo até a renovação às {time}.",
+      "after": "Depois disso, os modelos gratuitos usam seu saldo."
     },
     "autoTopUp": {
       "off": "A recarga automática está desativada. Ative-a para que as tarefas continuem rodando quando seu saldo ficar baixo.",
@@ -202,7 +202,7 @@
     "balance": {
       "title": "Saldo",
       "empty": "Vazio. Os modelos pagos não serão executados até você adicionar fundos.",
-      "usedBy": "Usado pelos modelos pagos, e pelo MindsHub Air quando os tokens gratuitos acabam.",
+      "usedBy": "Usado pelos modelos pagos, e pelos modelos gratuitos quando os tokens gratuitos acabam.",
       "spentRange": "de crédito gasto de {start} a {end}",
       "spentDate": "de crédito gasto {date}",
       "spentThisPeriod": "de crédito gasto neste período",
@@ -211,7 +211,7 @@
     },
     "signIn": {
       "title": "Entre para ver seu uso",
-      "body": "Sua cota gratuita do Air e seu saldo aparecem aqui depois que você entrar no MindsHub.",
+      "body": "Sua cota gratuita e seu saldo aparecem aqui depois que você entrar no MindsHub.",
       "goToAccount": "Ir para Conta"
     },
     "loading": "Carregando uso…",

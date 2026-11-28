@@ -48,29 +48,28 @@
   },
   "status": {
     "badge": {
+      "onlyYou": "나만",
       "public": "공개",
-      "password": "비밀번호",
-      "restricted": "제한됨"
+      "publicPassword": "공개 · 비밀번호",
+      "restricted": "제한됨",
+      "website": "웹사이트"
     },
     "hint": {
       "notSharedYet": "아직 공유되지 않았습니다. 웹 링크를 받으려면 열어서 ‘공유’를 선택하세요.",
-      "notShareable": "공유되지 않았습니다. 웹 페이지와 Markdown 문서만 링크로 공유할 수 있습니다.",
+      "notShareable": "공유되지 않았습니다. 웹 페이지, 문서, 스프레드시트, 프레젠테이션, PDF, CSV, 텍스트 파일은 링크로 공유할 수 있지만 이 유형의 파일은 공유할 수 없습니다.",
       "orgRestricted": "제한됨. 링크를 열 수 있는 사람을 보려면 ‘공유’를 여세요.",
       "ownerOnly": "공유되었지만 나만 링크를 열 수 있습니다.",
+      "password": "링크와 비밀번호가 있는 사람은 누구나 열 수 있습니다.",
       "chosenPeople": "공유되었습니다. 선택한 사람만 링크를 열 수 있습니다.",
       "unknown": "공유되었습니다. 링크를 열 수 있는 사람을 확인할 수 없어 제한된 것으로 간주합니다.",
       "sharedWith": "{names}와(과) 공유됨",
       "sharedWithMore": "{names} 외 {count}명과 공유됨"
     },
-    "sharingFailed": "공유 실패",
-    "couldNotShare": "공유하지 못했습니다.",
     "tryAgain": "다시 시도",
-    "sharing": "공유하는 중…",
     "updating": "업데이트하는 중…",
     "stoppingSharing": "공유를 중지하는 중…",
     "deleting": "삭제하는 중…",
     "notShared": "공유 안 됨",
-    "draft": "초안",
     "unsharedChanges": "공유되지 않은 변경 사항"
   },
   "liveAppShare": {
@@ -133,6 +132,8 @@
       "hoursAgo": "{count, plural, other {#시간 전}}",
       "daysAgo": "{count, plural, other {#일 전}}",
       "replies": "{count, plural, other {답글 #개}}",
+      "replyPlaceholder": "답글…",
+      "replyAriaLabel": "이 댓글에 답글 달기",
       "edited": "(편집됨)",
       "unattachedTip": "이 댓글이 가리키던 아티팩트의 부분을 더 이상 사용할 수 없습니다.",
       "generalTip": "아티팩트 전체에 대한 일반 피드백입니다.",
@@ -306,6 +307,12 @@
   },
   "publish": {
     "ownedByOther": "이 아티팩트는 다른 소유자가 게시했습니다.",
+    "datasources": {
+      "notice": "게시하면 다음 연결의 자격 증명이 업로드됩니다: {list}",
+      "review": "이 앱은 승인하지 않은 연결의 자격 증명을 보냅니다. 공유에서 확인한 후 다시 게시하세요.",
+      "updateApp": "연결과 함께 이 앱을 게시하려면 앱을 업데이트하세요. 채팅에서 에이전트에게 게시를 요청할 수도 있습니다.",
+      "unapproved": "다음 자격 증명 없이 게시됨: {list}"
+    },
     "linkLeftLive": {
       "unrecorded": "이 링크는 {product}에서 각 페이지의 공유자를 기록하기 전에 공유되었으므로 {product}에서 업데이트하거나 게시를 중단할 수 없습니다. ‘업데이트’를 누르면 새 링크로 공유되며, ‘공유 중지’를 누르거나 아티팩트를 삭제해도 이 링크를 가진 사람은 계속 열 수 있습니다. 관리자에게 삭제를 요청하세요.",
       "otherArtifact": "게시가 중단된 페이지가 없습니다. 이 아티팩트의 기록이 다른 아티팩트의 페이지({link})를 가리키고 있었습니다.",
@@ -330,9 +337,13 @@
       "restrictedTitle": "제한됨",
       "restrictedDesc": "링크를 열 수 있는 사람을 아직 알 수 없습니다",
       "specificTitle": "특정 사용자",
-      "specificDesc": "지정한 사람만"
+      "specificDesc": "지정한 사람만",
+      "websiteTitle": "공개 웹사이트",
+      "websiteDesc": "자체 웹 주소로, 인터넷상의 누구나 열 수 있습니다"
     },
     "whoCanAccess": "앱에 액세스할 수 있는 사람",
+    "whoCanAccessDoc": "문서에 액세스할 수 있는 사람",
+    "updatesAsYouEdit": "편집할 때마다 업데이트됨",
     "addPassword": "비밀번호 추가",
     "hide": "숨기기",
     "show": "표시",
@@ -353,7 +364,6 @@
     "makeLive": "라이브로 전환",
     "shared": "공유됨",
     "share": "공유",
-    "shareToWeb": "웹에 공유",
     "sharingBusy": "공유하는 중",
     "websiteUrl": "웹사이트 URL",
     "change": "변경",
@@ -379,7 +389,9 @@
       "ownerOnlyTitle": "소유자만",
       "ownerOnlyDesc": "다른 사람은 공유 링크를 열 수 없습니다",
       "listWithheld": "공유된 팀과 사람만"
-    }
+    },
+    "websiteAddress": "웹사이트 주소",
+    "websiteEmailGateNotice": "공개 웹사이트는 방문자에게 이메일을 묻지 않습니다. 누구나 열 수 있습니다."
   },
   "previewErrors": {
     "reported": "{count, plural, other {미리 보기에서 오류 #개가 보고되었습니다}}",
@@ -470,6 +482,7 @@
     "backendFailed": "백엔드를 시작하지 못했습니다",
     "proxyUnavailable": "미리 보기 프록시를 사용할 수 없습니다",
     "noMountUrl": "미리 보기 마운트에서 URL이 반환되지 않았습니다",
+    "appNotPublishedYet": "이 앱은 게시되면 여기에 표시되며, 게시는 만든 직후에 이루어집니다. 잠시 후 다시 시도하세요.",
     "loadFailed": "아티팩트를 불러오지 못했습니다",
     "portNotReady": "백엔드 포트를 아직 사용할 수 없습니다. 미리 보기를 계속 불러오는 중입니다.",
     "remoteNoUrl": "이 아티팩트는 원격 서버에서 제공되며 아직 열 수 있는 URL이 없습니다.",
@@ -510,8 +523,6 @@
       "title": "제목(A–Z)",
       "type": "유형"
     },
-    "shareProtected": "보호된 공유",
-    "shareRestricted": "제한된 공유",
     "downloadFailed": "이 아티팩트를 다운로드하지 못했습니다.",
     "menu": "아티팩트 메뉴",
     "openProject": "{project} 열기",
@@ -519,9 +530,7 @@
     "openViewer": "뷰어에서 열기",
     "showInExplorer": "탐색기에서 보기",
     "deleteItem": "아티팩트 삭제",
-    "onlyHtmlMd": "HTML 및 Markdown 아티팩트만 공유할 수 있습니다.",
-    "sharedToast": "{mode, select, password {공유됨(비밀번호 보호) — {url}} restricted {공유됨(제한됨) — {url}} other {공유됨 — {url}}}",
-    "mindsApiKey": "아티팩트를 공유하려면 설정에서 Minds API 키를 설정하세요.",
+    "onlyHtmlMd": "웹 페이지, 문서, 스프레드시트, 프레젠테이션, PDF, CSV, 텍스트 파일만 공유할 수 있습니다.",
     "stoppedOnMindsHub": "MindsHub에서 공유를 중지했습니다.",
     "stopped": "공유를 중지했습니다.",
     "updated": "공유된 버전을 업데이트했습니다.",
@@ -546,11 +555,9 @@
       "noMatch": "이 필터와 일치하는 아티팩트가 없습니다.",
       "clear": "필터 지우기",
       "status": "상태",
-      "allStatuses": "모든 상태"
-    },
-    "owner": {
-      "you": "나",
-      "youHint": "내 것이며 다른 사람과 공유되었습니다."
+      "allStatuses": "모든 상태",
+      "access": "액세스",
+      "allAccess": "모든 액세스 수준"
     },
     "openComments": "{count, plural, other {열린 댓글 #개}}",
     "openCommentsHint": "댓글이 열린 상태로 미리 보기 열기"
@@ -595,7 +602,7 @@
     "search": "프롬프트 및 모델 검색",
     "modelFilter": "모델",
     "openComparison": "비교 열기: {title}",
-    "costTitle": "마지막으로 확인한 정가 기준 추정치",
+    "costTitle": "마지막으로 확인한 정가 기준 추정치입니다. 플랜에 포함된 호출은 집계되지 않습니다.",
     "costAria": "예상 비용 {cost}",
     "costUnread": "아직 비용을 확인하지 않았습니다",
     "noMatch": "일치하는 비교가 없습니다.",
@@ -625,7 +632,7 @@
     "actions": "비교 작업",
     "deleteComparison": "비교 삭제",
     "byline": "{a} vs {b} · {started}에 시작",
-    "combinedCostTitle": "양쪽을 합한 정가 기준 추정치입니다. 답변 확인 등 에이전트가 자체적으로 수행하는 호출도 포함됩니다.",
+    "combinedCostTitle": "양쪽을 합한 정가 기준 추정치입니다. 플랜에 포함된 호출은 집계되지 않습니다. 답변 확인 등 에이전트가 자체적으로 수행하는 호출도 포함됩니다.",
     "firstSendFailed": "작업이 어느 모델에도 전송되지 않았습니다. {error}",
     "diverged": "{turn}번째 턴에서 양쪽이 갈라졌습니다. 그 이후로는 같은 내용을 요청받지 않았습니다.",
     "followUp": "후속 메시지",
@@ -655,8 +662,9 @@
     "sendTo": "보낼 대상",
     "usageByTurn": "턴별 사용량",
     "usageSummary": "{count, plural, other {#턴}} · 토큰 {tokens}개",
+    "includedInPlan": "플랜에 포함됨",
     "sideUsage": "{side} 측 턴별 사용량",
-    "listPriceNote": "정가 기준 추정치입니다. 답변 확인 등 에이전트가 자체적으로 수행하는 호출도 포함됩니다.",
+    "listPriceNote": "정가 기준 추정치입니다. 플랜에 포함된 호출은 집계되지 않습니다. 답변 확인 등 에이전트가 자체적으로 수행하는 호출도 포함됩니다.",
     "carryIncomplete": "{name}이(가) 만든 파일 중 일부가 아직 이 비교에 남아 있으며 작업으로 옮겨지지 않았습니다.",
     "copyRestFailed": "나머지 파일을 복사하지 못했습니다.",
     "copyRest": "나머지 파일 복사",
@@ -923,7 +931,15 @@
     "sourceHint": "페이지의 텍스트와 레이아웃 변경",
     "commentsHint": "피드백 남기기 및 검토",
     "statsHint": "누가 얼마나 오래 봤는지",
-    "commentsOpen": "댓글, 열린 댓글 {count}개"
+    "commentsOpen": "댓글, 열린 댓글 {count}개",
+    "openChat": "채팅 열기",
+    "openChatHint": "미리 보기를 닫고 이 항목을 만든 채팅으로 이동합니다",
+    "openChatUnavailable": {
+      "noOrigin": "채팅에서 만들어지지 않았거나 채팅이 기록되기 전에 만들어졌습니다",
+      "deleted": "이 항목을 만든 채팅이 삭제되었습니다",
+      "colleague": "동료의 채팅에서 만들어져 해당 동료만 열 수 있습니다",
+      "unreachable": "이 항목을 만든 채팅에 지금 연결할 수 없습니다"
+    }
   },
   "liveEditPanel": {
     "close": "실시간 편집 패널 닫기",

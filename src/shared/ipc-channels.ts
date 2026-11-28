@@ -66,9 +66,6 @@ export const IPC = {
   // account's browser caches are gone before React can seed state from them.
   ACCOUNT_SIGNED_IN_SYNC: 'account:signed-in-sync',
 
-  // Keychain — where the refresh token is stored (file vs macOS keychain)
-  KEYCHAIN_PREF_GET: 'keychain:get',
-  KEYCHAIN_PREF_SET: 'keychain:set',
   USAGE_EVENTS_GET: 'usage-events:get',
   USAGE_EVENTS_SET: 'usage-events:set',
 
@@ -93,6 +90,7 @@ export const IPC = {
   // The chat's Notion page picker: main calls the server with the app secret.
   NOTION_SEARCH_PAGES: 'notion:search-pages',
   NOTION_FETCH_PAGE: 'notion:fetch-page',
+  PUBLISH_WITH_APPROVAL: 'publish:with-approval',
   // Fired by the background token-refresh loop when consecutive failures hit
   // threshold (transient) or a 401 makes the refresh token permanently invalid.
   OAUTH_REFRESH_ERROR: 'oauth:refresh-error',

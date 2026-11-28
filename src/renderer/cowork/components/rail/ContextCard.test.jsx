@@ -36,7 +36,7 @@ const apiMock = vi.hoisted(() => ({
   listConversationFolderFiles: vi.fn(),
   ANTON_PROJECT_INSTRUCTIONS_PATH: '.anton/anton.md',
 }));
-const hostState = vi.hoisted(() => ({ isWeb: true, isElectron: false }));
+const hostState = vi.hoisted(() => ({ isWeb: true, isElectron: false, isMobileShell: false }));
 vi.mock('../../api', () => apiMock);
 vi.mock('../../lib/authenticatedResource', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -53,6 +53,7 @@ vi.mock('../../../platform/host', async (importOriginal) => {
       ...actual.host,
       get isWeb() { return hostState.isWeb; },
       get isElectron() { return hostState.isElectron; },
+      get isMobileShell() { return hostState.isMobileShell; },
     },
   };
 });
@@ -61,6 +62,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   hostState.isWeb = true;
   hostState.isElectron = false;
+  hostState.isMobileShell = false;
   setOrgMode(false);
   apiMock.fetchAttachments.mockResolvedValue({ attachments: [] });
   apiMock.listConversationFolders.mockResolvedValue({ folders: [] });
@@ -764,6 +766,39 @@ describe('ContextCard — truncated project file listings', () => {
   });
 });
 
+describe('ContextCard — project file uploads', () => {
+  async function pick(results) {
+    apiMock.uploadProjectFiles.mockResolvedValue({ results });
+    await act(async () => {
+      render(<ContextCard project={{ name: 'general', path: '/projects/general' }} conversationId={null} />);
+    });
+    await act(async () => {
+      fireEvent.change(document.querySelector('input[type="file"]'), {
+        target: { files: [new File(['x'], 'notes.md'), new File(['y'], '.env')] },
+      });
+    });
+    await waitFor(() => expect(apiMock.listProjectFiles).toHaveBeenCalledTimes(2));
+  }
+
+  it('names a file the server refused inside a successful upload, and still reloads the list', async () => {
+    await pick([
+      { name: 'notes.md', ok: true, size: 1 },
+      { name: '.env', ok: false, error: 'invalid filename' },
+    ]);
+
+    expect(screen.getByText('Files not uploaded: .env.')).toBeInTheDocument();
+  });
+
+  it('shows no upload error when the server saved every file', async () => {
+    await pick([
+      { name: 'notes.md', ok: true, size: 1 },
+      { name: '.env', ok: true, size: 1 },
+    ]);
+
+    expect(screen.queryByText(/Files not uploaded/)).not.toBeInTheDocument();
+  });
+});
+
 describe('ContextCard — working folders section', () => {
   async function renderCard(conversationId = 'chat-1') {
     await act(async () => {
@@ -781,9 +816,33 @@ describe('ContextCard — working folders section', () => {
     expect(apiMock.listConversationFolders).toHaveBeenCalledWith('chat-1');
   });
 
-  it('is hidden on web', async () => {
+  it('shows the same section on web, where adding a folder offers the desktop app', async () => {
+    setOrgMode(true);
     await renderCard();
 
+    expect(screen.getByText('Working folders')).toBeInTheDocument();
+    expect(apiMock.listConversationFolders).not.toHaveBeenCalled();
+    const row = screen.getByRole('button', { name: /Add a folder for the agent to work in\./ });
+    expect(row).toHaveTextContent('Desktop');
+
+    fireEvent.click(row);
+    expect(await screen.findByRole('dialog', { name: 'Working folders are in the Desktop app' })).toBeInTheDocument();
+  });
+
+  it('opens the same offer from the section\'s add button on web', async () => {
+    await renderCard();
+    fireEvent.click(screen.getByRole('button', { name: 'Add a folder to this chat' }));
+    expect(await screen.findByRole('dialog', { name: 'Working folders are in the Desktop app' })).toBeInTheDocument();
+  });
+
+  it('shows nothing on web before the chat is saved', async () => {
+    await renderCard('tmp-123');
+    expect(screen.queryByText(/Working folders/)).toBeNull();
+  });
+
+  it('shows nothing inside the mobile app', async () => {
+    hostState.isMobileShell = true;
+    await renderCard();
     expect(screen.queryByText(/Working folders/)).toBeNull();
     expect(apiMock.listConversationFolders).not.toHaveBeenCalled();
   });

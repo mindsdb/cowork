@@ -1,16 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   deriveComposerWarning,
+  deriveUsageWarning,
   usageTransitions,
   usageActionUrl,
   balanceDismissStep,
   freeDismissStep,
-  countsAsWarning,
   formatPercentShort,
   formatUsd,
   formatResetDate,
   formatResetTime,
   freeAllowanceState,
+  airRoom,
   isBalanceEmpty,
   isBalanceUsable,
   modelAccessSignature,
@@ -18,12 +19,14 @@ import {
   freeServingPausedCopy,
   budgetExceededCopy,
   NO_FREE_GRANT_SENTENCE,
+  noFreeGrantSentence,
   FREE_TOKENS_LOW_FRACTION,
   USAGE_ACTIONS,
-  AIR_ON_BALANCE_WARN_USD,
+  BALANCE_WARN_USD,
   upgradeAction,
 } from './usageWarnings';
 import { MINDS_BILLING_URL, MINDS_ADD_FUNDS_URL, MINDS_AUTO_TOP_UP_URL } from '../../lib/mindsUrls';
+import { compareCreditNotice } from './compareSides';
 
 const RESET = '2099-09-11T12:00:00Z';
 
@@ -126,73 +129,51 @@ describe('formatting', () => {
 });
 
 describe('deriveComposerWarning', () => {
-  it('says where a healthy allowance stands to someone it can stop, rather than nothing at all', () => {
-    const w = deriveComposerWarning(unpaid());
-    expect(w.kind).toBe('free_at_rest');
-    expect(w.resting).toBe(true);
-    expect(w.title).toBe('28% of your free allowance left');
-    expect(w.body).toMatch(/^Resets at Sep 1[12], 12:00 PM\.$/);
-    expect(labels(w)).toEqual(['View usage']);
-    // No dismissal key at all: the figure's close is its own flag (see
-    // useStandingFigureHidden), so there is no step to ask again at.
-    expect(w.dismissKey).toBeUndefined();
-  });
-
-  it('keeps the figure at any level for someone with no wallet, down to the 20% warning', () => {
-    // Exactly as before ENG-2749: for them it is the only place the number
-    // shows before the warning, so an untouched allowance gets one too.
-    for (const percent of [100, 80, 30, 21]) {
-      const w = deriveComposerWarning(unpaid({ freeTokens: at(percent) }));
-      expect(w?.kind, `${percent}% left`).toBe('free_at_rest');
-      expect(w.title).toBe(`${percent}% of your free allowance left`);
+  it('says nothing while the allowance has room, whatever the wallet holds (ENG-4719)', () => {
+    // The standing figure is gone for everyone: with room left the next task
+    // runs, so there is nothing to do. Settings → Usage still shows the number.
+    for (const percent of [100, 80, 30, 21, 20, 11, 10.5]) {
+      expect(deriveComposerWarning(unpaid({ freeTokens: at(percent) })), `${percent}% left, no wallet`).toBeNull();
+      expect(deriveComposerWarning(unpaid({ freeTokens: { ...at(percent), resetsAt: null } }))).toBeNull();
+      expect(deriveComposerWarning(usage({
+        freeTokens: at(percent), balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' },
+      })), `${percent}% left, empty wallet`).toBeNull();
     }
-    expect(deriveComposerWarning(unpaid({ freeTokens: at(20) }))?.kind).toBe('free_low');
   });
 
-  it('shows no figure to someone with a balance to fall through to', () => {
-    // Air running out does not stop them, so the number is not a budget to
-    // watch; it would just sit above the composer with nothing to inform.
+  it('warns once 10% or less is left, for someone the wallet cannot carry', () => {
+    expect(deriveComposerWarning(unpaid({ freeTokens: at(10) }))?.kind).toBe('free_low');
+    expect(deriveComposerWarning(unpaid({ freeTokens: at(10.0001) }))).toBeNull();
+  });
+
+  it('says nothing to someone with a balance to fall through to while the allowance has room', () => {
     for (const model of ['mindshub_air', 'model-router', null]) {
       expect(deriveComposerWarning(usage({ freeTokens: at(28) }), { model })).toBeNull();
     }
-    // A wallet auth has not flagged but that holds nothing cannot carry them,
-    // so it rounds toward showing the figure.
+    // A wallet auth has not flagged but that holds nothing: still room on the
+    // allowance, so still nothing to say.
     expect(deriveComposerWarning(usage({
       freeTokens: at(28), balance: { usd: 0, canConsume: true, hasToppedUp: false, alert: '' },
-    }))?.kind).toBe('free_at_rest');
-    // A low balance still carries them past the allowance, so no figure
-    // either. The low balance itself is a warning on picks that can spend it,
-    // covered below.
-    const low = usage({ freeTokens: at(28), balance: { usd: 8.42, canConsume: true, hasToppedUp: true, alert: 'low' } });
-    expect(deriveComposerWarning(low, { model: 'mindshub_air' })).toBeNull();
-    // The WARNINGS still reach them: falling through to paid changes what they
-    // spend. Only the standing figure goes, so a closed warning steps down to
-    // nothing rather than to a figure they were never shown.
-    const w = deriveComposerWarning(usage({
-      balance: SHORT,
-      freeTokens: { percentRemaining: 18, limit: 100, used: 82, remaining: 18, resetsAt: RESET },
-    }), { model: 'mindshub_air' });
+    }))).toBeNull();
+    // A short balance with room on the allowance: Air runs on the allowance.
+    expect(deriveComposerWarning(usage({ freeTokens: at(28), balance: SHORT }), { model: 'mindshub_air' })).toBeNull();
+    // The warning does reach them once both are nearly gone, and closing it
+    // hides it until the next step: there is no figure to step down to.
+    const w = deriveComposerWarning(usage({ balance: SHORT, freeTokens: at(8) }), { model: 'mindshub_air' });
     expect(w.kind).toBe('free_low');
     expect(w.whenDismissed).toBeUndefined();
   });
 
-  it('names the allowance even with no reset date to quote', () => {
-    const w = deriveComposerWarning(unpaid({ freeTokens: { ...at(28), resetsAt: null } }));
-    expect(w.kind).toBe('free_at_rest');
-    expect(w.body).toBe('Air runs on these until they are used up.');
+  it('says what happens next even with no reset date to quote', () => {
+    const w = deriveComposerWarning(unpaid({ freeTokens: { ...at(8), resetsAt: null } }));
+    expect(w.kind).toBe('free_low');
+    expect(w.body).toBe('After that, free models use your balance until your allowance resets.');
   });
 
-  it('a free warning carries the figure a dismissal steps down to, for someone the allowance can stop', () => {
-    const w = deriveComposerWarning(unpaid({
-      freeTokens: { percentRemaining: 18, limit: 100, used: 82, remaining: 18, resetsAt: RESET },
-    }));
+  it('a free warning closes to nothing, with no standing figure behind it', () => {
+    const w = deriveComposerWarning(unpaid({ freeTokens: at(8) }));
     expect(w.kind).toBe('free_low');
-    // Closing it must leave the allowance somewhere, not nowhere.
-    expect(w.whenDismissed.kind).toBe('free_at_rest');
-    expect(w.whenDismissed.resting).toBe(true);
-    expect(w.whenDismissed.title).toBe('18% of your free allowance left');
-    // And the figure is the same object the healthy state builds.
-    expect(w.whenDismissed.dismissKey).toBeUndefined();
+    expect(w.whenDismissed).toBeUndefined();
   });
 
   it('is quiet when signed out, unreachable, or on a BYOK provider', () => {
@@ -217,24 +198,26 @@ describe('deriveComposerWarning', () => {
     expect(deriveComposerWarning(unpaid(), { model: 'claude-sonnet-4' })).toBeNull();
   });
 
-  it('free tokens running low: names the count and what happens next, no top-up CTA', () => {
+  it('free tokens nearly gone: names the count and what happens next, no top-up CTA', () => {
     const w = deriveComposerWarning(unpaid({
-      freeTokens: { percentRemaining: 12.4, limit: 100, used: 87.6, remaining: 12.4, resetsAt: RESET },
+      freeTokens: { percentRemaining: 8.4, limit: 100, used: 91.6, remaining: 8.4, resetsAt: RESET },
     }));
     expect(w.kind).toBe('free_low');
-    expect(w.title).toBe('12% of your free allowance left');
-    expect(w.body).toMatch(/^After that, MindsHub Air uses your balance until your allowance refills at Sep 1[12], 12:00 PM\.$/);
+    expect(w.title).toBe('8% of your free allowance left');
+    expect(w.body).toMatch(/^After that, free models use your balance until your allowance resets at Sep 1[12], 12:00 PM\.$/);
     expect(labels(w)).toEqual(['View usage']);
   });
 
-  it('free tokens low AND balance low on Air: says both and offers funds', () => {
-    const w = deriveComposerWarning(usage({
-      freeTokens: { percentRemaining: 12.4, limit: 100, used: 87.6, remaining: 12.4, resetsAt: RESET },
-      balance: SHORT,
-    }), { model: 'mindshub_air' });
-    expect(w.kind).toBe('free_low');
-    expect(w.body).toContain('Your balance is low too ($3.20).');
-    expect(labels(w)).toEqual(['View usage', 'Add funds']);
+  it('free tokens nearly gone AND balance low: says both and offers funds, on Air or the router', () => {
+    for (const model of ['mindshub_air', 'model-router', null]) {
+      const w = deriveComposerWarning(usage({
+        freeTokens: { percentRemaining: 8.4, limit: 100, used: 91.6, remaining: 8.4, resetsAt: RESET },
+        balance: SHORT,
+      }), { model });
+      expect(w.kind).toBe('free_low');
+      expect(w.body).toContain('Your balance is low too ($3.20).');
+      expect(labels(w)).toEqual(['View usage', 'Add funds']);
+    }
   });
 
   describe('free tokens used with a balance to fall through to (ENG-4188)', () => {
@@ -242,7 +225,7 @@ describe('deriveComposerWarning', () => {
     const wallet = (usd, alert = usd < 20 ? 'low' : '') => ({ usd, canConsume: true, hasToppedUp: true, alert });
 
     it('says nothing while the balance carries Air, on the router or on Air', () => {
-      for (const usd of [199.48, 42.1, 12, AIR_ON_BALANCE_WARN_USD]) {
+      for (const usd of [199.48, 42.1, 12, BALANCE_WARN_USD]) {
         for (const model of [null, 'model-router', 'mindshub_air']) {
           expect(deriveComposerWarning(usage({ freeTokens: spent, balance: wallet(usd) }), { model })).toBeNull();
         }
@@ -275,8 +258,9 @@ describe('deriveComposerWarning', () => {
       expect(w).toBeNull();
     });
 
-    it('an explicit paid pick still hears from auth\'s own low line', () => {
-      expect(deriveComposerWarning(usage({ freeTokens: spent, balance: wallet(12) }), { model: 'claude-sonnet-4' })?.kind)
+    it('an explicit paid pick hears about the wallet only under $5 too (ENG-4719)', () => {
+      expect(deriveComposerWarning(usage({ freeTokens: spent, balance: wallet(12) }), { model: 'claude-sonnet-4' })).toBeNull();
+      expect(deriveComposerWarning(usage({ freeTokens: spent, balance: wallet(4.99) }), { model: 'claude-sonnet-4' })?.kind)
         .toBe('balance_low');
     });
 
@@ -284,32 +268,38 @@ describe('deriveComposerWarning', () => {
       const w = deriveComposerWarning(usage({ freeTokens: spent, balance: null }), { model: 'mindshub_air' });
       expect(w.kind).toBe('free_used');
       expect(w.tone).toBe('info');
-      expect(w.body).toMatch(/^MindsHub Air is on your balance until your allowance refills at Sep 1[12], 12:00 PM\.$/);
+      expect(w.body).toMatch(/^Free models now use your balance until your allowance resets at Sep 1[12], 12:00 PM\.$/);
     });
   });
 
-  it('paid balance low without auto top up: Add funds + Set up auto top up', () => {
+  it('paid balance under $5 without auto top up: Add funds + Set up auto top up', () => {
     const w = deriveComposerWarning(usage({
-      balance: { usd: 8.42, canConsume: true, hasToppedUp: true, alert: 'low' },
+      balance: { usd: 4.2, canConsume: true, hasToppedUp: true, alert: 'low' },
     }), { model: 'claude-sonnet-4' });
     expect(w.kind).toBe('balance_low');
     expect(w.title).toBe('Balance running low');
-    expect(w.body).toBe('$8.42 left. Add funds or turn on auto top up.');
+    expect(w.body).toBe('$4.20 left. Add funds or turn on auto top up.');
     expect(labels(w)).toEqual(['Add funds', 'Set up auto top up']);
   });
 
-  it('paid balance low with auto top up on: explains the top up, no CTA', () => {
-    const w = deriveComposerWarning(usage({
-      balance: { usd: 8.42, canConsume: true, hasToppedUp: true, alert: 'low' },
+  it('a paid pick with $5 or more says nothing, even under auth\'s $20 line (ENG-4719)', () => {
+    for (const usd of [BALANCE_WARN_USD, 8.42, 19.99]) {
+      expect(deriveComposerWarning(usage({
+        balance: { usd, canConsume: true, hasToppedUp: true, alert: 'low' },
+      }), { model: 'claude-sonnet-4' }), `$${usd}`).toBeNull();
+    }
+  });
+
+  it('paid balance low with auto top up working: nothing, it refills itself', () => {
+    expect(deriveComposerWarning(usage({
+      balance: { usd: 3.2, canConsume: true, hasToppedUp: true, alert: 'low' },
       autoTopUp: { enabled: true, thresholdUsd: 5, rechargeToUsd: 20, status: 'ok' },
-    }), { model: 'claude-sonnet-4' });
-    expect(w.body).toBe('$8.42 left. Auto top up refills it to $20.00 when it drops below $5.00.');
-    expect(w.actions).toEqual([]);
+    }), { model: 'claude-sonnet-4' })).toBeNull();
   });
 
   it('paid balance low but auto top up capped: asks for funds', () => {
     const w = deriveComposerWarning(usage({
-      balance: { usd: 8.42, canConsume: true, hasToppedUp: true, alert: 'low' },
+      balance: { usd: 4.2, canConsume: true, hasToppedUp: true, alert: 'low' },
       autoTopUp: { enabled: true, thresholdUsd: 5, rechargeToUsd: 20, status: 'cap_reached' },
     }), { model: 'claude-sonnet-4' });
     expect(w.body).toContain('paused to stay within its monthly cap');
@@ -325,16 +315,18 @@ describe('deriveComposerWarning', () => {
     }), { model: 'mindshub_air' })).toBeNull();
   });
 
-  it('the router (the default pick) can spend either resource, so it hears about both', () => {
+  it('the router (the default pick) hears about the wallet only once the allowance is nearly gone', () => {
+    // Allowance with room: the router runs on it, whatever the wallet holds.
     const lowBalance = usage({ balance: { usd: 4.2, canConsume: true, hasToppedUp: true, alert: 'low' } });
-    expect(deriveComposerWarning(lowBalance, { model: 'model-router' })?.kind).toBe('balance_low');
-    expect(deriveComposerWarning(lowBalance, { model: null })?.kind).toBe('balance_low');
-    // Under auth's $20 line but over $5: the router keeps quiet (ENG-4188).
-    const shortOfTwenty = usage({ balance: { usd: 8.42, canConsume: true, hasToppedUp: true, alert: 'low' } });
-    expect(deriveComposerWarning(shortOfTwenty, { model: 'model-router' })).toBeNull();
+    expect(deriveComposerWarning(lowBalance, { model: 'model-router' })).toBeNull();
+    expect(deriveComposerWarning(lowBalance, { model: null })).toBeNull();
+    // Nearly gone and a short wallet: one warning naming both.
     const lowFree = usage({ balance: SHORT, freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET } });
-    expect(deriveComposerWarning(lowFree, { model: 'model-router' })?.kind).toBe('balance_low');
-    // Free tokens low with a balance that carries Air: no bar (ENG-4208).
+    expect(deriveComposerWarning(lowFree, { model: 'model-router' })?.kind).toBe('free_low');
+    // Used up and a short wallet: the wallet is all that is left.
+    const spentFree = usage({ balance: SHORT, freeTokens: { limit: 100, used: 100, remaining: 0, resetsAt: RESET } });
+    expect(deriveComposerWarning(spentFree, { model: 'model-router' })?.kind).toBe('balance_low');
+    // Nearly gone with a balance that carries Air: no bar (ENG-4208).
     expect(deriveComposerWarning(usage({ freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET } }), { model: 'mindshub_air' })).toBeNull();
   });
 
@@ -361,43 +353,22 @@ describe('deriveComposerWarning', () => {
 
   it('balance empty but free tokens remain: the router and Air still run, so no stop sign', () => {
     // cowork-server swaps a wallet-locked model for Air while the grant lasts,
-    // so the next task starts. Only an explicit paid pick is stuck.
+    // so the next task starts. Only an explicit paid pick is stuck. With room
+    // on the allowance there is nothing to say at all (ENG-4719).
     const depleted = usage({ freeTokens: at(28), balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' } });
-    // A resting figure is a figure, not a stop sign: no danger tone and
-    // nothing that reads as the next task being refused. It does still name
-    // the empty wallet, in the warning's own words, because that is true and
-    // actionable from the moment the figure shows rather than at 20% left —
-    // the same fact must not appear to arrive with the threshold that has
-    // nothing to do with it.
     for (const model of ['model-router', null, 'mindshub_air']) {
-      const w = deriveComposerWarning(depleted, { model });
-      expect(w.kind).toBe('free_at_rest');
-      expect(w.tone).toBe('resting');
-      expect(w.body).toMatch(/Your balance is empty\.$/);
-      expect(labels(w)).toEqual(['View usage', 'Add funds']);
+      expect(deriveComposerWarning(depleted, { model })).toBeNull();
     }
-    // The disclosure does not hinge on the crossing: one token either side of
-    // the 20% edge says the same thing about the wallet.
+    // At 10% left the warning appears and names the empty wallet.
     const edge = (percent) => deriveComposerWarning(usage({
       freeTokens: { percentRemaining: percent, limit: 100, used: 100 - percent, remaining: percent, resetsAt: RESET },
       balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' },
     }), { model: null });
-    expect(edge(20.0001).kind).toBe('free_at_rest');
-    expect(edge(20).kind).toBe('free_low');
-    for (const w of [edge(20.0001), edge(20)]) {
-      expect(w.body).toMatch(/Your balance is empty\.$/);
-      expect(labels(w)).toContain('Add funds');
-    }
+    expect(edge(10.0001)).toBeNull();
+    expect(edge(10).kind).toBe('free_low');
+    expect(edge(10).body).toMatch(/Your balance is empty\.$/);
+    expect(labels(edge(10))).toContain('Add funds');
     expect(deriveComposerWarning(depleted, { model: 'claude-sonnet-4' })?.kind).toBe('balance_empty');
-    // Free tokens low as well: the free-token line carries the balance news.
-    const depletedLowFree = usage({
-      freeTokens: { limit: 100, used: 90, remaining: 10, resetsAt: RESET },
-      balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' },
-    });
-    const w = deriveComposerWarning(depletedLowFree, { model: 'model-router' });
-    expect(w.kind).toBe('free_low');
-    expect(w.body).toMatch(/Your balance is empty\.$/);
-    expect(labels(w)).toEqual(['View usage', 'Add funds']);
     // An uncapped grant keeps Air free forever; no grant at all leaves only the balance.
     expect(deriveComposerWarning(usage({
       freeTokens: { limit: -1, used: 10, remaining: -1 },
@@ -413,15 +384,24 @@ describe('deriveComposerWarning', () => {
     }), { model: 'mindshub_air' })?.kind).toBe('balance_empty');
   });
 
-  it('balance empty and free tokens used on Air: names both and the refill time', () => {
+  it('balance empty and free tokens used on Air: names both and the reset time', () => {
     const w = deriveComposerWarning(usage({
       freeTokens: { percentRemaining: 0, limit: 100, used: 100, remaining: 0, resetsAt: RESET },
       balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' },
       autoTopUp: { enabled: true, thresholdUsd: 5, rechargeToUsd: 20, status: 'ok' },
     }));
     expect(w.kind).toBe('balance_empty');
-    expect(w.body).toMatch(/^Your free allowance is used up too\. Add funds, or wait for it to refill at Sep 1[12], 12:00 PM\.$/);
+    expect(w.body).toMatch(/^Your free allowance is used up too\. Add funds, or wait for it to reset at Sep 1[12], 12:00 PM\.$/);
     expect(labels(w)).toEqual(['Add funds']);
+  });
+
+  it('balance empty and free tokens used with no reset time: names both, and no time', () => {
+    const w = deriveComposerWarning(usage({
+      freeTokens: { percentRemaining: 0, limit: 100, used: 100, remaining: 0, resetsAt: null },
+      balance: { usd: 0, canConsume: false, hasToppedUp: true, alert: 'depleted' },
+    }), { model: 'mindshub_air' });
+    expect(w.kind).toBe('balance_empty');
+    expect(w.body).toBe('Your free allowance is used up too. Add funds, or wait for it to reset.');
   });
 
   it('auto top up failed wins over everything else', () => {
@@ -462,20 +442,28 @@ describe('usageTransitions', () => {
   });
 
   it('keeps quiet about the allowance running low on a balance that carries Air (ENG-4208)', () => {
-    expect(usageTransitions(free(40), free(18))).toEqual([]);
+    expect(usageTransitions(free(40), free(8))).toEqual([]);
   });
 
-  it('tells a running task when it crosses into the low band', () => {
-    expect(usageTransitions(short(40), short(18))).toEqual([
-      { kind: 'free_low', fractionLeft: 0.18, resetsAt: RESET },
+  it('keeps quiet while the allowance has room, even crossing 20% (ENG-4719)', () => {
+    expect(usageTransitions(short(40), short(18))).toEqual([]);
+    expect(usageTransitions(unpaid({ freeTokens: at(25) }), unpaid({ freeTokens: at(12) }))).toEqual([]);
+  });
+
+  it('tells a running task when the allowance becomes nearly gone', () => {
+    expect(usageTransitions(short(18), short(10))).toEqual([
+      { kind: 'free_low', fractionLeft: 0.1, resetsAt: RESET },
+    ]);
+    expect(usageTransitions(short(40), short(8))).toEqual([
+      { kind: 'free_low', fractionLeft: 0.08, resetsAt: RESET },
     ]);
   });
 
   it('reports each step it crosses, not each poll', () => {
     // Draining inside one step is not news the task has not already had.
-    expect(usageTransitions(short(18), short(16))).toEqual([]);
+    expect(usageTransitions(short(9), short(6))).toEqual([]);
     // Crossing into the next one is.
-    expect(usageTransitions(short(18), short(8))).toEqual([
+    expect(usageTransitions(short(10), short(8))).toEqual([
       { kind: 'free_low', fractionLeft: 0.08, resetsAt: RESET },
     ]);
   });
@@ -493,7 +481,7 @@ describe('usageTransitions', () => {
   });
 
   it('stays quiet on the low crossing for a task on an explicit paid model', () => {
-    expect(usageTransitions(free(40), free(18), { model: 'claude-sonnet-4' })).toEqual([]);
+    expect(usageTransitions(short(40), short(8), { model: 'claude-sonnet-4' })).toEqual([]);
   });
 
   it('does not read a grant appearing, or an uncapped one, as running low', () => {
@@ -503,9 +491,9 @@ describe('usageTransitions', () => {
     // would not move this test — the comment there says as much.
     const uncapped = usage({ freeTokens: { limit: -1, used: 30 } });
     const none = usage({ freeTokens: null });
-    expect(usageTransitions(none, free(18))).toEqual([]);
-    expect(usageTransitions(uncapped, free(18))).toEqual([]);
-    expect(usageTransitions(free(18), uncapped)).toEqual([]);
+    expect(usageTransitions(none, short(8))).toEqual([]);
+    expect(usageTransitions(uncapped, short(8))).toEqual([]);
+    expect(usageTransitions(short(8), uncapped)).toEqual([]);
   });
 
   it('reports the deepest crossing too, not just the first two', () => {
@@ -630,11 +618,9 @@ describe('freeAllowanceState', () => {
 });
 
 describe('NO_FREE_GRANT_SENTENCE', () => {
-  it("is the console's NO_GRANT_SENTENCE word for word", () => {
-    // mindshub_frontend src/features/billing/components/grant-usage-card.jsx.
-    expect(NO_FREE_GRANT_SENTENCE).toBe(
-      'This account does not include free MindsHub Air tokens. MindsHub Air uses your balance, like every other model.',
-    );
+  it('is the English no-grant sentence, and names no model', () => {
+    expect(NO_FREE_GRANT_SENTENCE).toBe('This account does not include free tokens. Every model uses your balance.');
+    expect(noFreeGrantSentence()).toBe(NO_FREE_GRANT_SENTENCE);
   });
 });
 
@@ -717,26 +703,26 @@ describe('allowanceStopCopy', () => {
   const SOON = new Date(Date.now() + 3 * 3600 * 1000).toISOString();
   const LATER = new Date(Date.now() + 5 * 3600 * 1000).toISOString();
 
-  it('tells a no-grant org so, with no refill clause, even when the gate sent a time', () => {
+  it('tells a no-grant org so, with no reset clause, even when the gate sent a time', () => {
     const copy = allowanceStopCopy({ resetAt: SOON, usage: usage({ freeTokens: { limit: 0, used: 0, remaining: 0 } }) });
     expect(copy).toBe(`${NO_FREE_GRANT_SENTENCE} Your balance is empty, so add funds to continue.`);
-    expect(copy).not.toMatch(/refill/i);
+    expect(copy).not.toMatch(/reset/i);
     expect(copy).not.toContain(formatResetTime(SOON));
   });
 
-  it("names the gate's refill time for an org with a grant", () => {
+  it("names the gate's reset time for an org with a grant", () => {
     expect(allowanceStopCopy({ resetAt: SOON, usage: usage({ freeTokens: { ...at(0), resetsAt: LATER } }) }))
-      .toBe(`Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at ${formatResetTime(SOON)}.`);
+      .toBe(`Your free allowance is used up and your balance is empty. Add funds to keep working, or wait for it to reset at ${formatResetTime(SOON)}.`);
   });
 
-  it('falls back to the hub usage refill time when the gate sent none', () => {
+  it('falls back to the hub usage reset time when the gate sent none', () => {
     expect(allowanceStopCopy({ resetAt: null, usage: usage({ freeTokens: { ...at(0), resetsAt: LATER } }) }))
-      .toBe(`Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at ${formatResetTime(LATER)}.`);
+      .toBe(`Your free allowance is used up and your balance is empty. Add funds to keep working, or wait for it to reset at ${formatResetTime(LATER)}.`);
   });
 
   it("keeps the gate's time when hub usage is unknown", () => {
     expect(allowanceStopCopy({ resetAt: SOON, usage: null }))
-      .toBe(`Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working, or wait for it to refill at ${formatResetTime(SOON)}.`);
+      .toBe(`Your free allowance is used up and your balance is empty. Add funds to keep working, or wait for it to reset at ${formatResetTime(SOON)}.`);
   });
 
   it.each([
@@ -744,12 +730,12 @@ describe('allowanceStopCopy', () => {
     ['no time from the gate and no hub usage at all', {}],
     ['an uncapped grant with no time from the gate', { usage: usage({ freeTokens: { limit: -1, used: 3, resetsAt: null } }) }],
     ['a time from the gate that is already past', { resetAt: new Date(Date.now() - 3600 * 1000).toISOString(), usage: null }],
-  ])('offers funds alone, and promises no refill, with %s', (_label, args) => {
-    /* Without a usable time nothing says the allowance refills at all, and
-       the org may have no grant to refill. */
+  ])('offers funds alone, and promises no reset, with %s', (_label, args) => {
+    /* Without a usable time nothing says the allowance resets at all, and
+       the org may have no grant to reset. */
     const copy = allowanceStopCopy(args);
-    expect(copy).toBe('Your free MindsHub Air allowance is used up and your balance is empty. Add funds to keep working.');
-    expect(copy).not.toMatch(/refill|wait/i);
+    expect(copy).toBe('Your free allowance is used up and your balance is empty. Add funds to keep working.');
+    expect(copy).not.toMatch(/reset|wait/i);
   });
 
   it('never states the size or the length of the allowance, and uses no em-dash', () => {
@@ -767,10 +753,10 @@ describe('freeServingPausedCopy', () => {
   it('names when the fuse lifts, or the event when there is no usable time', () => {
     const lifts = new Date(Date.now() + 6 * 3600 * 1000).toISOString();
     expect(freeServingPausedCopy(lifts)).toBe(
-      `Free MindsHub Air is paused for everyone until ${formatResetTime(lifts)}. This doesn't use your allowance. Add funds to keep working now.`,
+      `Free models are paused for everyone until ${formatResetTime(lifts)}. This doesn't use your allowance. Add funds to keep working now.`,
     );
     expect(freeServingPausedCopy(null)).toBe(
-      "Free MindsHub Air is paused for everyone until the daily budget resets. This doesn't use your allowance. Add funds to keep working now.",
+      "Free models are paused for everyone until the daily budget resets. This doesn't use your allowance. Add funds to keep working now.",
     );
   });
 });
@@ -779,7 +765,7 @@ describe('budgetExceededCopy', () => {
   const RAISE = "Paid models can't run until an administrator raises it in Budgets.";
 
   it('names Air only while its free allowance has room', () => {
-    expect(budgetExceededCopy({ usage: usage() })).toBe(`${RAISE} MindsHub Air still works while its free allowance lasts.`);
+    expect(budgetExceededCopy({ usage: usage() })).toBe(`${RAISE} MindsHub Air still works while your free allowance lasts.`);
   });
 
   it.each([
@@ -853,59 +839,22 @@ describe('freeDismissStep', () => {
     expect(freeDismissStep(FREE_TOKENS_LOW_FRACTION - 0.001)).toBe(1);
   });
 
-  it('leaves the exact band edge on step 0, which the band itself counts as low', () => {
-    // `low` is `<=` the edge and a step is `<` each mark, so a read landing on
-    // exactly 0.2 shows the bar and sits on step 0. Nothing downstream cares:
-    // the key is opaque, and the only lost case is a task whose poll lands on
-    // the edge exactly, which then reports on its next step instead.
+  it('leaves the exact band edge on step 0', () => {
+    // A step is `<` each mark, so a read landing on exactly 0.2 sits on step 0.
+    // The key is opaque, so nothing downstream cares.
     expect(freeDismissStep(FREE_TOKENS_LOW_FRACTION)).toBe(0);
-    const atEdge = deriveComposerWarning(unpaid({
-      freeTokens: { percentRemaining: 20, limit: 100, used: 80, remaining: 20, resetsAt: RESET },
-    }));
-    expect(atEdge.kind).toBe('free_low');
-    expect(atEdge.dismissKey).toBe('free_low:0');
   });
 
   it('keys the free warning to the step, so one close does not hide it to zero', () => {
     const at = (percent) => deriveComposerWarning(unpaid({
       freeTokens: { percentRemaining: percent, limit: 100, used: 100 - percent, remaining: percent, resetsAt: RESET },
     }));
-    expect(at(18).dismissKey).toBe('free_low:1');
+    expect(at(10).dismissKey).toBe('free_low:1');
     expect(at(8).dismissKey).toBe('free_low:2');
     expect(at(4).dismissKey).toBe('free_low:3');
-    // Closing at 18% and again at 8% are different keys, which is the whole
-    // point: the bar comes back rather than staying shut for the month.
-    expect(at(18).dismissKey).not.toBe(at(8).dismissKey);
-  });
-});
-
-describe('countsAsWarning', () => {
-  it('a standing figure is not a warning, so dismissals are still forgotten', () => {
-    // This is the whole of criterion 9. If a resting figure counted as a
-    // warning, `usageHealthy` would be false for every free user all month,
-    // the dismissal store would never be wiped, and a bar closed at 900K in
-    // September would still be closed at 900K in October.
-    const resting = deriveComposerWarning(unpaid());
-    expect(resting.kind).toBe('free_at_rest');
-    expect(countsAsWarning(resting)).toBe(false);
-    // Nothing at all is likewise nothing to warn about.
-    expect(countsAsWarning(null)).toBe(false);
-  });
-
-  it('every non-resting descriptor does count, including the one it steps down to', () => {
-    const low = deriveComposerWarning(unpaid({
-      freeTokens: { percentRemaining: 18, limit: 100, used: 82, remaining: 18, resetsAt: RESET },
-    }));
-    expect(countsAsWarning(low)).toBe(true);
-    // The figure a dismissal falls back to is still not a warning: closing
-    // the bar must not keep the account looking unhealthy forever.
-    expect(countsAsWarning(low.whenDismissed)).toBe(false);
-    expect(countsAsWarning(deriveComposerWarning(unpaid({
-      freeTokens: { percentRemaining: 0, limit: 100, used: 100, remaining: 0, resetsAt: RESET },
-    })))).toBe(true);
-    expect(countsAsWarning(deriveComposerWarning(usage({
-      autoTopUp: { enabled: true, status: 'payment_failed' },
-    })))).toBe(true);
+    // Closing at 8% and again at 4% are different keys, which is the whole
+    // point: the bar comes back rather than staying shut until it runs out.
+    expect(at(8).dismissKey).not.toBe(at(4).dismissKey);
   });
 });
 
@@ -932,8 +881,8 @@ describe('balanceDismissStep', () => {
     const at = (usd) => deriveComposerWarning(usage({
       balance: { usd, canConsume: true, hasToppedUp: true, alert: 'low' },
     }), { model: 'claude-sonnet-4' });
-    expect(at(18).dismissKey).toBe('balance_low:0');
-    expect(at(8.42).dismissKey).toBe('balance_low:1');
+    expect(at(4.99).dismissKey).toBe('balance_low:2');
+    expect(at(2).dismissKey).toBe('balance_low:3');
     expect(at(0.4).dismissKey).toBe('balance_low:4');
   });
 
@@ -942,7 +891,6 @@ describe('balanceDismissStep', () => {
       balance: { usd: 3.2, canConsume: true, hasToppedUp: true, alert: 'low' },
       autoTopUp: { enabled: true, thresholdUsd: 10, rechargeToUsd: 50, ...over },
     }), { model: 'claude-sonnet-4' });
-    expect(withAuto({ status: 'ok' }).dismissKey).toBe('balance_low:2');
     expect(withAuto({ status: 'pending_action' }).dismissKey).toBe('balance_low:2');
     expect(withAuto({ status: 'cap_reached' }).dismissKey).toBe('balance_low:2');
   });
@@ -985,22 +933,39 @@ describe('deriveComposerWarning on a plan', () => {
     })).toBeNull();
   });
 
-  it('warns at 80% of a window, stepped for dismissal, with Pro on offer', () => {
-    const w = deriveComposerWarning(planRead('plus', [{ window: '5h', percentUsed: 84, resetsAt: IN_2H }], EMPTY_WALLET));
+  it('says nothing at 80% of a window: the task is not about to stop (ENG-4719)', () => {
+    expect(deriveComposerWarning(planRead('plus', [{ window: '5h', percentUsed: 84, resetsAt: IN_2H }], EMPTY_WALLET))).toBeNull();
+  });
+
+  it('warns at 90% of a window with a wallet that cannot carry it, stepped for dismissal, with Pro on offer', () => {
+    const w = deriveComposerWarning(planRead('plus', [{ window: '5h', percentUsed: 91, resetsAt: IN_2H }], EMPTY_WALLET));
     expect(w.kind).toBe('window_low');
-    expect(w.title).toBe('84% of your 5-hour allowance used');
+    expect(w.title).toBe('91% of your 5-hour allowance used');
     expect(w.body).toMatch(/^After that, tasks pause until .+\.$/);
-    expect(w.dismissKey).toBe('window_low:5h:1');
+    expect(w.dismissKey).toBe('window_low:5h:2');
     expect(w.actions.map((a) => a.key)).toEqual(['viewUsage', 'upgrade']);
     expect(w.actions[1].tier).toBe('pro');
-    const later = deriveComposerWarning(planRead('plus', [{ window: '5h', percentUsed: 91, resetsAt: IN_2H }], EMPTY_WALLET));
-    expect(later.dismissKey).toBe('window_low:5h:2');
+    const later = deriveComposerWarning(planRead('plus', [{ window: '5h', percentUsed: 96, resetsAt: IN_2H }], EMPTY_WALLET));
+    expect(later.dismissKey).toBe('window_low:5h:3');
     expect(`${w.title} ${w.body}`).not.toMatch(/\$|token/i);
   });
 
-  it('at the cap, says it continues from the wallet when the wallet can pay', () => {
-    const w = deriveComposerWarning(planRead('pro', [{ window: '7d', percentUsed: 100, resetsAt: IN_2D }]));
+  it('says nothing about a window, even a full one, while the wallet carries the next task', () => {
+    for (const percentUsed of [91, 100]) {
+      expect(deriveComposerWarning(planRead('pro', [{ window: '7d', percentUsed, resetsAt: IN_2D }]))).toBeNull();
+      expect(deriveComposerWarning(planRead('pro', [{ window: '7d', percentUsed, resetsAt: IN_2D }], {
+        balance: { usd: 3, canConsume: true, alert: 'low' },
+        autoTopUp: { enabled: true, thresholdUsd: 5, rechargeToUsd: 25, status: 'ok' },
+      }))).toBeNull();
+    }
+  });
+
+  it('at the cap with a short wallet, warns that it continues from the wallet', () => {
+    const w = deriveComposerWarning(planRead('pro', [{ window: '7d', percentUsed: 100, resetsAt: IN_2D }], {
+      balance: { usd: 3, canConsume: true, alert: 'low' },
+    }));
     expect(w.kind).toBe('window_on_wallet');
+    expect(w.tone).toBe('warning');
     expect(w.title).toBe('Weekly allowance used up');
     expect(w.body).toMatch(/Continuing from your wallet at API rates until it resets at/);
     // Nothing above Pro to offer.
@@ -1034,18 +999,28 @@ describe('usageTransitions on a plan', () => {
     { window: '7d', percentUsed: 20, resetsAt: IN_2D },
   ], over);
 
-  it('reports a window crossing a warning step, once per step', () => {
-    expect(usageTransitions(plus(70), plus(82))).toEqual([
-      { kind: 'window_low', window: '5h', percentUsed: 82, resetsAt: IN_2H },
+  const SHORT_WALLET = { balance: { usd: 3, canConsume: true, alert: 'low' } };
+
+  it('reports a window once it is nearly gone, then once per step (ENG-4719)', () => {
+    // 80% is not news: the task is not about to stop.
+    expect(usageTransitions(plus(70, EMPTY_WALLET), plus(82, EMPTY_WALLET))).toEqual([]);
+    expect(usageTransitions(plus(82, EMPTY_WALLET), plus(91, EMPTY_WALLET))).toEqual([
+      { kind: 'window_low', window: '5h', percentUsed: 91, resetsAt: IN_2H },
     ]);
-    expect(usageTransitions(plus(82), plus(86))).toEqual([]);
+    expect(usageTransitions(plus(91, EMPTY_WALLET), plus(93, EMPTY_WALLET))).toEqual([]);
+    expect(usageTransitions(plus(93, EMPTY_WALLET), plus(96, EMPTY_WALLET)).map((t) => t.kind)).toEqual(['window_low']);
   });
 
-  it('reports a window filling up, and whether the wallet carries on', () => {
-    expect(usageTransitions(plus(95), plus(100))).toEqual([
+  it('reports a window filling up, and whether a short wallet carries on', () => {
+    expect(usageTransitions(plus(95, SHORT_WALLET), plus(100, SHORT_WALLET))).toEqual([
       { kind: 'window_exhausted', window: '5h', resetsAt: IN_2H, onWallet: true },
     ]);
     expect(usageTransitions(plus(95, EMPTY_WALLET), plus(100, EMPTY_WALLET))[0].onWallet).toBe(false);
+  });
+
+  it('says nothing about the windows while the wallet carries the next task', () => {
+    expect(usageTransitions(plus(82), plus(96))).toEqual([]);
+    expect(usageTransitions(plus(95), plus(100))).toEqual([]);
   });
 
   it('says nothing when a plan arrives mid-task', () => {
@@ -1054,11 +1029,223 @@ describe('usageTransitions on a plan', () => {
 
   it('says nothing about the windows to a task on a model the plan does not cover', () => {
     // The task bills the wallet from the start, so the window is not its news.
-    expect(usageTransitions(plus(70), plus(82), { coveredByTier: 'pro' })).toEqual([]);
-    expect(usageTransitions(plus(95), plus(100), { coveredByTier: 'pro' })).toEqual([]);
+    expect(usageTransitions(plus(82, EMPTY_WALLET), plus(91, EMPTY_WALLET), { coveredByTier: 'pro' })).toEqual([]);
+    expect(usageTransitions(plus(95, EMPTY_WALLET), plus(100, EMPTY_WALLET), { coveredByTier: 'pro' })).toEqual([]);
     // A model the plan covers still hears about it.
-    expect(usageTransitions(plus(70), plus(82), { coveredByTier: 'plus' }).map((t) => t.kind)).toEqual(['window_low']);
-    expect(usageTransitions(plus(95), plus(100), { coveredByTier: 'free' }).map((t) => t.kind)).toEqual(['window_exhausted']);
+    expect(usageTransitions(plus(82, EMPTY_WALLET), plus(91, EMPTY_WALLET), { coveredByTier: 'plus' }).map((t) => t.kind)).toEqual(['window_low']);
+    expect(usageTransitions(plus(95, EMPTY_WALLET), plus(100, EMPTY_WALLET), { coveredByTier: 'free' }).map((t) => t.kind)).toEqual(['window_exhausted']);
+  });
+
+  it('never tells a task on Air or the router about a free allowance, since the figure is the plan window', () => {
+    /* On Plus and Pro, auth's /me serves the plan's own windows in the flat
+       allowance fields that cowork-server relays as freeTokens, so the figure
+       falls as the fuller window fills. Only the window kinds are news. The
+       short wallet keeps the wallet rule for free_used out of the way, so the
+       plan alone has to silence it. */
+    const following = (tier, remaining, wallet) => planRead(tier, [
+      { window: '5h', percentUsed: 100 - remaining, resetsAt: IN_2H },
+      { window: '7d', percentUsed: 20, resetsAt: IN_2D },
+    ], { ...wallet, freeTokens: at(remaining) });
+    const kinds = (tier, from, to, wallet, opts) => usageTransitions(
+      following(tier, from, wallet), following(tier, to, wallet), opts,
+    ).map((t) => t.kind);
+    for (const tier of ['plus', 'pro']) {
+      for (const wallet of [EMPTY_WALLET, SHORT_WALLET]) {
+        for (const model of [null, 'model-router', 'mindshub_air']) {
+          for (const coveredByTier of [null, 'free']) {
+            expect(kinds(tier, 18, 8, wallet, { model, coveredByTier })).toEqual(['window_low']);
+            expect(kinds(tier, 8, 0, wallet, { model, coveredByTier })).toEqual(['window_exhausted']);
+          }
+        }
+      }
+    }
+    // A Free plan's figure is the free allowance, so a task on Air still hears it.
+    const freePlan = (remaining) => planRead('free', [], { ...SHORT_WALLET, freeTokens: at(remaining) });
+    expect(usageTransitions(freePlan(18), freePlan(8), { model: 'mindshub_air' }).map((t) => t.kind)).toEqual(['free_low']);
+    expect(usageTransitions(freePlan(8), freePlan(0), { model: 'mindshub_air' }).map((t) => t.kind)).toEqual(['free_used']);
+  });
+});
+
+describe('freeAllowanceState on a plan', () => {
+  it('gives no figure on Plus or Pro, whose allowance fields carry the plan windows', () => {
+    for (const tier of ['plus', 'pro']) {
+      for (const freeTokens of [at(0), at(40), { limit: 0, used: 0, remaining: 0, resetsAt: RESET }]) {
+        expect(freeAllowanceState(planRead(tier, [], { freeTokens }))).toEqual({ status: 'no_figure', resetsAt: null });
+      }
+    }
+  });
+
+  it('reads a Free plan exactly as no plan', () => {
+    for (const freeTokens of [at(0), at(40), { limit: 0, used: 0, remaining: 0 }, null]) {
+      expect(freeAllowanceState(planRead('free', [], { freeTokens }))).toEqual(freeAllowanceState(usage({ freeTokens })));
+    }
+  });
+
+  it('leaves the stop sentences on Plus as they read with no allowance figure', () => {
+    const noFigure = planRead('plus', [], { freeTokens: null });
+    expect(allowanceStopCopy({ usage: planRead('plus', [], { freeTokens: at(0) }) }))
+      .toBe(allowanceStopCopy({ usage: noFigure }));
+    expect(budgetExceededCopy({ usage: planRead('plus', [], { freeTokens: at(40) }) }))
+      .toBe(budgetExceededCopy({ usage: noFigure }));
+  });
+});
+
+describe('airRoom', () => {
+  const FULL_5H = [{ window: '5h', percentUsed: 100, resetsAt: IN_2H }, { window: '7d', percentUsed: 40, resetsAt: IN_2D }];
+  const ROOMY = [{ window: '5h', percentUsed: 60, resetsAt: IN_2H }, { window: '7d', percentUsed: 40, resetsAt: IN_2D }];
+
+  it('answers from the free allowance without a paid plan', () => {
+    for (const read of [(over) => usage(over), (over) => planRead('free', [], over)]) {
+      expect(airRoom(read({ freeTokens: at(28) }))).toBe('free');
+      expect(airRoom(read({ freeTokens: at(0) }))).toBeNull();
+      expect(airRoom(read({ freeTokens: { limit: 0, used: 0, remaining: 0 } }))).toBeNull();
+      expect(airRoom(read({ freeTokens: null }))).toBeNull();
+    }
+    expect(airRoom({ reachable: false })).toBeNull();
+    expect(airRoom(null)).toBeNull();
+  });
+
+  it('answers from the plan windows on Plus or Pro, whatever the allowance figure says', () => {
+    for (const tier of ['plus', 'pro']) {
+      for (const freeTokens of [at(0), at(40), null]) {
+        expect(airRoom(planRead(tier, ROOMY, { freeTokens }))).toBe('plan');
+        expect(airRoom(planRead(tier, [], { freeTokens }))).toBe('plan');
+        expect(airRoom(planRead(tier, FULL_5H, { freeTokens }))).toBeNull();
+      }
+    }
+  });
+
+  it('names the plan allowance in the budget sentence while a window has room', () => {
+    const RAISE = "Paid models can't run until an administrator raises it in Budgets.";
+    expect(budgetExceededCopy({ usage: planRead('plus', ROOMY, { freeTokens: at(0) }) }))
+      .toBe(`${RAISE} MindsHub Air still works while your plan's allowance lasts.`);
+    expect(budgetExceededCopy({ usage: planRead('pro', FULL_5H, { freeTokens: at(40) }) })).toBe(RAISE);
+    // A per-model budget names its model and never Air, on a plan too.
+    expect(budgetExceededCopy({ usage: planRead('plus', ROOMY), budgetModelLabel: 'Claude Haiku' }))
+      .toBe("Claude Haiku can't run until an administrator raises it in Budgets. Other models still work.");
+  });
+});
+
+describe('a pick the Free tier covers', () => {
+  const FREE_PICK = { model: 'glm-5-3-flash', coveredByTier: 'free' };
+  const PLUS_PICK = { model: 'glm-5-3-flash', coveredByTier: 'plus' };
+  const AIR = { model: 'mindshub_air' };
+  /* An org with no paid plan and an empty wallet: no plan block at all, and a
+     Free plan, which read the same. */
+  const unfunded = (freeTokens) => [
+    usage({ ...EMPTY_WALLET, freeTokens }),
+    planRead('free', [], { ...EMPTY_WALLET, freeTokens }),
+  ];
+  // Compare's Start is disabled exactly when the combined notice blocks.
+  const compareBlocks = (read, a, b) => !!compareCreditNotice([deriveUsageWarning(read, a), deriveUsageWarning(read, b)])?.blocks;
+
+  it('runs on the free allowance like Air: no balance_empty stop while it has room, and Compare starts', () => {
+    for (const read of unfunded(at(28))) {
+      expect(deriveUsageWarning(read, FREE_PICK)).toBeNull();
+      expect(deriveComposerWarning(read, FREE_PICK)).toBeNull();
+      expect(compareBlocks(read, FREE_PICK, AIR)).toBe(false);
+      expect(compareBlocks(read, FREE_PICK, FREE_PICK)).toBe(false);
+    }
+  });
+
+  it('gets the allowance warnings as it runs low, and the stop once it is spent', () => {
+    for (const read of unfunded(at(8))) {
+      expect(deriveComposerWarning(read, FREE_PICK)).toEqual(deriveComposerWarning(read, AIR));
+      expect(deriveComposerWarning(read, FREE_PICK).kind).toBe('free_low');
+    }
+    for (const read of unfunded(at(0))) {
+      expect(deriveComposerWarning(read, FREE_PICK)).toEqual(deriveComposerWarning(read, AIR));
+      expect(deriveComposerWarning(read, FREE_PICK).kind).toBe('balance_empty');
+      expect(compareBlocks(read, FREE_PICK, AIR)).toBe(true);
+    }
+  });
+
+  it('never tells a task on an empty wallet that it now runs on the balance', () => {
+    /* The wallet holds nothing, so the next call is refused and the stop card
+       speaks for it. A free pick, Air, and the router alike, with no plan and
+       on a Free plan. */
+    const [noPlanBefore, freePlanBefore] = unfunded(at(8));
+    const [noPlanAfter, freePlanAfter] = unfunded(at(0));
+    const zero = (freeTokens) => usage({ balance: { usd: 0, canConsume: true, alert: null }, freeTokens });
+    for (const opts of [FREE_PICK, AIR, { model: 'model-router' }, { model: null }]) {
+      expect(usageTransitions(noPlanBefore, noPlanAfter, opts)).toEqual([]);
+      expect(usageTransitions(freePlanBefore, freePlanAfter, opts)).toEqual([]);
+      // An unflagged wallet that holds $0 has nothing to fall through to either.
+      expect(usageTransitions(zero(at(8)), zero(at(0)), opts)).toEqual([]);
+    }
+  });
+
+  it('reads a member wallet from walletCanConsume when the read carries no balance', () => {
+    /* A member without billing access gets no balance, but /me still says
+       whether the wallet can pay. A wallet that cannot is never named as what
+       the task now runs on. One that can, or a read that says nothing about
+       it, keeps the notice. */
+    const member = (freeTokens, walletCanConsume) => usage({
+      isBillingOwner: false, balance: null, autoTopUp: null, walletCanConsume, freeTokens,
+    });
+    const kinds = (walletCanConsume, opts) => usageTransitions(
+      member(at(8), walletCanConsume), member(at(0), walletCanConsume), opts,
+    ).map((t) => t.kind);
+    for (const opts of [FREE_PICK, AIR, { model: 'model-router' }, { model: null }]) {
+      expect(kinds(false, opts)).toEqual([]);
+      for (const walletCanConsume of [true, null, undefined]) {
+        expect(kinds(walletCanConsume, opts)).toEqual(['free_used']);
+      }
+    }
+  });
+
+  it('prefers walletCanConsume over a balance that still looks usable', () => {
+    // The same preference modelAccessSignature applies.
+    const short = (freeTokens, walletCanConsume) => usage({ balance: SHORT, walletCanConsume, freeTokens });
+    expect(usageTransitions(short(at(8), false), short(at(0), false), AIR)).toEqual([]);
+    expect(usageTransitions(short(at(8), true), short(at(0), true), AIR).map((t) => t.kind)).toEqual(['free_used']);
+  });
+
+  it('tells a running task on it when the allowance runs low or out', () => {
+    expect(usageTransitions(unpaid({ freeTokens: at(18) }), unpaid({ freeTokens: at(8) }), FREE_PICK)
+      .map((t) => t.kind)).toEqual(['free_low']);
+    expect(usageTransitions(unpaid({ freeTokens: at(8) }), unpaid({ freeTokens: at(0) }), FREE_PICK)
+      .map((t) => t.kind)).toEqual(['free_used']);
+    expect(usageTransitions(unpaid({ freeTokens: at(18) }), unpaid({ freeTokens: at(8) }), PLUS_PICK)).toEqual([]);
+  });
+
+  it('hears allowance copy that names no single model', () => {
+    const noTime = (percent) => ({ ...at(percent), resetsAt: null });
+    expect(deriveComposerWarning(unpaid({ freeTokens: noTime(8) }), FREE_PICK).body)
+      .toBe('After that, free models use your balance until your allowance resets.');
+    expect(deriveComposerWarning(unpaid({ freeTokens: noTime(0) }), FREE_PICK).body)
+      .toBe('Free models now use your balance until your allowance resets.');
+  });
+
+  it('a model only Plus covers still bills the wallet, so an empty one stops it', () => {
+    for (const read of unfunded(at(28))) {
+      expect(deriveComposerWarning(read, PLUS_PICK)).toMatchObject({ kind: 'balance_empty', tone: 'danger' });
+      expect(compareBlocks(read, PLUS_PICK, AIR)).toBe(true);
+      // A model other than Air or the router with unknown coverage too.
+      expect(deriveComposerWarning(read, { model: 'glm-5-3-flash' }).kind).toBe('balance_empty');
+    }
+  });
+
+  it('leaves Air and the router free whatever the coverage, including none', () => {
+    for (const read of unfunded(at(28))) {
+      for (const model of ['mindshub_air', 'model-router', null]) {
+        for (const coveredByTier of [null, 'free']) {
+          expect(deriveComposerWarning(read, { model, coveredByTier })).toBeNull();
+        }
+      }
+      expect(compareBlocks(read, AIR, { model: 'model-router' })).toBe(false);
+    }
+  });
+
+  it('reads the same on Plus, where the plan windows carry it', () => {
+    const plus = (percentUsed, over) => planRead('plus', [{ window: '5h', percentUsed, resetsAt: IN_2H }], over);
+    expect(deriveComposerWarning(plus(30, EMPTY_WALLET), FREE_PICK)).toBeNull();
+    expect(deriveComposerWarning(plus(100, EMPTY_WALLET), FREE_PICK).kind).toBe('window_exhausted');
+    expect(deriveComposerWarning(plus(30, EMPTY_WALLET), { model: 'claude-opus-5-5', coveredByTier: 'pro' }).kind)
+      .toBe('balance_empty');
+    // The free allowance draining is not news to a task the plan carries.
+    const draining = (percent) => plus(30, { balance: SHORT, freeTokens: at(percent) });
+    expect(usageTransitions(draining(18), draining(8), FREE_PICK)).toEqual([]);
   });
 });
 

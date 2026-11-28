@@ -29,6 +29,7 @@ import {
   usageTokens,
   compareAvailable,
   comparisonCostProps,
+  allCallsIncluded,
 } from './compareSides';
 
 const user = (content, created_at = null) => ({ role: 'user', content, created_at });
@@ -348,7 +349,7 @@ describe('silentFor', () => {
 describe('compareCreditNotice', () => {
   const low = { kind: 'balance_low', tone: 'warning', title: 'Balance low', body: '$4.20 left.' };
   const empty = { kind: 'balance_empty', tone: 'danger', title: 'Balance empty', body: 'Add funds.' };
-  const resting = { kind: 'free_at_rest', tone: 'resting', resting: true, title: '80% left', body: '' };
+  const unranked = { kind: 'other', tone: 'neutral', title: '80% left', body: '' };
 
   it('takes the more severe side and blocks when either could not run', () => {
     expect(compareCreditNotice([low, empty])).toMatchObject({ kind: 'balance_empty', blocks: true });
@@ -368,7 +369,7 @@ describe('compareCreditNotice', () => {
   });
 
   it('leaves the standing allowance figure out', () => {
-    expect(compareCreditNotice([resting, null])).toBeNull();
+    expect(compareCreditNotice([unranked, null])).toBeNull();
   });
 });
 
@@ -444,14 +445,110 @@ describe('turnUsageRows', () => {
   });
 });
 
+/* Shaped as the server sends them: a call a plan window or the Free allowance
+   covered adds no tokens, no cost and no unpriced count, only `includedCalls`. */
+describe('calls the plan covered', () => {
+  const priced = { turn: 1, estimatedCostUsd: 0.05, inputTokens: 1000, outputTokens: 40 };
+
+  it('reads a turn or side as covered only when the plan covered every call', () => {
+    expect(allCallsIncluded({ includedCalls: 2, estimatedCostUsd: null })).toBe(true);
+    // A priced call beside them, even a free one, or an unpriced one, means not every call.
+    expect(allCallsIncluded({ includedCalls: 2, estimatedCostUsd: 0.05 })).toBe(false);
+    expect(allCallsIncluded({ includedCalls: 2, estimatedCostUsd: 0 })).toBe(false);
+    expect(allCallsIncluded({ includedCalls: 2, unpricedCalls: 1, estimatedCostUsd: null })).toBe(false);
+    expect(allCallsIncluded({ includedCalls: 0, estimatedCostUsd: null })).toBe(false);
+    expect(allCallsIncluded(null)).toBe(false);
+  });
+
+  it('shows a covered turn with its time but no tokens or price, and a mixed turn by its priced part', () => {
+    const usage = {
+      available: true,
+      estimatedCostUsd: 0.05,
+      inputTokens: 1000,
+      outputTokens: 40,
+      includedCalls: 3,
+      turns: [{ ...priced, includedCalls: 1 }, { turn: 2, estimatedCostUsd: null, includedCalls: 2 }],
+    };
+    const turns = [
+      { userAt: '2026-09-23T10:00:00Z', replyAt: '2026-09-23T10:00:41Z' },
+      { userAt: '2026-09-23T10:01:00Z', replyAt: '2026-09-23T10:01:12Z' },
+    ];
+    const [mixed, covered, total] = turnUsageRows(usage, turns);
+    expect(mixed).toMatchObject({ label: 'Turn 1', input: '1K', output: '40', cost: '$0.05' });
+    expect(mixed.included).toBeUndefined();
+    expect(covered).toEqual({ label: 'Turn 2', time: '12s', included: true });
+    expect(total).toMatchObject({ total: true, time: '53s', input: '1K', output: '40', cost: '$0.05' });
+  });
+
+  it('marks a side or both together as a floor for unpriced calls, never for covered ones', () => {
+    expect(sideCost({ available: true, estimatedCostUsd: 0.05, includedCalls: 3 })).toEqual({ text: '$0.05', notes: [], partial: false });
+    expect(sideCost({ available: true, estimatedCostUsd: 0.05, includedCalls: 3, unpricedCalls: 1 }).text).toBe('$0.05+');
+    const covered = { available: true, estimatedCostUsd: null, includedCalls: 2 };
+    // A side the plan covered whole has no figure of its own, and leaves nothing out of the two together.
+    expect(sideCost(covered)).toBeNull();
+    expect(combinedCost({ sides: { a: covered, b: { available: true, estimatedCostUsd: 0.3 } } })).toEqual({ text: '$0.3', partial: false });
+    expect(combinedCost({ sides: { a: covered, b: { available: true, estimatedCostUsd: 0.3, unpricedCalls: 1 } } }).text).toBe('$0.3+');
+    expect(combinedCost({ sides: { a: covered, b: covered } })).toBeNull();
+  });
+
+  it("never reads a side cut at the usage service's row cap as all included", () => {
+    // Every call read was covered, but a call past the cap may have been paid.
+    const cut = { available: true, estimatedCostUsd: null, includedCalls: 2, truncated: true };
+    expect(allCallsIncluded({ includedCalls: 2, estimatedCostUsd: null, truncated: true })).toBe(false);
+    expect(allCallsIncluded(cut)).toBe(false);
+    expect(combinedCost({ sides: { a: cut, b: { available: true, estimatedCostUsd: 0.3 } } })).toEqual({ text: '$0.3+', partial: true });
+    const props = comparisonCostProps({ sides: { a: cut, b: { available: true, estimatedCostUsd: 0.3 } } });
+    expect(props.cost_a_usd).toBeUndefined();
+    expect(props.cost_partial).toBe(true);
+  });
+
+  it('reads a usage payload without includedCalls as having none', () => {
+    const usage = { available: true, estimatedCostUsd: 0.05, turns: [priced, { turn: 2, estimatedCostUsd: null }] };
+    expect(allCallsIncluded(usage.turns[1])).toBe(false);
+    expect(turnUsageRows(usage)[1]).toMatchObject({ label: 'Turn 2', input: '0', output: '0', cost: 'not priced' });
+    const unread = { available: true, estimatedCostUsd: null };
+    expect(combinedCost({ sides: { a: unread, b: { available: true, estimatedCostUsd: 0.3 } } }).text).toBe('$0.3+');
+  });
+});
+
 describe('historyCost', () => {
   const side = (usage) => ({ usage });
   it('adds both sides as last read, and marks what is missing or partial', () => {
-    expect(historyCost([side({ estimatedCostUsd: 0.04 }), side({ estimatedCostUsd: 0.5 })])).toBe('$0.54');
-    expect(historyCost([side({ estimatedCostUsd: 0.2 }), side(null)])).toBe('$0.2+');
-    expect(historyCost([side({ estimatedCostUsd: 0.2, partial: true }), side({ estimatedCostUsd: 0.1 })])).toBe('$0.3+');
+    expect(historyCost([side({ estimatedCostUsd: 0.04 }), side({ estimatedCostUsd: 0.5 })])).toEqual({ text: '$0.54' });
+    expect(historyCost([side({ estimatedCostUsd: 0.2 }), side(null)])).toEqual({ text: '$0.2+' });
+    expect(historyCost([side({ estimatedCostUsd: 0.2, partial: true }), side({ estimatedCostUsd: 0.1 })])).toEqual({ text: '$0.3+' });
     expect(historyCost([side(null), side({ estimatedCostUsd: null })])).toBeNull();
     expect(historyCost()).toBeNull();
+  });
+
+  // Snapshots as the server keeps them: a side the plan covered whole has no figure, no tokens and nothing left out.
+  const covered = side({ estimatedCostUsd: null, tokens: 0, partial: false, includedCalls: 3 });
+  const priced = (usd, extra = {}) => side({ estimatedCostUsd: usd, tokens: 900, partial: false, includedCalls: 1, ...extra });
+
+  it('reads a side the plan covered whole at $0, with nothing left out', () => {
+    expect(historyCost([priced(0.42), covered])).toEqual({ text: '$0.42' });
+    expect(historyCost([covered, covered])).toEqual({ included: true });
+    // A priced side's own floor still shows.
+    expect(historyCost([priced(0.42, { partial: true }), covered])).toEqual({ text: '$0.42+' });
+    // Covered calls on a side the server marked partial are not the whole side.
+    expect(historyCost([priced(0.42), side({ estimatedCostUsd: null, tokens: 0, partial: true, includedCalls: 3 })])).toEqual({ text: '$0.42+' });
+  });
+
+  /* The open comparison shows "Included in your plan" on the covered side and
+     no total, so the history cell shows no total either. */
+  it.each([
+    ['never read, as a bring-your-own-key side is', null, { available: false }],
+    ['only unpriced calls', { estimatedCostUsd: null, tokens: 0, partial: true }, { available: true, estimatedCostUsd: null, unpricedCalls: 2 }],
+  ])('shows no total for a side the plan covered whole beside one with %s', (_case, snapshot, usage) => {
+    expect(historyCost([covered, side(snapshot)])).toBeNull();
+    const coveredSide = { available: true, estimatedCostUsd: null, includedCalls: 3 };
+    expect(combinedCost({ sides: { a: coveredSide, b: usage } })).toBeNull();
+  });
+
+  it('reads a snapshot without includedCalls as having none', () => {
+    const old = side({ estimatedCostUsd: null, tokens: 0, partial: false });
+    expect(historyCost([side({ estimatedCostUsd: 0.42, tokens: 900, partial: false }), old])).toEqual({ text: '$0.42+' });
+    expect(historyCost([old, old])).toBeNull();
   });
 });
 
@@ -495,6 +592,31 @@ describe('comparisonCostProps', () => {
     const usage = { sides: { a: side(0.02, { turns: [{ turn: 1 }] }), b: side(0.5, { turns: [{ turn: 1 }] }) } };
     expect(comparisonCostProps(usage, { a: 2, b: 2 })).toEqual({ cost_partial: true, cost_stale: true });
     expect(comparisonCostProps(usage, { a: 1, b: 1 })).toMatchObject({ cost_a_usd: 0.02, cheaper_side: 'a', cost_partial: false });
+  });
+
+  it('reports a side with calls the plan covered by its priced calls alone, as a partial figure with no cheaper side', () => {
+    const covered = { available: true, estimatedCostUsd: null, includedCalls: 2 };
+    // The plan covered A whole. Its $0 leaves the covered calls out, so it never names A the cheaper model.
+    expect(comparisonCostProps({ sides: { a: covered, b: side(0.5) } })).toEqual({
+      cost_a_usd: 0, cost_b_usd: 0.5, cost_total_usd: 0.5, tokens_a: 0, tokens_b: 110,
+      cost_partial: true,
+    });
+    // A's figure counts its one priced call and leaves the covered one out.
+    expect(comparisonCostProps({ sides: { a: side(0.02, { includedCalls: 1 }), b: side(0.5) } })).toEqual({
+      cost_a_usd: 0.02, cost_b_usd: 0.5, cost_total_usd: 0.52, tokens_a: 110, tokens_b: 110,
+      cost_partial: true,
+    });
+    // Covered calls beside an unpriced one leave the side without a figure.
+    const mixed = comparisonCostProps({ sides: { a: { ...covered, unpricedCalls: 1 }, b: side(0.5) } });
+    expect(mixed.cost_partial).toBe(true);
+    expect(mixed.cost_a_usd).toBeUndefined();
+  });
+
+  it('reads a usage payload without includedCalls as having none', () => {
+    const props = comparisonCostProps({ sides: { a: { available: true, estimatedCostUsd: null }, b: side(0.5) } });
+    expect(props).toMatchObject({ cost_b_usd: 0.5, cost_partial: true });
+    expect(props.cost_a_usd).toBeUndefined();
+    expect(props.cheaper_side).toBeUndefined();
   });
 
   it('names no cheaper side when one side has no figure', () => {

@@ -8,6 +8,7 @@ import { HTML_COMPARISON_HIGHLIGHT_MS } from './htmlComparisonRuntime';
 import { createHtmlVisualComparisonDocuments } from './htmlVisualEditorDocument';
 import { compareSourceLines } from './sourceComparison';
 import { absoluteDraftUrl, useInlinedFrameDocument } from './inlineArtifactFrame';
+import { DocumentPreview } from '../../../preview/DocumentPreview';
 import i18n, { useTranslation } from '../../../../lib/i18n';
 
 function labelOf(revision, fallback) {
@@ -76,6 +77,10 @@ export function ArtifactComparison({
   // `{ busy, error, onPublish, onKeepDraft, onUndo }`, onUndo absent when the
   // change has no undo.
   publishReview = null,
+  // A document's two versions have no text to compare (ENG-4687):
+  // `(revision) => DocumentPreview props | null`, the viewer's own document
+  // preview fed one revision's bytes. Both sides show side by side.
+  documentFor = null,
 }) {
   const { t } = useTranslation('artifacts');
   const beforeRef = useRef(null);
@@ -114,8 +119,12 @@ export function ArtifactComparison({
   const inlinedBefore = useInlinedFrameDocument(visualModel?.before ?? '', frameUrl);
   const inlinedAfter = useInlinedFrameDocument(visualModel?.after ?? '', frameUrl);
 
+  const beforeDocument = comparison && documentFor ? documentFor(comparison.before) : null;
+  const afterDocument = comparison && documentFor ? documentFor(comparison.after) : null;
+  const documentSides = beforeDocument && afterDocument ? { before: beforeDocument, after: afterDocument } : null;
   const showVisual = !!visualModel && !showSource;
-  const navCount = showVisual ? visualModel.changes.length : changes.hunks.length;
+  // A document's changes aren't counted or stepped through: both versions show whole.
+  const navCount = documentSides ? 0 : showVisual ? visualModel.changes.length : changes.hunks.length;
   // `seq` counts jumps, so stepping onto the same change (the only one, or a
   // full lap) still scrolls to and flashes it again.
   const [jump, setJump] = useState({ index: 0, seq: 0 });
@@ -158,7 +167,7 @@ export function ArtifactComparison({
   const close = isPublish && publishReview?.onKeepDraft ? publishReview.onKeepDraft : onClose;
   const before = comparison.before;
   const after = comparison.after;
-  const changeCount = visualModel ? visualModel.changes.length : changes.count;
+  const changeCount = documentSides ? 0 : visualModel ? visualModel.changes.length : changes.count;
   const changeLabel = visualModel
     ? t('comparison.textChanges', { count: changeCount })
     : t('comparison.changedLines', { count: changeCount });
@@ -201,7 +210,18 @@ export function ArtifactComparison({
           </button>
         </div>
       </header>
-      {showVisual ? (
+      {documentSides ? (
+        <div className="artifact-compare-grid artifact-compare-documents">
+          <section>
+            <div className="artifact-compare-label section-label">{t('comparison.beforeLabel', { label: beforeLabel })}</div>
+            <DocumentPreview {...documentSides.before} />
+          </section>
+          <section>
+            <div className="artifact-compare-label section-label">{t('comparison.afterLabel', { label: afterLabel })}</div>
+            <DocumentPreview {...documentSides.after} />
+          </section>
+        </div>
+      ) : showVisual ? (
         <ArtifactHtmlComparison
           key={`${before?.id || 'before'}:${after?.id || 'after'}`}
           model={visualModel}

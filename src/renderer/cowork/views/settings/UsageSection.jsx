@@ -3,6 +3,7 @@ import { Icon } from '../../components/ui/Icon';
 import { Badge, Button, Meter } from '../../components/ui';
 import { host } from '../../../platform/host';
 import { useAccountUser } from '../../hooks/useAccountUser';
+import { useConsoleLink } from '../../hooks/useConsoleLink';
 import { useHubUsageContext } from '../../lib/hubUsageContext';
 import { trackBillingOpened } from '../../lib/analytics';
 import { billingCopyKey, offersBilling } from '../../lib/billingLinks';
@@ -22,25 +23,26 @@ import { useUpgradeOffer } from '../../hooks/useUpgradeOffer';
 import { isPaidPlan, WINDOW_WARN_PERCENT } from '../../lib/subscriptionPlan';
 
 /* Settings → Usage (ENG-1782). The lightweight view of what the console's
-   billing page shows: the free MindsHub Air allowance with when it refills, the
+   billing page shows: the free allowance with when it refills, the
    paid balance with this period's credit spend, and auto top up when it
    matters. No per-model breakdown. Every action opens the MindsHub console,
    where funds and auto top up are actually managed. */
 
 const CARD = 'border border-solid border-line rounded-card bg-surface-glass backdrop-blur-[var(--surface-glass-blur)] mb-[14px] px-[18px] py-4';
 
-function openConsole(action, isBillingOwner) {
+function openConsole(action, isBillingOwner, consoleLink) {
   trackBillingOpened('usage_settings');
-  host.openExternal(usageActionUrl(action, { isBillingOwner }));
+  host.openExternal(consoleLink(usageActionUrl(action, { isBillingOwner })));
 }
 
 // Labels come from the catalog by the action's key; the English `label` on
 // USAGE_ACTIONS stays the fallback for an action this section doesn't know.
 function ActionButton({ action, isBillingOwner, variant = 'default' }) {
   const { t } = useTranslation('settingsSystem');
+  const consoleLink = useConsoleLink();
   if (!offersBilling()) return null;
   return (
-    <Button variant={variant} size="sm" onClick={() => openConsole(action, isBillingOwner)}>
+    <Button variant={variant} size="sm" onClick={() => openConsole(action, isBillingOwner, consoleLink)}>
       {t(`usage.actions.${action.key}`, { defaultValue: action.label })}
       <Icon of={ExternalLink} size={12} />
     </Button>

@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { MIN_FIT_SCALE, usePreviewFit } from './usePreviewFit';
+import { MIN_FIT_SCALE, previewReportFrom, previewSize, usePreviewFit } from './usePreviewFit';
 
 // A page cut off in the preview with nothing to scroll is given the height it
 // asks for and scaled to fit (ENG-4455).
@@ -73,5 +73,35 @@ describe('usePreviewFit', () => {
     const t = setup({ enabled: false });
     t.send({ type: 'size', width: 1200, height: 600, content: 800, locked: true });
     expect(t.fit.style).toBeNull();
+  });
+});
+
+// The report check every single-frame listener on the shim channel shares
+// (this hook and the inline chat preview, ENG-4684).
+describe('previewReportFrom', () => {
+  const frameWith = (win) => ({ contentWindow: win });
+  const own = {};
+
+  it('returns the report when it comes from the frame on the shim channel', () => {
+    const data = { source: 'anton-preview', type: 'size', content: 300 };
+    expect(previewReportFrom({ data, source: own }, frameWith(own))).toBe(data);
+  });
+
+  it('refuses another window, no frame, or another channel', () => {
+    const data = { source: 'anton-preview', type: 'size' };
+    expect(previewReportFrom({ data, source: {} }, frameWith(own))).toBeNull();
+    expect(previewReportFrom({ data, source: own }, null)).toBeNull();
+    expect(previewReportFrom({ data, source: own }, frameWith(null))).toBeNull();
+    expect(previewReportFrom({ data: { ...data, source: 'x' }, source: own }, frameWith(own))).toBeNull();
+    expect(previewReportFrom({ data: 'size', source: own }, frameWith(own))).toBeNull();
+  });
+});
+
+describe('previewSize', () => {
+  it('accepts only a sane positive height', () => {
+    expect(previewSize(320)).toBe(320);
+    expect(previewSize(0)).toBeNull();
+    expect(previewSize('320')).toBeNull();
+    expect(previewSize(Infinity)).toBeNull();
   });
 });

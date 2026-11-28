@@ -33,7 +33,7 @@ on:
         type: string
         required: true
       build-runner:
-        description: "Runner label for the build and scan"
+        description: "Runner label for the Helm deploy (prod); the build, scan and PR environment deploy run on ubuntu-latest"
         type: string
         default: mdb-dev
       pr-environment:
@@ -109,11 +109,20 @@ jobs:
           build-for-environment: ${{ inputs.build-environment }}
 
   scan:
-    runs-on: mdb-dev
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     needs: [build]
     name: Scan Minds Image
     steps:
       - uses: actions/checkout@v4
+      - name: Assume the ECR push role
+        # The same role; it may also pull the image it pushed.
+        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5.1.1
+        with:
+          role-to-assume: ${{ vars.ECR_PUSH_ROLE_ARN }}
+          aws-region: us-east-1
       - uses: mindsdb/github-actions/snyk-docker-scan@main
         with:
           image: ${{ needs.build.outputs.image }}
@@ -126,18 +135,37 @@ jobs:
           allow-vulns: ${{ inputs.pr-environment && 'true' || '' }}
 
   deploy-pr-env:
-    runs-on: ${{ inputs.build-runner }}
+    # Records the PR's images in mindsdb/argocd-state, which the environment's
+    # parent Application reads, then waits for the argocd/pr-env commit status
+    # Argo CD sets once the environment is up. No cluster credential and no
+    # `environment:` block: Argo CD creates the GitHub Deployment itself.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # the ECR role, for the image-existence checks
+      statuses: write # argocd/pr-env pending on the head commit
     needs: [build]
     if: inputs.pr-environment && contains(github.event.pull_request.labels.*.name, 'deploy')
-    environment:
-      name: pr-cowork-${{ github.event.pull_request.number }}
-      url: https://pr-cowork-${{ github.event.pull_request.number }}.dev.mindshub.ai
     outputs:
       deployed: ${{ steps.rollout.outputs.deployed }}
     steps:
+      - name: Assume the ECR push role
+        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5.1.1
+        with:
+          role-to-assume: ${{ vars.ECR_PUSH_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: Mint a token for argocd-state
+        id: release-train
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: mindsdb
+          repositories: argocd-state
+          permission-contents: write
       - uses: mindsdb/github-actions/argocd-pr-env-deploy@main
         with:
-          argocd-token: ${{ secrets.ARGOCD_AUTH_TOKEN }}
+          state-token: ${{ steps.release-train.outputs.token }}
           gh-token: ${{ secrets.GH_PULL_REQUEST_READ_TOKEN }}
       - name: Record that the environment is up
         id: rollout

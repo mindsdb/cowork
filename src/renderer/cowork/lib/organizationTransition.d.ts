@@ -3,7 +3,7 @@ export interface OrganizationReloadOptions {
   clearTenantState?: boolean;
 }
 
-export function prepareForOrganizationReload(options?: OrganizationReloadOptions): void;
+export function prepareForOrganizationReload(options?: OrganizationReloadOptions): boolean;
 export function beginOrganizationTransition(subject: string | null): Promise<string>;
 export function releaseOrganizationTransition(id: string): void;
 export function reloadForOrganizationTransition(id: string): void;

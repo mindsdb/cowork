@@ -98,19 +98,21 @@ export function webPaneNote(agentLabel) {
 
 /**
  * @param {{ sessionId: string, agentLabel?: string, onClose: () => void,
- *   floating?: boolean, extraActions?: import('react').ReactNode }} props
+ *   floating?: boolean, extraActions?: import('react').ReactNode,
+ *   footer?: import('react').ReactNode }} props
  */
 export function BrowserPanel(props) {
   return host.supportsInAppBrowser ? <LocalBrowserStage {...props} /> : <WebBrowserStage {...props} />;
 }
 
 /**
- * @param {{ sessionId: string, agentLabel?: string, onClose: () => void, retrySignal?: number }} props
+ * @param {{ sessionId: string, agentLabel?: string, onClose: () => void, retrySignal?: number,
+ *   footer?: import('react').ReactNode }} props
  *   `retrySignal`: bumped when a hand-back asks the pane to show its browser.
  */
 function WebBrowserStage({
   sessionId, agentLabel = 'Anton', onClose, floating = false, extraActions = null, dock = null, onControl = null,
-  taskKey = '', onSend, onOpenUrl, startBlank = false, onPageUrl = null, onDraft = null, retrySignal = 0,
+  taskKey = '', onSend, onOpenUrl, startBlank = false, onPageUrl = null, onDraft = null, retrySignal = 0, footer = null,
 }) {
   const { t } = useTranslation('chat');
   const onControlRef = useRef(onControl);
@@ -363,6 +365,7 @@ function WebBrowserStage({
       floating={floating}
       extraActions={extraActions}
       dock={dock}
+      footer={footer}
     >
       {viewUrl && !error && (
         <iframe

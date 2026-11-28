@@ -6,7 +6,12 @@ import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, within, act, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Composer from './Composer';
-import { MINDS_BILLING_URL } from '../../lib/mindsUrls';
+import { ToastProvider } from './ui/Toast';
+import { MINDS_BILLING_URL, consoleUrlFor } from '../../lib/mindsUrls';
+import { setDocsEnabled } from '../../lib/docsEnabled';
+
+// Console links name the session's organization and account (ENG-4333).
+const forOrg = (url) => consoleUrlFor(url, { organizationId: 'org-1', subject: 'u1' });
 import { __resetDraftsForTests } from '../lib/draftStore';
 
 vi.mock('../api', async (importOriginal) => {
@@ -28,6 +33,8 @@ vi.mock('../api', async (importOriginal) => {
 // Spread the real modules and override only what these tests assert on, so a
 // new export never has to be added here to keep the file importable.
 const hostSpies = vi.hoisted(() => ({ openExternal: vi.fn() }));
+const accountMock = vi.hoisted(() => ({ user: { orgId: 'org-1', sub: 'u1' } }));
+vi.mock('../hooks/useAccountUser', () => ({ useAccountUser: () => accountMock.user }));
 vi.mock('../../platform/host', async (importOriginal) => {
   const actual = await importOriginal();
   return {
@@ -57,7 +64,10 @@ const renderComposer = (overrides = {}) => {
     models: [],
     ...overrides,
   };
-  render(<Composer {...props} />);
+  /* The "+ New project" modal calls useToastManager(), which throws outside a
+     provider. The real tree always has one (App wraps AppCore), so the
+     composer renders inside one here too. */
+  render(<Composer {...props} />, { wrapper: ToastProvider });
   return props;
 };
 
@@ -221,7 +231,7 @@ describe('Composer — model picker (ENG-1656)', () => {
     const locked = screen.getByRole('option', { name: /Claude Sonnet 5/ });
     await user.click(within(locked).getByRole('button', { name: 'Add credits' }));
 
-    expect(hostSpies.openExternal).toHaveBeenCalledWith(MINDS_BILLING_URL);
+    expect(hostSpies.openExternal).toHaveBeenCalledWith(forOrg(MINDS_BILLING_URL));
     expect(analyticsSpies.trackBillingOpened).toHaveBeenCalledWith('locked_model_row');
     // The row is disabled, so Base UI never reaches its select handler. This
     // pins that the button did not somehow route around that, not the
@@ -851,6 +861,89 @@ describe('Composer — slash menu closing on blur', () => {
     cleanup();
 
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe('Composer — "Write it as a doc"', () => {
+  const pick = async (user) => {
+    await user.click(screen.getByRole('button', { name: 'Add context' }));
+    await user.click(await screen.findByRole('menuitemcheckbox', { name: 'Write it as a doc' }));
+  };
+  const sendText = async (user, text) => {
+    await user.type(screen.getByRole('textbox'), text);
+    await user.keyboard('{Enter}');
+  };
+
+  it('goes with the one message it was chosen for in a chat', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({ draftKey: 'doc-output-chat' });
+    await pick(user);
+    expect(screen.getByRole('button', { name: 'Output: Doc. Remove' })).toBeInTheDocument();
+    await sendText(user, 'Write up the plan');
+    // Third, after the attachments position ChatView's onSend keeps for queued files.
+    expect(props.onSend).toHaveBeenLastCalledWith('Write up the plan', null, { output: 'doc' });
+    expect(screen.queryByRole('button', { name: 'Output: Doc. Remove' })).toBeNull();
+    await sendText(user, 'Thanks');
+    expect(props.onSend).toHaveBeenLastCalledWith('Thanks');
+  });
+
+  it('rides in the send meta from home', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({ sendsMeta: true, draftKey: 'doc-output-home' });
+    await pick(user);
+    await sendText(user, 'Draft the memo');
+    expect(props.onSend).toHaveBeenLastCalledWith('Draft the memo', expect.objectContaining({ output: 'doc' }));
+  });
+
+  it('can be taken back before the send', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({ draftKey: 'doc-output-undo' });
+    await pick(user);
+    await user.click(screen.getByRole('button', { name: 'Output: Doc. Remove' }));
+    await sendText(user, 'Just answer');
+    expect(props.onSend).toHaveBeenLastCalledWith('Just answer');
+  });
+
+  it('stays with the chat it was chosen in', async () => {
+    // Found in review: ChatView keeps one Composer across chats, so a doc
+    // chosen in one chat went out with the next chat's message.
+    const user = userEvent.setup();
+    const props = { onSend: vi.fn(), project: { name: 'general' }, projects: [{ name: 'general' }], onProjectChange: vi.fn(), models: [] };
+    const { rerender } = render(<Composer {...props} conversationId="doc-pick-a" />);
+    await pick(user);
+    rerender(<Composer {...props} conversationId="doc-pick-b" />);
+    expect(screen.queryByRole('button', { name: 'Output: Doc. Remove' })).toBeNull();
+    await sendText(user, 'Just answer');
+    expect(props.onSend).toHaveBeenLastCalledWith('Just answer');
+    // Nor does it come back with the chat it was chosen in.
+    rerender(<Composer {...props} conversationId="doc-pick-a" />);
+    expect(screen.queryByRole('button', { name: 'Output: Doc. Remove' })).toBeNull();
+  });
+});
+
+describe('Composer — "Write it as a doc" on a deployment without doc tools', () => {
+  afterEach(() => { act(() => setDocsEnabled(true)); });
+
+  it('is not offered', async () => {
+    setDocsEnabled(false);
+    const user = userEvent.setup();
+    renderComposer({ draftKey: 'doc-output-off' });
+    await user.click(screen.getByRole('button', { name: 'Add context' }));
+    expect(await screen.findByRole('button', { name: /Attach files/ })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitemcheckbox', { name: 'Write it as a doc' })).toBeNull();
+  });
+
+  it('drops a pick made before docs went off', async () => {
+    const user = userEvent.setup();
+    const props = renderComposer({ draftKey: 'doc-output-went-off' });
+    await user.click(screen.getByRole('button', { name: 'Add context' }));
+    await user.click(await screen.findByRole('menuitemcheckbox', { name: 'Write it as a doc' }));
+    expect(screen.getByRole('button', { name: 'Output: Doc. Remove' })).toBeInTheDocument();
+    act(() => setDocsEnabled(false));
+    expect(screen.queryByRole('button', { name: 'Output: Doc. Remove' })).toBeNull();
+    await user.type(screen.getByRole('textbox'), 'Write up the plan');
+    await user.keyboard('{Enter}');
+    expect(props.onSend).toHaveBeenLastCalledWith('Write up the plan');
   });
 });
 

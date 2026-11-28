@@ -61,7 +61,6 @@ vi.mock('../platform/host', async (importOriginal) => {
       onUpdateStatus: () => () => {},
       onOAuthRefreshError: () => () => {},
       onMindsHubAuthChanged: () => () => {},
-      getKeychainPref: vi.fn(async () => false),
       serverDiagnostics: vi.fn(async () => ({})),
       getShellUpdate: vi.fn(async () => null),
       removeCodingTask: vi.fn(async () => ({})),
@@ -104,7 +103,7 @@ describe('Picking SharePoint', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Pick SharePoint' }));
 
-    expect(await screen.findByText(/SharePoint isn.t available on Cloud/)).toBeInTheDocument();
+    expect(await screen.findByText('SharePoint runs in the Desktop app today. Download it to connect SharePoint there.')).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Connect SharePoint' })).toBeNull();
     expect(screen.queryByLabelText(/client secret/i)).toBeNull();
   });

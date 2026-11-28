@@ -9,24 +9,20 @@
         "updatePaymentMethod": "결제 수단 업데이트",
         "upgrade": "{tier, select, plus {Plus 시작} pro {Pro로 업그레이드} other {업그레이드}}"
       },
-      "noFreeGrant": "이 계정에는 무료 MindsHub Air 토큰이 포함되어 있지 않습니다. MindsHub Air도 다른 모델과 마찬가지로 잔액을 사용합니다.",
+      "noFreeGrant": "이 계정에는 무료 토큰이 포함되어 있지 않습니다. 모든 모델이 잔액을 사용합니다.",
       "allowanceStop": {
         "noGrant": "{noGrant} 잔액이 없으므로 계속하려면 잔액을 충전하세요.",
-        "withTime": "MindsHub Air 무료 제공량을 모두 사용했고 잔액도 없습니다. 계속 작업하려면 잔액을 충전하거나 {time}에 제공량이 다시 채워질 때까지 기다리세요.",
-        "noTime": "MindsHub Air 무료 제공량을 모두 사용했고 잔액도 없습니다. 계속 작업하려면 잔액을 충전하세요.",
-        "noTimeMobile": "MindsHub Air 무료 제공량을 모두 사용했고 잔액도 없습니다.",
+        "withTime": "무료 제공량을 모두 사용했고 잔액도 없습니다. 계속 작업하려면 잔액을 충전하거나 {time}에 제공량이 초기화될 때까지 기다리세요.",
+        "noTime": "무료 제공량을 모두 사용했고 잔액도 없습니다. 계속 작업하려면 잔액을 충전하세요.",
+        "noTimeMobile": "무료 제공량을 모두 사용했고 잔액도 없습니다.",
         "noGrantMobile": "{noGrant} 잔액이 없습니다.",
-        "withTimeMobile": "MindsHub Air 무료 제공량을 모두 사용했고 잔액도 없습니다. {time}에 초기화됩니다."
+        "withTimeMobile": "무료 제공량을 모두 사용했고 잔액도 없습니다. {time}에 초기화됩니다."
       },
       "freeServingPaused": {
-        "until": "무료 MindsHub Air가 {until}까지 모든 사용자에게 일시 중지되었습니다. 이 기간에는 제공량이 차감되지 않습니다. 지금 계속 작업하려면 잔액을 충전하세요.",
-        "dailyReset": "무료 MindsHub Air가 일일 예산이 초기화될 때까지 모든 사용자에게 일시 중지되었습니다. 이 기간에는 제공량이 차감되지 않습니다. 지금 계속 작업하려면 잔액을 충전하세요.",
-        "untilMobile": "무료 MindsHub Air가 {until}까지 모든 사용자에게 일시 중지되었습니다. 이 기간에는 제공량이 차감되지 않습니다.",
-        "dailyResetMobile": "무료 MindsHub Air가 일일 예산이 초기화될 때까지 모든 사용자에게 일시 중지되었습니다. 이 기간에는 제공량이 차감되지 않습니다."
-      },
-      "resting": {
-        "resetsAt": "{time}에 초기화됩니다.",
-        "noReset": "Air는 이 제공량을 모두 사용할 때까지 사용합니다."
+        "until": "무료 모델이 {until}까지 모든 사용자에게 일시 중지되었습니다. 이 기간에는 제공량이 차감되지 않습니다. 지금 계속 작업하려면 잔액을 충전하세요.",
+        "dailyReset": "무료 모델이 일일 예산이 초기화될 때까지 모든 사용자에게 일시 중지되었습니다. 이 기간에는 제공량이 차감되지 않습니다. 지금 계속 작업하려면 잔액을 충전하세요.",
+        "untilMobile": "무료 모델이 {until}까지 모든 사용자에게 일시 중지되었습니다. 이 기간에는 제공량이 차감되지 않습니다.",
+        "dailyResetMobile": "무료 모델이 일일 예산이 초기화될 때까지 모든 사용자에게 일시 중지되었습니다. 이 기간에는 제공량이 차감되지 않습니다."
       },
       "balanceEmptySentence": "잔액이 없습니다.",
       "percentLeft": "무료 제공량 {percent} 남음",
@@ -38,16 +34,14 @@
       "balanceEmpty": {
         "title": "잔액 없음",
         "body": "다른 작업을 시작하려면 잔액을 충전하세요.",
-        "freeUsedToo": "무료 제공량도 모두 사용했습니다. 잔액을 충전하거나 제공량이 다시 채워질 때까지 기다리세요.",
-        "freeUsedTooWithTime": "무료 제공량도 모두 사용했습니다. 잔액을 충전하거나 {time}에 제공량이 다시 채워질 때까지 기다리세요.",
+        "freeUsedToo": "무료 제공량도 모두 사용했습니다. 잔액을 충전하거나 제공량이 초기화될 때까지 기다리세요.",
+        "freeUsedTooWithTime": "무료 제공량도 모두 사용했습니다. 잔액을 충전하거나 {time}에 제공량이 초기화될 때까지 기다리세요.",
         "freeUsedTooMobile": "무료 제공량도 모두 사용했습니다.",
         "freeUsedTooWithTimeMobile": "무료 제공량도 모두 사용했습니다. {time}에 초기화됩니다.",
         "bodyMobile": "잔액이 없습니다. 유료 모델을 사용할 수 없습니다."
       },
       "balanceLow": {
         "title": "잔액 부족",
-        "autoRefills": "{usd} 남았습니다. 잔액이 {floor} 미만으로 떨어지면 자동 충전으로 {target}까지 채워집니다.",
-        "autoCovers": "{usd} 남았습니다. 자동 충전으로 충당됩니다.",
         "autoPending": "{usd} 남았습니다. 자동 충전이 은행의 승인을 기다리고 있습니다.",
         "autoCapReached": "{usd} 남았으며, 월 한도를 넘지 않도록 자동 충전이 일시 중지되었습니다. 계속하려면 잔액을 충전하세요.",
         "body": "{usd} 남았습니다. 잔액을 충전하거나 자동 충전을 켜세요.",
@@ -56,17 +50,16 @@
       },
       "freeUsed": {
         "title": "무료 제공량 모두 사용",
-        "body": "제공량이 다시 채워질 때까지 MindsHub Air는 잔액을 사용합니다.",
-        "bodyWithTime": "{time}에 제공량이 다시 채워질 때까지 MindsHub Air는 잔액을 사용합니다.",
-        "bodyWithUsd": "제공량이 다시 채워질 때까지 MindsHub Air는 잔액({usd} 남음)을 사용합니다.",
-        "bodyWithUsdWithTime": "{time}에 제공량이 다시 채워질 때까지 MindsHub Air는 잔액({usd} 남음)을 사용합니다."
+        "body": "이제 제공량이 초기화될 때까지 무료 모델은 잔액을 사용합니다.",
+        "bodyWithTime": "이제 {time}에 제공량이 초기화될 때까지 무료 모델은 잔액을 사용합니다."
       },
       "freeLow": {
-        "body": "그 후에는 제공량이 다시 채워질 때까지 MindsHub Air가 잔액을 사용합니다.",
-        "bodyWithTime": "그 후에는 {time}에 제공량이 다시 채워질 때까지 MindsHub Air가 잔액을 사용합니다.",
+        "body": "그 후에는 제공량이 초기화될 때까지 무료 모델이 잔액을 사용합니다.",
+        "bodyWithTime": "그 후에는 {time}에 제공량이 초기화될 때까지 무료 모델이 잔액을 사용합니다.",
         "balanceLowToo": "잔액도 부족합니다({usd})."
       },
       "budgetExceeded": {
+        "airOnPlan": "{hasModel, select, true {{scope, select, org {소유자나 관리자가 ‘예산’에서 한도를 올릴 때까지 {model}을(를) 실행할 수 없습니다. 다른 모델은 계속 사용할 수 있습니다.} other {관리자가 ‘예산’에서 한도를 올릴 때까지 {model}을(를) 실행할 수 없습니다. 다른 모델은 계속 사용할 수 있습니다.}}} other {{scope, select, org {소유자나 관리자가 ‘예산’에서 한도를 올릴 때까지 유료 모델을 실행할 수 없습니다. MindsHub Air는 플랜 제공량이 남아 있는 동안 계속 사용할 수 있습니다.} other {관리자가 ‘예산’에서 한도를 올릴 때까지 유료 모델을 실행할 수 없습니다. MindsHub Air는 플랜 제공량이 남아 있는 동안 계속 사용할 수 있습니다.}}}}",
         "raise": "{hasModel, select, true {{scope, select, org {소유자나 관리자가 ‘예산’에서 한도를 올릴 때까지 {model}을(를) 실행할 수 없습니다. 다른 모델은 계속 사용할 수 있습니다.} other {관리자가 ‘예산’에서 한도를 올릴 때까지 {model}을(를) 실행할 수 없습니다. 다른 모델은 계속 사용할 수 있습니다.}}} other {{scope, select, org {소유자나 관리자가 ‘예산’에서 한도를 올릴 때까지 유료 모델을 실행할 수 없습니다.} other {관리자가 ‘예산’에서 한도를 올릴 때까지 유료 모델을 실행할 수 없습니다.}}}}",
         "airHasRoom": "{hasModel, select, true {{scope, select, org {소유자나 관리자가 ‘예산’에서 한도를 올릴 때까지 {model}을(를) 실행할 수 없습니다. 다른 모델은 계속 사용할 수 있습니다.} other {관리자가 ‘예산’에서 한도를 올릴 때까지 {model}을(를) 실행할 수 없습니다. 다른 모델은 계속 사용할 수 있습니다.}}} other {{scope, select, org {소유자나 관리자가 ‘예산’에서 한도를 올릴 때까지 유료 모델을 실행할 수 없습니다. MindsHub Air는 무료 제공량이 남아 있는 동안 계속 사용할 수 있습니다.} other {관리자가 ‘예산’에서 한도를 올릴 때까지 유료 모델을 실행할 수 없습니다. MindsHub Air는 무료 제공량이 남아 있는 동안 계속 사용할 수 있습니다.}}}}"
       },
@@ -83,7 +76,8 @@
         "lowThenWalletWithTime": "그 후에는 {time}에 초기화될 때까지 잔액에서 API 요금으로 차감됩니다.",
         "lowThenPause": "그 후에는 초기화될 때까지 작업이 일시 중지됩니다.",
         "lowThenPauseWithTime": "그 후에는 {time}까지 작업이 일시 중지됩니다."
-      }
+      },
+      "resetsAt": "{time}에 초기화됩니다."
     },
     "scheduleWhen": {
       "timeZone": "{city} 시간",
@@ -95,7 +89,14 @@
       "daily": "매일 {time}",
       "weekdays": "평일 매일 {time}",
       "weekly": "매주 {weekday} {time}",
-      "weeklyNoDay": "매주 {time}"
+      "weeklyNoDay": "매주 {time}",
+      "monthlyDay": "매월 {day}일 {time}",
+      "monthlyDayOrLast": "매월 {day}일(짧은 달은 마지막 날) {time}",
+      "monthlyFirst": "매월 첫째 {weekday} {time}",
+      "monthlySecond": "매월 둘째 {weekday} {time}",
+      "monthlyThird": "매월 셋째 {weekday} {time}",
+      "monthlyFourth": "매월 넷째 {weekday} {time}",
+      "monthlyLast": "매월 마지막 {weekday} {time}"
     },
     "scheduleCopy": {
       "missedOnceServer": "이 시간에 서버가 다운되어 있으면 1시간 이내에 서버가 복구될 때 작업이 실행됩니다. 그 이후에는 누락됨으로 표시되며, 직접 실행할 수 있습니다.",
@@ -105,7 +106,9 @@
       "missedLabelServer": "이 시간에 서버가 다운되어 있는 경우",
       "missedLabelApp": "이 시간에 MindsHub가 닫혀 있는 경우",
       "missedOnceTitleServer": "서버가 다운된 동안 이 일회성 작업의 예정 시간이 지났습니다",
-      "missedOnceTitleApp": "MindsHub가 닫혀 있는 동안 이 일회성 작업의 예정 시간이 지났습니다"
+      "missedOnceTitleApp": "MindsHub가 닫혀 있는 동안 이 일회성 작업의 예정 시간이 지났습니다",
+      "lateRunApp": "예정: {when}. MindsHub가 닫혀 있었거나 컴퓨터가 절전 모드였습니다.",
+      "lateRunServer": "예정: {when}. 서버가 중단되었거나 사용량이 많았습니다."
     },
     "stopScheduleRun": {
       "unreachable": "서버에 연결할 수 없어 실행을 중지하지 못했습니다. 다시 시도하세요.",
@@ -119,8 +122,8 @@
       },
       "row": {
         "walletEmpty": "사용 가능한 크레딧이 없습니다. MindsHub를 사용하려면 잔액을 충전하세요.",
-        "allowanceExhausted": "사용 가능한 무료 MindsHub Air 토큰이 없으며 잔액도 없습니다.",
-        "freeAirPaused": "무료 MindsHub Air가 현재 일시 중지되었습니다.",
+        "allowanceExhausted": "사용 가능한 무료 토큰이 없으며 잔액도 없습니다.",
+        "freeAirPaused": "무료 모델이 현재 일시 중지되었습니다.",
         "budgetExceeded": "예산을 모두 사용했습니다.",
         "walletEmptyMobile": "사용 가능한 크레딧이 없습니다."
       },
@@ -319,6 +322,7 @@
       "sections": {
         "mine": "내 항목",
         "sharedWithMe": "나와 공유됨",
+        "sharedByOthers": "다른 사람이 공유함",
         "team": "내 팀",
         "builtin": "기본 제공"
       },
@@ -465,6 +469,13 @@
         "pendingDetail": "자격 증명은 암호화되어 저장됩니다. 확인이 끝나면 이 페이지가 업데이트됩니다."
       }
     },
+    "httpRefusal": {
+      "uploadTooLarge": "업로드 크기가 한도를 초과했습니다. 더 작은 파일을 선택하거나 한 번에 업로드하는 파일 수를 줄여 주세요.",
+      "requestTooLarge": "요청 크기가 한도를 초과했습니다. 전송할 내용을 줄여 보세요."
+    },
+    "projectUploads": {
+      "notUploaded": "업로드되지 않은 파일: {files}."
+    },
     "fileDrop": {
       "uploading": "업로드 중…"
     },
@@ -588,6 +599,7 @@
     "lastFailed": "최근 실패",
     "lastRunFailed": "최근 실행 실패",
     "stoppedAtLimit": "한도에서 중지됨",
+    "writesRefused": "승인 필요",
     "done": "완료",
     "active": "활성"
   },
@@ -599,7 +611,8 @@
       "hourly": "매시간",
       "daily": "매일",
       "weekdays": "평일",
-      "weekly": "매주"
+      "weekly": "매주",
+      "monthly": "매월"
     },
     "openProject": "{project} 열기",
     "descriptionWithNext": "{sentence} · 다음 실행 {next}",
@@ -619,6 +632,7 @@
     "partialNote": "일부 작업은 완료되었을 수 있습니다. 다시 실행하기 전에 실행 내역을 검토하세요.",
     "limitTitle": "최근 실행이 한도에 도달해 중지되었습니다",
     "limitNote": "작업 일부는 완료되었을 수 있습니다. 다시 실행하기 전에 실행 내역을 검토하세요.",
+    "approvalTitle": "마지막 실행의 변경 사항이 승인되지 않았습니다",
     "failedTitle": "최근 실행에 실패했습니다",
     "resume": "재개",
     "runNow": "지금 실행",
@@ -634,7 +648,12 @@
     "succeededTitle": "예약된 작업 완료",
     "succeededBody": "“{title}”의 실행이 완료되었습니다. 클릭하여 여세요.",
     "succeededToast": "예약된 작업 “{title}”의 실행이 완료되었습니다.",
-    "openAction": "작업 열기"
+    "openAction": "작업 열기",
+    "stoppedTitle": "예약된 작업이 중지됨",
+    "stoppedBody": "“{title}” 작업이 완료 전에 한도에 도달해 중지되었습니다. 클릭하여 확인하세요.",
+    "stoppedToast": "예약된 작업 “{title}”이(가) 완료 전에 한도에 도달해 중지되었습니다.",
+    "genericTitle": "새 알림",
+    "genericLine": "새 알림: {subject}"
   },
   "scheduleNotifyMenu": {
     "label": "알림",
@@ -650,11 +669,13 @@
       "hourly": "매시간",
       "daily": "매일",
       "weekdays": "평일마다",
-      "weekly": "매주"
+      "weekly": "매주",
+      "monthly": "매월"
     },
     "errorNoPrompt": "{agent}에게 할 일을 알려 주세요.",
     "errorPickFutureTime": "미래의 시간을 선택하세요.",
     "errorPickTime": "시간을 선택하세요.",
+    "errorPickDays": "요일을 하나 이상 선택하세요.",
     "errorSave": "일정을 저장하지 못했습니다.",
     "editTitle": "예약된 작업 편집",
     "createTitle": "작업 예약",
@@ -666,6 +687,17 @@
     "when": "시기",
     "howOften": "빈도",
     "dayOfWeek": "요일",
+    "daysOfWeek": "요일",
+    "dayOfMonth": "날짜",
+    "monthBy": {
+      "label": "매월 어느 날",
+      "day": "날짜",
+      "week1": "첫째",
+      "week2": "둘째",
+      "week3": "셋째",
+      "week4": "넷째",
+      "weekLast": "마지막"
+    },
     "date": "날짜",
     "atMinute": "시작 시각",
     "at": "시각",
@@ -677,6 +709,7 @@
     "namePlaceholder": "프롬프트에서 자동으로 지정",
     "project": "프로젝트",
     "model": "모델",
+    "connections": "연결",
     "accountDefault": "계정 기본값",
     "cancel": "취소",
     "saveAndRunOnce": "저장하고 한 번 실행",
@@ -718,7 +751,8 @@
       "success": "성공",
       "failed": "실패",
       "cancelled": "중지됨",
-      "stoppedAtLimit": "한도에서 중지됨"
+      "stoppedAtLimit": "한도에서 중지됨",
+      "writesRefused": "승인되지 않음"
     },
     "sentence": "{when}, {zone}",
     "runningNow": "지금 실행 중",
@@ -735,6 +769,7 @@
     "scheduleAriaLabel": "일정",
     "accountDefaultModel": "계정 기본 모델",
     "ranOnDefaultModel": "기본 모델",
+    "ranLate": "지연됨",
     "modelUnavailable": "{model}을(를) 사용할 수 없어 이 실행에는 기본 모델을 사용했습니다.",
     "succeededCount": "{total, plural, other {#회 중 {succeeded}회 성공}}",
     "promptAriaLabel": "프롬프트",
@@ -797,6 +832,9 @@
     "folderUnsupported": "이 서버는 프로젝트를 폴더에 연결하는 기능을 지원하지 않습니다. ‘{name}’을(를) 일반 프로젝트로 만들고 폴더 선택을 해제했습니다. 폴더를 사용하려면 Cowork를 업데이트하고, 이 프로젝트가 필요 없다면 삭제하세요.",
     "couldNotCreate": "프로젝트를 만들지 못했습니다.",
     "couldNotOpenPicker": "폴더 선택기를 열지 못했습니다.",
+    "filesNotUploaded": "‘{name}’을(를) 만들었지만 파일을 업로드하지 못했습니다.",
+    "someFilesNotUploaded": "‘{name}’을(를) 만들었지만 일부 파일을 업로드하지 못했습니다.",
+    "filesUploadUnconfirmed": "‘{name}’ 프로젝트를 만들었습니다. 다시 업로드하기 전에 프로젝트의 파일을 확인해 주세요.",
     "title": "새 프로젝트 시작",
     "nameLabel": "프로젝트 이름",
     "instructionsLabel": "지침",

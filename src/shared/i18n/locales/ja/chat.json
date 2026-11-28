@@ -20,7 +20,8 @@
       "deleting": "削除中…",
       "copyMessage": "メッセージをコピー",
       "copyResponse": "回答をコピー",
-      "agentFallback": "エージェント"
+      "agentFallback": "エージェント",
+      "submittedData": "送信したデータ"
     },
     "incomplete": {
       "spendCeiling": "途中で停止しました：このタスクはトークン予算の上限に達しました。",
@@ -74,7 +75,13 @@
       "liveArtifact": "ライブアーティファクト",
       "deletedBadge": "削除済み",
       "share": "共有",
-      "shareTooltip": "開けるユーザーを選択"
+      "shareTooltip": "開けるユーザーを選択",
+      "goToLatestTooltip": "最新バージョンへスクロール",
+      "openLink": "リンクを開く",
+      "openLinkTooltip": "アーティファクトのリンクを新しいタブで開きます",
+      "updatedSeeBelow": "更新されました。最新バージョンは下にあります。",
+      "previewThisVersion": "このバージョンをプレビュー",
+      "hideVersionPreview": "このバージョンを隠す"
     },
     "kinds": {
       "provider": "プロバイダー",
@@ -92,15 +99,16 @@
       "taskStopped": "タスクを停止しました",
       "providerLimitBody": "プロバイダーの使用量上限に達しました。新しいタスクを始める前に管理者にお問い合わせください。",
       "addFunds": "残高を追加",
+      "balanceEmptyAirOnPlan": "残高がないため、このモデルは実行できません。MindsHub Airはプランの利用枠でまだ利用できます。",
       "switchToAir": "MindsHub Airに切り替える",
       "balanceRanOut": "タスクの完了前に残高がなくなりました。新しいタスクを始める前に残高を追加してください。",
-      "balanceEmptyAirLeft": "残高がないため、このモデルは実行できません。MindsHub Airの無料枠はまだ残っています。",
+      "balanceEmptyAirLeft": "残高がないため、このモデルは実行できません。MindsHub Airは引き続き無料枠で実行できます。",
       "providerUnavailableTitle": "プロバイダーが一時的に利用できません",
       "providerPausedBody": "プロバイダーがリクエストの受け付けを一時停止しています。しばらくしてからもう一度お試しいただくか、管理者にお問い合わせください。",
-      "freeAirPausedTitle": "無料のMindsHub Airは一時停止中です",
+      "freeAirPausedTitle": "無料モデルは一時停止中です",
       "connectProviderTitle": "チャットを始めるにはプロバイダーを接続してください",
       "providerSetupRequiredTitle": "プロバイダーの設定が必要です",
-      "connectProviderBody": "MindsHubなら、MindsHub Airの無料枠から始めて、その後は使った分だけお支払いいただけます。設定で自分のAPIキーを追加することもできます。",
+      "connectProviderBody": "MindsHubなら、無料枠から始めて、その後は使った分だけお支払いいただけます。設定で自分のAPIキーを追加することもできます。",
       "providerSetupRequiredBody": "タスクを始める前に、モデルプロバイダーを設定するよう運用担当者に依頼してください。",
       "startForFree": "無料で始める",
       "openSettings": "設定を開く",
@@ -122,10 +130,10 @@
       "windowPausedMobile": "{window, select, 7d {週間} 5h {5時間} other {プラン}}の利用枠を使い切りました。リセットされるまで一時停止します。"
     },
     "usageAlert": {
-      "freeLow": "Airの無料枠：残り{percent}",
-      "freeLowRefills": "Airの無料枠：残り{percent} · {time}にリセット",
-      "freeUsed": "Airの無料枠を使い切りました · 現在は残高から支払っています",
-      "freeUsedUntil": "Airの無料枠を使い切りました · {time}まで残高から支払います",
+      "freeLow": "無料枠：残り{percent}",
+      "freeLowRefills": "無料枠：残り{percent} · {time}にリセット",
+      "freeUsed": "無料枠を使い切りました · 現在は残高から支払っています",
+      "freeUsedUntil": "無料枠を使い切りました · {time}まで残高から支払います",
       "windowLow": "{window, select, 7d {週間} other {5時間}}の利用枠の{percent}を使用済み",
       "windowLowResets": "{window, select, 7d {週間} other {5時間}}の利用枠の{percent}を使用済み · {time}にリセット",
       "windowUsed": "{window, select, 7d {週間の利用枠を使い切りました} other {5時間の利用枠を使い切りました}}",
@@ -286,11 +294,17 @@
     },
     "dropFiles": "ドロップしてファイルを添付",
     "addContext": "コンテキストを追加",
+    "docOutput": {
+      "chip": "ドキュメント",
+      "remove": "出力：ドキュメント。削除",
+      "title": "回答はドキュメントとして作成されます。クリックすると解除されます。"
+    },
     "menu": {
       "attachFiles": "ファイルや写真を添付",
       "openingGoogleDrive": "Google Driveを開いています…",
       "addFromGoogleDrive": "Google Driveからファイルを追加",
       "addFromSharePoint": "SharePointからファイルを追加",
+      "writeAsDoc": "ドキュメントとして作成",
       "browserTitle": "このタスクでは、{agent}がブラウザモードを使用できます。オフにすると次のメッセージから適用されます。",
       "browser": "ブラウザ",
       "browserOff": "このタスクのブラウザをオフにする",
@@ -309,7 +323,11 @@
       "none": "プロジェクトなし"
     },
     "chooseHarness": "ハーネスを選択",
-    "voiceCall": "音声通話"
+    "voiceCall": "音声モード",
+    "dictation": {
+      "start": "音声入力",
+      "stop": "音声入力を停止"
+    }
   },
   "attachmentThumbnail": {
     "open": "画像を開く",
@@ -496,7 +514,19 @@
       "missingType": "グラフの種類が指定されていません",
       "unsupportedType": "サポートされていないグラフの種類です：「{type}」。サポートされている種類：{supported}。",
       "invalidJson": "グラフの仕様のJSONが無効です",
-      "error": "エラー：{error}"
+      "error": "エラー：{error}",
+      "loading": "グラフを描画中…",
+      "chartLabel": "グラフ",
+      "diagramLabel": "図",
+      "copyImage": "画像としてコピー",
+      "downloadPng": "PNG をダウンロード",
+      "showSource": "ソースを表示",
+      "hideSource": "ソースを隠す",
+      "tooLarge": "仕様が {limit} KB を超えています",
+      "tooManyDatasets": "データセットが多すぎます（{count}）。上限は {limit} です",
+      "tooManyPoints": "データポイントが多すぎます（{count}）。上限は {limit} です",
+      "tooManyNodes": "ノードが多すぎます（{count}）。上限は {limit} です",
+      "emptyDiagram": "図が空です"
     }
   },
   "taskModes": {
@@ -750,10 +780,14 @@
     "phoneWorking": "対応中…",
     "phoneDone": "完了しました。最小化して回答を確認してください。",
     "phoneMinimize": "最小化",
+    "overlayQuestion": "{agent} からの質問がチャットで待っています。",
+    "overlayHandOver": "{site}であなたの操作が必要です：{reason}。",
+    "overlayHandOverWatching": "{site}であなたの操作が必要です：{reason}。完了すると {agent} が自動で再開します。",
+    "overlayGoToQuestion": "質問に移動",
     "talkTo": "{agent} と話す"
   },
   "voiceCall": {
-    "dialogLabel": "{agent}との音声通話",
+    "dialogLabel": "音声モード",
     "connecting": "接続中…",
     "ending": "終了中…",
     "working": "対応中…",

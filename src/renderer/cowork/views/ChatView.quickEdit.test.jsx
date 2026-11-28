@@ -59,6 +59,21 @@ describe('ChatView quick edits', () => {
     expect(screen.getByRole('dialog', { name: 'Viewer for MindsHub explainer' })).toBeInTheDocument();
   });
 
+  // ENG-4684: an inline artifact's Submit sends the bar's prompt plus the
+  // page's state as JSON; the turn keeps the pill and folds the JSON away.
+  it("shows an inline Submit's words and pill, with its JSON folded", async () => {
+    const user = userEvent.setup();
+    const submit = `${PROMPT}\n\n\`\`\`json\n{\n  "budget": 1200\n}\n\`\`\``;
+    render(<ChatView task={taskWith([{ id: 'u1', role: 'user', content: submit }])} />);
+
+    expect(screen.getByText('hi')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open MindsHub explainer' })).toBeInTheDocument();
+    expect(screen.queryByText(/About the artifact/)).toBeNull();
+    expect(screen.queryByText(/"budget"/)).toBeNull();
+    await user.click(screen.getByRole('button', { name: /Submitted data/ }));
+    expect(await screen.findByText(/"budget": 1200/)).toBeInTheDocument();
+  });
+
   it('names an unknown artifact by its slug, without opening anything', () => {
     render(<ChatView task={taskWith([{ id: 'u1', role: 'user', content: 'hi\n\n(About the artifact `gone-1`.)' }])} />);
     expect(screen.getByText('gone-1')).toBeInTheDocument();

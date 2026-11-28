@@ -2,13 +2,15 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
   <dict>
+    <!-- The app and every helper sign with this file under the hardened
+         runtime. It grants neither allow-dyld-environment-variables nor
+         disable-library-validation, so dyld ignores DYLD_ variables and the
+         app's processes load only code signed by Apple or by the app's own
+         team. electron-builder signs every Mach-O file in the bundle with the
+         app's identity, native modules included. -->
     <key>com.apple.security.cs.allow-jit</key>
     <true/>
     <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-    <true/>
-    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
-    <true/>
-    <key>com.apple.security.cs.disable-library-validation</key>
     <true/>
     <key>com.apple.security.device.audio-input</key>
     <true/>

@@ -190,17 +190,47 @@
     }
   },
   "comingSoon": {
-    "cloudTitle": "Bientôt dans le Cloud",
+    "cloudTitle": "Cela fonctionne dans l’application de bureau",
+    "cloudTitleNamed": "{feature} fonctionne dans l’application de bureau",
     "unavailableTitle": "Fonctionnalité indisponible",
-    "cloudBodyNamed": "{feature} n’est pas encore disponible dans le Cloud. En attendant, vous pouvez l’utiliser dans l’application de bureau.",
-    "cloudBody": "Cette fonctionnalité n’est pas encore disponible dans le Cloud. En attendant, vous pouvez l’utiliser dans l’application de bureau.",
-    "cloudBodyCustom": "{feature} n’est pas encore disponible dans le Cloud. Vous pouvez dès maintenant le connecter comme connecteur personnalisé.",
+    "cloudBodyNamed": "Aujourd’hui, {feature} fonctionne dans l’application de bureau. Téléchargez-la pour y connecter {feature}.",
+    "cloudBody": "Aujourd’hui, cela fonctionne dans l’application de bureau. Téléchargez-la pour l’y utiliser.",
+    "mobileBodyNamed": "{feature} fonctionne dans l’application de bureau, sur un ordinateur.",
+    "mobileBody": "Cette fonction marche dans l’application de bureau, sur un ordinateur.",
+    "cloudBodyCustom": "Aujourd’hui, {feature} fonctionne dans l’application de bureau. Ici, vous pouvez dès maintenant le connecter comme connecteur personnalisé.",
     "unavailableBodyNamed": "{feature} n’est pas disponible dans ce déploiement.",
     "unavailableBody": "Cette fonctionnalité n’est pas disponible dans ce déploiement.",
     "notNow": "Plus tard",
-    "download": "Télécharger l’app",
+    "download": "Télécharger l’application de bureau",
     "connectCustom": "Connecter votre connecteur personnalisé {feature}",
     "buildCustom": "Créer un connecteur personnalisé"
+  },
+  "desktopOffer": {
+    "tag": "Bureau",
+    "notNow": "Plus tard",
+    "download": "Télécharger l’application de bureau",
+    "platforms": "Pour Mac, Windows et Linux.",
+    "code": {
+      "title": "Le mode code fonctionne dans l’application de bureau",
+      "body": "Le mode code travaille sur le code de votre ordinateur : il lui faut donc l’application de bureau. Là, Cowork peut :",
+      "points": {
+        "files": "Lire et modifier le code dans vos propres dossiers et dépôts",
+        "commands": "Exécuter des commandes et des tests sur votre machine",
+        "agents": "Confier une tâche à Claude Code ou Codex"
+      }
+    },
+    "folder": {
+      "projectTitle": "Utiliser un dossier de votre ordinateur dans l’application de bureau",
+      "chatTitle": "Les dossiers de travail sont dans l’application de bureau",
+      "projectBody": "Le navigateur ne peut pas accéder aux fichiers de votre ordinateur. L’application de bureau peut démarrer un projet dans un dossier existant, et Cowork travaille sur ses fichiers.",
+      "chatBody": "Le navigateur ne peut pas accéder aux fichiers de votre ordinateur. Dans l’application de bureau, vous pouvez ajouter des dossiers de votre ordinateur à une discussion, et Cowork y travaille.",
+      "points": {
+        "inPlace": "Aucun envoi : les fichiers restent là où ils sont",
+        "saved": "Ce qu’il crée est enregistré sur votre ordinateur",
+        "kept": "Retirer le dossier de Cowork laisse vos fichiers en place"
+      },
+      "note": "Pour Mac, Windows et Linux. Ici, dans le navigateur, vous pouvez toujours importer des fichiers."
+    }
   },
   "loadStatus": {
     "retry": "Réessayer",
@@ -210,10 +240,6 @@
   "upToDate": "À jour",
   "upToDateSaving": "Enregistrement…",
   "upToDateSaved": "Enregistré",
-  "usageBar": {
-    "hideAllowance": "Masquer le quota",
-    "hide": "Masquer"
-  },
   "diagnostics": {
     "copy": "Copier les diagnostics",
     "copied": "Copié",
@@ -428,7 +454,7 @@
     "connectProvider": {
       "title": "Connectez un fournisseur pour commencer à discuter",
       "operatorTitle": "Un fournisseur doit être configuré",
-      "body": "Commencez avec MindsHub et profitez d’un quota gratuit sur MindsHub Air, puis payez à l’usage. Ou ajoutez votre propre clé API (Anthropic, OpenAI ou tout point de terminaison compatible OpenAI) dans les paramètres.",
+      "body": "Commencez avec MindsHub et profitez d’un quota gratuit, puis payez à l’usage. Ou ajoutez votre propre clé API (Anthropic, OpenAI ou tout point de terminaison compatible OpenAI) dans les paramètres.",
       "operatorBody": "Demandez à votre opérateur de configurer le fournisseur de modèles avant de lancer une tâche.",
       "startFree": "Commencer gratuitement",
       "bodyMobile": "Connectez votre propre fournisseur dans les paramètres."
@@ -438,7 +464,8 @@
       "fromDesktop": "Votre compte est prêt. Vous pouvez commencer ici, ou revenir dans l’app {product} et vous connecter.",
       "dismiss": "Fermer"
     },
-    "ownWorkHeading": "Sur quoi {product} doit-il travailler ?"
+    "ownWorkHeading": "Sur quoi {product} doit-il travailler ?",
+    "galleryHint": "D'après l'exemple {title}. Modifiez ce que vous voulez, puis appuyez sur Envoyer."
   },
   "logout": {
     "title": "Se déconnecter de {product} ?",
@@ -451,7 +478,53 @@
     "failed": "Impossible de terminer la déconnexion. Veuillez réessayer.",
     "waitNote": "Déconnexion en cours. Vous pouvez fermer cette fenêtre, l’opération se terminera d’elle-même."
   },
+  "notices": {
+    "title": "Notifications",
+    "ariaLabel": "{count, plural, =0 {Notifications} one {Notifications, # non lue} other {Notifications, # non lues}}",
+    "unread": "Non lue :",
+    "markAllRead": "Tout marquer comme lu",
+    "emptyTitle": "Aucune notification",
+    "emptyDescription": "Les exécutions planifiées qui demandent votre attention apparaissent ici.",
+    "loadFailed": "Impossible de charger les notifications."
+  },
   "shortcuts": {
     "showBrowser": "Afficher le navigateur"
+  },
+  "gallery": {
+    "open": "Galerie de cas d'usage",
+    "title": "Galerie de cas d'usage",
+    "welcomeTitle": "Bienvenue dans {product}",
+    "welcomeIntro": "Vous ne savez pas par où commencer ? Voici ce que {product} a fait à partir d'un seul message. Ouvrez un exemple pour voir le résultat, puis partez de là.",
+    "intro": "À court d'idées ? Voici ce que {product} a fait à partir d'un seul message. Ouvrez un exemple pour voir le résultat, puis partez de là.",
+    "hide": "Masquer la galerie",
+    "searchLabel": "Rechercher des exemples",
+    "searchPlaceholder": "Rechercher : diapositives, tableur, révisions…",
+    "tabsLabel": "Catégories",
+    "all": "Tous",
+    "startHere": "Commencer ici",
+    "allExamples": "Tous les exemples",
+    "results": "{count, plural, one {# exemple correspond} other {# exemples correspondent}}",
+    "noResults": "Rien ne correspond. Décrivez ce dont vous avez besoin dans la zone et {product} partira de là.",
+    "loading": "Chargement des exemples…",
+    "unavailable": "Les exemples ne peuvent pas être chargés pour le moment.",
+    "retry": "Réessayer",
+    "minutes": "{count, plural, one {Environ # minute} other {Environ # minutes}}",
+    "builtWith": "Fait avec {model}",
+    "needs": "Nécessite : {needs}",
+    "backToAll": "Tous les exemples",
+    "backToResults": "Résultats pour « {query} »",
+    "position": "{current} sur {total}",
+    "previous": "Exemple précédent",
+    "next": "Exemple suivant",
+    "breadcrumb": "Fil d'Ariane",
+    "whatItMade": "Ce que {product} a fait",
+    "download": "Télécharger",
+    "sampleInput": "L'exemple que nous lui avons donné",
+    "playInBrowser": "Ouvrir dans votre navigateur",
+    "start": "Partir de cet exemple",
+    "tryIt": "Essayer cet exemple",
+    "startNote": "Place le message dans la zone. Rien ne s'exécute tant que vous n'avez pas appuyé sur Envoyer.",
+    "tryItNote": "Le lance maintenant avec des données d’exemple, comme une nouvelle tâche.",
+    "ownFile": "Utiliser mon propre fichier"
   }
 }

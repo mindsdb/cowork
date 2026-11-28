@@ -23,6 +23,7 @@ import { decideBootShellInstall } from './update-logic';
 import { withUpdateMaintenance } from './update-maintenance';
 import { SERVER_STOP_CEILING_MS, forceReapServer, isServerRunning, startServer, stopServer, withServerMaintenance } from './server-process';
 import { countRunningTasks } from './running-tasks';
+import { holdQuitWriters, runQuitFlushes } from './quit-flush';
 import type { RestartRequestResult } from '../shared/restart-confirmation';
 
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
@@ -369,8 +370,16 @@ export async function installShellAutoUpdate(source: ShellInstallSource = 'user'
     if (!active?.beginInstall(source)) return false;
     const wasRunning = isServerRunning();
     let launched = false;
+    let resumeWriters: (() => void) | null = null;
     try {
       await stopServerForInstall();
+      // macOS quits inside quitAndInstall before before-quit can drain, so
+      // writes still queued for disk are flushed here. New writes stay held
+      // until the app quits or the install is abandoned.
+      resumeWriters = holdQuitWriters();
+      if (!(await runQuitFlushes())) {
+        diagnostic("main.shell-auto-update-runtime", "WARNING", "shell_updater_quit_flush_did_not_finish", '[shell-updater] pending writes did not finish before the install');
+      }
       // Resolves true only once the app has begun quitting. A normal return
       // from electron-updater's quitAndInstall() is not that: the installer
       // can fail and report it as an `error` event, and macOS can fail while
@@ -380,6 +389,7 @@ export async function installShellAutoUpdate(source: ShellInstallSource = 'user'
       active.abortInstall(error);
     }
     if (launched) return true;
+    resumeWriters?.();
     if (wasRunning) await restoreServerAfterAbortedInstall();
     return false;
   }));

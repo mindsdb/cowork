@@ -6,17 +6,21 @@
 // Pausing lives on the task's page and row, not here.
 //
 // "When" is one line of compact controls sized to their values (how often,
-// the day or date when that needs one, the time, the zone), the way calendar
-// and scheduler forms read: "Every week · Monday · at 9:00 AM".
+// the days or date when that needs them, the time, the zone), the way
+// calendar and scheduler forms read: "Every week · M T W T F S S · at 9:00 AM"
+// or "Every month · First · Monday · at 9:00 AM".
 
 import { useEffect, useMemo, useState } from 'react';
+import { Toggle } from '@base-ui/react/toggle';
 import { projectLabel } from '../../lib/projectLabel';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
-import { Alert, Button, Field, Select, Input, Textarea, Tooltip } from '../ui';
+import { Alert, Button, Checkbox, Field, Select, Input, Textarea, Tooltip } from '../ui';
+import { connectionMuteKey } from '../../lib/connectionMutes';
+import { matchesScheduleExclusion, scheduleConnectionExclusions, toggleScheduleExclusion } from '../../lib/scheduleConnectionExclusions';
 import { missedRunLabel, missedRunText } from '../../lib/scheduleCopy';
 import {
-  INTERVAL_MINUTES, defaultWhen, describeWhen, deviceZone, formatRun, nextRuns, timeZoneLabel, usableZone,
-  weekdayName, whenFromDate, zoneChoices,
+  INTERVAL_MINUTES, MONTH_WEEKS, defaultWhen, describeWhen, deviceZone, formatRun, nextRuns, recurrenceFromWhen,
+  timeZoneLabel, usableZone, weekdayInitial, weekdayName, whenFromDate, zoneChoices,
 } from '../../lib/scheduleWhen';
 import Ico from '../Icons';
 import ModelSelect from '../ModelSelect.jsx';
@@ -53,6 +57,7 @@ const CADENCE_OPTIONS = [
   { value: 'daily',    key: 'daily' },
   { value: 'weekdays', key: 'weekdays' },
   { value: 'weekly',   key: 'weekly' },
+  { value: 'monthly',  key: 'monthly' },
 ];
 
 // Mon first, as a week reads; values are JS getDay() numbers.
@@ -83,6 +88,7 @@ export default function ScheduleTaskModal({
   projects = [],
   models = [],
   modelMeta = {},
+  connectors = [],         // the account's connections; a task can leave some out
   defaultProjectPath = '',
   busy = false,
   agentLabel,
@@ -92,6 +98,13 @@ export default function ScheduleTaskModal({
   const displayName = productName(agentLabel);
   const cadenceOptions = CADENCE_OPTIONS.map(({ value, key }) => ({ value, label: t(`scheduleTaskModal.cadence.${key}`) }));
   const weekdayOptions = WEEKDAY_ORDER.map((d) => ({ value: String(d), label: weekdayName(d) }));
+  // Monthly: a day of the month, or the first to last weekday of the month.
+  const monthPickOptions = [
+    { value: 'day', label: t('scheduleTaskModal.monthBy.day') },
+    { separator: true },
+    ...MONTH_WEEKS.map((week) => ({ value: String(week), label: t(`scheduleTaskModal.monthBy.week${week === -1 ? 'Last' : week}`) })),
+  ];
+  const monthDayOptions = Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: String(i + 1) }));
 
   const [form, setForm] = useState(() => emptyForm({ defaultProjectPath }));
   const [error, setError] = useState('');
@@ -109,13 +122,14 @@ export default function ScheduleTaskModal({
       const match = task.projectId ? projects.find((p) => p.id === task.projectId) : null;
       const timezone = usableZone(task.timezone);
       const at = task.nextRunAt && !Number.isNaN(new Date(task.nextRunAt).getTime())
-        ? whenFromDate(task.nextRunAt, task.cadence || 'daily', timezone)
+        ? whenFromDate(task.nextRunAt, task.cadence || 'daily', timezone, task.recurrence)
         : { ...defaultWhen(new Date(), timezone), cadence: task.cadence || 'daily' };
       setForm({
         title:       task.title || '',
         prompt:      task.prompt || '',
         projectPath: match?.path || defaultProjectPath || NO_PROJECT,
         model:       task.model || DEFAULT_MODEL,
+        disabledConnections: scheduleConnectionExclusions(task.disabledConnections),
         timezone,
         ...at,
       });
@@ -161,6 +175,10 @@ export default function ScheduleTaskModal({
       setError(t('scheduleTaskModal.errorNoPrompt', { agent: displayName }));
       return;
     }
+    if (form.cadence === 'weekly' && !(form.days || []).length) {
+      setError(t('scheduleTaskModal.errorPickDays'));
+      return;
+    }
     // A preview can outlive its next occurrence while the dialog stays open.
     const first = formRuns(form, task, new Date())[0];
     if (!first) {
@@ -181,11 +199,15 @@ export default function ScheduleTaskModal({
       title:        form.title.trim() || form.prompt.trim().slice(0, 80),
       prompt:       form.prompt,
       cadence:      form.cadence,
+      // The days a weekly or monthly task runs on; null for other cadences.
+      recurrence:   recurrenceFromWhen(form),
       timezone:     form.timezone,
       next_run_at:  first.toISOString(),
       project_id:   projectMatch?.id || null,
       // Sent even when it's the default, so an edit can clear a pin.
       model:        sentModel,
+      // Sent even when empty, so an edit can give a task every connection back.
+      disabled_connections: form.disabledConnections,
     };
     // A one-off that already ran stays off when only its time changes, so a
     // new time in the future turns it back on: "from the next run" is true.
@@ -266,14 +288,44 @@ export default function ScheduleTaskModal({
                 options={cadenceOptions}
               />
               {form.cadence === 'weekly' && (
-                <Select
-                  value={String(form.weekday)}
-                  onValueChange={(v) => v && update('weekday', Number(v))}
-                  ariaLabel={t('scheduleTaskModal.dayOfWeek')}
-                  width={140}
-                  style={fieldSelectStyle}
-                  options={weekdayOptions}
+                <WeekdayToggles
+                  days={form.days || []}
+                  onChange={(days) => update('days', days)}
+                  label={t('scheduleTaskModal.daysOfWeek')}
                 />
+              )}
+              {form.cadence === 'monthly' && (
+                <>
+                  <Select
+                    value={form.monthBy === 'weekday' ? String(form.week) : 'day'}
+                    onValueChange={(v) => v && setForm((f) => (v === 'day'
+                      ? { ...f, monthBy: 'day' }
+                      : { ...f, monthBy: 'weekday', week: Number(v) }))}
+                    ariaLabel={t('scheduleTaskModal.monthBy.label')}
+                    width={110}
+                    style={fieldSelectStyle}
+                    options={monthPickOptions}
+                  />
+                  {form.monthBy === 'weekday' ? (
+                    <Select
+                      value={String(form.weekday)}
+                      onValueChange={(v) => v && update('weekday', Number(v))}
+                      ariaLabel={t('scheduleTaskModal.dayOfWeek')}
+                      width={140}
+                      style={fieldSelectStyle}
+                      options={weekdayOptions}
+                    />
+                  ) : (
+                    <Select
+                      value={String(form.monthDay)}
+                      onValueChange={(v) => v && update('monthDay', Number(v))}
+                      ariaLabel={t('scheduleTaskModal.dayOfMonth')}
+                      width={80}
+                      style={fieldSelectStyle}
+                      options={monthDayOptions}
+                    />
+                  )}
+                </>
               )}
               {form.cadence === 'once' && (
                 <Input
@@ -349,6 +401,33 @@ export default function ScheduleTaskModal({
             )}
           </div>
 
+          {connectors.length > 0 && (
+            // A group, not a Field: Field names its one control after its
+            // label, and each box here needs its own name.
+            <div role="group" aria-labelledby="schedule-connections-label" className="flex flex-col">
+              <span id="schedule-connections-label" className="mb-1.5 text-sm font-medium text-ink-2">
+                {t('scheduleTaskModal.connections')}
+              </span>
+              <div className="flex flex-col gap-1.5">
+                {connectors.map((c) => {
+                  const key = c.datasourceId != null ? `datasource:${c.datasourceId}` : connectionMuteKey(c.engine, c.name);
+                  const used = !form.disabledConnections.some((d) => matchesScheduleExclusion(d, c, connectors));
+                  return (
+                    <label key={key} className="flex items-center gap-2 text-[13px] cursor-pointer">
+                      <Checkbox
+                        size="sm"
+                        checked={used}
+                        onCheckedChange={(on) => update('disabledConnections', toggleScheduleExclusion(form.disabledConnections, c, on, connectors))}
+                      />
+                      <span className="text-ink">{c.name}</span>
+                      <span className="text-ink-3">{c.display_name || c.engine}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {error && (
             <Alert variant="danger">{error}</Alert>
           )}
@@ -392,14 +471,49 @@ export default function ScheduleTaskModal({
 function formRuns(form, task, now) {
   const original = task?.nextRunAt ? new Date(task.nextRunAt) : null;
   if (original && original > now) {
-    const saved = whenFromDate(original, task.cadence || 'daily', task.timezone);
+    const saved = whenFromDate(original, task.cadence || 'daily', task.timezone, task.recurrence);
     const unchanged = form.timezone === usableZone(task.timezone)
       && form.cadence === saved.cadence && form.time === saved.time
-      && (form.cadence !== 'weekly' || Number(form.weekday) === saved.weekday)
+      && JSON.stringify(recurrenceFromWhen(form)) === JSON.stringify(recurrenceFromWhen(saved))
       && (form.cadence !== 'once' || form.date === saved.date);
     if (unchanged) return [original, ...nextRuns(form, original, 2, form.timezone)];
   }
   return nextRuns(form, now, 3, form.timezone);
+}
+
+// The days of the week a weekly task runs on, as a row of toggles, Monday
+// first, sized like the form's other controls. Saving with none on asks for
+// one (errorPickDays).
+function WeekdayToggles({ days, onChange, label }) {
+  const on = new Set(days.map(Number));
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      className="inline-flex items-center gap-0.5 rounded-[7px] border border-line bg-surface-2 p-0.5"
+    >
+      {WEEKDAY_ORDER.map((day) => {
+        const name = weekdayName(day);
+        return (
+          <Toggle
+            key={day}
+            pressed={on.has(day)}
+            onPressedChange={(pressed) => onChange(pressed ? [...days, day] : days.filter((d) => Number(d) !== day))}
+            aria-label={name}
+            title={name}
+            className={[
+              'inline-flex h-[30px] min-w-[30px] cursor-pointer items-center justify-center rounded-[5px] border-0 px-1',
+              'bg-transparent text-[12.5px] font-medium text-ink-3 hover:text-ink-2',
+              'data-[pressed]:bg-accent-bg data-[pressed]:text-accent',
+              'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent',
+            ].join(' ')}
+          >
+            {weekdayInitial(day)}
+          </Toggle>
+        );
+      })}
+    </div>
+  );
 }
 
 function emptyForm({ defaultProjectPath }) {
@@ -408,6 +522,7 @@ function emptyForm({ defaultProjectPath }) {
     prompt: '',
     projectPath: defaultProjectPath || NO_PROJECT,
     model: DEFAULT_MODEL,
+    disabledConnections: [],
     timezone: deviceZone(),
     ...defaultWhen(),
   };

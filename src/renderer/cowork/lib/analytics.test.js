@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { START_SURFACE_PATTERN, UPGRADE_PLACEMENTS, coworkStartSurface } from '../../lib/startSurface';
 
 // analytics.js reads import.meta.env (POSTHOG_KEY), the __APP_VERSION__ global
 // (APP_VERSION) and host.isElectron (SURFACE) into module-level constants at
@@ -1203,6 +1204,20 @@ describe('billing + provisioning events (ENG-1533)', () => {
     expect(event.properties.outcome).toBe('unknown');
   });
 
+  it('organization_changed carries both kinds and the cause', async () => {
+    const fetchMock = mockFetch();
+    const { trackOrganizationChanged } = await importAnalytics();
+
+    trackOrganizationChanged({ fromKind: 'company', toKind: 'personal', cause: 'outside_app' });
+
+    const event = await sentEvent(fetchMock, 'organization_changed');
+    expect(event.properties).toMatchObject({
+      from_kind: 'company',
+      to_kind: 'personal',
+      cause: 'outside_app',
+    });
+  });
+
   it('token_cap_hit carries the reason so the three credit blocks are distinguishable', async () => {
     const fetchMock = mockFetch();
     const { trackTokenCapHit } = await importAnalytics();
@@ -1231,6 +1246,104 @@ describe('billing + provisioning events (ENG-1533)', () => {
 
     const event = await sentEvent(fetchMock, 'token_cap_hit');
     expect(event.properties.reason).toBe('token_limit');
+  });
+});
+
+describe('upgrade_clicked', () => {
+  /* capture() stamps `surface` with the client type after the caller's
+     properties, so a card sent as `surface` never reached PostHog. These run
+     the real capture() and read the body it posts. */
+  it('names the placement and its start surface, and keeps surface for the desktop client', async () => {
+    const fetchMock = mockFetch();
+    const { trackUpgradeClicked } = await importAnalytics();
+
+    trackUpgradeClicked('allowance_card', 'plus', 'free');
+
+    const { properties } = await sentEvent(fetchMock, 'upgrade_clicked');
+    expect(properties.placement).toBe('allowance_card');
+    expect(properties.start_surface).toBe('cowork_allowance_card');
+    expect(properties.surface).toBe('desktop');
+    expect(properties.tier).toBe('plus');
+    expect(properties.from_tier).toBe('free');
+  });
+
+  it('keeps the placement on the web client, whose surface is web', async () => {
+    hostState.isElectron = false;
+    const fetchMock = mockFetch();
+    const { trackUpgradeClicked } = await importAnalytics();
+
+    trackUpgradeClicked('allowance_card', 'plus', 'free');
+
+    const { properties } = await sentEvent(fetchMock, 'upgrade_clicked');
+    expect(properties.placement).toBe('allowance_card');
+    expect(properties.start_surface).toBe('cowork_allowance_card');
+    expect(properties.surface).toBe('web');
+  });
+
+  it('records a click with no placement as unknown and names no start surface', async () => {
+    const fetchMock = mockFetch();
+    const { trackUpgradeClicked } = await importAnalytics();
+
+    trackUpgradeClicked(undefined, 'pro', 'plus');
+
+    const { properties } = await sentEvent(fetchMock, 'upgrade_clicked');
+    expect(properties.placement).toBe('unknown');
+    expect(properties).not.toHaveProperty('start_surface');
+    expect(properties.surface).toBe('desktop');
+  });
+
+  it('keeps a placement outside UPGRADE_PLACEMENTS but names no start surface for it', async () => {
+    // 'plan-banner' fails START_SURFACE_PATTERN; 'plan_banner' matches it but is not listed.
+    for (const placement of ['plan-banner', 'plan_banner']) {
+      const fetchMock = mockFetch();
+      const { trackUpgradeClicked } = await importAnalytics();
+
+      trackUpgradeClicked(placement, 'pro', 'plus');
+
+      const { properties } = await sentEvent(fetchMock, 'upgrade_clicked');
+      expect(properties.placement).toBe(placement);
+      expect(properties).not.toHaveProperty('start_surface');
+      expect(properties.tier).toBe('pro');
+    }
+  });
+
+  it('gives each of UPGRADE_PLACEMENTS a cowork_ start surface the subscription service keeps', () => {
+    expect(Object.isFrozen(UPGRADE_PLACEMENTS)).toBe(true);
+    for (const placement of UPGRADE_PLACEMENTS) {
+      expect(coworkStartSurface(placement)).toBe(`cowork_${placement}`);
+      expect(coworkStartSurface(placement)).toMatch(START_SURFACE_PATTERN);
+    }
+  });
+
+  it('every placement a call site sends is in UPGRADE_PLACEMENTS, which the EVENTS vocabulary lists beside unknown', () => {
+    /* The comment on EVENTS.UPGRADE_CLICKED is the list a conversion query
+       is written from, so it names every one of UPGRADE_PLACEMENTS and the
+       'unknown' a click with no placement sends. A call site whose placement
+       is outside UPGRADE_PLACEMENTS ships a link with no start surface, so the
+       click never joins its subscription. Reads the source, because the call
+       sites pass string literals: `upgrade.open(tier, '<placement>')` or
+       `openUpgrade(action, '<placement>')`. */
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const rendererRoot = path.resolve(here, '../..');
+    const vocabularyLine = fs.readFileSync(path.join(here, 'analytics.js'), 'utf8')
+      .split('\n')
+      .find((line) => line.includes('UPGRADE_CLICKED:'));
+    const placementList = vocabularyLine.match(/placement: ((?:'[a-z_]+'\|?)+)/)[1];
+    const vocabulary = new Set([...placementList.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]));
+    expect([...vocabulary].sort()).toEqual([...UPGRADE_PLACEMENTS, 'unknown'].sort());
+
+    const sent = new Set();
+    for (const rel of fs.readdirSync(rendererRoot, { recursive: true })) {
+      if (!/\.(jsx?|tsx?)$/.test(rel) || /\.test\./.test(rel)) continue;
+      const src = fs.readFileSync(path.join(rendererRoot, rel), 'utf8');
+      for (const call of src.matchAll(/(?:\bupgrade\.open|\bopenUpgrade)\([^,()]*,\s*['"]([^'"\n]+)['"]/g)) sent.add(call[1]);
+      for (const call of src.matchAll(/\btrackUpgradeClicked\(\s*['"]([^'"\n]+)['"]/g)) sent.add(call[1]);
+    }
+
+    // Guards the sweep itself: a path or regex that matched nothing would pass.
+    expect(sent.has('allowance_card')).toBe(true);
+    expect(sent.has('usage_bar')).toBe(true);
+    for (const placement of sent) expect(UPGRADE_PLACEMENTS).toContain(placement);
   });
 });
 
@@ -2603,5 +2716,26 @@ describe('next steps under an answer', () => {
     analytics.trackNextStepClicked({ step: 'schedule', resultKind: 'research', position: 1 });
     const event = await sentEvent(fetchMock, 'next_step_clicked');
     expect(event.properties).toMatchObject({ step: 'schedule', result_kind: 'research', position: 1 });
+  });
+});
+
+describe('offers of the desktop app on the web', () => {
+  it('desktop_offer_shown names the feature, the entry and what the main button does', async () => {
+    const fetchMock = mockFetch();
+    const analytics = await importAnalytics();
+    analytics.trackDesktopOfferShown({ feature: 'local_folder', entry: 'chat_context' });
+    const event = await sentEvent(fetchMock, 'desktop_offer_shown');
+    expect(event.properties).toMatchObject({ feature: 'local_folder', entry: 'chat_context', offer: 'download' });
+    expect(event.properties).not.toHaveProperty('connector_id');
+  });
+
+  it('desktop_offer_download_clicked carries the connector and the download link tag', async () => {
+    const fetchMock = mockFetch();
+    const analytics = await importAnalytics();
+    analytics.trackDesktopOfferDownloadClicked({ feature: 'connector', entry: 'connector_directory', connectorId: 'jira' });
+    const event = await sentEvent(fetchMock, 'desktop_offer_download_clicked');
+    expect(event.properties).toMatchObject({
+      feature: 'connector', entry: 'connector_directory', connector_id: 'jira', from: 'cowork-web-connector',
+    });
   });
 });

@@ -8,9 +8,12 @@ export type WorkspaceMode = 'cowork' | 'code';
 export function WorkspaceModeSwitch({
   value,
   onChange,
+  codeTag,
 }: {
   value: WorkspaceMode;
   onChange: (value: WorkspaceMode) => void;
+  /** Shown after the Code label, e.g. where Code only opens an offer. */
+  codeTag?: React.ReactNode;
 }) {
   const { t } = useTranslation('shell');
   return (
@@ -21,10 +24,17 @@ export function WorkspaceModeSwitch({
           if (next === 'cowork' || next === 'code') onChange(next);
         }}
         aria-label={t('workspace.label')}
-        className="workspace-mode-switch"
+        className={codeTag ? 'workspace-mode-switch workspace-mode-switch--tagged' : 'workspace-mode-switch'}
+        // A tag beside Code needs the room: in a 240px sidebar, Japanese only
+        // fits on one line with tighter sides.
+        itemPadding={codeTag ? '5px 6px' : undefined}
         options={[
           { value: 'cowork', label: 'Cowork', icon: Ico.mindsdb(14) },
-          { value: 'code', label: t('workspaceMode.code'), icon: Ico.code(14) },
+          {
+            value: 'code',
+            label: codeTag ? <>{t('workspaceMode.code')}{codeTag}</> : t('workspaceMode.code'),
+            icon: Ico.code(14),
+          },
         ]}
       />
     </div>

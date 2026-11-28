@@ -20,7 +20,8 @@
       "deleting": "Deleting…",
       "copyMessage": "Copy message",
       "copyResponse": "Copy response",
-      "agentFallback": "Agent"
+      "agentFallback": "Agent",
+      "submittedData": "Submitted data"
     },
     "incomplete": {
       "spendCeiling": "Stopped early: this task reached its token budget.",
@@ -74,7 +75,13 @@
       "liveArtifact": "live artifact",
       "deletedBadge": "Deleted",
       "share": "Share",
-      "shareTooltip": "Choose who can open it"
+      "shareTooltip": "Choose who can open it",
+      "goToLatestTooltip": "Scroll to the latest version",
+      "openLink": "Open link",
+      "openLinkTooltip": "Open the artifact's link in a new tab",
+      "updatedSeeBelow": "This was updated. See the latest version below.",
+      "previewThisVersion": "Preview this version",
+      "hideVersionPreview": "Hide this version"
     },
     "kinds": {
       "provider": "Provider",
@@ -92,15 +99,16 @@
       "taskStopped": "Task stopped",
       "providerLimitBody": "The provider's usage limit was reached. Contact your administrator before starting another task.",
       "addFunds": "Add funds",
+      "balanceEmptyAirOnPlan": "Your balance is empty, so this model can't run. Your plan's allowance still covers MindsHub Air.",
       "switchToAir": "Switch to MindsHub Air",
       "balanceRanOut": "Your balance ran out before this task finished. Add funds before starting another task.",
-      "balanceEmptyAirLeft": "Your balance is empty, so this model can't run. MindsHub Air still has free allowance left.",
+      "balanceEmptyAirLeft": "Your balance is empty, so this model can't run. MindsHub Air can still run on your free allowance.",
       "providerUnavailableTitle": "The provider is temporarily unavailable",
       "providerPausedBody": "The provider has paused requests. Try again later or contact your administrator.",
-      "freeAirPausedTitle": "Free MindsHub Air is paused",
+      "freeAirPausedTitle": "Free models are paused",
       "connectProviderTitle": "Connect a provider to start chatting",
       "providerSetupRequiredTitle": "Provider setup is required",
-      "connectProviderBody": "Start with MindsHub and get a free allowance on MindsHub Air, then pay as you go. Or add your own API key in Settings.",
+      "connectProviderBody": "Start with MindsHub and get a free allowance, then pay as you go. Or add your own API key in Settings.",
       "providerSetupRequiredBody": "Ask your operator to configure the model provider before starting a task.",
       "startForFree": "Start for free",
       "openSettings": "Open Settings",
@@ -122,10 +130,10 @@
       "windowPausedMobile": "You've used your {window, select, 7d {weekly} 5h {5-hour} other {plan}} allowance. Paused until it resets."
     },
     "usageAlert": {
-      "freeLow": "Free Air allowance {percent} left",
-      "freeLowRefills": "Free Air allowance {percent} left · refills at {time}",
-      "freeUsed": "Free Air allowance used up · now using your balance",
-      "freeUsedUntil": "Free Air allowance used up · now using your balance until {time}",
+      "freeLow": "Free allowance {percent} left",
+      "freeLowRefills": "Free allowance {percent} left · resets at {time}",
+      "freeUsed": "Free allowance used up · now using your balance",
+      "freeUsedUntil": "Free allowance used up · now using your balance until {time}",
       "windowLow": "{percent} of your {window, select, 7d {weekly} other {5-hour}} allowance used",
       "windowLowResets": "{percent} of your {window, select, 7d {weekly} other {5-hour}} allowance used · resets at {time}",
       "windowUsed": "{window, select, 7d {Weekly} other {5-hour}} allowance used up",
@@ -286,11 +294,17 @@
     },
     "dropFiles": "Drop files to attach",
     "addContext": "Add context",
+    "docOutput": {
+      "chip": "Doc",
+      "remove": "Output: Doc. Remove",
+      "title": "The answer will be written as a doc. Click to remove."
+    },
     "menu": {
       "attachFiles": "Attach files or photos",
       "openingGoogleDrive": "Opening Google Drive…",
       "addFromGoogleDrive": "Add files from Google Drive",
       "addFromSharePoint": "Add files from SharePoint",
+      "writeAsDoc": "Write it as a doc",
       "browserTitle": "{agent} can use browser mode in this task. Off applies from your next message.",
       "browser": "Browser",
       "browserOff": "Turn the browser off for this task",
@@ -309,7 +323,11 @@
       "none": "No project"
     },
     "chooseHarness": "Choose harness",
-    "voiceCall": "Voice call"
+    "voiceCall": "Voice mode",
+    "dictation": {
+      "start": "Dictate",
+      "stop": "Stop dictating"
+    }
   },
   "attachmentThumbnail": {
     "open": "Open image",
@@ -496,7 +514,19 @@
       "missingType": "Missing chart type",
       "unsupportedType": "Unsupported chart type: \"{type}\". Supported: {supported}.",
       "invalidJson": "Invalid JSON in chart specification",
-      "error": "ERROR: {error}"
+      "error": "ERROR: {error}",
+      "loading": "Drawing chart…",
+      "chartLabel": "Chart",
+      "diagramLabel": "Diagram",
+      "copyImage": "Copy as image",
+      "downloadPng": "Download PNG",
+      "showSource": "Show source",
+      "hideSource": "Hide source",
+      "tooLarge": "The specification is larger than {limit} KB",
+      "tooManyDatasets": "Too many datasets ({count}); the limit is {limit}",
+      "tooManyPoints": "Too many data points ({count}); the limit is {limit}",
+      "tooManyNodes": "Too many nodes ({count}); the limit is {limit}",
+      "emptyDiagram": "The diagram is empty"
     }
   },
   "taskModes": {
@@ -750,10 +780,14 @@
     "phoneWorking": "Working on it…",
     "phoneDone": "Done. Minimize to see the answer.",
     "phoneMinimize": "Minimize",
-    "talkTo": "Talk to {agent}"
+    "talkTo": "Talk to {agent}",
+    "overlayQuestion": "{agent} has a question waiting in the chat.",
+    "overlayHandOver": "Your turn on {site}: {reason}.",
+    "overlayHandOverWatching": "Your turn on {site}: {reason}. {agent} carries on by itself once it's done.",
+    "overlayGoToQuestion": "Go to the question"
   },
   "voiceCall": {
-    "dialogLabel": "Voice call with {agent}",
+    "dialogLabel": "Voice mode",
     "connecting": "Connecting…",
     "ending": "Ending…",
     "working": "Working on it…",

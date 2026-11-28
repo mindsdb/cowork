@@ -18,6 +18,9 @@ import { useEffect, useRef, useState } from 'react';
 import Ico from '../Icons';
 import { Alert, Button, Field, Input, Textarea, Tooltip } from '../ui';
 import { Modal, ModalHeader, ModalBody, ModalFooter } from '../ui/Modal';
+import { useToastManager } from '../ui/Toast';
+import { projectLabel } from '../../lib/projectLabel';
+import { notUploadedSentence } from '../../lib/projectUploads';
 import {
   createProject,
   uploadProjectFiles,
@@ -27,6 +30,8 @@ import {
 import { host } from '../../../platform/host';
 import { useOrgMode } from '../../../lib/orgMode';
 import { useTranslation } from '../../../lib/i18n';
+import DesktopOfferModal, { DesktopTag } from '../DesktopOfferModal';
+import { desktopOfferAvailable } from '../../lib/desktopOffer';
 
 // Kept for the Input/Textarea `style` props below: those carry the
 // `.field-input` globals class (which itself declares padding/border/bg), so
@@ -64,6 +69,7 @@ function FileList({ files, onRemove }) {
 
 export default function NewProjectModal({ open, onClose, onCreated }) {
   const { t } = useTranslation('projects');
+  const toastManager = useToastManager();
   const [name, setName] = useState('');
   const [instructions, setInstructions] = useState('');
   const [files, setFiles] = useState([]);
@@ -79,6 +85,9 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
   // rather than offered and refused.
   const orgMode = useOrgMode();
   const canChooseFolder = host.isElectron && !orgMode;
+  // The web build keeps the field, and its button offers the desktop app.
+  const offersFolder = !canChooseFolder && desktopOfferAvailable();
+  const [folderOfferOpen, setFolderOfferOpen] = useState(false);
 
   // Reset everything when the modal opens — `open` flipping false→true
   // should always present a clean form.
@@ -91,6 +100,7 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
     setError('');
     setDragActive(false);
     setFolderPath('');
+    setFolderOfferOpen(false);
     const id = requestAnimationFrame(() => nameRef.current?.focus());
     return () => cancelAnimationFrame(id);
   }, [open]);
@@ -165,15 +175,37 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
         }
       }
 
-      // 3) Upload files in one multipart request. All-or-nothing per
-      //    file — server returns a per-file result list we ignore for
-      //    now (could surface partial failures in a toast later).
+      // 3) The project exists even if the multipart upload fails. Keep any
+      // upload notice visible after the dialog closes.
       if (files.length) {
+        const label = projectLabel(result) || finalName;
         try {
-          await uploadProjectFiles(finalName, files);
+          const uploaded = await uploadProjectFiles(finalName, files);
+          // A 200 still lists a file the server refused, such as a dotfile.
+          const notUploaded = notUploadedSentence(uploaded);
+          if (notUploaded) {
+            toastManager.add({
+              type: 'danger',
+              timeout: 0,
+              title: t('newProjectModal.someFilesNotUploaded', { name: label }),
+              description: notUploaded,
+            });
+          }
         } catch (e) {
           // eslint-disable-next-line no-console
           diagnostic("renderer.cowork.components.project.NewProjectModal", "WARNING", "new_project_uploads_failed", '[new-project] uploads failed', e);
+          // cowork-server answers a 4xx before it writes any file. A 5xx from a
+          // gateway, a dropped connection or an unreadable success can come
+          // after some files were saved.
+          const refused = e?.status >= 400 && e.status < 500;
+          toastManager.add({
+            type: 'danger',
+            timeout: 0,
+            title: refused
+              ? t('newProjectModal.filesNotUploaded', { name: label })
+              : t('newProjectModal.filesUploadUnconfirmed', { name: label }),
+            description: refused ? e.message : undefined,
+          });
         }
       }
 
@@ -310,6 +342,28 @@ export default function NewProjectModal({ open, onClose, onCreated }) {
                 )}
               </div>
             </Field>
+          )}
+
+          {offersFolder && (
+            <Field
+              label={t('newProjectModal.locationLabel')}
+              optional
+              help={t('newProjectModal.locationHelpDefault')}
+            >
+              <div className="flex items-center gap-2">
+                <Button variant="tinted" disabled={busy} onClick={() => setFolderOfferOpen(true)}>
+                  {t('newProjectModal.useExistingFolder')}
+                  <DesktopTag />
+                </Button>
+              </div>
+            </Field>
+          )}
+          {offersFolder && (
+            <DesktopOfferModal
+              feature={folderOfferOpen ? 'local_folder' : null}
+              entry="new_project"
+              onClose={() => setFolderOfferOpen(false)}
+            />
           )}
 
           <div className="flex flex-col gap-[6px]">

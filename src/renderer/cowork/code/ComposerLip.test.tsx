@@ -119,13 +119,15 @@ describe('ComposerLip', () => {
     expect(screen.queryByRole('button', { name: 'Add credits' })).not.toBeInTheDocument();
   });
 
+  const ALLOWANCE_RESETS = 'Add credits to continue now, or wait for the allowance to reset, then continue in this task.';
   it.each([
-    ['included_allowance_exhausted', 'Your included allowance is used up', 'included_allowance_exhausted'],
-    ['free_air_daily_spend_fuse_exceeded', 'Free MindsHub Air is paused', 'free_serving_paused'],
-    ['window_allowance_exhausted', 'Your included allowance is used up', 'window_allowance_exhausted'],
-  ])('offers credits when %s blocks the turn until a reset', (code, title, billingTrigger) => {
+    ['included_allowance_exhausted', 'Your included allowance is used up', ALLOWANCE_RESETS, 'included_allowance_exhausted'],
+    ['free_air_daily_spend_fuse_exceeded', 'Free models are paused', 'They resume when the daily budget resets. Add credits or choose another model to continue now.', 'free_serving_paused'],
+    ['window_allowance_exhausted', 'Your included allowance is used up', ALLOWANCE_RESETS, 'window_allowance_exhausted'],
+  ])('offers credits when %s blocks the turn until a reset', (code, title, body, billingTrigger) => {
     const { onAddCredits } = renderFailure(code, 'upstream 429');
     expect(screen.getByText(`${title}.`)).toBeInTheDocument();
+    expect(screen.getByText(body)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Add credits' }));
     // Reported under chat mode's billing_opened trigger for the same condition,
     // not as a drained wallet.

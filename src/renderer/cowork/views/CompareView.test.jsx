@@ -1,5 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+
+import { hasWorkStarted, __resetWorkStartedForTests } from '../lib/documentWork';
 
 const hostMock = vi.hoisted(() => ({
   isElectron: true,
@@ -12,6 +14,7 @@ const hostMock = vi.hoisted(() => ({
 const deployment = vi.hoisted(() => ({ PLATFORM_UI: true }));
 vi.mock('../../lib/deployment', () => deployment);
 
+vi.mock('../hooks/useAccountUser', () => ({ useAccountUser: () => ({ orgId: 'org-1', sub: 'u1' }) }));
 vi.mock('../../platform/host', () => ({
   host: hostMock,
   getAccessToken: vi.fn(async () => null),
@@ -186,6 +189,22 @@ describe('CompareView', () => {
     expect(screen.getByLabelText('Cost not read yet').textContent).toBe('—');
   });
 
+  it('shows a comparison the plan covered as included in the history, and a covered side as $0 beside a priced one', async () => {
+    const snapshot = (usd, includedCalls) => ({ estimatedCostUsd: usd, tokens: usd === null ? 0 : 1000, partial: false, includedCalls });
+    const covered = comparison({ id: 'c-covered', title: 'Covered' });
+    covered.sides = covered.sides.map((side) => ({ ...side, usage: snapshot(null, 2) }));
+    const mixed = comparison({ id: 'c-mixed', title: 'Mixed' });
+    mixed.sides = [{ ...mixed.sides[0], usage: snapshot(null, 2) }, { ...mixed.sides[1], usage: snapshot(0.42, 1) }];
+    mockHistory([covered, mixed]);
+    render(<CompareView models={models} projects={projects} />);
+
+    const coveredRow = await screen.findByRole('button', { name: 'Open comparison: Covered' });
+    expect(within(coveredRow).getByLabelText('Included in your plan').textContent).toBe('Included in your plan');
+    expect(within(coveredRow).queryByText(/\$/)).toBeNull();
+    const mixedRow = screen.getByRole('button', { name: 'Open comparison: Mixed' });
+    expect(within(mixedRow).getByLabelText('Estimated cost $0.42').textContent).toBe('$0.42');
+  });
+
   it('pages through older comparisons', async () => {
     mockHistory([comparison({ id: 'c1', title: 'Newest' })], true);
     render(<CompareView models={models} projects={projects} />);
@@ -205,6 +224,20 @@ describe('CompareView', () => {
     render(<CompareView models={models} projects={projects} />);
     expect(await screen.findByRole('heading', { name: 'Compare two models' })).toBeTruthy();
     expect(screen.queryByText('Comparisons')).toBeNull();
+  });
+
+  it('protects work typed in either Compare composer from organization landing', async () => {
+    __resetWorkStartedForTests();
+    mockHistory([]);
+    const start = render(<CompareView models={models} projects={projects} />);
+    fireEvent.input(await screen.findByLabelText('Task for both models'), { target: { value: 'Compare costs' } });
+    expect(hasWorkStarted()).toBe(true);
+    start.unmount();
+
+    __resetWorkStartedForTests();
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    fireEvent.input(await screen.findByLabelText('Follow-up message'), { target: { value: 'Include shipping' } });
+    expect(hasWorkStarted()).toBe(true);
   });
 
   // The card around a composer (border, radius, shadow, focus) is the shared
@@ -302,6 +335,33 @@ describe('CompareView', () => {
     // Both the card's send arrow and the button below it.
     expect(screen.getAllByRole('button', { name: 'Start comparison' }).map((b) => b.disabled)).toEqual([true, true]);
     expect(screen.getAllByRole('button', { name: /Add funds/ }).length).toBeGreaterThan(0);
+    // The notice names the session's organization, so the console tops up this one (ENG-4333).
+    fireEvent.click(screen.getAllByRole('button', { name: /Add funds/ })[0]);
+    expect(new URL(hostMock.openExternal.mock.calls[0][0]).searchParams.get('organization')).toBe('org-1');
+  });
+
+  it('starts two picks the Free tier covers on an empty wallet while the allowance has room', async () => {
+    mockHistory([]);
+    const freeCoversBoth = { modelEnabled: {}, modelCoveredByTier: { kimi: 'free', qwen: 'free' } };
+    render(withUsage(usage(EMPTY), <CompareView models={models} modelMeta={freeCoversBoth} projects={projects} />));
+    fireEvent.change(await screen.findByLabelText('Task for both models'), { target: { value: 'go' } });
+    const [modelA, modelB] = screen.getAllByLabelText('model');
+    fireEvent.change(modelA, { target: { value: 'kimi' } });
+    fireEvent.change(modelB, { target: { value: 'qwen' } });
+    expect(screen.queryByText('Balance empty')).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Start comparison' }).map((b) => b.disabled)).toEqual([false, false]);
+  });
+
+  it('will not start a side only Plus covers on an empty wallet without a paid plan', async () => {
+    mockHistory([]);
+    const freeCoversOne = { modelEnabled: {}, modelCoveredByTier: { kimi: 'free', qwen: 'plus' } };
+    render(withUsage(usage(EMPTY), <CompareView models={models} modelMeta={freeCoversOne} projects={projects} />));
+    fireEvent.change(await screen.findByLabelText('Task for both models'), { target: { value: 'go' } });
+    const [modelA, modelB] = screen.getAllByLabelText('model');
+    fireEvent.change(modelA, { target: { value: 'kimi' } });
+    fireEvent.change(modelB, { target: { value: 'qwen' } });
+    expect(screen.getByText('Balance empty')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Start comparison' }).map((b) => b.disabled)).toEqual([true, true]);
   });
 
   it('on a plan, will not start a side the plan does not cover and the wallet cannot pay for', async () => {
@@ -416,6 +476,8 @@ describe('CompareView', () => {
     expect(within(held).getByText('Qwen stopped because the balance ran out. Add funds to keep comparing.')).toBeTruthy();
     fireEvent.click(within(held).getByRole('button', { name: 'Add funds' }));
     expect(hostMock.openExternal).toHaveBeenCalledTimes(1);
+    // Names the session's organization, so the console tops up this one (ENG-4333).
+    expect(new URL(hostMock.openExternal.mock.calls[0][0]).searchParams.get('organization')).toBe('org-1');
     expect(screen.getByRole('status', { name: 'Side B status' }).textContent).toMatch(/^Out of credits/);
     expect(screen.getByText("Qwen ran out of credits before finishing, so this turn can't be judged.")).toBeTruthy();
     expect(screen.queryByRole('group', { name: 'Which answer was better?' })).toBeNull();
@@ -509,6 +571,79 @@ describe('CompareView', () => {
     expect(within(screen.getByRole('button', { name: 'Open comparison: Second task' })).getByLabelText('No winner yet')).toBeTruthy();
     // Few comparisons: no search box yet.
     expect(screen.queryByPlaceholderText('Search prompts and models')).toBeNull();
+  });
+
+  describe('history at a given width', () => {
+    // happy-dom has no layout: the observer reports the width the test sets.
+    function atWidth(width) {
+      vi.stubGlobal('ResizeObserver', class {
+        constructor(cb) { this.cb = cb; }
+        observe(el) { this.cb([{ target: el, contentRect: { width } }]); }
+        disconnect() {}
+      });
+    }
+    afterEach(() => vi.unstubAllGlobals());
+
+    function history() {
+      mockHistory([comparison({ verdict: 'b', sides: [
+        { ...comparison().sides[0], turnCount: 3 },
+        { ...comparison().sides[1], turnCount: 2 },
+      ] })]);
+      render(<CompareView models={models} projects={projects} />);
+      return screen.findByRole('button', { name: 'Open comparison: Build a dashboard' });
+    }
+
+    it('stacks each comparison on a phone, with the prompt, both models and labelled figures', async () => {
+      atWidth(334);
+      const row = await history();
+      // No columns to squeeze: the header row is gone and the row is not a grid.
+      expect(screen.queryByText('Prompt')).toBeNull();
+      expect(screen.queryByText('Models')).toBeNull();
+      expect(row.style.gridTemplateColumns).toBe('');
+      expect(within(row).getByText('Build a dashboard')).toBeTruthy();
+      expect(within(row).getByText('Kimi')).toBeTruthy();
+      // Qwen once as a model, once as the winner.
+      expect(within(row).getAllByText('Qwen')).toHaveLength(2);
+      // Without headers, each figure carries its own label.
+      expect(within(row).getByText('Turns')).toBeTruthy();
+      expect(within(row).getByText('3 / 2')).toBeTruthy();
+      expect(within(row).getByText('Winner')).toBeTruthy();
+    });
+
+    it('shows a read cost on the card, and leaves an unread one out', async () => {
+      atWidth(334);
+      const priced = comparison({ id: 'c-priced', title: 'Priced' });
+      priced.sides = priced.sides.map((side, i) => ({ ...side, usage: { estimatedCostUsd: i ? 0.5 : 0.04, tokens: 1000, partial: false } }));
+      mockHistory([priced, comparison({ id: 'c-unread', title: 'Unread', verdict: 'a' })]);
+      render(<CompareView models={models} projects={projects} />);
+      const pricedRow = await screen.findByRole('button', { name: 'Open comparison: Priced' });
+      expect(within(pricedRow).getByLabelText('Estimated cost $0.54').textContent).toBe('$0.54');
+      const unreadRow = screen.getByRole('button', { name: 'Open comparison: Unread' });
+      // With no column above it, a bare dash would read as a separator.
+      expect(within(unreadRow).queryByLabelText('Cost not read yet')).toBeNull();
+      expect(within(unreadRow).queryByText('—')).toBeNull();
+    });
+
+    it('says on the card that the plan covered a comparison whose sides it covered whole', async () => {
+      atWidth(334);
+      const covered = comparison({ id: 'c-covered', title: 'Covered' });
+      covered.sides = covered.sides.map((side) => ({ ...side, usage: { estimatedCostUsd: null, tokens: 0, partial: false, includedCalls: 2 } }));
+      mockHistory([covered]);
+      render(<CompareView models={models} projects={projects} />);
+      const row = await screen.findByRole('button', { name: 'Open comparison: Covered' });
+      expect(row.style.gridTemplateColumns).toBe('');
+      expect(within(row).getByLabelText('Included in your plan').textContent).toBe('Included in your plan');
+      expect(within(row).queryByText(/\$/)).toBeNull();
+    });
+
+    it('keeps the table with its column headers when there is room', async () => {
+      atWidth(1000);
+      const row = await history();
+      for (const heading of ['Prompt', 'Models', 'Turns', 'Winner', 'Started']) {
+        expect(screen.getByText(heading)).toBeTruthy();
+      }
+      expect(row.style.gridTemplateColumns).toMatch(/^minmax/);
+    });
   });
 
   it("shows each model's own logo, not the generic mark", async () => {
@@ -1148,6 +1283,101 @@ describe('CompareView', () => {
     expect(screen.queryByRole('button', { name: /^Side B estimated cost/ })).toBeNull();
     expect(screen.getByRole('status', { name: 'Side B status' }).textContent).not.toMatch(/\$/);
     expect(screen.getByText(/Estimated cost \$0\.2\+/)).toBeTruthy();
+  });
+
+  it('shows a turn the plan covered as included, with no tokens or price, beside a mixed turn by its priced part', async () => {
+    api.fetchComparisonUsage.mockResolvedValue({
+      sides: {
+        a: {
+          available: true,
+          estimatedCostUsd: 0.05,
+          inputTokens: 12000,
+          outputTokens: 600,
+          includedCalls: 3,
+          turns: [
+            { turn: 1, estimatedCostUsd: 0.05, inputTokens: 12000, outputTokens: 600, includedCalls: 1 },
+            { turn: 2, estimatedCostUsd: null, includedCalls: 2 },
+          ],
+        },
+        b: { available: true, estimatedCostUsd: 0.3, turns: [{ turn: 1, estimatedCostUsd: 0.3 }, { turn: 2, estimatedCostUsd: null }] },
+      },
+    });
+    const twoTurns = [...finishedTurn('p'), ...finishedTurn('q')];
+    await openDetail(comparison(), { 'conv-a': session('conv-a', twoTurns), 'conv-b': session('conv-b', twoTurns) });
+    const toggleA = await screen.findByRole('button', { name: /^Side A estimated cost \$0\.05\. Show usage by turn$/ });
+    // Covered calls never make a side's figure a floor.
+    expect(toggleA.textContent).toBe('$0.05total');
+
+    fireEvent.click(toggleA);
+
+    const rowsA = within(screen.getByRole('table', { name: 'Side A usage by turn' })).getAllByRole('row').map((r) => Array.from(r.children).map((c) => c.textContent));
+    expect(rowsA).toEqual([
+      ['Turn', 'Time', 'Input tokens', 'Output tokens', 'Cost'],
+      ['1', '30s', '12K', '600', '$0.05'],
+      ['2', '30s', 'Included in your plan'],
+      ['Total', '1m 00s', '12K', '600', '$0.05'],
+    ]);
+    // A turn with nothing priced and no covered calls reads as it always did.
+    const rowsB = within(screen.getByRole('table', { name: 'Side B usage by turn' })).getAllByRole('row').map((r) => Array.from(r.children).map((c) => c.textContent));
+    expect(rowsB[2]).toEqual(['2', '30s', '0', '0', 'not priced']);
+  });
+
+  it('says a side the plan covered whole is included, and leaves it out of the total without a +', async () => {
+    api.fetchComparisonUsage.mockResolvedValue({
+      sides: {
+        a: { available: true, estimatedCostUsd: null, includedCalls: 2, turns: [{ turn: 1, estimatedCostUsd: null, includedCalls: 2 }] },
+        b: { available: true, estimatedCostUsd: 0.42, includedCalls: 1, unpricedCalls: 1, turns: [{ turn: 1, estimatedCostUsd: 0.42, includedCalls: 1, unpricedCalls: 1 }] },
+      },
+    });
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    const sideA = await screen.findByRole('region', { name: 'Side A' });
+    await waitFor(() => expect(within(sideA).getByText('Included in your plan')).toBeTruthy());
+    expect(within(sideA).queryByRole('button', { name: /estimated cost/ })).toBeNull();
+    expect(within(sideA).queryByText(/\$/)).toBeNull();
+    // B's + is for its unpriced call alone; A adds nothing and leaves nothing out.
+    expect(screen.getByRole('button', { name: /^Side B estimated cost \$0\.42\+\./ })).toBeTruthy();
+    expect(screen.getByText(/Estimated cost \$0\.42\+/)).toBeTruthy();
+  });
+
+  it('leaves the total without a + when one side was covered whole and the other fully priced', async () => {
+    api.fetchComparisonUsage.mockResolvedValue({
+      sides: {
+        a: { available: true, estimatedCostUsd: null, includedCalls: 2, turns: [{ turn: 1, estimatedCostUsd: null, includedCalls: 2 }] },
+        b: { available: true, estimatedCostUsd: 0.42, includedCalls: 1, turns: [{ turn: 1, estimatedCostUsd: 0.42, includedCalls: 1 }] },
+      },
+    });
+    await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
+    expect((await screen.findByRole('button', { name: /^Side B estimated cost \$0\.42\./ })).textContent).toBe('$0.42total');
+    expect(screen.getByText(/Estimated cost \$0\.42$/)).toBeTruthy();
+  });
+
+  it('inside the mobile app, says nothing about the plan for a covered side, in the history or the comparison', async () => {
+    hostMock.isMobileShell = true;
+    try {
+      const covered = comparison();
+      covered.sides = covered.sides.map((side) => ({ ...side, usage: { estimatedCostUsd: null, tokens: 0, partial: false, includedCalls: 2 } }));
+      api.fetchComparisonUsage.mockResolvedValue({
+        sides: {
+          a: { available: true, estimatedCostUsd: null, includedCalls: 2, turns: [{ turn: 1, estimatedCostUsd: null, includedCalls: 2 }] },
+          b: { available: true, estimatedCostUsd: 0.42, turns: [{ turn: 1, estimatedCostUsd: 0.42 }] },
+        },
+      });
+      mockHistory([covered]);
+      api.fetchComparison.mockResolvedValue(covered);
+      api.fetchSession.mockImplementation(async (id) => session(id, finishedTurn('p')));
+      render(<CompareView models={models} projects={projects} />);
+
+      const row = await screen.findByRole('button', { name: 'Open comparison: Build a dashboard' });
+      expect(within(row).queryByText('Included in your plan')).toBeNull();
+      fireEvent.click(row);
+      await screen.findAllByRole('region');
+      await waitFor(() => expect(api.fetchComparisonUsage).toHaveBeenCalled());
+      await act(async () => {});
+      expect(screen.queryByText('Included in your plan')).toBeNull();
+      expect(document.body.textContent).not.toMatch(/\$/);
+    } finally {
+      hostMock.isMobileShell = false;
+    }
   });
 
   it('shows no cost at all when the server cannot say', async () => {

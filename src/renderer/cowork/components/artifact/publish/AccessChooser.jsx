@@ -1,16 +1,17 @@
 // AccessChooser — the "Who can access your app" picker.
 //
-// One controlled component shared by every publish surface (the viewer's
-// inline publish popover and the Artifacts grid dialog) so the access logic,
-// and its validation, lives in exactly one place. Built on Base UI's
-// RadioGroup/Radio for real radiogroup semantics + arrow-key navigation;
-// skinned with the app's `--accent` / `--surface` / `--line` tokens.
+// One controlled component for every publish surface (the viewer's Share
+// menu, which the Artifacts page and the chat card open too: ENG-4687), so
+// the access logic, and its validation, lives in exactly one place. The
+// chosen access is a card that opens the others in a dropdown; skinned with
+// the app's `--accent` / `--surface` / `--line` tokens.
 //
 // The choices, private → public (AUDIENCE_CHOICE, the same values a skill's
 // audience uses): Only me, Everyone at ‹org› (sharing in MindsHub mode
 // only), Specific teams and people (or, without it, Specific people by
-// email), Password protected, Public. "Specific …" unfolds its recipient field right
-// under its own card.
+// email), Password protected, Public, and Public website (MindsHub mode,
+// where the caller offers it: `website`). The chosen one's field (the
+// password, the recipients) unfolds under the card.
 //
 // Controlled via a single `value` draft + `onChange`:
 //   const [draft, setDraft] = useState(accessDraftFromArtifact(artifact));
@@ -25,6 +26,7 @@ import RecipientField from '../../RecipientField';
 import { isEmailShaped } from '../../../lib/emailAddress';
 import { PLATFORM_UI } from '../../../../lib/deployment';
 import i18n, { useTranslation } from '../../../../lib/i18n';
+import { getOrgMode } from '../../../../lib/orgMode';
 import { hasSharedPublishToken } from '../../../../lib/sharedPublishToken';
 import AudiencePanel, { everyoneOption, onlyMeOption, specificOption } from '../../AudiencePanel';
 import {
@@ -56,19 +58,21 @@ const BARE_INPUT = 'flex-1 min-w-0 bg-transparent border-0 [outline:none] text-i
 
 // ── Access-draft helpers (the contract between UI and the publish API) ──
 
-// The draft a first share starts from. With MindsHub UI on it starts on
-// Public, as it always has. With it off nothing is picked, so the person
-// chooses who can open the link first: `isAccessDraftValid` refuses a draft
-// with no mode, which keeps Share disabled until then. `preselect: false`
-// leaves nothing picked with MindsHub UI on too.
+// A new share starts from Only me, so a link nobody chose access for opens to
+// its owner alone. A shared-token deployment has no Only me
+// (DEFAULT_MODES), so nothing is picked and Share waits for a choice.
+// `preselect: false` leaves nothing picked either.
 export function newAccessDraft({ preselect = true } = {}) {
-  return { mode: PLATFORM_UI && preselect ? AUDIENCE_CHOICE.PUBLIC : '', password: '', emailsText: '', teamIds: [], userIds: [] };
+  return {
+    mode: preselect && !SHARED_TOKEN_PUBLISH ? AUDIENCE_CHOICE.PRIVATE : '',
+    password: '', emailsText: '', teamIds: [], userIds: [],
+  };
 }
 
 // Seed a draft from an artifact's current (owner-side) access state, so
 // re-opening the chooser pre-selects what's already live.
 //
-// The wire format has three modes; the chooser has more. "Only me" is
+// The wire format has four modes (website only in MindsHub mode); the chooser has more. "Only me" is
 // `restricted` with nothing selected, and with sharing on (`orgSharing`)
 // "Everyone at ‹org›" is `restricted` with `org_allowed`, or naming the
 // org's default team, which the server maps to everyone (`teams` is what
@@ -85,9 +89,9 @@ export function newAccessDraft({ preselect = true } = {}) {
 // nothing picked and nobody listed, which `isAccessDraftValid` refuses: no
 // save is built from it.
 export function accessDraftFromArtifact(artifact, { orgSharing = false, teams = [] } = {}) {
-  // Nothing is live on an unpublished artifact, so with MindsHub UI off it
+  // Nothing is live on an unpublished artifact, so outside MindsHub mode it
   // starts from a new draft, whatever access an earlier publish left on it.
-  if (!PLATFORM_UI && !artifact?.publishedUrl) return newAccessDraft();
+  if (!artifact?.publishedUrl && !getOrgMode()) return newAccessDraft();
   const audience = readArtifactAudience(artifact);
   if (!audience) return { mode: '', password: '', emailsText: '', teamIds: [], userIds: [] };
   const serverMode = artifact?.accessMode || (artifact?.accessProtected ? 'password' : 'public');
@@ -133,7 +137,8 @@ export function isAccessDraftValid(draft, { orgSharing = false } = {}) {
   if (!draft) return false;
   if (draft.mode === AUDIENCE_CHOICE.PUBLIC) return true;
   // Nothing to fill in: each is a complete selection on its own.
-  if (draft.mode === AUDIENCE_CHOICE.PRIVATE || draft.mode === AUDIENCE_CHOICE.ORG) return true;
+  if (draft.mode === AUDIENCE_CHOICE.PRIVATE || draft.mode === AUDIENCE_CHOICE.ORG
+    || draft.mode === AUDIENCE_CHOICE.WEBSITE) return true;
   if (draft.mode === AUDIENCE_CHOICE.PASSWORD) return (draft.password || '').trim().length > 0;
   if (draft.mode === AUDIENCE_CHOICE.SPECIFIC) {
     const { valid, invalid } = parseEmailList(draft.emailsText);
@@ -193,6 +198,9 @@ function buildOrgAccessPayload(draft) {
   switch (draft?.mode) {
     case AUDIENCE_CHOICE.PUBLIC:
       return { mode: 'public' };
+    // The mode alone: cowork-server refuses any other field with it.
+    case AUDIENCE_CHOICE.WEBSITE:
+      return { mode: AUDIENCE_CHOICE.WEBSITE };
     case AUDIENCE_CHOICE.PASSWORD:
       return passwordPayload(draft);
     case AUDIENCE_CHOICE.ORG:
@@ -256,6 +264,12 @@ export const ACCESS_LABELS = {
     get title() { return accessText('publicTitle'); },
     get desc() { return accessText(SHARED_TOKEN_PUBLISH ? 'publicDescShared' : 'publicDesc'); },
   },
+  // MindsHub mode only: served at the artifact's own address, without the shell.
+  website: {
+    icon: Ico.globe,
+    get title() { return accessText('websiteTitle'); },
+    get desc() { return accessText('websiteDesc'); },
+  },
   password: {
     icon: Ico.lock,
     get title() { return accessText('passwordTitle'); },
@@ -312,9 +326,8 @@ export function accessSummaryLabel(artifact, { orgSharing = false, orgName = nul
 // publisher reached with one shared publish token (cowork-server's
 // COWORK_PUBLISH_TOKEN) has no owner to let in, so it answers an owner-only
 // upload with a 400. Everyone at ‹org› shows only with sharing on.
-const DEFAULT_MODES = SHARED_TOKEN_PUBLISH
-  ? [AUDIENCE_CHOICE.ORG, AUDIENCE_CHOICE.SPECIFIC, AUDIENCE_CHOICE.PASSWORD, AUDIENCE_CHOICE.PUBLIC]
-  : [AUDIENCE_CHOICE.PRIVATE, AUDIENCE_CHOICE.ORG, AUDIENCE_CHOICE.SPECIFIC, AUDIENCE_CHOICE.PASSWORD, AUDIENCE_CHOICE.PUBLIC];
+const SHARED_TOKEN_MODES = [AUDIENCE_CHOICE.ORG, AUDIENCE_CHOICE.SPECIFIC, AUDIENCE_CHOICE.PASSWORD, AUDIENCE_CHOICE.PUBLIC, AUDIENCE_CHOICE.WEBSITE];
+const DEFAULT_MODES = SHARED_TOKEN_PUBLISH ? SHARED_TOKEN_MODES : [AUDIENCE_CHOICE.PRIVATE, ...SHARED_TOKEN_MODES];
 
 // `modes` lets a caller restrict the offered set (e.g. [PASSWORD, PUBLIC]);
 // defaults to every mode this build offers. `value`/`onChange` are the
@@ -326,22 +339,28 @@ const DEFAULT_MODES = SHARED_TOKEN_PUBLISH
 // no "Everyone", and "Specific people" takes emails only. Without
 // `canShareArtifactsOrg` "Everyone" is grayed with the role hint, or with
 // "Couldn't reach MindsHub" while MindsHub couldn't be asked.
-// `layout`: 'list' shows every option as a card at once (the first share);
-// 'dropdown' shows the chosen one as a card that opens the others in a
-// dropdown, which closes on a pick (changing a published artifact's access).
-// With 'dropdown', `showEditor` false leaves out the field the choice unfolds
-// (the password, the people), for a card that only shows and switches, and
-// `chosenDesc` replaces the chosen option's line on the card (who is on a
-// list, rather than what a list is).
+// The chosen access shows as a card that opens the others in a dropdown,
+// which closes on a pick: the same control for the first share and for a
+// change (ENG-4687; the first share's list of every option is gone).
+// `showEditor` false leaves out the field the choice unfolds (the password,
+// the people), for a card that only shows and switches, and `chosenDesc`
+// replaces the chosen option's line on the card (who is on a list, rather
+// than what a list is).
+// `website` offers "Public website" (the caller decides: MindsHub mode, the
+// deployment allows it, a static artifact). A draft that already is a website
+// lists the card whatever `website` says, so a published website still shows
+// its access; once another card is picked it is not offered again.
 export function AccessChooser({
   value,
   onChange,
   modes = DEFAULT_MODES,
   onSubmit,
   sharing = null,
-  layout = 'list',
+  // The chooser's accessible name; "Who can access your app" by default.
+  ariaLabel,
   showEditor = true,
   chosenDesc = '',
+  website = false,
 }) {
   const { t } = useTranslation('artifacts');
   const draft = value;
@@ -406,34 +425,25 @@ export function AccessChooser({
       : { value: AUDIENCE_CHOICE.SPECIFIC, icon: specificPeople.icon(16), title: specificPeople.title, desc: specificPeople.desc }),
     modes.includes(AUDIENCE_CHOICE.PASSWORD) && {
       value: AUDIENCE_CHOICE.PASSWORD, icon: Ico.lock(16), title: ACCESS_LABELS.password.title, desc: ACCESS_LABELS.password.desc,
-      editor: draft.mode === AUDIENCE_CHOICE.PASSWORD ? passwordField : null, editorTestId: 'password-field',
+      editor: draft.mode === AUDIENCE_CHOICE.PASSWORD ? passwordField : null,
     },
     modes.includes(AUDIENCE_CHOICE.PUBLIC) && { value: AUDIENCE_CHOICE.PUBLIC, icon: Ico.globe(16), title: ACCESS_LABELS.public.title, desc: ACCESS_LABELS.public.desc },
+    modes.includes(AUDIENCE_CHOICE.WEBSITE) && (website || draft.mode === AUDIENCE_CHOICE.WEBSITE) && {
+      value: AUDIENCE_CHOICE.WEBSITE, icon: ACCESS_LABELS.website.icon(16), title: ACCESS_LABELS.website.title, desc: ACCESS_LABELS.website.desc,
+    },
   ].filter(Boolean);
 
-  if (layout === 'dropdown') {
-    return (
-      <AccessDropdown
-        options={options}
-        value={draft.mode}
-        onValueChange={(m) => set({ mode: m })}
-        chosenDesc={chosenDesc}
-        editor={showEditor ? (
-          options.find((option) => option.value === draft.mode)?.editor
-          ?? (draft.mode === AUDIENCE_CHOICE.SPECIFIC ? <RecipientField {...recipients} /> : null)
-        ) : null}
-      />
-    );
-  }
-
   return (
-    <AudiencePanel
-      ariaLabel={t('publish.whoCanAccess')}
+    <AccessDropdown
+      options={options}
       value={draft.mode}
       onValueChange={(m) => set({ mode: m })}
-      options={options}
-      specificValue={AUDIENCE_CHOICE.SPECIFIC}
-      recipients={recipients}
+      chosenDesc={chosenDesc}
+      ariaLabel={ariaLabel ?? t('publish.whoCanAccess')}
+      editor={showEditor ? (
+        options.find((option) => option.value === draft.mode)?.editor
+        ?? (draft.mode === AUDIENCE_CHOICE.SPECIFIC ? <RecipientField {...recipients} /> : null)
+      ) : null}
     />
   );
 }
@@ -442,8 +452,9 @@ export function AccessChooser({
    options are the same cards, as radios, with the same lock hints; picking
    one closes it. The field the choice needs (password, people) sits under
    the card. */
-function AccessDropdown({ options, value, onValueChange, editor, chosenDesc = '' }) {
+function AccessDropdown({ options, value, onValueChange, editor, chosenDesc = '', ariaLabel }) {
   const { t } = useTranslation('artifacts');
+  const whoCanAccess = ariaLabel ?? t('publish.whoCanAccess');
   const [open, setOpen] = useState(false);
   // Arrow keys move through the options without picking: the radio group
   // checks each one it lands on, and a pick closes the dropdown (and, on the
@@ -470,14 +481,14 @@ function AccessDropdown({ options, value, onValueChange, editor, chosenDesc = ''
             [transition:border-color_var(--dur-hover)_ease,box-shadow_var(--dur-hover)_ease]
             hover:border-line-2 focus-visible:border-accent focus-visible:shadow-[var(--ring)]
             data-[popup-open]:border-accent"
-          aria-label={chosen ? `${t('publish.whoCanAccess')}: ${chosen.title}` : t('publish.whoCanAccess')}
+          aria-label={chosen ? `${whoCanAccess}: ${chosen.title}` : whoCanAccess}
           data-testid="access-dropdown"
         >
           <span className="inline-grid h-[30px] w-[30px] shrink-0 place-items-center rounded-card-row border border-solid border-line bg-surface text-ink-3">
             {chosen?.icon}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13px] font-semibold text-ink">{chosen?.title || t('publish.whoCanAccess')}</span>
+            <span className="block truncate text-[13px] font-semibold text-ink">{chosen?.title || whoCanAccess}</span>
             {(chosenDesc || chosen?.desc) && (
               <span className="mt-px block truncate text-[11.5px] text-ink-3">{chosenDesc || chosen.desc}</span>
             )}
@@ -502,7 +513,7 @@ function AccessDropdown({ options, value, onValueChange, editor, chosenDesc = ''
                 data-[open]:animate-scale-in data-[closed]:animate-scale-out"
             >
               <AudiencePanel
-                ariaLabel={t('publish.whoCanAccess')}
+                ariaLabel={whoCanAccess}
                 value={highlighted ?? value}
                 onValueChange={(m) => {
                   if (keyRef.current.startsWith('Arrow')) setHighlighted(m);
