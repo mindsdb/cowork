@@ -1,11 +1,14 @@
 import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, posix, resolve, win32 } from 'node:path';
+import { basename, join, posix, resolve, win32 } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { setTimeout as delay } from 'node:timers/promises';
+import { checkLaunches, refusalProblems, runAsNodeProblems, DENIED_LAUNCH, LAUNCH_STEP, RUN_AS_NODE } from './installed-app-checks.mjs';
 import { assertAppIdentity, assertSetupPassed, channels, failureStep, forbiddenEntitlements, inspectableCopy, packageIdentity, validateManifest, within, FORBIDDEN_ENTITLEMENTS, STEP_NAMES } from './macos-setup-contract.mjs';
+import { heldEntitlements, FORBIDDEN_ENTITLEMENTS as RELEASE_CHECK_ENTITLEMENTS } from './release-app-check.mjs';
 import { checkFuses, enableInspector, fuseMismatches, INSPECTABLE_FUSES, RELEASE_FUSES } from './release-fuses.mjs';
 
 const require = createRequire(import.meta.url);
@@ -135,7 +138,7 @@ test('notification names a failing step, reports missing evidence, and never acc
   assert.match(failed, /failed=true/);
   assert.match(failed, /stable: Verify installation/);
   assert.match(failed, /prod: runner or workflow failure/);
-  for (const step of ['Check release fuses', 'Check entitlements', 'Prepare inspectable copy']) {
+  for (const step of ['Check release fuses', 'Check entitlements', LAUNCH_STEP, 'Prepare inspectable copy']) {
     assert.match(summarize({ passed: false, failingStep: step }), new RegExp(`stable: ${step}`));
   }
   const unsafe =summarize({ passed: false, failingStep: '"\n@channel arbitrary log' });
@@ -158,8 +161,9 @@ test('the real smoke command refuses local installation and still writes failure
 
 /* A stand-in for an Electron binary: @electron/fuses finds the wire after its
    sentinel, a version byte and a length byte, one character per fuse. Electron
-   45 ships the wire 10110001, which leaves all five release fuses unset. */
-const ELECTRON_DEFAULTS = '10110001';
+   45.2.3 ships the nine-fuse wire 101100011, which leaves all five release
+   fuses unset. @electron/fuses 1.8.0 names the first eight; the ninth is on. */
+const ELECTRON_DEFAULTS = '101100011';
 const fuseFixtures = mkdtempSync(join(tmpdir(), 'cowork-fuse-fixtures-'));
 after(() => rmSync(fuseFixtures, { recursive: true, force: true }));
 function electronBinary(states, name = 'electron') {
@@ -258,3 +262,171 @@ test('a path is within a folder when it is the folder or below it, a name starti
 test('the entitlements file the build signs with passes the smoke entitlement scan', () => {
   assert.deepEqual(forbiddenEntitlements(readFileSync(resolve('build/entitlements.mac.plist'), 'utf8')), []);
 });
+
+test('the build and the smokes refuse one list of entitlements', () => {
+  assert.equal(RELEASE_CHECK_ENTITLEMENTS, FORBIDDEN_ENTITLEMENTS);
+});
+
+test('the entitlement check reads the app and each helper app, and names every forbidden key they hold', async () => {
+  const bundle = join(mkdtempSync(join(fuseFixtures, 'bundle-')), 'MindsHub Cowork.app');
+  for (const name of ['MindsHub Cowork Helper.app', 'MindsHub Cowork Helper (Renderer).app', 'Electron Framework.framework']) {
+    mkdirSync(join(bundle, 'Contents/Frameworks', name), { recursive: true });
+  }
+  const read = [];
+  const print = async (code) => {
+    read.push(basename(code));
+    return code.endsWith('(Renderer).app') ? RELEASED_ENTITLEMENTS : '';
+  };
+  assert.deepEqual(await heldEntitlements(bundle, print), FORBIDDEN_ENTITLEMENTS.map((key) => `MindsHub Cowork Helper (Renderer).app holds ${key}`));
+  assert.deepEqual(read, ['MindsHub Cowork.app', 'MindsHub Cowork Helper (Renderer).app', 'MindsHub Cowork Helper.app']);
+  const bare = join(mkdtempSync(join(fuseFixtures, 'bundle-')), 'Bare.app');
+  mkdirSync(join(bare, 'Contents/Frameworks'), { recursive: true });
+  await assert.rejects(heldEntitlements(bare, print), /has no helper apps to check/);
+});
+
+test('the build\'s release check passes an exe with the release fuses and fails one without them, naming each fuse', async () => {
+  const check = (args) => spawnSync(process.execPath, [resolve('scripts/release-app-check.mjs'), ...args], { encoding: 'utf8', timeout: 15_000 });
+  const release = electronBinary(ELECTRON_DEFAULTS, 'MindsHub Cowork.exe');
+  await flipFuses(release, { version: FuseVersion.V1, ...RELEASE_FUSES });
+  const passed = check([release]);
+  assert.equal(passed.status, 0, passed.stderr);
+  assert.match(passed.stdout, /MindsHub Cowork\.exe holds the release fuses\./);
+  const unfused = check([electronBinary(ELECTRON_DEFAULTS, 'MindsHub Cowork.exe')]);
+  assert.equal(unfused.status, 1);
+  assert.match(unfused.stderr, /release-app-check: MindsHub Cowork\.exe: RunAsNode is on, expected off/);
+  assert.match(unfused.stderr, /release-app-check: MindsHub Cowork\.exe: OnlyLoadAppFromAsar is off, expected on/);
+  for (const args of [[], [''], [release, release]]) assert.equal(check(args).status, 2, JSON.stringify(args));
+});
+
+test('the macOS build runs the release check on the signed app before it notarizes or packs it', () => {
+  const script = readFileSync(resolve('scripts/release-mac-pkg-notarized.sh'), 'utf8');
+  const check = script.indexOf('node scripts/release-app-check.mjs "$APP_PATH"');
+  assert.ok(check > script.indexOf('codesign --verify --deep --strict'), 'after the signature check');
+  assert.ok(check < script.indexOf('xcrun notarytool submit "$APP_ZIP"'), 'before notarization');
+  assert.ok(check < script.indexOf('--sign "$INSTALLER_IDENTITY"'), 'before the installer is built');
+  assert.match(script, /^set -euo pipefail$/m);
+});
+
+test('a refused launch ends with status 1 and the guard\'s line on stderr', () => {
+  const refused = { exit: { code: 1, signal: null }, stdout: '', stderr: `[main] other output\n${DENIED_LAUNCH.stderrLine}\n` };
+  assert.deepEqual(refusalProblems(refused), []);
+  assert.deepEqual(refusalProblems({ ...refused, stderr: refused.stderr.replace(/\n/g, '\r\n') }), []);
+  assert.match(refusalProblems({ ...refused, exit: { code: 0, signal: null } }).join(' '), /status 0, not status 1/);
+  assert.match(refusalProblems({ ...refused, exit: { code: null, signal: 'SIGKILL' } }).join(' '), /signal SIGKILL, not status 1/);
+  assert.match(refusalProblems({ ...refused, stderr: 'launch-guard: a packaged build does not start with --remote-debugging-port\n' }).join(' '), /lacks "launch-guard/);
+});
+
+test('under ELECTRON_RUN_AS_NODE the app never prints the Node answer', () => {
+  assert.deepEqual(runAsNodeProblems({ stdout: '[main] other output\n', stderr: '' }), []);
+  assert.match(runAsNodeProblems({ stdout: `${RUN_AS_NODE.marker}\n`, stderr: '' }).join(' '), /ran the app as Node: it printed node-ran\./);
+  assert.match(runAsNodeProblems({ stdout: '', stderr: `${RUN_AS_NODE.marker}\r\n` }).join(' '), /ran the app as Node/);
+  // The launch's own arguments in a log line are not the answer.
+  assert.deepEqual(runAsNodeProblems({ stdout: '', stderr: `argv: ${RUN_AS_NODE.args.join(' ')}\n` }), []);
+});
+
+test('the switch and the line the launch step reads still come from the launch guard', () => {
+  const guard = readFileSync(resolve('src/main/launch-guard.ts'), 'utf8');
+  assert.ok(guard.includes("'host-rules',"), 'host-rules is a denied switch');
+  assert.ok(DENIED_LAUNCH.args[0].startsWith('--host-rules='));
+  assert.ok(guard.includes(DENIED_LAUNCH.stderrLine.replace('host-rules', '${refusal.name}\\n')), 'the guard writes the line the step reads');
+});
+
+test('the smoke launches the installed app before it makes the inspectable copy', () => {
+  const smoke = readFileSync(resolve('scripts/macos-setup-smoke.mjs'), 'utf8');
+  const at = (text) => {
+    const index = smoke.indexOf(text);
+    assert.ok(index > 0, text);
+    return index;
+  };
+  assert.ok(at("result.failingStep = 'Check entitlements'") < at('await checkLaunches(installedApp)'));
+  assert.ok(at('await checkLaunches(installedApp)') < at("result.failingStep = 'Prepare inspectable copy'"));
+  assert.match(smoke, /const installedApp = \{ executable: join\(bundle, 'Contents\/MacOS', executableName\),/);
+});
+
+/* A stand-in for the installed app, for the launch step. It answers the way a
+   release build does unless FAKE_DEFECT names one way to differ:
+   - ignores-guard: starts with a denied switch, then exits with status 0;
+   - runs-as-node: runs `-e` under ELECTRON_RUN_AS_NODE=1, as plain Node does;
+   - quits: exits right after it starts, while its child keeps its output open.
+   Started as the app, it starts a child process that stays up and writes both
+   process ids beside its Chromium profile folder, so a test can check that
+   the step killed both. */
+const FAKE_APP = `
+const { spawn } = require('node:child_process');
+const { writeFileSync } = require('node:fs');
+const defect = process.env.FAKE_DEFECT || '';
+const args = process.argv.slice(2);
+if (process.env.ELECTRON_RUN_AS_NODE === '1' && defect === 'runs-as-node') {
+  console.log('node-ran');
+  process.exit(0);
+}
+if (args.some((arg) => arg.startsWith('--host-rules'))) {
+  if (defect === 'ignores-guard') process.exit(0);
+  process.stderr.write('launch-guard: a packaged build does not start with --host-rules\\n');
+  process.exit(1);
+}
+const helper = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'inherit' });
+const profile = args.find((arg) => arg.startsWith('--user-data-dir=')).slice('--user-data-dir='.length);
+writeFileSync(profile + '.pids', JSON.stringify([process.pid, helper.pid]));
+if (defect === 'quits') process.exit(0);
+setInterval(() => {}, 1000);
+`;
+const fakeApps = mkdtempSync(join(tmpdir(), 'cowork-fake-app-'));
+after(() => rmSync(fakeApps, { recursive: true, force: true }));
+const posixOnly = { skip: process.platform === 'win32' && 'the stand-in app is a script that starts through its shebang line' };
+// The tests let the run-as-node and plain launches run this long, not the smoke's 20 s.
+const TEST_RUN_MS = 2_000;
+
+function fakeInstalledApp(defect = '') {
+  const folder = mkdtempSync(join(fakeApps, 'app-'));
+  const executable = join(folder, 'fake-app');
+  writeFileSync(executable, `#!${process.execPath}\n${FAKE_APP}`);
+  chmodSync(executable, 0o755);
+  const saved = new Map();
+  const app = {
+    executable,
+    profile: async (purpose) => ({ env: { FAKE_DEFECT: defect }, userDataDir: join(mkdtempSync(join(folder, `${purpose}-`)), 'chromium') }),
+    save: (name, value) => saved.set(name, value),
+  };
+  const pids = () => readdirSync(folder).map((name) => join(folder, name, 'chromium.pids')).filter((file) => existsSync(file)).flatMap((file) => JSON.parse(readFileSync(file, 'utf8')));
+  return { app, saved, pids };
+}
+
+async function assertGone(pid) {
+  const deadline = Date.now() + 10_000;
+  while (true) {
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      if (error.code === 'ESRCH') return;
+      throw error;
+    }
+    if (Date.now() > deadline) assert.fail(`process ${pid} still runs after the step`);
+    await delay(100);
+  }
+}
+
+test('the launch step passes a release build, and kills each app it starts and the app\'s children', posixOnly, async () => {
+  const { app, saved, pids } = fakeInstalledApp();
+  await checkLaunches(app, TEST_RUN_MS);
+  assert.deepEqual([...saved.keys()], ['launch-denied-switch.log', 'launch-run-as-node.log', 'launch-plain.log']);
+  assert.match(saved.get('launch-denied-switch.log'), /--user-data-dir=\S+ --host-rules=MAP \* 127\.0\.0\.1\nexit: status 1/);
+  assert.match(saved.get('launch-run-as-node.log'), /^\$ ELECTRON_RUN_AS_NODE=1 .*fake-app --user-data-dir=\S+ -e console\.log\("node-ran"\)\nexit: signal SIGKILL \(stopped\)\n/);
+  // The plain launch still ran when the step stopped it.
+  assert.match(saved.get('launch-plain.log'), /\nexit: signal SIGKILL \(stopped\)\n/);
+  // The run-as-node and plain launches each start the app and one child.
+  assert.equal(pids().length, 4);
+  for (const pid of pids()) await assertGone(pid);
+});
+
+for (const [defect, message] of [
+  ['ignores-guard', /status 0, not status 1\. Its stderr lacks "launch-guard: a packaged build does not start with --host-rules"\./],
+  ['runs-as-node', /ELECTRON_RUN_AS_NODE ran the app as Node: it printed node-ran\./],
+  ['quits', /The installed app ended with status 0 within 2 s of its start\./],
+]) {
+  test(`the launch step fails a build that ${defect.replace(/-/g, ' ')}, and kills what it started`, posixOnly, async () => {
+    const { app, pids } = fakeInstalledApp(defect);
+    await assert.rejects(checkLaunches(app, TEST_RUN_MS), message);
+    for (const pid of pids()) await assertGone(pid);
+  });
+}

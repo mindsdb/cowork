@@ -10,6 +10,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as https from 'https';
 import * as http from 'http';
+import * as inspector from 'node:inspector';
 import { installHideOnClose, shouldQuitWhenAllWindowsClosed } from './window-close';
 import { IPC } from '../shared/ipc-channels';
 import { checkInstallStatus, runInstaller } from './installer';
@@ -66,8 +67,10 @@ import {
   validateOpenAICompatible,
 } from './provider-validation';
 import { sendEvent } from './analytics';
-import { resolveRendererLoad, getBundledPath, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, rollbackUI } from './ui-updater';
+import { resolveRendererLoad, resolveBundledRendererLoad, checkForUIUpdate, applyUIUpdate, hasInternet, getCachedVersion, rollbackUI } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
+import { registerUiFileProtocol } from './ui-file-protocol';
+import { isPackagedRun } from './launch-guard';
 import { trustSystemCertificates } from './system-trust';
 import {
   accountDataHome,
@@ -98,7 +101,7 @@ import { registerRendererPermissions } from './renderer-permissions';
 import { guardDocumentPreviewFrames } from './document-preview-guard';
 import { mainWindowWebPreferences } from './main-window-preferences';
 import { addRedoOnCmdY, EDIT_MENU_ID } from './edit-menu';
-import { gatesInOrder, holdWhileServerStarts, serverTokenListener } from './server-token-listener';
+import { gatesInOrder, holdWhileServerStarts, requireDirectRoute, serverTokenListener, type RequestGate } from './server-token-listener';
 import {
   startCodingTerminal,
   writeToCodingTerminal,
@@ -180,17 +183,39 @@ function clearStoredProviderState(accountRoot: string): void {
   }
 }
 
+/* Whether this run is a packaged build. isPackagedRun (launch-guard.ts) also
+   counts a copy of the signed binary renamed to `electron` as packaged, which
+   `app.isPackaged` alone does not. */
+const packagedRun = isPackagedRun({ isPackaged: app.isPackaged, defaultApp: process.defaultApp });
+
+/* Set once a packaged run has logged that it ignores DEV_MODE=live. */
+let devModeLiveIgnoredLogged = false;
+
 /** Read DEV_MODE from the Cowork config home's .env (coworkEnvPath()).
- *  Returns 'live', 'full', or null.
+ *  Returns 'live', 'full', another value it does not know, or null.
  *
  * Defaults to null (OTA enabled). Set `DEV_MODE=live` for the Vite
  * dev-server flow, `DEV_MODE=full` to force the bundled renderer
  * and skip OTA updates.
+ *
+ * A packaged run reads `DEV_MODE=live` as unset and logs that once. Any
+ * program running as the user can write the .env, and the main window would
+ * otherwise load whatever answers on the dev server's port, with the preload
+ * bridge, and the token listener would add the bearer token and the window
+ * proof to that page's /api/ requests. The renderer source and the updater
+ * skip both read DEV_MODE through here, so they agree.
  */
 function getDevMode(): string | null {
   const vars = readEnvFile();
   const val = (vars.DEV_MODE || '').trim().toLowerCase();
   if (val === 'ota' || val === 'false' || val === 'none' || !val) return null;
+  if (val === 'live' && packagedRun) {
+    if (!devModeLiveIgnoredLogged) {
+      devModeLiveIgnoredLogged = true;
+      diagnostic("main.app", "WARNING", "main_dev_mode_live_ignored_in_packaged_build");
+    }
+    return null;
+  }
   return val; // 'live' or 'full'
 }
 
@@ -407,29 +432,38 @@ function focusMainWindow() {
   } catch {}
 }
 
-// One-shot self-heal for the boot OTA load: if the activated bundle's main
-// frame fails to load (missing/corrupt assets), roll it back and fall to the
-// app-bundled renderer. Uses `.on()` (not `.once()`) so benign subframe /
-// ERR_ABORTED events don't consume the listener before a real main-frame
-// result; disarms on the first relevant main-frame outcome or a timeout.
-function armOtaBootSelfHeal(win: BrowserWindow) {
+// Disarms the self-heal armOtaSelfHeal set up for the main window's last
+// load, if it is still armed. loadMainRenderer calls it before every load, so
+// at most one self-heal watches the window at a time.
+let disarmOtaSelfHeal: () => void = () => {};
+
+// One-shot self-heal for an OTA load of the main window: if the activated
+// bundle's main frame fails to load (missing/corrupt assets), roll it back and
+// fall to the app-bundled renderer. Uses `.on()` (not `.once()`) so benign
+// subframe / ERR_ABORTED events don't consume the listener before a real
+// main-frame result; disarms on the first relevant main-frame outcome or a
+// timeout.
+function armOtaSelfHeal(win: BrowserWindow) {
   let done = false;
   const disarm = () => {
     if (done) return;
     done = true;
     clearTimeout(timer);
+    // A destroyed window's contents can no longer be reached, and they emit nothing more.
+    if (win.isDestroyed()) return;
     win.webContents.removeListener('did-finish-load', onOk);
     win.webContents.removeListener('did-fail-load', onFail);
   };
+  disarmOtaSelfHeal = disarm;
   const recover = (why: string) => {
     disarm();
-    diagnostic("main.app", "ERROR", "main_ota_renderer_at_boot_rolling_back_to_bundled", `[main] OTA renderer ${why} at boot — rolling back to bundled`);
+    diagnostic("main.app", "ERROR", "main_ota_renderer_at_boot_rolling_back_to_bundled", `[main] OTA renderer ${why}, rolling back to bundled`);
     // Fire-and-forget: rollbackUI records the quarantine synchronously before
     // its first await, and the bundled renderer we load below doesn't depend on
     // the async cache shuffle. Swallow a rejected cleanup so it can't become an
     // unhandled rejection and take down the main process mid-self-heal.
     void rollbackUI().catch((err) => diagnostic("main.app", "ERROR", "main_ui_rollback_failed", '[main] UI rollback failed', err));
-    if (!win.isDestroyed()) win.loadFile(getBundledPath());
+    if (!win.isDestroyed()) win.loadFile(resolveBundledRendererLoad().path);
   };
   const onOk = () => disarm();
   const onFail = (_e: unknown, code: number, _desc: string, _url: string, isMainFrame: boolean) => {
@@ -444,14 +478,126 @@ function armOtaBootSelfHeal(win: BrowserWindow) {
   win.webContents.on('did-fail-load', onFail);
 }
 
+/* Where the main window's page comes from. createWindow decides it once per
+   window, and every load of that window, the first and each reload, uses it. */
+type MainRendererSource =
+  /* DEV_MODE=live or VITE_DEV=1, in an unpackaged run only: the Vite dev
+     server at `url`. `port` is Vite's port: the token listener also adds the
+     headers to /api/ calls on it, and will-navigate lets the window reload
+     from it. */
+  | { kind: 'dev-server'; url: string; port: string }
+  /* DEV_MODE=full: the app-bundled renderer, whatever the OTA cache holds. */
+  | { kind: 'bundled' }
+  /* Every other run: the OTA cache when it passes the folder check, else the bundled renderer. */
+  | { kind: 'release' };
+
+let mainRendererSource: MainRendererSource = { kind: 'release' };
+
+/* Decides where the main window's page comes from, in this order:
+   1. DEV_MODE=live: the Vite dev server (hot reload without a full build).
+   2. VITE_DEV=1: the Vite dev server, as `npm run dev` starts it.
+   3. DEV_MODE=full: the bundled renderer, skipping the OTA cache.
+   4. Otherwise: the OTA cache, or the bundled renderer.
+   Only an unpackaged run gets to the first two: a packaged run reads
+   DEV_MODE=live as unset (getDevMode) and never reads VITE_DEV, so a page
+   from the dev server's port never runs in a packaged build's main window. */
+function chooseMainRendererSource(): MainRendererSource {
+  const devMode = getDevMode();
+  if (!packagedRun) {
+    if (devMode === 'live') {
+      const port = process.env.VITE_RENDERER_PORT || '5173';
+      diagnostic("main.app", "INFO", "main_dev_mode_live_loading_from_http_localhost", `[main] DEV_MODE=live: loading from http://localhost:${port}`);
+      return { kind: 'dev-server', url: `http://localhost:${port}`, port };
+    }
+    if (process.env.VITE_DEV === '1') {
+      return { kind: 'dev-server', url: process.env.VITE_RENDERER_URL || 'http://localhost:5173', port: process.env.VITE_RENDERER_PORT || '5173' };
+    }
+  }
+  if (devMode === 'full') {
+    diagnostic("main.app", "INFO", "main_dev_mode_full_using_bundled_renderer_skipping_ota_cache", '[main] DEV_MODE=full: using bundled renderer, skipping OTA cache');
+    return { kind: 'bundled' };
+  }
+  return { kind: 'release' };
+}
+
+/* In a packaged run without an active Node inspector (the launch guard's
+   exception, launch-guard.ts), a request from the main window to the local
+   server goes out only when the main window's session, the default session,
+   routes it directly (requireDirectRoute in server-token-listener.ts). The
+   gate asks for every such request as the last of the main window's gates
+   (beforeLoopbackRouteCheck), right before the token listener adds the
+   token. Chromium answers with the proxy setting in force when it is asked,
+   so a setting changed while the app runs counts for every request that
+   reaches the gate after the change, including a request that waited on an
+   earlier gate while it changed. The window's first load never waits on the
+   gate. A refused request is canceled and the app keeps running. Built
+   once, so a run logs the refusal once, however many requests and windows
+   it refuses. Null in every other run. */
+const loopbackRouteGate: RequestGate | null = packagedRun && inspector.url() === undefined
+  ? requireDirectRoute(
+    getServerPort,
+    (url) => session.defaultSession.resolveProxy(url),
+    () => diagnostic('main.launch-guard', 'ERROR', 'launch_guard_refused_loopback_proxied'),
+  )
+  : null;
+
+/* The main window's request gates, then the route check when this run has
+   one (loopbackRouteGate). The route check runs last, after any wait on the
+   gates before it, so its answer is the one in force when the token listener
+   adds the token. */
+function beforeLoopbackRouteCheck(gate: RequestGate): RequestGate {
+  return loopbackRouteGate ? gatesInOrder(gate, loopbackRouteGate) : gate;
+}
+
+/* Loads the main window's page. Every load of the main window goes through
+   here: createWindow's first load, the reload after a sign-out or after a
+   sign-in that changes the data root, View > Reload and Force Reload, and a
+   reload the page starts itself. A release load runs the folder check right
+   before it (resolveRendererLoad), so a file of the OTA cache that changed
+   since the last load sends the window to the bundled renderer. The renderer
+   routes in memory in Electron (CoworkRouter.jsx), so its URL carries no
+   query or fragment that a reload has to keep. */
+function loadMainRenderer(win: BrowserWindow): void {
+  if (win.isDestroyed()) return;
+  disarmOtaSelfHeal();
+  const source = mainRendererSource;
+  if (source.kind === 'dev-server') {
+    win.loadURL(source.url);
+    return;
+  }
+  // One decision per load: for a release load, the folder check runs here, right before the load.
+  const renderer = source.kind === 'bundled' ? resolveBundledRendererLoad() : resolveRendererLoad();
+  diagnostic("main.app", "INFO", "main_loading_renderer_from", `[main] loading renderer from ${renderer.path}`);
+  // Self-heal: arm BEFORE the load (so the result can't be missed) when
+  // serving an activated OTA bundle. A bad hot-update rolls back to the
+  // app-bundled renderer instead of re-loading the broken bundle every launch.
+  if (renderer.kind === 'ota') armOtaSelfHeal(win);
+  win.loadFile(renderer.path);
+}
+
+/* View > Reload and Force Reload. The main window loads again through
+   loadMainRenderer, so the reload runs the folder check; any other window
+   reloads the way the menu's reload roles do. */
+function reloadFocusedWindow(focused: Electron.BaseWindow | undefined, ignoreCache: boolean): void {
+  if (!(focused instanceof BrowserWindow) || focused.isDestroyed()) return;
+  if (focused === mainWindow) {
+    loadMainRenderer(focused);
+  } else if (ignoreCache) {
+    focused.webContents.reloadIgnoringCache();
+  } else {
+    focused.webContents.reload();
+  }
+}
+
 function createWindow() {
   const icon = nativeImage.createFromPath(getIconPath());
-  const isDev = !app.isPackaged && process.env.VITE_DEV === '1';
-  const devMode = getDevMode();
-  // Set only when the renderer is actually served from Vite (dev/live modes) —
-  // used below so the loopback-token webRequest hook can also cover API calls
-  // proxied through Vite's own port, not just direct calls to the sidecar port.
-  const viteDevPort = devMode === 'live' || isDev ? process.env.VITE_RENDERER_PORT || '5173' : null;
+  const source = chooseMainRendererSource();
+  mainRendererSource = source;
+  // Vite's port only while the window loads from the Vite dev server, which
+  // only an unpackaged run does. The token listener below also adds the
+  // headers to /api/ calls on it, and will-navigate lets the window reload
+  // from it.
+  const viteDevPort = source.kind === 'dev-server' ? source.port : null;
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -503,8 +649,12 @@ function createWindow() {
     // server start is pending, every request to the server's address waits
     // until the start publishes the launch's values or ends without them
     // (untilServerStartSettles in server-process.ts). Then the Minds gate
-    // holds response-creation requests until the resumed credential is ready,
-    // and cancels them when it never is.
+    // holds response-creation requests until the resumed credential is
+    // ready, and cancels them when it never is. Last, in a packaged run, a
+    // request to the server's address waits for the session's route to it
+    // and is canceled unless that route is direct (loopbackRouteGate). The
+    // route check comes last because a proxy setting can change while a
+    // request waits on the gates before it.
     serverTokenListener({
       guard: previewGuard,
       serverPort: getServerPort,
@@ -512,7 +662,7 @@ function createWindow() {
       windowProof: getWindowProof,
       mainWindow: () => (proofWindow.isDestroyed() ? null : proofWindow.webContents),
       viteDevPort,
-      gate: gatesInOrder(
+      gate: beforeLoopbackRouteCheck(gatesInOrder(
         holdWhileServerStarts(getServerPort, untilServerStartSettles),
         (details, settle) => gateMindsResponseCreationRequest(
           details,
@@ -527,34 +677,12 @@ function createWindow() {
             settle(ready);
           },
         ),
-      ),
+      )),
     }),
   );
 
-  // Renderer loading priority:
-  // 1. DEV_MODE=live → Vite dev server (hot reload without full build)
-  // 2. Standard Vite dev (VITE_DEV=1) → dev server
-  // 3. DEV_MODE=full → always use bundled renderer, skip OTA cache
-  // 4. Production → OTA cached bundle or bundled fallback
-  if (devMode === 'live') {
-    const port = process.env.VITE_RENDERER_PORT || '5173';
-    diagnostic("main.app", "INFO", "main_dev_mode_live_loading_from_http_localhost", `[main] DEV_MODE=live — loading from http://localhost:${port}`);
-    mainWindow.loadURL(`http://localhost:${port}`);
-  } else if (isDev) {
-    mainWindow.loadURL(process.env.VITE_RENDERER_URL || 'http://localhost:5173');
-  } else if (devMode === 'full') {
-    diagnostic("main.app", "INFO", "main_dev_mode_full_using_bundled_renderer_skipping_ota_cache", '[main] DEV_MODE=full — using bundled renderer, skipping OTA cache');
-    mainWindow.loadFile(getBundledPath());
-  } else {
-    // One decision per load: the folder check runs here, right before the load.
-    const renderer = resolveRendererLoad();
-    diagnostic("main.app", "INFO", "main_loading_renderer_from", `[main] loading renderer from ${renderer.path}`);
-    // Boot self-heal: arm BEFORE the load (so the result can't be missed) when
-    // serving an activated OTA bundle. A bad hot-update rolls back to the
-    // app-bundled renderer instead of re-loading the broken bundle every launch.
-    if (renderer.kind === 'ota') armOtaBootSelfHeal(mainWindow);
-    mainWindow.loadFile(renderer.path);
-  }
+  // The source chooseMainRendererSource decided at the top of this function.
+  loadMainRenderer(mainWindow);
 
   // DevTools no longer auto-open on launch. Still reachable on demand
   // via the View menu (Cmd+Option+I) when needed for debugging.
@@ -596,13 +724,22 @@ function createWindow() {
   });
 
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    // Allow dev server reloads, to Vite's own origin only
-    if (!app.isPackaged && isDevServerNavigation(url, viteDevPort)) return;
+    // Allow dev server reloads, to Vite's own origin only. viteDevPort is null
+    // in a packaged run already; the packaged gate here is the same one
+    // chooseMainRendererSource uses.
+    if (!packagedRun && isDevServerNavigation(url, viteDevPort)) return;
     // And a packaged document reloading ITSELF, which arrives here too: the
     // account switch, the organization switch and the sign-out all replace the
     // document rather than trying to scrub it, and blocking that is silent —
     // the URL is our own, so nothing opens in a browser and nothing is logged.
-    if (isSelfReload(url, mainWindow?.webContents.getURL())) return;
+    // The reload goes through loadMainRenderer instead of going ahead as the
+    // page asked, so it runs the folder check like every other load.
+    if (isSelfReload(url, mainWindow?.webContents.getURL())) {
+      event.preventDefault();
+      const win = mainWindow;
+      setImmediate(() => { if (win) loadMainRenderer(win); });
+      return;
+    }
     // Block navigation and open in OS browser
     event.preventDefault();
     const browserUrl = normalizeExternalBrowserUrl(url);
@@ -729,9 +866,7 @@ function mindsSignOutDeps(): SignOutDeps {
     },
     reloadRenderer: () => {
       setImmediate(() => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.reload();
-        }
+        if (mainWindow) loadMainRenderer(mainWindow);
       });
     },
   };
@@ -1314,9 +1449,13 @@ function setupIPC() {
         // composer draft and the settings cache from the previous account
         // during render — and the draft store's module cache then re-persists
         // them under this account, where nothing purges them again. The purge
-        // only runs before mount, so the document has to be new.
+        // only runs before mount, so the document has to be new. The main
+        // window loads through loadMainRenderer, so the reload runs the
+        // folder check; any other window reloads in place.
         for (const win of BrowserWindow.getAllWindows()) {
-          if (!win.isDestroyed()) win.webContents.reload();
+          if (win.isDestroyed()) continue;
+          if (win === mainWindow) loadMainRenderer(win);
+          else win.webContents.reload();
         }
       }
     } catch (err: any) {
@@ -1675,7 +1814,8 @@ function setupIPC() {
   });
 
   ipcMain.handle(IPC.APP_UI_VERSION, async () => {
-    // `ui` is the OTA-activated bundle version, or null when running the
+    // `ui` is the version of the OTA bundle the window loaded, as the folder
+    // check verified it at that load, or null when the window runs the
     // renderer bundled with the installer. The renderer resolves the effective
     // UI version (falling back to its own baked __APP_VERSION__) and shows the
     // source tag; here we just report the raw facts.
@@ -1836,7 +1976,7 @@ app.whenReady().then(async () => {
                 // diagnostics readout. Mirrors the Settings → Updates panel
                 // (ENG-213).
                 const shell = getAppDisplayVersion();
-                const uiOta = getCachedVersion(); // OTA bundle version, or null when bundled
+                const uiOta = getCachedVersion(); // the OTA bundle the window loaded, or null when bundled
                 const uiEffective = uiOta || shell;
                 const { server, anton } = await fetchServerVersions().catch(() => ({ server: null, anton: null }));
                 const unified = unifiedVersion([uiEffective, server, anton]);
@@ -1877,8 +2017,12 @@ app.whenReady().then(async () => {
     {
       label: 'View',
       submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
+        // The labels and accelerators of Electron's reload roles, which are
+        // English on every platform like the rest of this menu. The main
+        // window reloads through loadMainRenderer, so a reload runs the
+        // folder check.
+        { label: 'Reload', accelerator: 'CmdOrCtrl+R', click: (_item, focused) => reloadFocusedWindow(focused, false) },
+        { label: 'Force Reload', accelerator: 'Shift+CmdOrCtrl+R', click: (_item, focused) => reloadFocusedWindow(focused, true) },
         { role: 'toggleDevTools' },
         { role: 'togglefullscreen' },
         { role: 'zoomIn' },
@@ -1934,6 +2078,10 @@ app.whenReady().then(async () => {
   // the renderer can be handed the resolved port via additionalArguments,
   // instead of hardcoding 26866. Best-effort + bounded — never blocks boot.
   await resolveServerPort();
+  // The main window reads every file of the UI cache through the manifest
+  // verified at load (ui-file-protocol.ts). The handler goes on the default
+  // session, which the main window uses, before the window loads anything.
+  registerUiFileProtocol(session.defaultSession);
   createWindow();
   // After the window starts loading, so reading the trust store doesn't delay it.
   setImmediate(trustSystemCertificates);
@@ -2138,6 +2286,9 @@ app.whenReady().then(async () => {
       if (mirrored) mainWindow?.webContents.send(IPC.UI_UPDATE_STATUS, mirrored);
     });
 
+    // getDevMode reads DEV_MODE=live as unset in a packaged run, as
+    // chooseMainRendererSource does, so a packaged build that ignores it
+    // loads the release renderer and runs the updater for it.
     const devMode = getDevMode();
     if (app.isPackaged && !devMode && mainWindow) {
       initUpdater(() => mainWindow, rendererReady, getUpdateMode, shellAutoUpdateEnabled(), bootUpdateDone);

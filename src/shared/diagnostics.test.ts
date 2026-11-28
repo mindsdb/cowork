@@ -56,4 +56,16 @@ describe("safe diagnostic events", () => {
     ]);
     expect(raw).not.toContain("private-");
   });
+  it("keeps a non-negative integer duration and drops any other", () => {
+    vi.stubEnv("LOG_LEVEL", "INFO");
+    const output = vi.spyOn(console, "log").mockImplementation(() => {});
+    diagnostic("test", "INFO", "timed", { duration_ms: 42 });
+    diagnostic("test", "INFO", "timed", { duration_ms: -1 });
+    diagnostic("test", "INFO", "timed", { duration_ms: 1.5 });
+    diagnostic("test", "INFO", "timed", { duration_ms: "42" });
+    const durations = output.mock.calls.map(
+      (call) => JSON.parse(String(call[0])).duration_ms,
+    );
+    expect(durations).toEqual([42, undefined, undefined, undefined]);
+  });
 });

@@ -8,6 +8,7 @@ type BeforeRequestCallback = (response: { redirectURL?: string; cancel?: boolean
 type BeforeRequestListener = (details: { url: string; method: string }, callback: BeforeRequestCallback) => void;
 type PermissionRequestHandler = (webContents: unknown, permission: string, callback: (granted: boolean) => void) => void;
 type SchemeHandler = (request: Request) => Promise<Response>;
+type WindowOpenHandler = (details: { url: string }) => { action: 'allow' | 'deny' };
 
 /* A hidden BrowserWindow whose page events the test fires by hand. */
 const electron = vi.hoisted(() => {
@@ -16,6 +17,16 @@ const electron = vi.hoisted(() => {
     emptyPage: false as unknown,
     last: null as null | { options: unknown; webContents: FakeWebContents; loadURL: ReturnType<typeof vi.fn> },
   };
+  class FakeEmitter {
+    listeners: Record<string, Listener[]> = {};
+    on(name: string, listener: Listener) {
+      (this.listeners[name] ??= []).push(listener);
+      return this;
+    }
+    emit(name: string, ...args: unknown[]) {
+      for (const listener of this.listeners[name] ?? []) listener(...args);
+    }
+  }
   class FakeWebRequest {
     errorOccurred: Listener | null = null;
     completed: Listener | null = null;
@@ -24,7 +35,7 @@ const electron = vi.hoisted(() => {
     onCompleted(listener: Listener) { this.completed = listener; }
     onBeforeRequest(listener: BeforeRequestListener) { this.beforeRequest = listener; }
   }
-  class FakeSession {
+  class FakeSession extends FakeEmitter {
     webRequest = new FakeWebRequest();
     schemes = new Map<string, SchemeHandler>();
     protocol = { handle: (scheme: string, handler: SchemeHandler) => { this.schemes.set(scheme, handler); } };
@@ -33,17 +44,11 @@ const electron = vi.hoisted(() => {
     setPermissionRequestHandler(handler: PermissionRequestHandler) { this.permissionRequest = handler; }
     setPermissionCheckHandler(handler: (...args: unknown[]) => boolean) { this.permissionCheck = handler; }
   }
-  class FakeWebContents {
-    listeners: Record<string, Listener[]> = {};
+  class FakeWebContents extends FakeEmitter {
     session = new FakeSession();
+    windowOpen: WindowOpenHandler | null = null;
     executeJavaScript = vi.fn(async () => state.emptyPage);
-    on(name: string, listener: Listener) {
-      (this.listeners[name] ??= []).push(listener);
-      return this;
-    }
-    emit(name: string, ...args: unknown[]) {
-      for (const listener of this.listeners[name] ?? []) listener(...args);
-    }
+    setWindowOpenHandler(handler: WindowOpenHandler) { this.windowOpen = handler; }
   }
   class BrowserWindow {
     options: unknown;
@@ -119,8 +124,9 @@ function findingsFromResult(result: JsonObject): AntonFinding[] {
   return findings;
 }
 
-/* A file target is served from its folder as this origin. */
-const PAGE_DIR_URL = `${LINT_SCHEME}://artifact/`;
+/* The scheme's origin, and the one path segment it serves a file target's folder under. */
+const LINT_ORIGIN_URL = `${LINT_SCHEME}://artifact/`;
+const PAGE_DIR_URL = `${LINT_ORIGIN_URL}page/`;
 
 let folder: string;
 let page: string;
@@ -169,7 +175,7 @@ afterEach(() => {
 });
 
 describe('startHtmlLintRunner: the window', () => {
-  it('turns off hardware acceleration and registers its scheme before ready, and opens a hidden, sandboxed, offscreen window with no preload', async () => {
+  it('turns off hardware acceleration and registers its scheme before ready, and opens a hidden, sandboxed, offscreen window with no preload and no alert or confirm dialog', async () => {
     await startHtmlLintRunner(page);
 
     const ready = electron.app.whenReady.mock.invocationCallOrder[0];
@@ -181,13 +187,13 @@ describe('startHtmlLintRunner: the window', () => {
     expect(window().options).toEqual({
       show: false,
       webPreferences: {
-        offscreen: true, sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, partition: LINT_PARTITION,
+        offscreen: true, sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, disableDialogs: true, partition: LINT_PARTITION,
       },
     });
     expect(electron.app.on).toHaveBeenCalledWith('window-all-closed', expect.any(Function));
   });
 
-  it("loads a file target through its scheme, served from the target's folder", async () => {
+  it("loads a file target through its scheme, from the one path segment that serves the target's folder", async () => {
     fs.writeFileSync(path.join(folder, 'my page.html'), '<p>x</p>');
     await startHtmlLintRunner(path.join(folder, 'my page.html'));
 
@@ -195,6 +201,21 @@ describe('startHtmlLintRunner: the window', () => {
     const handler = window().webContents.session.schemes.get(LINT_SCHEME);
     const response = await handler!(new Request(`${PAGE_DIR_URL}my%20page.html`));
     expect(await response.text()).toBe('<p>x</p>');
+  });
+
+  it.runIf(process.platform === 'darwin')('serves a target whose folder the caller spells in another case than the disk', async (context) => {
+    fs.mkdirSync(path.join(folder, 'Code', 'Report'), { recursive: true });
+    fs.writeFileSync(path.join(folder, 'Code', 'Report', 'index.html'), '<p>report</p>');
+    const misspelled = path.join(folder, 'code', 'report', 'index.html');
+    if (!fs.existsSync(misspelled)) context.skip('this volume is case-sensitive');
+
+    await startHtmlLintRunner(misspelled);
+
+    expect(window().loadURL).toHaveBeenCalledExactlyOnceWith(`${PAGE_DIR_URL}index.html`);
+    const handler = window().webContents.session.schemes.get(LINT_SCHEME);
+    const response = await handler!(new Request(`${PAGE_DIR_URL}index.html`));
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('<p>report</p>');
   });
 
   it('loads an http(s) target as it is, with no scheme handler', async () => {
@@ -213,6 +234,21 @@ describe('startHtmlLintRunner: the window', () => {
 
     expect(granted).toHaveBeenCalledExactlyOnceWith(false);
     expect(session.permissionCheck?.(window().webContents, 'media', PAGE_DIR_URL, {})).toBe(false);
+  });
+
+  it('denies every window the page opens', async () => {
+    await startHtmlLintRunner(page);
+
+    expect(window().webContents.windowOpen?.({ url: 'https://example.test/' })).toEqual({ action: 'deny' });
+  });
+
+  it('cancels every download the page starts', async () => {
+    await startHtmlLintRunner(page);
+    const event = { preventDefault: vi.fn() };
+
+    window().webContents.session.emit('will-download', event, {}, window().webContents);
+
+    expect(event.preventDefault).toHaveBeenCalledOnce();
   });
 });
 
@@ -254,6 +290,16 @@ describe('startHtmlLintRunner: the output html_lint.py parses', () => {
     expect(findingsFromResult(extractResult(printed())!)).toEqual([
       { kind: 'failed_request', detail: `${PAGE_DIR_URL}missing.js — HTTP 404` },
       { kind: 'failed_request', detail: `${PAGE_DIR_URL}data.json — net::ERR_FAILED` },
+    ]);
+  });
+
+  it("reports a root-absolute reference that misses the page's folder", async () => {
+    await startHtmlLintRunner(page);
+    window().webContents.session.webRequest.completed?.({ url: `${LINT_ORIGIN_URL}app.js`, statusCode: 404 });
+    await settle();
+
+    expect(findingsFromResult(extractResult(printed())!)).toEqual([
+      { kind: 'failed_request', detail: `${LINT_ORIGIN_URL}app.js — HTTP 404` },
     ]);
   });
 
@@ -318,6 +364,7 @@ describe('startHtmlLintRunner: network policy', () => {
     { name: 'a file:// URL', url: 'file:///tmp/data.json', method: 'POST', expected: {} },
     { name: 'a loopback POST', url: 'http://127.0.0.1:8123/api/items', method: 'POST', expected: {} },
     { name: 'a localhost PUT', url: 'http://localhost:8123/api/items/1', method: 'PUT', expected: {} },
+    { name: 'an IPv6 loopback POST', url: 'http://[::1]:8123/api/items', method: 'POST', expected: {} },
     { name: 'an external GET', url: 'https://api.example.test/items', method: 'GET', expected: {} },
     { name: 'an external POST, answered as an empty success', url: 'https://api.example.test/items', method: 'POST', expected: { redirectURL: 'data:text/plain,' } },
     { name: 'a URL that does not parse', url: 'not a url', method: 'POST', expected: {} },
@@ -366,16 +413,29 @@ describe('the lint scheme: files from the target folder only', () => {
     expect(await response.text()).toBe(fs.readFileSync(path.join(folder, file), 'utf-8'));
   });
 
+  it("answers 404 for a root-absolute reference, though the folder holds the file, and serves a sibling's relative one", async () => {
+    fs.writeFileSync(path.join(folder, 'app.js'), 'export {};');
+    const pageUrl = `${PAGE_DIR_URL}page.html`;
+
+    const rootAbsolute = await serve(new URL('/app.js', pageUrl).href);
+    const relative = await serve(new URL('./app.js', pageUrl).href);
+
+    expect(rootAbsolute.status).toBe(404);
+    expect(relative.status).toBe(200);
+    expect(await relative.text()).toBe('export {};');
+  });
+
   it('serves a link that stays inside the folder', async () => {
     fs.symlinkSync(path.join(folder, 'data.json'), path.join(folder, 'alias.json'));
 
     expect(await lookUpLintFile(folder, `${PAGE_DIR_URL}alias.json`)).toEqual({ file: path.join(folder, 'data.json') });
   });
 
-  it('answers 404 for a missing file and for the folder itself', async () => {
+  it("answers 404 for a missing file, for the folder itself and for the origin's root", async () => {
     expect((await serve(`${PAGE_DIR_URL}missing.js`)).status).toBe(404);
     expect((await serve(`${PAGE_DIR_URL}assets`)).status).toBe(404);
     expect((await serve(PAGE_DIR_URL)).status).toBe(404);
+    expect((await serve(LINT_ORIGIN_URL)).status).toBe(404);
   });
 
   it('refuses a link that resolves outside the folder', async () => {
@@ -413,8 +473,9 @@ describe('the lint scheme: files from the target folder only', () => {
     expect(readdir.mock.calls.map(([dir]) => dir)).toEqual([folder, path.join(folder, 'assets')]);
   });
 
-  it('keeps a dot-dot path inside the folder, as URL parsing clamps it at the root', async () => {
-    expect(await lookUpLintFile(folder, `${PAGE_DIR_URL}../../data.json`)).toEqual({ file: path.join(folder, 'data.json') });
+  it("answers 404 for a dot-dot path, which URL parsing clamps out of the page's segment", async () => {
+    expect(await lookUpLintFile(folder, `${PAGE_DIR_URL}../../data.json`)).toEqual({ refused: 'not-found' });
+    expect((await serve(`${PAGE_DIR_URL}../../data.json`)).status).toBe(404);
   });
 
   it('refuses another host on the scheme', async () => {

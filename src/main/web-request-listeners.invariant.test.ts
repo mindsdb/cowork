@@ -59,9 +59,17 @@ function registrations(event: string, files: string[]): string[] {
   return files.flatMap((file) => registrationsIn(file, readFileSync(path.join(REPO, file), 'utf-8'), event));
 }
 
-/* The sources that name `./<module>` in an import, a require or a type import. */
+/* A quoted relative path to `<module>` from any folder, as an import, a
+   require or a type import names it: './<module>', '../main/<module>' and the
+   like, with or without a .ts or .js extension. `module` holds no regular
+   expression characters. */
+function importPattern(module: string): RegExp {
+  return new RegExp(`['"\`]\\.{1,2}/(?:[^'"\`\\n]*/)?${module}(?:\\.[jt]s)?['"\`]`);
+}
+
+/* The sources that name `<module>` by a relative path. */
 function importersOf(module: string): string[] {
-  const named = new RegExp(`['"\`]\\./${module}['"\`]`);
+  const named = importPattern(module);
   return mainSources().filter((file) => named.test(readFileSync(path.join(REPO, file), 'utf-8')));
 }
 
@@ -86,6 +94,19 @@ describe('webRequest listeners', () => {
 
   it.each(WEB_REQUEST_EVENTS)('registers at most one %s listener in the lint runner', (event) => {
     expect(registrations(event, [LINT_RUNNER]).slice(1)).toEqual([]);
+  });
+
+  it('sees an import of a module by a relative path from any folder', () => {
+    const named = importPattern('html-lint-runner');
+    const imports = [
+      "import { startHtmlLintRunner } from './html-lint-runner';",
+      "const runner = require('../main/html-lint-runner');",
+      'type Runner = typeof import(`../../src/main/html-lint-runner.js`);',
+    ];
+    const others = ["import './html-lint-runner-extra';", "require('../main/not-html-lint-runner');", "import 'html-lint-runner';"];
+
+    expect(imports.filter((line) => !named.test(line))).toEqual([]);
+    expect(others.filter((line) => named.test(line))).toEqual([]);
   });
 
   it('loads the lint runner only in lint mode, on a session of its own', () => {

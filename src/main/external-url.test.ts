@@ -101,7 +101,7 @@ describe('isDevServerNavigation', () => {
   it('is what the navigation guard checks, with the port the window loads Vite from', () => {
     const source = fs.readFileSync(path.join(__dirname, 'app.ts'), 'utf-8');
     const guard = source.slice(source.indexOf("on('will-navigate'"));
-    expect(guard).toMatch(/!app\.isPackaged && isDevServerNavigation\(url, viteDevPort\)\) return;/);
+    expect(guard).toMatch(/!packagedRun && isDevServerNavigation\(url, viteDevPort\)\) return;/);
     expect(guard).not.toContain("startsWith('http://localhost')");
   });
 });

@@ -144,6 +144,7 @@ describe('runHtmlLint: refused targets', () => {
   it.each([
     { name: 'a relative path', target: () => 'page.html' },
     { name: 'an absolute path that does not exist', target: () => path.join(tmpState.dir, 'missing.html') },
+    { name: 'a folder', target: () => fs.mkdtempSync(path.join(tmpState.dir, 'site-')) },
     { name: 'a URL that does not parse', target: () => 'http://' },
     { name: 'a scheme other than http(s)', target: () => 'javascript:alert(1)' },
   ])('refuses $name before a profile or a runner, packaged or not', ({ target }) => {

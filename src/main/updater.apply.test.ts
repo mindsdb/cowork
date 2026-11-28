@@ -21,6 +21,7 @@ vi.mock('./ui-updater', () => ({
   verifyServedUiCompat: vi.fn(async () => 'verified'),
   fetchManifest: vi.fn(async () => null),
   getCachedVersion: vi.fn(() => null),
+  activatedUiVersion: vi.fn(() => null),
   lastUiApplyAttempt: vi.fn(() => null),
 }));
 // The journal main writes for the renderer to report (update-journal.ts).
@@ -136,6 +137,32 @@ describe('UI_UPDATE_APPLY (ENG-3291)', () => {
     expect(await apply({ force: true })).toBe(true);
     expect(journal.record).toHaveBeenCalledTimes(1);
     expect(journal.record).toHaveBeenCalledWith(expect.objectContaining({ channel: 'server' }));
+  });
+
+  it('journals an applied UI update as moving to the activated version, before any load has served it', async () => {
+    // The window has not loaded the new slot yet, so getCachedVersion still
+    // names what it runs (here the bundled renderer, null). The record's `to`
+    // is the slot the apply activated.
+    const { applyUIUpdate, activatedUiVersion, getCachedVersion } = await import('./ui-updater');
+    serverUpdater.check.mockResolvedValueOnce({ updateAvailable: false });
+    await checkForUpdates();
+    vi.mocked(applyUIUpdate).mockResolvedValueOnce(true);
+    vi.mocked(activatedUiVersion).mockReturnValueOnce('2.26.10.7.1');
+    vi.mocked(getCachedVersion).mockReturnValue(null);
+
+    expect(await handleApplyRequest(() => null, { force: true })).toBe(true);
+
+    expect(serverUpdater.apply).not.toHaveBeenCalled();
+    expect(journal.record).toHaveBeenCalledTimes(1);
+    expect(journal.record).toHaveBeenCalledWith({
+      channel: 'ui',
+      phase: 'applied',
+      trigger: 'manual',
+      errorCode: 'unverified-no-window',
+      from: '2.26.9.28.1',
+      to: '2.26.10.7.1',
+      durationMs: expect.any(Number),
+    });
   });
 
   it('credits a failed download to the version the apply attempted, not the one the check offered', async () => {

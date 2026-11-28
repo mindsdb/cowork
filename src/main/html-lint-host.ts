@@ -26,11 +26,22 @@ export interface HtmlLintHostOptions {
 type LintRunner = { kind: 'bundled' } | { kind: 'script'; path: string };
 
 /* The runner's own target shapes, as anton/core/artifacts/html_lint.py passes
- * them: an http(s) URL (`lint_url`) or an absolute path (`lint_html`). */
+ * them: an http(s) URL (`lint_url`) or an absolute path to a regular file
+ * (`lint_html`). */
 function isLintTarget(target: string | undefined): target is string {
   if (!target) return false;
   if (/^https?:\/\//i.test(target)) return URL.canParse(target);
-  return path.isAbsolute(target) && fs.existsSync(target);
+  return path.isAbsolute(target) && isRegularFile(target);
+}
+
+/* Follows a link, as the runner's realpath of the target does. A path the
+ * host cannot stat is no file to lint. */
+function isRegularFile(file: string): boolean {
+  try {
+    return fs.statSync(file).isFile();
+  } catch {
+    return false;
+  }
 }
 
 function pickRunner(packaged: boolean): LintRunner | null {

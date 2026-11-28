@@ -160,15 +160,15 @@ This opens the Electron app against the Vite dev server and auto-opens Chromium 
 
 ### DEV_MODE (packaged app testing)
 
-When testing a packaged build (`npm run pack`), the `DEV_MODE` variable in `~/.anton/.env` controls which renderer the app loads:
+The `DEV_MODE` variable in the app's `.env` controls which renderer the app loads. A local `npm run pack` build is prod-kind and reads `~/.cowork/.env`. An unpackaged run is dev-kind and reads `~/.cowork-dev/.env`.
 
 | Value | Behavior |
 |-------|----------|
-| `live` | Load from Vite dev server (`localhost:5173`) — requires `npm run dev:renderer` running separately |
-| `full` | Load the bundled renderer only — skips OTA cache entirely |
+| `full` | Load the bundled renderer only, and skip the OTA cache and the OTA update check |
+| `live` | Unpackaged runs only: load from the Vite dev server (`localhost:5173`), which needs `npm run dev:renderer` running separately. A packaged build ignores it, as it ignores `VITE_DEV`, and never loads its window from the dev server |
 | _(unset)_ | Production mode — loads OTA-cached UI if available (`prod` builds only — see [Over-the-Air Updates](#over-the-air-updates)), otherwise bundled |
 
-To set it, add `DEV_MODE=full` (or `live`) to `~/.anton/.env`. Remove the line to return to production behavior. When `DEV_MODE` is set, the OTA update check is skipped entirely.
+To test a packaged build against the bundled renderer, add `DEV_MODE=full` to `~/.cowork/.env`. Remove the line to return to production behavior.
 
 > **Tip**: If you build the app and it looks outdated, the OTA cache may be serving an older published bundle. Either set `DEV_MODE=full` to bypass it, or clear the cache: `rm -rf ~/Library/Application\ Support/anton/ui-cache/current`
 
@@ -1199,10 +1199,10 @@ The signing job runs in the `ui-signing` GitHub environment, which admits only `
 
 - Every UI bundle is signed with **Ed25519** at release. The signing job holds `UI_SIGNING_KEY` and runs nothing but `scripts/sign-ui-bundle.mjs`. The app trusts only the public key in `src/main/ui-release-public-key.ts`, and the signer refuses a key whose public half differs from it. An unpackaged run (`npm run dev`, the e2e suites) also trusts `COWORK_OTA_TEST_PUBLIC_KEY`; a packaged build never reads it.
 - At download, the app checks the signature on `latest.json`, then the tarball against the signed SHA-256 before extraction, then the extracted folder against its signed file list. A missing, changed or extra file, or a symlink, discards the update, and the app keeps the UI it has.
-- Before **every load** from the cache, the app checks the folder against its signed file list again and hashes every file. A slot that fails is deleted and the bundled renderer loads, so the next check downloads a clean bundle. The version and the server floor come from the signed manifest.
-- `readServedUiFile` in `src/main/ui-updater.ts` returns a file of the loaded update only when its bytes match the manifest verified at load. The renderer's app scheme serves update files through it.
+- Right before **every load** of the main window from the cache, the app checks the folder against its signed file list again and hashes every file. Every load means the first load, sign-out, a sign-in that changes the data root, View → Reload and Force Reload, and the page reloading itself. A slot that fails is deleted and the bundled renderer loads, so the next check downloads a clean bundle. The version and the server floor come from the signed manifest. The UI version the app reports is the version of the slot the window loaded, and only while the app can still read files from that slot. So it reports no UI version while the bundled renderer runs, after the app refuses the slot, and between an activation and the reload that follows it.
+- While the window runs, a `file://` handler serves every file of the loaded update through `readServedUiFile` in `src/main/ui-updater.ts`. It returns a file only when its SHA-256 matches the manifest verified at that load. A changed file gets a 404, and the app refuses the slot, so the next load serves the bundled renderer. Files outside the UI cache pass through the handler unchanged. Chromium does not load a dedicated worker's script through that handler, so only the folder check before the load covers one. The renderer starts no worker today.
 - Previous UI version kept on disk for automatic **rollback**; a bundle that fails its post-swap load check is rolled back and **quarantined** (never re-applied)
-- A cache slot is served only when its signed version is strictly **newer than the bundled renderer**, so a stale or legacy cache can never downgrade the UI. A slot an older shell wrote has no signed manifest, so it is deleted at the first launch.
+- A cache slot is served only when its signed version is strictly **newer than the bundled renderer**, so a stale or legacy cache can never downgrade the UI. A slot an older shell wrote from an unsigned bundle has no signed manifest, so it is deleted at the first launch. A slot an older shell took from a signed bundle also holds that shell's `.ota-meta.json`; the app removes that file once the signature checks out, and then checks the slot's files as usual.
 - OTA runs only in `prod` builds; the gate fails safe to OFF if the packaged build kind is missing or unrecognized
 - All downloads over HTTPS
 - `RELEASES_TOKEN` only has write access to the public releases repo, and it can't publish a bundle the app accepts, because it never meets the signing key
@@ -1211,7 +1211,8 @@ The signing job runs in the `ui-signing` GitHub environment, which admits only `
 
 ```
 App starts
-  ├─ If DEV_MODE is set → load Vite dev server or bundled renderer, skip OTA
+  ├─ If DEV_MODE=full → load the bundled renderer, skip OTA
+  │   (DEV_MODE=live loads the Vite dev server in an unpackaged run only)
   ├─ Load cached UI (instant, no network needed)
   │   └─ Served only if: OTA enabled (prod build) + signed manifest valid
   │      + signed version strictly newer than bundled + server-compat floor
@@ -1387,15 +1388,15 @@ A packaged build closes the ways a program running as the user could start the a
 
 - **Electron fuses.** `electronFuses` in `electron-builder.yml` writes five fuses into every packaged build before signing, on both slices of the universal macOS app. `runAsNode`, `enableNodeOptionsEnvironmentVariable` and `enableNodeCliInspectArguments` are off. `enableEmbeddedAsarIntegrityValidation` and `onlyLoadAppFromAsar` are on. `grantFileProtocolExtraPrivileges` stays at Electron's default (on): with it off, Electron no longer serves `app.asar` over `file://`, and the main window loads its renderer that way, so it can go off only once the renderer loads through a custom scheme. So `ELECTRON_RUN_AS_NODE`, `NODE_OPTIONS` and `--inspect` have no effect, and a changed `app.asar` stops the app at start. `resetAdHocDarwinSignature` re-signs an unsigned local build ad hoc, so it still launches on Apple Silicon. `scripts/release-fuses.mjs` holds the expected values, and `src/main/release-hardening.invariant.test.ts` pins the config to them. To read a build's fuses, use `npx @electron/fuses read --app <path>`. On a universal app, that reads only the first slice, and `checkFuses` in `scripts/release-fuses.mjs` reads every slice.
 - **Entitlements.** The app and its helpers are signed without `allow-dyld-environment-variables` and `disable-library-validation`.
-- **Launch switches.** A packaged build exits at start, before any window exists, when its command line carries a switch that hands it or its traffic to whoever started it. The list is `DENIED_LAUNCH_SWITCHES` in `src/main/launch-guard.ts`: `--remote-debugging-port` and `--remote-debugging-pipe`, the switches that start a caller-chosen program in place of a child process, and the switches that expose the app's HTTPS traffic. It also removes `SSLKEYLOGFILE` from its environment. The only exception is a run whose Node inspector is active, which only a copy with the inspector fuse turned back on can reach. Proxy switches stay allowed. To debug, use `npm run dev` or `npm run dev:debug`.
-- **HTML lint mode.** anton checks generated pages by running this binary with `ANTON_HTML_LINT_TARGET`. A packaged build runs the lint runner shipped inside `app.asar` (`src/main/html-lint-runner.ts`) and ignores `ANTON_HTML_LINT_RUNNER`. The lint window serves a file target from its own folder through a lint-only scheme, so module scripts and `fetch` of sibling files work as they do in the app's viewer. An unpackaged run still loads the runner anton names.
-- **Certificates.** With the `nodeOptions` fuse off, Electron removes `NODE_EXTRA_CA_CERTS` from the environment. Desktop main's own Node HTTPS clients trust the operating system's root store, and the sidecar gets `NODE_USE_SYSTEM_CA=1`, so a corporate root installed in the system store keeps working.
-- **CI.** The macOS and Windows setup smokes check the installed app's fuses (and, on macOS, its entitlements). They then turn the inspector fuse back on in a copy of the app, which they re-sign ad hoc on macOS, and drive that copy with Playwright. The nightly pack smoke checks the fuses of an unsigned `--dir` build.
+- **Launch switches.** A packaged build exits at start, before any window exists, when its command line carries a switch that hands it or its traffic to whoever started it. The list is `DENIED_LAUNCH_SWITCHES` in `src/main/launch-guard.ts`. It holds `--remote-debugging-port` and `--remote-debugging-pipe`, the switches that start a caller-chosen program in place of a child process, and the switches that expose the app's HTTPS traffic. It also holds `--host-rules` and `--host-resolver-rules`, which redirect the app's requests, `--disable-web-security`, which turns off the same-origin policy, and `--js-flags`, which passes the caller's flags to V8. The tracing switches `--trace-startup`, `--trace-config-file`, `--trace-perfetto-config`, `--trace-perfetto-config-file`, `--enable-tracing`, `--trace-to-console` and `--enable-background-tracing` are on the list too: with the `netlog` category, a trace writes the app's request headers, tokens included, to a file or the console the caller names. For the same reason, the build refuses an `--enable-features` value that names `EnablePerfettoSystemTracing` (`DENIED_LAUNCH_FEATURES`), which hands a trace to a system tracing service; other features stay allowed. The build also refuses a `--proxy-bypass-list` that removes Chromium's loopback exemption (`<-loopback>`): the local server speaks plain HTTP on loopback, so a proxy would read its traffic. Other proxy switches and bypass lists stay allowed. It refuses `NODE_USE_ENV_PROXY` set to anything but empty or `0` too: Node reads it before the main script runs, and with `HTTP_PROXY` it would send main's own requests to the local server through that proxy. A refused launch writes its reason line and a diagnostic line to stderr, appends the diagnostic to `launch-guard.log` in Electron's logs folder (`app.getPath('logs')`, read before the app sets its name: `~/Library/Logs/<package name>` on macOS), and exits with status 1. For a prod build, that is the folder Help → "Reveal Logs in Finder" opens ("Show Logs in Explorer" on Windows, "Show Logs in File Manager" on Linux). A staging or preview build's Help item opens the `logs` folder under its own Cowork home instead, so look for `launch-guard.log` in Electron's logs folder. The same `<-loopback>` rule can also arrive through an operating system proxy setting or a proxy environment variable, and either can change while the app runs. So the main window's token listener asks the session how it routes each request to the local server, as its last check before it adds the bearer token and the window proof, after any wait for a server start (`src/main/loopback-proxy.ts`). When the route is anything but `DIRECT`, the listener cancels the request and logs the `ERROR` diagnostic `launch_guard_refused_loopback_proxied`, once per session. An ordinary manual or PAC proxy keeps loopback `DIRECT`, and the window's own `file://` load never waits on a proxy lookup. At start, the build also deletes `SSLKEYLOGFILE` and `NODE_TLS_REJECT_UNAUTHORIZED` from its environment. It deletes the development overrides that choose the local server, what gets installed and where tokens go as well (`UV_TOOL_DIR`, `UV_TOOL_BIN_DIR`, `COWORK_SERVER_DIR`, `COWORK_SERVER_PACKAGE`, `ANTON_PACKAGE`, `COWORK_SERVER_REF`, `ANTON_REF`, `COWORK_SERVER_CHANNEL`, `COWORK_SERVER_MIN_VERSION`, `MINDS_API_HOST` and `ANTON_DEVTOOLS`), so it uses the values baked in at build time. `SCRUBBED_LAUNCH_ENV` in `src/main/launch-guard.ts` holds the list. The only exception to the refusals and to the route check is a run whose Node inspector is active, which only a copy with the inspector fuse turned back on can reach. To debug, use `npm run dev` or `npm run dev:debug`.
+- **HTML lint mode.** anton checks generated pages by running this binary with `ANTON_HTML_LINT_TARGET`. A packaged build runs the lint runner shipped inside `app.asar` (`src/main/html-lint-runner.ts`) and ignores `ANTON_HTML_LINT_RUNNER`. The lint window serves a file target from its own folder through a lint-only scheme, so module scripts and `fetch` of sibling files work as they do in the app's viewer. The folder sits under `cowork-lint://artifact/page/`, not at the origin root, so a root-absolute reference such as `/app.js` fails the lint as it fails in the viewer. An unpackaged run still loads the runner anton names.
+- **Certificates.** With the `nodeOptions` fuse off, Electron removes `NODE_EXTRA_CA_CERTS` from the environment. Desktop main's own Node HTTPS clients trust the operating system's root store, and the Node programs the server starts get `NODE_USE_SYSTEM_CA=1`, so a corporate root installed in the system store keeps working for them. The Python server itself still honors `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE` and `HTTPS_PROXY` from the environment the app starts with. On Linux, `SSL_CERT_FILE` and `SSL_CERT_DIR` also replace the paths Node reads the system store from.
+- **CI.** The macOS and Windows builds run `scripts/release-app-check.mjs` on the app before upload: the fuses, and on macOS the entitlements. The macOS and Windows setup smokes run the same checks on the installed app. They then launch the installed app with a throwaway profile: it exits 1 on `--host-rules`, ignores `ELECTRON_RUN_AS_NODE`, and keeps running after a plain launch. Only then do they turn the inspector fuse back on in a copy of the app, which they re-sign ad hoc on macOS, and drive that copy with Playwright. The nightly pack smoke checks the fuses of an unsigned `--dir` build.
 
 Known limits:
 
-- Windows installs per user, so a program running as the user can rewrite the installed `.exe`, fuses included. The macOS app installs from a root-owned `.pkg` and keeps its code signature.
-- `app.asar.unpacked` (native modules) falls outside asar integrity. On macOS, library validation still covers those modules.
+- The Windows installer installs per user by default, so a program running as the user can rewrite the installed `.exe`, fuses included. On macOS, the `.pkg` postinstall hands the whole app bundle to the console user when that user is an admin (`chown -R "$user:staff"` in `build/pkg-scripts/postinstall`), so the app can update without a password prompt. For an admin, the app, its `Info.plist` and `app.asar.unpacked` are then user-owned, and macOS App Management is the only barrier to a program that changes them. A standard user's install stays root-owned.
+- `app.asar.unpacked` falls outside asar integrity. It holds only native files: the `.node` modules, node-pty's `spawn-helper` and the other files the app runs by path. The modules' JavaScript sits inside `app.asar`. On macOS, library validation checks only the Mach-O files the app loads, so it covers the `.node` modules and nothing else in that folder.
 - An older bundle MindsDB signed can be put back in the UI cache, as long as it is newer than the bundled renderer.
 
 #### Driving a packaged build with Playwright
@@ -1468,6 +1469,8 @@ That rule is prod's, because prod is where a version is cut once and its URL is 
 
 Wherever create-only does apply, only a genuine `404` from S3 counts as "not published yet"; a `403`, a throttle or an expired token stops the release rather than being read as absence. The same rule governs the updater payloads under `updates/`, which are immutable in both channels.
 
+**Builds without the launch guard are removed once a guarded build reaches prod.** "Published once" means a version's bytes never change, not that they stay forever. After the first prod release whose build carries the launch guard and the release fuses, the builds made before it are deleted under `mindshub-cowork/` and `anton/`: the versioned prod installers, the stable snapshots, the PR previews and the payloads under `updates/{prod,stable}/{mac,windows}/`. The manifests, the `-latest` and `-staging` aliases, every blockmap, `redirect.html` and `assets/` stay. The deletes are plain deletes, which the bucket's versioning keeps restorable for 30 days. A CloudFront invalidation follows them, so a removed key answers `403` or `404` at both download hostnames. Recovery means a newer release rather than restoring an old build, because the shell updater refuses a downgrade.
+
 **Object headers** are set at publish time, because CloudFront otherwise applies its own one-hour default to everything:
 
 | Object | `Cache-Control` | Why |
@@ -1482,7 +1485,7 @@ Installers also carry `Content-Type: application/octet-stream` and `Content-Disp
 
 No sidecar `.sha256` files are published. The checksum lives in `latest.json`, and OS-level signature verification (Apple notarization, SSL.com EV) remains the tamper guarantee.
 
-> **Lifecycle tip**: set bucket lifecycle rules to auto-expire objects under `previews/` (e.g. 14 days) and `snapshots/` (e.g. 60 days) to keep costs bounded. Prod objects have no expiration. The bucket has no `abort_incomplete_multipart_upload` rule today, so a failed upload leaves billable orphaned parts.
+> **Lifecycle**: the bucket's one lifecycle rule expires noncurrent versions after 30 days, removes expired delete markers, and aborts incomplete multipart uploads after 7 days. Nothing expires a current object, so `previews/` and `snapshots/` builds stay until someone deletes them.
 
 ### Public downloads at `downloads.mindshub.ai`
 
@@ -1535,7 +1538,9 @@ The upload, download, and setup checks watch different parts of this path. [`upl
 
 Stable and prod pipelines finish their running release before starting a newer one, so a new push cannot cancel a published package's setup check. A setup failure fails `build-installers`; prod's dependent OTA UI publish and download smoke wait on that result and will skip on failure.
 
-The check verifies the package checksum, signature, and notarization assessment, then installs it on a disposable GitHub-hosted macOS runner. Playwright opens the installed executable with a fresh home and browser profile. The app must report that all its data paths stay in that profile and that it cannot find an existing `uv`, including in system package-manager directories. A runner that already has `uv` fails preparation; the check does not remove shared tools or silently skip bootstrap.
+The check verifies the package checksum, signature, and notarization assessment, then installs it on a disposable GitHub-hosted macOS runner. It checks the installed app's fuses and entitlements, the same checks the build runs before upload. `scripts/installed-app-checks.mjs` then launches the installed app itself three times, each with a throwaway home and Chromium profile, and kills each launch and its child processes before the next. The app must exit with status 1 and the launch guard's stderr line on `--host-rules`, must never print the `-e` marker under `ELECTRON_RUN_AS_NODE=1`, and must still be running about 20 seconds after a plain launch.
+
+The installed app keeps Node's inspector off, so Playwright can't drive it. The check copies the app with `ditto`, turns the inspector fuse back on in the copy, and re-signs the copy ad hoc without the hardened runtime. It then confirms that the copy's fuses differ from the release's in that one fuse only. Playwright opens the copy with a fresh home and browser profile. The app must report that all its data paths stay in that profile and that it cannot find an existing `uv`, including in system package-manager directories. A runner that already has `uv` fails at "Launch and isolate app"; the check does not remove shared tools or silently skip bootstrap.
 
 The harness invokes the app's existing setup IPC without signing in or providing model credentials. It captures the real progress events and requires Install uv, Install cowork-server, Verify installation, and Start server to finish `done`, followed by a healthy server. A startup `warning`, error, cancellation, missing step, app exit, or 15-minute setup timeout fails. The installed renderer must remain bundled. Stable's filename version includes the channel and commit; the app's display version uses `git describe`, so the check correlates those forms instead of comparing them literally.
 
@@ -1552,11 +1557,11 @@ For a historical check, select `stable` and provide `snapshot-url` plus its inde
 
 This workflow does not cover authentication, chat, Windows, Linux, or every PR. Its fast failure/provenance tests run on PRs with `npm run test:macos-setup-contract`; `npm run test:macos-setup` itself refuses local execution because installing a package changes `/Applications`.
 
-[`windows-setup-smoke.yml`](.github/workflows/windows-setup-smoke.yml) does the same for the published Windows `.exe`. It runs after each successful Stable or prod Windows upload and nightly at 07:45 UTC on both channels, with the same manifest pinning, nightly `staging` checkout, setup verdict, artifacts (`windows-setup-<channel>`) and failure notice. It requires a valid Authenticode signature, installs the installer silently (`/S`) for the runner's user, finds the executable from its uninstall registration, and opens it with a fresh profile and an allowlisted environment: the home, app-data and temp variables point into the profile, and `PATH` holds only Windows' own folders, so the runner's uv, Python and git stay invisible. Electron's `home` path follows Windows' known folder and stays the runner's; every other path the app reports must be inside the profile.
+[`windows-setup-smoke.yml`](.github/workflows/windows-setup-smoke.yml) does the same for the published Windows `.exe`. It runs after each successful Stable or prod Windows upload and nightly at 07:45 UTC on both channels, with the same manifest pinning, nightly `staging` checkout, setup verdict, artifacts (`windows-setup-<channel>`) and failure notice. It requires a valid Authenticode signature, installs the installer silently (`/S`) for the runner's user, finds the executable from its uninstall registration, and checks its fuses. It runs the same launch checks on the installed executable. It then copies the install folder and turns the inspector fuse back on in the copy. The copy needs no new signature, because the installed executable carries no Authenticode signature of its own: the build signs the executable only after NSIS has packed the unsigned one into the installer. Playwright opens the copy with a fresh profile and an allowlisted environment: the home, app-data and temp variables point into the profile, and `PATH` holds only Windows' own folders, so the runner's uv, Python and git stay invisible. Electron's `home` path follows Windows' known folder and stays the runner's; every other path the app reports must be inside the profile.
 
 The Windows harness attaches an observer before entering the bundled setup screen, which starts installation exactly once. It supplies the renderer's onboarding consent and configured signal without saving credentials; the real installation checks, installer call and return value stay unchanged. Screenshots and traces show the actual setup UI, and `after.png` captures its success or failure before the screen advances.
 
-Before it opens the app, the check trims the runner's root store to what a fresh Windows trusts. Windows ships part of its root list and downloads the rest the first time a program verifies a chain through Windows, but Python's own TLS never asks it to. The hosted image instead holds over 500 roots, including GlobalSign Root CA - R3 (pypi.org) and ISRG Root X1 (raw.githubusercontent.com) among the 14 in `LocalMachine\AuthRoot`, and turns those downloads off with the `DisableRootAutoUpdate` policy. So the check empties `LocalMachine\AuthRoot`, removes both named roots wherever they remain, and confirms `LocalMachine\AuthRoot` is empty while the downloads are still off. It then turns the downloads back on, lists each root it removed, and fails at "Trim root store" if Python's view still holds either. From then on, any program on the runner can download the roots it needs, as on a fresh machine, setup's own Windows downloads such as the uv installer included; `roots-trimmed.json` and `roots-after-setup.json` record which. The other preinstalled roots stay, so a new dependency on one of them would still pass here.
+After the launch checks and the copy, and before Playwright opens the copy, the check trims the runner's root store to what a fresh Windows trusts. Windows ships part of its root list and downloads the rest the first time a program verifies a chain through Windows, but Python's own TLS never asks it to. The hosted image instead holds over 500 roots, including GlobalSign Root CA - R3 (pypi.org) and ISRG Root X1 (raw.githubusercontent.com) among the 14 in `LocalMachine\AuthRoot`, and turns those downloads off with the `DisableRootAutoUpdate` policy. So the check empties `LocalMachine\AuthRoot`, removes both named roots wherever they remain, and confirms `LocalMachine\AuthRoot` is empty while the downloads are still off. It then turns the downloads back on, lists each root it removed, and fails at "Trim root store" if Python's view still holds either. From then on, any program on the runner can download the roots it needs, as on a fresh machine, setup's own Windows downloads such as the uv installer included; `roots-trimmed.json` and `roots-after-setup.json` record which. The other preinstalled roots stay, so a new dependency on one of them would still pass here.
 
 The harness backs up each removed root to `RUNNER_TEMP`, and an `if: always()` step restores the roots and the policy before the job ends. The runner reports the job's end over Windows TLS, so without that step the job stalls until GitHub cancels it.
 
@@ -1602,7 +1607,21 @@ This section covers the one-time setup for [`publish-ui.yml`](.github/workflows/
    - Permissions: Contents (read/write), Metadata (read)
    - Save the token as `RELEASES_TOKEN` in the source repo's Settings → Secrets → Actions.
 3. Enable GitHub Pages on `antontron-releases`: Settings → Pages → Source "Deploy from a branch" → Branch `gh-pages` / `/ (root)`. The `gh-pages` branch is created automatically by the first workflow run.
-4. Create the `ui-signing` environment before the first run, limited to `main`. GitHub would otherwise create it on first use with no rules. Then store the signing key in it, and only there:
+4. Make the Ed25519 signing key pair on a trusted machine, in a folder only you can read. This writes the private key to `ui-signing.pem` as a PKCS#8 PEM that only your account can read, refuses to overwrite an existing file, and prints the public key as base64 SPKI DER:
+
+   ```bash
+   node -e "
+   const { generateKeyPairSync } = require('node:crypto');
+   const fs = require('node:fs');
+   const key = generateKeyPairSync('ed25519');
+   fs.writeFileSync('ui-signing.pem', key.privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600, flag: 'wx' });
+   console.log(key.publicKey.export({ type: 'spki', format: 'der' }).toString('base64'));
+   "
+   ```
+
+   The printed public key is one line of 60 characters that starts with `MCowBQYDK2VwAyEA`. It is not a secret: put it in `src/main/ui-release-public-key.ts` as the file's one `export const RELEASE_UI_PUBLIC_KEY = '<public key>';` line. The private key goes only into the `ui-signing` environment's `UI_SIGNING_KEY` secret.
+
+   Create the `ui-signing` environment before the first run, limited to `main`. GitHub would otherwise create it on first use with no rules. Then store the private key in it, and only there:
 
    ```bash
    gh api --method PUT repos/mindsdb/cowork/environments/ui-signing \
@@ -1613,7 +1632,9 @@ This section covers the one-time setup for [`publish-ui.yml`](.github/workflows/
    gh secret set UI_SIGNING_KEY --env ui-signing --repo mindsdb/cowork < ui-signing.pem
    ```
 
-   A new key pair means a new public key in `src/main/ui-release-public-key.ts`, shipped in a desktop release before the first bundle signed with the new key. The signing job refuses to sign while the two disagree.
+   GitHub can't give the secret back, so keep `ui-signing.pem` wherever you keep release keys.
+
+   To rotate the key, make a new pair the same way and replace the line in `src/main/ui-release-public-key.ts` with the new public key. The signing job checks `UI_SIGNING_KEY` against the public key in the commit it signs, and it refuses to sign while the two disagree. So swap the secret for the new private key once the change reaches `main`, before the sign job of the run that push starts; the sign job waits for the installers to build. A sign job that ran while the two disagreed published nothing, so re-run it once they agree. That run ships the desktop release that trusts the new key, and then the first bundle signed with it. A shell trusts only the key it was built with. A shell that trusts only the old key therefore refuses every update signed with the new one, and keeps the UI it has, until it installs a shell that carries the new key.
 5. Verify with:
 
 ```bash
@@ -1646,7 +1667,7 @@ Desktop `uv tool install` enforces exact versions and checks the resulting inven
 
 For a dependency update, review and publish the upstream server lock and its generated export, then select that server release. For a complete supplied Docker lock, regenerate and review it before rebuilding. Source-only releases never refresh either selection. Python, build backends, npm's existing lockfile and operating-system packages have their own update policies.
 
-`COWORK_SERVER_PACKAGE` and its optional `ANTON_PACKAGE` remain explicit development overrides. They bypass the release consumer and resolve the developer's custom source. Leave them unset for reviewed releases. The deprecated `scripts/install-anton.sh` refuses installation; use Anton's release installer or this application's server installer.
+`COWORK_SERVER_PACKAGE` and its optional `ANTON_PACKAGE` remain explicit development overrides. They bypass the release consumer and resolve the developer's custom source. A packaged build deletes both from its environment at start, so they work only in an unpackaged run. The deprecated `scripts/install-anton.sh` refuses installation; use Anton's release installer or this application's server installer.
 
 ## Environment Variables
 
@@ -1665,11 +1686,11 @@ For a dependency update, review and publish the upstream server lock and its gen
 | `ANTON_CODING_MODEL` | Settings | Model for coding tasks |
 | `ANTON_MEMORY_MODE` | Settings | Memory mode (autopilot/copilot/off) |
 | `ANTON_LANGFUSE_HEADERS` | Manual | Set to `1` to emit Langfuse-* headers on LLM calls |
-| `DEV_MODE` | Manual | Renderer source override (`live` = Vite dev server, `full` = bundled only, unset = production with OTA) |
+| `DEV_MODE` | Manual | Renderer source override (`full` = bundled only, `live` = Vite dev server in an unpackaged run only, since a packaged build ignores it, unset = production with OTA) |
 | `UI_UPDATE_MODE` | Manual | OTA UI update behavior (`auto` / `manual`; default `auto`). Env-only support/QA escape hatch — no Settings UI control (ENG-858) |
 | `COWORK_SERVER_DISABLE_AUTOUPDATE` | Manual | Set to `1` to skip automatic server updates on launch |
-| `COWORK_SERVER_PACKAGE` | Manual | Development override with a literal `uv` spec; bypasses the release contract and channel/ref selection |
-| `ANTON_PACKAGE` | Manual | Override anton install source (local path / uv spec); only honoured when `COWORK_SERVER_PACKAGE` is also set |
+| `COWORK_SERVER_PACKAGE` | Manual | Development override with a literal `uv` spec; bypasses the release contract and channel/ref selection. Unpackaged runs only: a packaged build deletes it at start |
+| `ANTON_PACKAGE` | Manual | Override anton install source (local path / uv spec); only honoured when `COWORK_SERVER_PACKAGE` is also set. Unpackaged runs only |
 
 ---
 

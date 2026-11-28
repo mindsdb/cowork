@@ -7,7 +7,9 @@
 // Default: install from git, branch `main`, for BOTH cowork-server and
 // anton. A developer (or the parent `minds` repo) can point either at a
 // feature branch / tag / commit via env vars while iterating; a release
-// flips the channel to the published PyPI wheel.
+// flips the channel to the published PyPI wheel. The env vars below work in
+// unpackaged runs only: a packaged build deletes them at start
+// (SCRUBBED_LAUNCH_ENV in launch-guard.ts) and uses the baked values.
 //
 //   COWORK_SERVER_CHANNEL   git | pypi            (default: git; prod-kind
 //                           builds fall back to pypi — see _channelForBuildKind)

@@ -2,6 +2,7 @@ import type { BeforeSendResponse, OnBeforeSendHeadersListenerDetails } from 'ele
 
 import { WINDOW_PROOF_HEADER } from '../shared/server-launch';
 import type { DocumentPreviewGuard, GuardedFrame } from './document-preview-guard';
+import { routesThroughProxy } from './loopback-proxy';
 
 /*
  * The listener that adds the server's bearer token and the window proof to the
@@ -123,6 +124,46 @@ export function holdWhileServerStarts(
       return false;
     }
     void settled.then(() => settle(true));
+    return true;
+  };
+}
+
+/* A gate that sends a request to the server's address only when the session
+   routes it directly, past any proxy (loopback-proxy.ts says why). It holds
+   each such request while `resolveProxy` answers for the request's URL, and
+   Chromium answers with the proxy configuration in force at that moment. The
+   answer holds for that moment only, so the caller puts this gate last
+   (gatesInOrder(otherGates, requireDirectRoute(...))): the lookup then runs
+   after every other wait, right before the listener adds the headers, and a
+   setting changed while a request waits on another gate counts for that
+   request. An answer that routes the request through a proxy
+   (routesThroughProxy), and a lookup that fails, cancel the request: the
+   listener then adds neither header. `onFirstRefusal` runs at the first
+   cancel only. A request elsewhere, and one whose URL does not parse, go
+   straight on. */
+export function requireDirectRoute(
+  serverPort: () => number,
+  resolveProxy: (url: string) => Promise<string>,
+  onFirstRefusal: () => void,
+): RequestGate {
+  let refused = false;
+  /* Async, so a lookup that throws rather than rejecting fails the same way. */
+  const routeIsDirect = async (url: string): Promise<boolean> => !routesThroughProxy(await resolveProxy(url));
+  return (details, settle) => {
+    try {
+      if (!isServerAddress(new URL(details.url), serverPort())) return false;
+    } catch {
+      return false;
+    }
+    void routeIsDirect(details.url)
+      .catch(() => false)
+      .then((direct) => {
+        settle(direct);
+        if (!direct && !refused) {
+          refused = true;
+          onFirstRefusal();
+        }
+      });
     return true;
   };
 }

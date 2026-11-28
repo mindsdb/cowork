@@ -12,7 +12,7 @@
  *
  * Loads the page in a hidden, sandboxed BrowserWindow and reports one JSON
  * blob between RESULT_JSON_START/RESULT_JSON_END on stdout: console errors
- * scoped to the target's own directory (excludes Electron's own internal
+ * scoped to the page's own origin (excludes Electron's own internal
  * diagnostics, e.g. its CSP warning, filtered by source, not content),
  * failed local asset requests, and whether the renderer crashed.
  *
@@ -21,23 +21,30 @@
  * Not fully closed: an external GET can still leak a little via query
  * params; same order of risk the product already accepts on preview.
  *
- * Three additions over anton's copy:
+ * Additions over anton's copy:
  * - The page gets no permission (microphone, camera, notifications and the
  *   rest). Electron grants every permission a session has no handler for, so
  *   a page that asked for the microphone here would record under this app's
  *   own system grant.
+ * - The page opens no window, shows no alert or confirm dialog, and starts no
+ *   download. Each would put a window, a message box or a Save dialog on the
+ *   user's desktop during an automatic check. A message box would also stop
+ *   the page's scripts until the run times out.
  * - A file target loads through LINT_SCHEME, not file://. Without the extra
  *   privileges Electron gives file:// pages (the GrantFileProtocolExtraPrivileges
  *   fuse), a file:// page can load neither a module script nor a `fetch` of a
  *   file beside it, both of which work in Cowork's viewer, which serves
  *   artifacts over http. The scheme gives the same result with that fuse on
- *   or off.
+ *   or off. It serves the folder under one path segment (LINT_FOLDER_URL), as
+ *   the viewer serves it under /api/v1/artifacts/serve/<project>/, so a
+ *   root-absolute reference such as /app.js misses the folder in both.
  * - The window runs in an in-memory session of its own (LINT_PARTITION), so
  *   its webRequest listeners and scheme handler sit on a session only it uses. */
 
 import { app, BrowserWindow, protocol, type RenderProcessGoneDetails } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
+import { contentTypeFor } from './content-types';
 
 export const SETTLE_MS = 500;
 export const HARD_TIMEOUT_MS = 15000; // safety net; the real enforcement is the caller's subprocess timeout
@@ -46,41 +53,10 @@ export const LINT_SCHEME = 'cowork-lint';
 export const LINT_PARTITION = 'cowork-html-lint';
 const LINT_HOST = 'artifact';
 const LINT_ORIGIN = `${LINT_SCHEME}://${LINT_HOST}/`;
-
-/* By extension, for the files a generated page loads. Anything else is served
- * as application/octet-stream. */
-const MIME_TYPES: Readonly<Record<string, string>> = {
-  '.html': 'text/html',
-  '.htm': 'text/html',
-  '.js': 'text/javascript',
-  '.mjs': 'text/javascript',
-  '.cjs': 'text/javascript',
-  '.css': 'text/css',
-  '.json': 'application/json',
-  '.map': 'application/json',
-  '.txt': 'text/plain',
-  '.csv': 'text/csv',
-  '.xml': 'application/xml',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.avif': 'image/avif',
-  '.ico': 'image/x-icon',
-  '.wasm': 'application/wasm',
-  '.woff': 'font/woff',
-  '.woff2': 'font/woff2',
-  '.ttf': 'font/ttf',
-  '.otf': 'font/otf',
-  '.mp3': 'audio/mpeg',
-  '.wav': 'audio/wav',
-  '.ogg': 'audio/ogg',
-  '.mp4': 'video/mp4',
-  '.webm': 'video/webm',
-  '.pdf': 'application/pdf',
-};
+/* The one path segment the target's folder is served under. Anything else on
+ * the origin answers 404, as the viewer's server root does for a page. */
+const LINT_FOLDER_PATH = '/page/';
+const LINT_FOLDER_URL = `${LINT_SCHEME}://${LINT_HOST}${LINT_FOLDER_PATH}`;
 
 export interface LintConsoleError {
   message: string;
@@ -122,7 +98,8 @@ function isMissing(error: unknown): boolean {
 }
 
 /* The file `requestUrl` names inside `root`, the real path of the target's
- * folder. The lookup walks the folder one listing at a time and matches each
+ * folder, which LINT_FOLDER_URL serves. A path outside that segment names
+ * nothing. The lookup walks the folder one listing at a time and matches each
  * request segment against the names the disk lists, so every path it builds
  * comes from those names and never from the request: a `..` segment matches
  * no listed name and is refused outright, and a link that resolves outside
@@ -131,9 +108,10 @@ function isMissing(error: unknown): boolean {
 export async function lookUpLintFile(root: string, requestUrl: string): Promise<LintFileLookup> {
   const url = new URL(requestUrl);
   if (url.host !== LINT_HOST) return { refused: 'outside-folder' };
+  if (!url.pathname.startsWith(LINT_FOLDER_PATH)) return { refused: 'not-found' };
   let segments: string[];
   try {
-    segments = decodeURIComponent(url.pathname).split('/').filter((segment) => segment !== '');
+    segments = decodeURIComponent(url.pathname.slice(LINT_FOLDER_PATH.length)).split('/').filter((segment) => segment !== '');
   } catch {
     return { refused: 'not-found' };
   }
@@ -164,14 +142,13 @@ export async function lookUpLintFile(root: string, requestUrl: string): Promise<
   return { file: real };
 }
 
-/* The LINT_SCHEME handler: the file with its MIME type, 404 for a missing
+/* The LINT_SCHEME handler: the file with its content type, 404 for a missing
  * one, 403 for one outside the folder. */
 export async function serveLintFile(root: string, request: Request): Promise<Response> {
   const lookup = await lookUpLintFile(root, request.url);
   if ('refused' in lookup) return new Response(null, { status: lookup.refused === 'not-found' ? 404 : 403 });
   const body = await fs.promises.readFile(lookup.file);
-  const contentType = MIME_TYPES[path.extname(lookup.file).toLowerCase()] ?? 'application/octet-stream';
-  return new Response(new Uint8Array(body), { headers: { 'content-type': contentType } });
+  return new Response(new Uint8Array(body), { headers: { 'content-type': contentTypeFor(lookup.file) } });
 }
 
 /* Heuristic, not authoritative: true only when the body has neither visible
@@ -189,10 +166,11 @@ const EMPTY_PAGE_CHECK = `(() => {
 })()`;
 
 /* Starts the lint of `targetPath`. Call it before `ready`: it turns off
- * hardware acceleration and registers LINT_SCHEME, which only lint mode does,
- * since lint mode never loads app.ts and its own scheme registration. The
- * promise settles once the window and its listeners are in place; the run
- * ends with `app.exit`. */
+ * hardware acceleration and registers LINT_SCHEME as a privileged scheme, and
+ * Electron accepts both only before `ready`. This is the only scheme the
+ * process registers; the app itself (app.ts) registers none. The promise
+ * settles once the window and its listeners are in place; the run ends with
+ * `app.exit`. */
 export function startHtmlLintRunner(targetPath: string): Promise<void> {
   app.disableHardwareAcceleration();
   protocol.registerSchemesAsPrivileged([
@@ -203,10 +181,11 @@ export function startHtmlLintRunner(targetPath: string): Promise<void> {
   return app.whenReady().then(() => {
     const result: HtmlLintResult = { consoleErrors: [], failedRequests: [], crashed: false, crashDetails: null, emptyPage: false };
 
-    /* "Own" scope for console errors and failed requests: the page's folder,
-     * served as LINT_ORIGIN, for a file, the origin for a URL (the backend
-     * serves both the page and its /api/*, so a failing route counts as the
-     * page's own problem). */
+    /* "Own" scope for console errors and failed requests: the scheme's whole
+     * origin for a file, so a root-absolute reference that misses the page's
+     * folder counts as well; the origin for a URL (the backend serves both the
+     * page and its /api/*, so a failing route counts as the page's own
+     * problem). */
     const isUrl = /^https?:\/\//i.test(targetPath);
     let targetDirUrl = isUrl ? new URL(targetPath).origin : LINT_ORIGIN;
     if (!targetDirUrl.endsWith('/')) targetDirUrl += '/';
@@ -219,12 +198,15 @@ export function startHtmlLintRunner(targetPath: string): Promise<void> {
         contextIsolation: true,
         nodeIntegration: false,
         webSecurity: true,
+        disableDialogs: true,
         partition: LINT_PARTITION,
       },
     });
 
     win.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
     win.webContents.session.setPermissionCheckHandler(() => false);
+    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    win.webContents.session.on('will-download', (event) => event.preventDefault());
 
     const hardTimeout = setTimeout(() => emitAndExit(result), HARD_TIMEOUT_MS);
 
@@ -270,7 +252,8 @@ export function startHtmlLintRunner(targetPath: string): Promise<void> {
         return;
       }
       const isLocal = url.protocol === 'file:' || url.protocol === `${LINT_SCHEME}:`;
-      const isLoopback = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '::1';
+      /* A WHATWG URL keeps the brackets on an IPv6 host. */
+      const isLoopback = url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]';
       if (isLocal || isLoopback || details.method === 'GET') {
         callback({});
         return;
@@ -284,9 +267,13 @@ export function startHtmlLintRunner(targetPath: string): Promise<void> {
 
     let pageUrl = targetPath;
     if (!isUrl) {
-      const root = fs.realpathSync(path.dirname(path.resolve(targetPath)));
+      /* The native realpath returns the disk's own spelling, as the lookup's
+       * realpath does, so a target spelled in another case or Unicode form
+       * still sits inside the root it is served from. */
+      const page = fs.realpathSync.native(path.resolve(targetPath));
+      const root = path.dirname(page);
       win.webContents.session.protocol.handle(LINT_SCHEME, (request) => serveLintFile(root, request));
-      pageUrl = LINT_ORIGIN + encodeURIComponent(path.basename(targetPath));
+      pageUrl = LINT_FOLDER_URL + encodeURIComponent(path.basename(page));
     }
 
     /* A failed load needs nothing here: its request is already recorded

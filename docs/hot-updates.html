@@ -700,14 +700,18 @@ rm -rf ~/Library/Application\ Support/Anton/ui-cache</code></pre>
       <div class="test-head">
         <span class="test-num">Test 05</span>
         <h2 class="test-title" style="margin: 0; scroll-margin-top: 0;">DEV_MODE=live</h2>
-        <span class="test-pill pill-pass"><span class="dot"></span> Passed</span>
+        <span class="test-pill pill-todo"><span class="dot"></span> Re-run</span>
       </div>
-      <p>For developers who want renderer changes in real time without rebuilding the full app.</p>
+      <p>For developers who want renderer changes in real time without rebuilding the full app.
+        <code>DEV_MODE=live</code> works only in an unpackaged run. A packaged build ignores it, as it
+        ignores <code>VITE_DEV</code>, and never loads its window from the Vite dev server.
+        <code>DEV_MODE=full</code> still works in a packaged build (<a href="#test-6">Test 6</a>).</p>
 
       <p class="step-label">Setup</p>
-      <pre><code>echo 'DEV_MODE=live' >> ~/.anton/.env</code></pre>
+      <pre><code># An unpackaged run is the dev build kind and reads ~/.cowork-dev/.env
+mkdir -p ~/.cowork-dev && echo 'DEV_MODE=live' >> ~/.cowork-dev/.env</code></pre>
 
-      <p class="step-label">Steps — with dev server running</p>
+      <p class="step-label">Steps in an unpackaged run, with the dev server running</p>
       <ol>
         <li>
           In one terminal, start the Vite dev server:
@@ -715,24 +719,25 @@ rm -rf ~/Library/Application\ Support/Anton/ui-cache</code></pre>
           Wait until it says the server is ready on <code>localhost:5173</code>.
         </li>
         <li>
-          In another terminal, launch the packaged app:
-          <pre><code>./release/mac-arm64/MindsHub Cowork.app/Contents/MacOS/MindsHub Cowork</code></pre>
+          In another terminal, build the main process and start Electron unpackaged, without
+          <code>VITE_DEV</code>:
+          <pre><code>export PATH="/opt/homebrew/opt/node@20/bin:$PATH"
+npm run build:main && LOG_LEVEL=INFO npm start</code></pre>
         </li>
       </ol>
 
       <p class="step-label">What to verify</p>
       <ul class="verify">
-        <li>Terminal shows <code>[main] DEV_MODE=live — loading from http://localhost:5173</code></li>
-        <li>The app loads the renderer from the Vite dev server, not from the bundled/cached files</li>
+        <li>Terminal shows the <code>main_dev_mode_live_loading_from_http_localhost</code> event</li>
+        <li>The app loads the renderer from the Vite dev server, not from the bundled files</li>
         <li>If you edit a file under <code>src/renderer/</code>, Vite hot-reloads it in the running app window</li>
-        <li>No OTA update check runs — no <code>[ui-updater]</code> log lines appear</li>
         <li>The Python server still starts and works normally</li>
       </ul>
 
-      <p class="step-label">Steps — without dev server running</p>
+      <p class="step-label">Steps in an unpackaged run, without the dev server</p>
       <ol>
         <li>Stop the Vite dev server (<code>Ctrl+C</code>)</li>
-        <li>Launch the packaged app again</li>
+        <li>Start the unpackaged app again with <code>npm start</code></li>
       </ol>
 
       <ul class="verify">
@@ -740,8 +745,28 @@ rm -rf ~/Library/Application\ Support/Anton/ui-cache</code></pre>
         <li>The app does NOT crash — it just can't reach <code>localhost:5173</code></li>
       </ul>
 
+      <p class="step-label">Steps in a packaged build, which ignores it</p>
+      <ol>
+        <li>Start the Vite dev server again with <code>npm run dev:renderer</code>.</li>
+        <li>
+          Add the same line to the packaged build's config. A local <code>npm run pack</code> build
+          is prod-kind and reads <code>~/.cowork/.env</code>:
+          <pre><code>echo 'DEV_MODE=live' >> ~/.cowork/.env</code></pre>
+        </li>
+        <li>
+          Launch the packaged app from Terminal:
+          <pre><code>LOG_LEVEL=INFO "./release/mac-arm64/MindsHub Cowork.app/Contents/MacOS/MindsHub Cowork"</code></pre>
+        </li>
+      </ol>
+
+      <ul class="verify">
+        <li>Terminal shows no <code>main_dev_mode_live_loading_from_http_localhost</code> event</li>
+        <li>The window does not load from <code>localhost:5173</code>: an edit under <code>src/renderer/</code> never reaches it</li>
+      </ul>
+
       <p class="step-label">Cleanup</p>
-      <pre><code>grep -v 'DEV_MODE' ~/.anton/.env > /tmp/.env.tmp && mv /tmp/.env.tmp ~/.anton/.env</code></pre>
+      <pre><code>grep -v 'DEV_MODE' ~/.cowork-dev/.env > /tmp/.env.tmp && mv /tmp/.env.tmp ~/.cowork-dev/.env
+grep -v 'DEV_MODE' ~/.cowork/.env > /tmp/.env.tmp && mv /tmp/.env.tmp ~/.cowork/.env</code></pre>
     </section>
 
     <!-- ───────────── Test 6 ───────────── -->
@@ -895,7 +920,7 @@ grep -v 'DEV_MODE' ~/.anton/.env > /tmp/.env.tmp && mv /tmp/.env.tmp ~/.anton/.e
         <h2 class="test-title" style="margin: 0; scroll-margin-top: 0;">A changed cache file is refused</h2>
         <span class="test-pill pill-todo"><span class="dot"></span> Re-run</span>
       </div>
-      <p>The app checks every cached file against the bundle's signed file list before each load, not only at download.</p>
+      <p>The app checks every cached file against the bundle's signed file list right before each load of the main window, reloads included, not only at download. While the window runs, a <code>file://</code> handler serves each file of the bundle only when it still matches the list verified at that load; a changed file gets a 404.</p>
 
       <p class="step-label">Steps</p>
       <ol>
@@ -906,6 +931,7 @@ grep -v 'DEV_MODE' ~/.anton/.env > /tmp/.env.tmp && mv /tmp/.env.tmp ~/.anton/.e
 f=$(ls assets/*.js | head -1); printf 'x' | dd of="$f" bs=1 seek=0 conv=notrunc</code></pre>
         </li>
         <li>Relaunch the app from Terminal.</li>
+        <li>Once the app has taken the update again, change one byte of a cached file the same way while the app runs, then choose View → Reload.</li>
       </ol>
 
       <p class="step-label">What to verify</p>
@@ -913,6 +939,7 @@ f=$(ls assets/*.js | head -1); printf 'x' | dd of="$f" bs=1 seek=0 conv=notrunc<
         <li>Terminal shows <code>ui_updater_cached_ui_refused_hash_mismatch</code></li>
         <li><code>ui-cache/current/</code> is gone, and the app runs the bundled renderer</li>
         <li>The next update check downloads the bundle again</li>
+        <li>After the reload in step 4, Terminal shows <code>ui_updater_cached_ui_refused_hash_mismatch</code> again, and the window shows the bundled renderer</li>
       </ul>
     </section>
 
@@ -939,7 +966,7 @@ f=$(ls assets/*.js | head -1); printf 'x' | dd of="$f" bs=1 seek=0 conv=notrunc<
         <span class="var">DEV_MODE</span>
         <span class="vals">live, full, false/empty</span>
         <span class="def">not set</span>
-        <span class="effect">Developer renderer override</span>
+        <span class="effect">Developer renderer override. A packaged build ignores <code>live</code></span>
       </div>
     </div>
     <p style="margin-top: 12px;">
@@ -964,7 +991,7 @@ f=$(ls assets/*.js | head -1); printf 'x' | dd of="$f" bs=1 seek=0 conv=notrunc<
         <summary>The app shows a blank white screen</summary>
         <div class="body">
           <ul>
-            <li>If <code>DEV_MODE=live</code> and no Vite server is running, this is expected. Remove <code>DEV_MODE</code> from <code>~/.anton/.env</code>.</li>
+            <li>If an unpackaged run has <code>DEV_MODE=live</code> and no Vite server is running, this is expected. Remove <code>DEV_MODE</code> from <code>~/.cowork-dev/.env</code>. A packaged build ignores <code>DEV_MODE=live</code>.</li>
             <li>If the OTA cache is corrupted: <code>rm -rf ~/Library/Application\ Support/Anton/ui-cache</code> and relaunch.</li>
           </ul>
         </div>

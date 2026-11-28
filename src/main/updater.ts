@@ -7,7 +7,7 @@ import { diagnostic } from '../shared/diagnostics';
 
 import { app, BrowserWindow } from 'electron';
 import { IPC } from '../shared/ipc-channels';
-import { checkForUIUpdate, applyUIUpdate, getRendererPath, hasInternet, rollbackUI, isServingOta, verifyServedUiCompat, fetchManifest, getCachedVersion, lastUiApplyAttempt } from './ui-updater';
+import { checkForUIUpdate, applyUIUpdate, getRendererPath, hasInternet, rollbackUI, isServingOta, verifyServedUiCompat, fetchManifest, getCachedVersion, activatedUiVersion, lastUiApplyAttempt } from './ui-updater';
 import type { UpdateCheckResult } from './ui-updater';
 import { checkForServerUpdate, maybeUpdateServer, type ServerUpdateCheckResult } from './server-updater';
 import { isServerRunning } from './server-process';
@@ -179,7 +179,7 @@ function servedUiVersion(): string {
 /** Swap in the staged bundle through the health-checked reload and journal
  *  the outcome against the version it replaced. */
 async function activateUiAndJournal(getWindow: GetWindow, from: string, trigger: UpdateJournalTrigger, startedAt: number): Promise<void> {
-  const to = getCachedVersion();
+  const to = activatedUiVersion();
   const outcome = await reloadWithUiHealthCheck(getWindow);
   recordUpdatePhase(uiOutcomeRecord(outcome, { from, to }, trigger, Date.now() - startedAt));
 }

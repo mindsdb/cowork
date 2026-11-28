@@ -3,7 +3,8 @@
 // with plain `tsc` and reads the value baked into build-channel.gen.ts.
 //
 // Resolution order (highest priority first):
-//   process.env.MINDS_API_HOST     — explicit runtime override (dev / tests)
+//   process.env.MINDS_API_HOST     — explicit runtime override (dev / tests;
+//                                    a packaged build deletes it at start)
 //   BUILD_MINDS_API_URL            — baked at build time (packaged apps)
 //   CHANNELS[buildKind()].apiHost  — the resolved channel's canonical host
 //

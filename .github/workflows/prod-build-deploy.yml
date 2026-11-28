@@ -94,12 +94,10 @@ jobs:
     # exists — or after its build failed — would advertise a reinstall the
     # download URL can't serve.
     needs: [auto-release, build-installers]
-    # `contents: write` because publish-ui.yml declares it at workflow level (it
-    # pushes the bundle and updates the release). Without this the whole prod run
-    # is rejected at file load as a startup_failure — the permission gate caught
-    # exactly that before this ever ran.
+    # publish-ui.yml's jobs only read this repository. RELEASES_TOKEN does the
+    # writing, to the releases repository.
     permissions:
-      contents: write
+      contents: read
     uses: ./.github/workflows/publish-ui.yml
     with:
       version: ${{ needs.auto-release.outputs.version }}

@@ -295,6 +295,16 @@ jobs:
             "has_app_exe=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           }
 
+      # The check the setup smoke runs on the installed exe, run here on the exe
+      # NSIS packed into the installer, before anything is signed or uploaded:
+      # a builder change that drops a release fuse fails this build instead of
+      # the smoke after the release ships. A build without an app exe fails too.
+      - name: Check release fuses
+        shell: pwsh
+        env:
+          APP_EXE: ${{ steps.app_exe.outputs.app_exe_path }}
+        run: node scripts/release-app-check.mjs "$env:APP_EXE"
+
       - name: Resolve uninstaller path
         id: uninstaller
         shell: pwsh

@@ -33,8 +33,12 @@ export const TARBALL_NAME = 'ui-bundle.tar.gz';
 export const TARBALL_HASH_NAME = 'ui-bundle.sha256';
 export const SIGNATURE_JSON_NAME = 'ui-signature.json';
 
-/* The one line of src/main/ui-release-public-key.ts that holds the release key. */
-export const RELEASE_PUBLIC_KEY_LINE = /^export const RELEASE_UI_PUBLIC_KEY = '([A-Za-z0-9+/=]+)';$/m;
+/* The shape of the one line of src/main/ui-release-public-key.ts that holds the release key. */
+const RELEASE_PUBLIC_KEY_SHAPE = "export const RELEASE_UI_PUBLIC_KEY = '<base64>';";
+
+/* Matches every line of that shape, so readReleasePublicKey can count them. String.matchAll
+   copies the expression, so the `g` flag leaves no state on this constant between calls. */
+export const RELEASE_PUBLIC_KEY_LINE = /^export const RELEASE_UI_PUBLIC_KEY = '([A-Za-z0-9+/=]+)';$/gm;
 
 /**
  * The bundle manifest written to ota-manifest.json.
@@ -120,15 +124,21 @@ export function signJson(value, privateKey) {
 
 /**
  * Reads the release public key from the source text of src/main/ui-release-public-key.ts.
+ * The file must hold exactly one key line. A second one, such as an old key left in a block
+ * comment at column 0, is refused, because the check would otherwise compare the signing key
+ * with whichever line comes first, not with the key the app trusts.
  * @param {string} source
  * @returns {string}  base64 SPKI DER
  */
 export function readReleasePublicKey(source) {
-  const match = RELEASE_PUBLIC_KEY_LINE.exec(source);
-  if (!match) {
-    throw new SignError("no line of the form \"export const RELEASE_UI_PUBLIC_KEY = '<base64>';\" in the public key file");
+  const matches = [...source.matchAll(RELEASE_PUBLIC_KEY_LINE)];
+  if (matches.length === 0) {
+    throw new SignError(`no line of the form "${RELEASE_PUBLIC_KEY_SHAPE}" in the public key file`);
   }
-  return match[1];
+  if (matches.length > 1) {
+    throw new SignError(`${matches.length} lines of the form "${RELEASE_PUBLIC_KEY_SHAPE}" in the public key file; it must hold exactly one, so delete every line but the release key's`);
+  }
+  return matches[0][1];
 }
 
 /**

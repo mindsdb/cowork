@@ -21,6 +21,24 @@ files:
   - "!node_modules/fs-xattr/**"
   - "!node_modules/macos-alias/**"
 
+# Only the files the app loads or runs by path sit outside app.asar, in
+# app.asar.unpacked, which asar integrity does not cover. Everything else, the
+# native modules' JavaScript included, stays in app.asar. Smart unpack is off,
+# because it moves the whole folder of any module that holds one native file.
+# The patterns name, file by file, what smart unpack looks for:
+# - native modules (keytar.node, and node-pty's pty.node, conpty.node and
+#   conpty_console_list.node), which Node loads with dlopen, and the libraries
+#   and executables beside them (node-pty's conpty.dll and OpenConsole.exe);
+# - node-pty's spawn-helper, an executable without an extension, which
+#   node-pty runs from its own folder's path with app.asar replaced by
+#   app.asar.unpacked.
+# Pinned by src/main/release-hardening.invariant.test.ts.
+asar:
+  smartUnpack: false
+asarUnpack:
+  - "**/*.{node,dll,exe,dylib,so}"
+  - "**/node_modules/node-pty/**/spawn-helper"
+
 mac:
   # .icns, not the PNG: see scripts/generate-mac-icons.sh.
   icon: icon.icns
@@ -193,7 +211,8 @@ electronFuses:
   onlyLoadAppFromAsar: true
   # Writing the fuses breaks the ad-hoc signature Electron Framework ships
   # with, and Apple Silicon refuses to run arm64 code with a broken signature.
-  # A signed build replaces this signature when electron-builder signs. An
-  # unsigned build (npm run pack without an identity, a pull-request build,
-  # MAC_PKG_UNSIGNED) launches only because of it. Ignored off macOS.
+  # A signed build replaces this signature when electron-builder signs, and
+  # every macOS package CI builds is signed, a pull request's included. An
+  # unsigned build (npm run pack without an identity, such as the nightly pack
+  # smoke, or MAC_PKG_UNSIGNED) launches only because of it. Ignored off macOS.
   resetAdHocDarwinSignature: true

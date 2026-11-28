@@ -62,7 +62,8 @@ function trustedKeys(): UiTrustedKeys {
 }
 
 /* One fixed diagnostic event per refusal, so a log line names why a bundle or a latest.json was
-   refused. `cached` is the slot the window would load; `downloaded` is a freshly extracted one. */
+   refused. `cached` is the slot the window would load; `served` is the slot the window loaded,
+   refused by a read through it (ui-file-protocol.ts); `downloaded` is a freshly extracted one. */
 const FOLDER_REFUSAL_SLUG: Record<FolderRefusal, string> = {
   'manifest-missing': 'manifest_missing',
   'signature-missing': 'signature_missing',
@@ -78,7 +79,7 @@ const FOLDER_REFUSAL_SLUG: Record<FolderRefusal, string> = {
   unreadable: 'unreadable',
 };
 
-function folderRefusalEvent(slot: 'cached' | 'downloaded', reason: FolderRefusal): string {
+function folderRefusalEvent(slot: 'cached' | 'served' | 'downloaded', reason: FolderRefusal): string {
   return `ui_updater_${slot}_ui_refused_${FOLDER_REFUSAL_SLUG[reason]}`;
 }
 
@@ -150,7 +151,8 @@ export interface UpdateCheckResult {
   error?: boolean;
 }
 
-function getCacheDir(): string {
+/** The folder that holds the page-update slots (`current`, `previous`, `staging`). */
+export function getCacheDir(): string {
   // Isolate the OTA UI cache per non-prod channel so build kinds on one machine
   // don't clobber each other's cached bundle (they share one userData because
   // they share a productName). prod keeps the historical userData location.
@@ -184,7 +186,8 @@ interface VerifiedSlot {
 
 /* The slot the window last loaded from the cache, with the manifest the folder check verified
    right before that load; readServedUiFile reads through it. Null while the bundled renderer is
-   what the window loaded. */
+   what the window loaded. A refusal that deletes the slot, a rollback, and an activation that
+   puts a new bundle in `current` clear it too, until the next load records a slot. */
 let _served: VerifiedSlot | null = null;
 
 /* True unless lstat says the slot is absent. Any other error counts as present, so the folder
@@ -210,16 +213,39 @@ function readCurrentSignedManifest(): BundleManifest | null {
 }
 
 /* Logs why the cached slot was refused and deletes it, so the next update check downloads a clean
-   bundle. A slot the check could not read stays: that says nothing about its contents. */
-function refuseCachedSlot(root: string, reason: FolderRefusal): null {
-  diagnostic("main.ui-updater", "WARNING", folderRefusalEvent('cached', reason));
+   bundle. Deleting the slot the window loaded also clears the served state, so nothing is read
+   through it any more and the next load serves the bundled renderer. A slot the check could not
+   read stays: that says nothing about its contents. */
+function refuseCachedSlot(root: string, reason: FolderRefusal, slot: 'cached' | 'served' = 'cached'): null {
+  diagnostic("main.ui-updater", "WARNING", folderRefusalEvent(slot, reason));
   if (reason === 'unreadable') return null;
+  if (_served?.root === root) _served = null;
   try {
     rmDir(root);
   } catch (err) {
     diagnostic("main.ui-updater", "ERROR", "ui_updater_refused_cache_slot_could_not_be_deleted", err);
   }
   return null;
+}
+
+/* The marker a shell from before signed page updates writes into each slot it activates. A
+   signed manifest never lists it, so the folder check would refuse such a slot as tampered. */
+const OLD_SHELL_MARKER = '.ota-meta.json';
+
+/* Removes an older shell's marker from a slot whose signature passed, so the folder check sees the
+   signed files only. It removes a regular file at the slot root, and only when the manifest does
+   not list that name. Anything else under that name stays, for the folder check to refuse. */
+function removeOldShellMarker(root: string, manifest: BundleManifest): void {
+  if (manifest.files.has(OLD_SHELL_MARKER)) return;
+  const marker = path.join(root, OLD_SHELL_MARKER);
+  try {
+    if (!fs.lstatSync(marker).isFile()) return;
+    fs.unlinkSync(marker);
+  } catch (err) {
+    const code = err instanceof Error && 'code' in err ? err.code : undefined;
+    if (code === 'ENOENT') return;
+    diagnostic("main.ui-updater", "WARNING", "ui_updater_old_shell_marker_not_removed", err);
+  }
 }
 
 /* Whether a bundle with this verified manifest may be served now: it has an index.html, it is
@@ -237,16 +263,17 @@ function manifestIsServable(manifest: BundleManifest): boolean {
 }
 
 /* The `current` slot when it may be served right now, else null. Every call checks the signed
-   manifest, then the gates above, and then, for a slot it would serve, walks the folder and
-   hashes every file; nothing is cached between calls. A slot that fails the signature or the
-   files is deleted. Synchronous, because the boot load in createWindow is; the file hashing is
-   nearly all of its cost. */
+   manifest, removes an older shell's marker from a slot whose signature passed, checks the gates
+   above, and then, for a slot it would serve, walks the folder and hashes every file; nothing is
+   cached between calls. A slot that fails the signature or the files is deleted. Synchronous,
+   because the window's loads in app.ts are; the file hashing is nearly all of its cost. */
 function checkServableSlot(): VerifiedSlot | null {
   if (!otaEnabled()) return null;
   const root = getCurrentDir();
   if (!slotPresent(root)) return null;
   const signed = readSignedBundleManifest(root, trustedKeys());
   if (!signed.ok) return refuseCachedSlot(root, signed.reason);
+  removeOldShellMarker(root, signed.manifest);
   if (!manifestIsServable(signed.manifest)) return null;
   const files = verifyBundleFiles(root, signed.manifest);
   if (!files.ok) return refuseCachedSlot(root, files.reason);
@@ -293,9 +320,18 @@ export type RendererLoad =
  *  Otherwise the always-safe bundled renderer. Call it right before each load. */
 export function resolveRendererLoad(): RendererLoad {
   const slot = checkServableSlot();
+  if (!slot) return resolveBundledRendererLoad();
   _served = slot;
-  if (!slot) return { kind: 'bundled', path: getBundledRendererPath() };
   return { kind: 'ota', path: path.join(slot.root, 'index.html'), version: slot.manifest.version };
+}
+
+/** Records that the window loads the app-bundled renderer next, ignoring any
+ *  OTA cache, and returns that load. Every load of the bundled renderer goes
+ *  through here or through resolveRendererLoad, so the served state never
+ *  names a cache slot while the bundled renderer runs. */
+export function resolveBundledRendererLoad(): Extract<RendererLoad, { kind: 'bundled' }> {
+  _served = null;
+  return { kind: 'bundled', path: getBundledRendererPath() };
 }
 
 /** The index.html path to load next (see resolveRendererLoad). */
@@ -322,16 +358,40 @@ export function readServedUiFile(relativePath: string): ServedUiFileRead {
   return readVerifiedBundleFile(_served.root, _served.manifest, relativePath);
 }
 
-/** Always returns the app-bundled renderer, ignoring any OTA cache. */
-export function getBundledPath(): string {
-  return getBundledRendererPath();
+/** The folder of the slot the window loaded, or null while the bundled
+ *  renderer is what the window loaded. readServedUiFile reads under it. */
+export function servedUiRoot(): string | null {
+  return _served?.root ?? null;
 }
 
-/** The OTA UI version the next load would serve, from its verified manifest,
- *  or null when that is the bundled renderer (so version display reflects
- *  what's really running). */
+/** The readServedUiFile refusals that mean a file of the served slot changed
+ *  on disk after the folder check that ran before the load. */
+export type ServedSlotChange = 'hash-mismatch' | 'non-regular-entry' | 'missing-file';
+
+/** Refuses the slot the window loaded after a read through it found a file
+ *  changed on disk: logs why, deletes the slot and clears the served state,
+ *  so the next load serves the bundled renderer and the next update check
+ *  downloads a clean bundle. Does nothing while the bundled renderer is loaded. */
+export function refuseServedUiSlot(reason: ServedSlotChange): void {
+  if (!_served) return;
+  refuseCachedSlot(_served.root, reason, 'served');
+}
+
+/** The version of the page update the window last loaded, from the manifest
+ *  the folder check verified right before that load, or null while the
+ *  bundled renderer is what the window loaded. It reads that record only: it
+ *  hashes nothing and deletes nothing, so asking what runs (About, Settings,
+ *  Copy Diagnostics) never touches the slot the window runs from. */
 export function getCachedVersion(): string | null {
-  return checkServableSlot()?.manifest.version ?? null;
+  return _served?.manifest.version ?? null;
+}
+
+/** The signed version of the activated slot, `current`, with its signature
+ *  checked and its files neither hashed nor deleted; null when there is no
+ *  slot or its signature fails. An update record names it as the version the
+ *  update moves to; the version the window runs is getCachedVersion. */
+export function activatedUiVersion(): string | null {
+  return readCurrentSignedManifest()?.version ?? null;
 }
 
 /** Quick connectivity check — can we reach the manifest host? */
@@ -466,7 +526,13 @@ async function downloadAndStage(release: VerifiedUiRelease): Promise<boolean> {
  *  `current` was moved aside, the app would be left with NO active slot — so on
  *  a mid-swap failure we put `current` back before rethrowing. The slot's signed
  *  manifest travels with it, and nothing else is written into it: the folder
- *  check refuses any file the manifest does not list. */
+ *  check refuses any file the manifest does not list.
+ *
+ *  Once the new bundle is in `current`, the served state is cleared: the
+ *  manifest verified at the last load does not describe the new bundle's
+ *  files. The outgoing page's lazy loads then get 404 and delete nothing,
+ *  where a read through the old manifest would refuse the new slot as
+ *  tampered. */
 async function activateStaged(version: string): Promise<void> {
   const current = getCurrentDir();
   const previous = getPreviousDir();
@@ -480,7 +546,7 @@ async function activateStaged(version: string): Promise<void> {
   try {
     await retryOnTransientLock(() => fs.renameSync(staging, current));
   } catch (err) {
-    // Torn swap — restore the bundle we moved aside so `current` isn't left
+    // Torn swap: restore the bundle we moved aside so `current` isn't left
     // empty. Retry this too: a transient lock on `previous` must not be what
     // leaves the app with no slot.
     if (movedCurrent && !fs.existsSync(current)) {
@@ -490,6 +556,7 @@ async function activateStaged(version: string): Promise<void> {
     }
     throw err;
   }
+  _served = null;
   diagnostic("main.ui-updater", "INFO", "ui_updater_activated_ui", `[ui-updater] activated UI ${version}`);
 }
 
@@ -624,8 +691,8 @@ async function runApplyUIUpdate(): Promise<boolean> {
 /** Roll back the active OTA bundle: quarantine the version we're leaving (so it
  *  isn't re-activated), restore the previous slot if there is one, else fall
  *  through to the bundled renderer. Each slot carries its signed manifest, so
- *  getCachedVersion() reflects the restored state once it passes the folder
- *  check. The quarantine is recorded synchronously (before the first await), so
+ *  the next load serves the restored slot once it passes the folder check.
+ *  The quarantine is recorded synchronously (before the first await), so
  *  a fire-and-forget caller is safe; the rm/rename retry the same Windows locks
  *  activateStaged guards. */
 export async function rollbackUI(): Promise<void> {
