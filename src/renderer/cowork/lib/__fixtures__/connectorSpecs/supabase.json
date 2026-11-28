@@ -1,0 +1,226 @@
+{
+  "form_id": "supabase-connector",
+  "title": "Connect Supabase",
+  "subtitle": "Link Anton to your Supabase project's Postgres database.",
+  "logo": "database",
+  "logo_color": "#3ECF8E",
+  "methods": [
+    {
+      "id": "browser_oauth_builtin",
+      "label": "Authorize with Supabase",
+      "description": "Sign in to Supabase in your browser and authorize access. No database credentials are required.",
+      "recommended": true,
+      "hidden": false,
+      "how_to": "Click **Connect**, sign in to Supabase, and click **Authorize**. OAuth access is granted according to the scopes configured on the Supabase OAuth app. Use `http://localhost:47292/callback` as the OAuth app redirect URI.",
+      "fields": [],
+      "oauth": {
+        "auth_url": "https://api.supabase.com/v1/oauth/authorize",
+        "token_url": "https://api.supabase.com/v1/oauth/token",
+        "revoke_url": "https://api.supabase.com/v1/oauth/revoke",
+        "scopes": [
+          "projects:read",
+          "organizations:read"
+        ],
+        "service_id": "supabase",
+        "token_auth_style": "basic",
+        "supports_refresh": true,
+        "supports_revoke": true,
+        "redirect_port": 47292,
+        "redirect_host": "localhost"
+      }
+    },
+    {
+      "id": "connection-string",
+      "label": "Connection String",
+      "description": "Paste the full Postgres connection string from your Supabase project settings. Quickest way to get connected — one field, no assembly required.",
+      "recommended": false,
+      "how_to": "## Get your Supabase connection string\n\n1. Open [Supabase Dashboard](https://supabase.com/dashboard) and select your project.\n2. Go to **Project Settings** (gear icon in the left sidebar) → **Database**.\n3. Scroll to the **Connection string** section.\n4. Choose the **URI** tab.\n5. Copy the full string — it looks like `postgresql://postgres:[YOUR-PASSWORD]@db.<project-ref>.supabase.co:5432/postgres`.\n6. If the password placeholder `[YOUR-PASSWORD]` appears, replace it with your database password (set when you created the project, or reset under **Database → Database Password**).\n7. Paste the string into the field below.\n\n### Notes\n\n- Use the **Transaction** mode URI (port 6543) if you plan to run many short-lived queries; use the direct URI (port 5432) for long-running or migration workloads.\n- If you're on the free plan and your project is paused, you'll need to unpause it in the dashboard first.\n",
+      "help_url": "https://supabase.com/docs/guides/database/connecting-to-postgres",
+      "fields": [
+        {
+          "name": "connection_string",
+          "label": "Connection String",
+          "type": "password",
+          "required": true,
+          "secret": true,
+          "placeholder": "postgresql://postgres:[YOUR-PASSWORD]@db.<project-ref>.supabase.co:5432/postgres",
+          "description": "Full Postgres URI from Project Settings → Database → Connection string → URI tab."
+        }
+      ]
+    },
+    {
+      "id": "individual-credentials",
+      "label": "Host / Port / Database / User / Password",
+      "description": "Enter your Supabase database credentials field by field. Useful if you need fine-grained control or a connection manager that doesn't accept raw URI strings.",
+      "recommended": false,
+      "how_to": "## Get individual Supabase database credentials\n\n1. Open [Supabase Dashboard](https://supabase.com/dashboard) and select your project.\n2. Go to **Project Settings** → **Database**.\n3. Scroll to the **Connection info** section — all individual fields are listed there.\n4. Copy the values one by one:\n   - **Host**: `db.<project-ref>.supabase.co`\n   - **Port**: `5432` (direct) or `6543` (transaction pooler)\n   - **Database name**: `postgres`\n   - **User**: `postgres`\n   - **Password**: your project database password\n5. Fill in the fields below and click **Submit**.\n\n### Notes\n\n- If you've never set a database password, go to **Project Settings → Database → Database Password** and reset it.\n- For SSL, Supabase requires `sslmode=require` — Anton enables this by default when connecting to Supabase hosts.\n",
+      "help_url": "https://supabase.com/docs/guides/database/connecting-to-postgres",
+      "fields": [
+        {
+          "name": "host",
+          "label": "Host",
+          "type": "text",
+          "required": true,
+          "placeholder": "db.<project-ref>.supabase.co",
+          "description": "Found in Project Settings → Database → Connection info."
+        },
+        {
+          "name": "port",
+          "label": "Port",
+          "type": "text",
+          "required": true,
+          "placeholder": "5432",
+          "default": "5432",
+          "description": "Use 5432 for a direct connection or 6543 for the transaction pooler."
+        },
+        {
+          "name": "database",
+          "label": "Database Name",
+          "type": "text",
+          "required": true,
+          "placeholder": "postgres",
+          "default": "postgres",
+          "description": "The name of the database to connect to. Defaults to postgres on Supabase."
+        },
+        {
+          "name": "user",
+          "label": "Database User",
+          "type": "text",
+          "required": true,
+          "placeholder": "postgres",
+          "default": "postgres",
+          "description": "The Postgres role to authenticate as. Defaults to postgres on Supabase."
+        },
+        {
+          "name": "password",
+          "label": "Database Password",
+          "type": "password",
+          "required": true,
+          "secret": true,
+          "placeholder": "••••••••",
+          "description": "Your project database password. Reset it in Project Settings → Database → Database Password if forgotten."
+        },
+        {
+          "name": "ssl_mode",
+          "label": "SSL Mode",
+          "type": "select",
+          "required": false,
+          "default": "require",
+          "description": "Supabase requires SSL. Leave as require unless you have a specific reason to change it.",
+          "options": [
+            {
+              "value": "require",
+              "label": "require (recommended)"
+            },
+            {
+              "value": "verify-ca",
+              "label": "verify-ca"
+            },
+            {
+              "value": "verify-full",
+              "label": "verify-full"
+            },
+            {
+              "value": "disable",
+              "label": "disable (not recommended)"
+            }
+          ]
+        }
+      ],
+      "cloud": {
+        "available": true,
+        "engine": "postgres:host-port",
+        "description": "Enter the host, port, database, username and password. Saved and read as a PostgreSQL connection.",
+        "how_to": "## Connect Supabase\n\nCloud saves this connection in your encrypted connection store and reads it through the hosted gateway.\n\n### Where to find each value\n\n1. In your Supabase project, choose **Connect** and pick the **Session pooler**. The direct connection host answers over IPv6 only unless your project has the IPv4 add-on.\n2. **Host**: the session pooler host, such as `aws-0-<region>.pooler.supabase.com`.\n3. **Port**: `5432`.\n4. **Database**: `postgres` unless you created another.\n5. **Username**: `postgres.<project-ref>`, the user the session pooler shows.\n6. **Password**: your database password.\n\nUse a database user that can read only the data you want to query.",
+        "fields": [
+          {
+            "name": "host",
+            "label": "Host",
+            "type": "text",
+            "required": true,
+            "placeholder": "db.example.com",
+            "description": "Hostname of your PostgreSQL server. Must resolve to a public address."
+          },
+          {
+            "name": "port",
+            "label": "Port",
+            "type": "text",
+            "required": true,
+            "placeholder": "5432",
+            "default": "5432",
+            "description": "Whatever your server listens on, 5432 unless it was changed."
+          },
+          {
+            "name": "database",
+            "label": "Database name",
+            "type": "text",
+            "required": true,
+            "placeholder": "mydb",
+            "description": "The name of the specific database (schema container) to connect to."
+          },
+          {
+            "name": "schema",
+            "label": "Schema",
+            "type": "text",
+            "required": false,
+            "placeholder": "public",
+            "description": "Optional. The schema unqualified table names resolve in. It does not limit what can be read."
+          },
+          {
+            "name": "username",
+            "label": "Username",
+            "type": "text",
+            "required": true,
+            "placeholder": "readonly",
+            "description": "A PostgreSQL role with CONNECT on the database and USAGE plus SELECT on the schemas to be read."
+          },
+          {
+            "name": "password",
+            "label": "Password",
+            "type": "password",
+            "required": true,
+            "secret": true,
+            "placeholder": "••••••••",
+            "description": "Password for the above role. Stored encrypted and never shown again."
+          },
+          {
+            "name": "tls_verify",
+            "label": "Certificate",
+            "type": "boolean",
+            "required": false,
+            "checkbox_label": "Only connect if the certificate is signed by a public authority",
+            "description": "Off by default, because a self-hosted server usually presents a certificate it generated for itself, which no public authority signed. The connection is still encrypted whenever the server offers it. Turn this on for a managed provider, whose certificate a public authority signed."
+          }
+        ]
+      }
+    },
+    {
+      "id": "service-role-api-key",
+      "label": "REST API (Service Role Key)",
+      "description": "Use Supabase's auto-generated REST API with your service role key. Suitable for querying data via PostgREST without a direct Postgres connection.",
+      "recommended": false,
+      "how_to": "## Get your Supabase service role key\n\n1. Open [Supabase Dashboard](https://supabase.com/dashboard) and select your project.\n2. Go to **Project Settings** → **API**.\n3. Under **Project API keys**, copy the **service_role** key (labeled \"secret\").\n4. Also copy the **Project URL** from the top of the same page — it looks like `https://<project-ref>.supabase.co`.\n5. Paste both values into the fields below.\n\n### Notes\n\n- The **service_role** key bypasses Row Level Security (RLS). Keep it secret and never expose it in client-side code.\n- The **anon** key is restricted by RLS and is NOT suitable for Anton — use the service_role key.\n- This method queries data through PostgREST (Supabase's auto-generated REST layer) rather than a direct Postgres connection. Some complex SQL queries may not be expressible via the REST API; use the Connection String method for those.\n",
+      "help_url": "https://supabase.com/docs/guides/api",
+      "fields": [
+        {
+          "name": "project_url",
+          "label": "Project URL",
+          "type": "url",
+          "required": true,
+          "placeholder": "https://<project-ref>.supabase.co",
+          "description": "Found in Project Settings → API → Project URL."
+        },
+        {
+          "name": "service_role_key",
+          "label": "Service Role Key",
+          "type": "password",
+          "required": true,
+          "secret": true,
+          "placeholder": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+          "description": "The secret service_role key from Project Settings → API → Project API keys. Bypasses Row Level Security — keep it safe."
+        }
+      ]
+    }
+  ],
+  "logo_url": "logos/supabase.svg"
+}

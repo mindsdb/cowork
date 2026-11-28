@@ -11,7 +11,8 @@
 // not offered rather than offered and rejected. The exception is an OAuth
 // method: it never reaches the datasource route, cloud runs it through its own
 // path, so it stays beside the cloud form (Supabase has both). A connector
-// with no cloud block anywhere is returned untouched.
+// with no cloud block anywhere is returned untouched by toCloudSpec;
+// toOrgConnectorSpec shapes it for the hosted Connect page.
 
 import i18n from '../../lib/i18n';
 
@@ -85,4 +86,19 @@ export function toCloudSpec(spec, connection = null) {
     _cloud_datasource: true,
     ...editing,
   };
+}
+
+/**
+ * A built-in connector that is not a cloud datasource, as the hosted Connect
+ * page offers it: only methods cloud can run, an OAuth sign-in or an available
+ * cloud block. The server refuses any other method in org mode, because only
+ * its own vault would keep that credential. A spec with no methods list is
+ * returned untouched. Sets no `_cloud_datasource`: the form stays an ordinary
+ * connector form.
+ * @param {object} spec
+ * @returns {object}
+ */
+export function toOrgConnectorSpec(spec) {
+  if (!Array.isArray(spec?.methods)) return spec;
+  return { ...spec, methods: spec.methods.filter((m) => m?.oauth || m?.cloud?.available) };
 }
