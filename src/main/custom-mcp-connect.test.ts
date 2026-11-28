@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { GuardedFetch, GuardedRequestInit } from './guarded-fetch';
+import { buildAuthorizeUrl, loopbackRedirectUri, type BrowserAuthorizeOpts } from './oauth-service';
 
 const store = vi.hoisted(() => ({ root: '/home/user/.cowork' as string | null }));
 vi.mock('./server-process', () => ({ getServerPort: () => 4000, activeStoreRoot: () => store.root }));
@@ -535,12 +536,41 @@ describe('connectCustomMcp', () => {
     expect(await readPart(store.root!, ID, 'tools')).toBe('[]');
   });
 
-  it('reports a login the browser step did not finish, and creates nothing', async () => {
-    const { deps: d } = deps(LOGIN_SERVER, { authorize: async () => ({ ok: false, reason: 'cancelled' }) });
+  it('reports a login cancelled in the browser step, and creates nothing', async () => {
+    const { deps: d } = deps(LOGIN_SERVER, { authorize: async () => ({ ok: false, reason: 'cancelled', code: 'cancelled' as const }) });
 
     const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['auth.example.com'] }, d);
 
-    expect(result).toEqual({ ok: false, code: 'login_failed', reason: 'cancelled' });
+    expect(result).toEqual({ ok: false, code: 'login_cancelled', reason: 'The connection was cancelled.' });
+    expect(server.records.size).toBe(0);
+  });
+
+  it.each([
+    ['a timed-out login', { ok: false as const, reason: 'OAuth timed out — no callback received within 3 minutes.', code: 'timed_out' as const },
+      { code: 'login_timed_out', reason: 'The browser login did not come back in time.' }],
+    ['a registered provider error', { ok: false as const, reason: 'Provider returned error: invalid_scope — nope', code: 'provider_error' as const, oauthError: 'invalid_scope' },
+      { code: 'login_refused', reason: 'The login server refused the login: invalid_scope' }],
+    ['a declined login', { ok: false as const, reason: 'Provider returned error: access_denied — User is not assigned', code: 'provider_error' as const, oauthError: 'access_denied' },
+      { code: 'login_denied', reason: 'The login was declined.' }],
+    ['a login server error', { ok: false as const, reason: 'Provider returned error: server_error', code: 'provider_error' as const, oauthError: 'server_error' },
+      { code: 'login_unavailable', reason: 'The login server had a problem: server_error' }],
+    ['a login server that is busy', { ok: false as const, reason: 'Provider returned error: temporarily_unavailable', code: 'provider_error' as const, oauthError: 'temporarily_unavailable' },
+      { code: 'login_unavailable', reason: 'The login server had a problem: temporarily_unavailable' }],
+    ['an invalid client sent to the redirect', { ok: false as const, reason: 'Provider returned error: invalid_client', code: 'provider_error' as const, oauthError: 'invalid_client' },
+      { code: 'login_refused', reason: 'The login server refused the login: invalid_client' }],
+    ['a token-endpoint-only code sent to the redirect', { ok: false as const, reason: 'Provider returned error: invalid_grant', code: 'provider_error' as const, oauthError: 'invalid_grant' },
+      { code: 'login_refused', reason: 'The login server refused the login.' }],
+    ['an unregistered provider error', { ok: false as const, reason: 'Provider returned error: <b>call 555</b> — token=abc', code: 'provider_error' as const, oauthError: '<b>call 555</b>' },
+      { code: 'login_refused', reason: 'The login server refused the login.' }],
+    ['a busy redirect port', { ok: false as const, reason: 'Port 47295 (required for this connector\'s redirect URI) is already in use — close whatever\'s using it and try again.' },
+      { code: 'login_failed', reason: 'Port 47295 (required for this connector\'s redirect URI) is already in use — close whatever\'s using it and try again.' }],
+  ])('reports %s by its own code, and creates nothing', async (_name, browser, expected) => {
+    const { deps: d } = deps(LOGIN_SERVER, { authorize: async () => browser });
+
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['auth.example.com'] }, d);
+
+    expect(result).toEqual({ ok: false, ...expected });
+    expect(JSON.stringify(result)).not.toContain('token=abc');
     expect(server.records.size).toBe(0);
   });
 
@@ -569,7 +599,7 @@ describe('connectCustomMcp', () => {
     cancelCustomMcpConnects();
     answer();
 
-    expect(await pending).toEqual({ ok: false, code: 'login_failed', reason: 'The connection was cancelled.' });
+    expect(await pending).toEqual({ ok: false, code: 'login_cancelled', reason: 'The connection was cancelled.' });
     expect(server.records.size).toBe(0);
     expect(keychain.entries.size).toBe(0);
   });
@@ -585,7 +615,7 @@ describe('connectCustomMcp', () => {
 
     const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['auth.example.com'] }, d);
 
-    expect(result).toMatchObject({ ok: false, code: 'login_failed' });
+    expect(result).toMatchObject({ ok: false, code: 'login_cancelled' });
     expect(authorize).not.toHaveBeenCalled();
   });
 
@@ -625,7 +655,132 @@ describe('connectCustomMcp', () => {
   });
 });
 
+describe('checking a typed client ID before the browser opens', () => {
+  const TYPED = { label: 'T', url: SERVER_URL, clientId: 'mine', confirmedLoginHosts: ['auth.example.com'] };
+
+  /** The login server, with the authorize endpoint answering `answer` to any query. */
+  function withAuthorize(answer: Answer | (() => Promise<Answer>)) {
+    const mcp = mcpServer(LOGIN_SERVER);
+    const checks: URL[] = [];
+    const fetchFn: GuardedFetch = async (input, init = {}) => {
+      const url = new URL(String(input));
+      if (`${url.origin}${url.pathname}` !== `${AUTH}/authorize`) return mcp.fetchFn(input, init);
+      checks.push(url);
+      const given = typeof answer === 'function' ? await answer() : answer;
+      return new Response(given.json === undefined ? '' : JSON.stringify(given.json), { status: given.status, headers: given.headers });
+    };
+    return { checks, ...deps(LOGIN_SERVER, { fetchFn }) };
+  }
+
+  it('reports a refused client without opening the browser or saving anything', async () => {
+    const { deps: d, authorize, checks } = withAuthorize({ status: 400 });
+
+    const result = await connectCustomMcp(TYPED, d);
+
+    expect(result).toMatchObject({ ok: false, code: 'client_refused' });
+    expect(authorize).not.toHaveBeenCalled();
+    expect(checks).toHaveLength(1);
+    expect(server.records.size).toBe(0);
+    expect(keychain.entries.size).toBe(0);
+  });
+
+  it('sends the check the query the browser login gets', async () => {
+    const { deps: d, authorize, checks } = withAuthorize({ status: 302, headers: { location: `${AUTH}/login` } });
+
+    await connectCustomMcp(TYPED, d);
+
+    const sent = checks[0].searchParams;
+    expect(authorize).toHaveBeenCalledWith(expect.objectContaining({
+      clientId: sent.get('client_id'),
+      scopes: sent.get('scope')!.split(' '),
+      extraAuthParams: { resource: sent.get('resource') },
+      redirectPort: 47295,
+      redirectHost: '127.0.0.1',
+    }));
+    expect(sent.get('client_id')).toBe('mine');
+    expect(sent.get('response_type')).toBe('code');
+    expect(sent.get('redirect_uri')).toBe('http://127.0.0.1:47295/callback');
+    // The whole URL, PKCE included, is what the browser step builds from the same options.
+    const opened = (authorize.mock.calls as unknown as Array<[BrowserAuthorizeOpts]>)[0][0];
+    expect(checks[0].href).toBe(buildAuthorizeUrl(opened, {
+      redirectUri: loopbackRedirectUri(opened.redirectHost, opened.redirectPort!),
+      state: sent.get('state')!,
+      codeChallenge: sent.get('code_challenge')!,
+    }));
+    expect(sent.get('code_challenge_method')).toBe('S256');
+    expect(sent.get('code_challenge')).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(sent.get('state')).toBeTruthy();
+  });
+
+  it.each([
+    ['a redirect to the login page', { status: 302, headers: { location: `${AUTH}/login` } }],
+    ['the login page itself', { status: 200 }],
+    ['an integrated sign-in challenge', { status: 401, headers: { 'www-authenticate': 'Negotiate' } }],
+    ['a 400 that redirects back', { status: 400, headers: { location: 'http://127.0.0.1:47295/callback?error=invalid_scope' } }],
+    ['a server error', { status: 500 }],
+  ])('opens the browser after %s', async (_name, answer) => {
+    const { deps: d, authorize } = withAuthorize(answer as Answer);
+
+    const result = await connectCustomMcp(TYPED, d);
+
+    expect(result.ok).toBe(true);
+    expect(authorize).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the browser when the check cannot reach the login server', async () => {
+    const { deps: d, authorize } = withAuthorize(async () => { throw new Error('network down'); });
+
+    expect((await connectCustomMcp(TYPED, d)).ok).toBe(true);
+    expect(authorize).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens no browser when cancelled while the check runs', async () => {
+    const { deps: d, authorize } = withAuthorize(async () => {
+      cancelCustomMcpConnects();
+      return { status: 302, headers: { location: `${AUTH}/login` } };
+    });
+
+    const result = await connectCustomMcp(TYPED, d);
+
+    expect(result).toEqual({ ok: false, code: 'login_cancelled', reason: 'The connection was cancelled.' });
+    expect(authorize).not.toHaveBeenCalled();
+  });
+
+  it('opens the browser without a check when asked to, with the confirmed hosts', async () => {
+    const { deps: d, authorize, checks } = withAuthorize({ status: 400 });
+
+    const result = await connectCustomMcp({ ...TYPED, skipClientCheck: true }, d);
+
+    expect(result.ok).toBe(true);
+    expect(checks).toHaveLength(0);
+    expect(authorize).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends no check for a client registered in this login', async () => {
+    const { deps: d, authorize, checks } = withAuthorize({ status: 400 });
+
+    const result = await connectCustomMcp({ label: 'T', url: SERVER_URL, confirmedLoginHosts: ['auth.example.com'] }, d);
+
+    expect(result.ok).toBe(true);
+    expect(checks).toHaveLength(0);
+    expect(authorize).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('parseConnectRequest', () => {
+  it('keeps the client check flag only when it is true', () => {
+    expect(parseConnectRequest({ label: 'T', url: SERVER_URL, skipClientCheck: true })).toMatchObject({ skipClientCheck: true });
+    expect(parseConnectRequest({ label: 'T', url: SERVER_URL })).not.toHaveProperty('skipClientCheck');
+  });
+
+  it.each([
+    [{ label: 'T', url: SERVER_URL, skipClientCheck: 'true' }],
+    [{ label: 'T', url: SERVER_URL, skipClientCheck: 1 }],
+    [{ label: 'T', url: SERVER_URL, skipClientCheck: false }],
+  ])('refuses a client check flag that is not true: %j', (raw) => {
+    expect(typeof parseConnectRequest(raw)).toBe('string');
+  });
+
   it.each([
     [null],
     [{ url: SERVER_URL }],

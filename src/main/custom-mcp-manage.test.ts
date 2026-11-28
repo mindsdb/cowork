@@ -247,6 +247,8 @@ describe('reconnect', () => {
 
     expect(authorize).toHaveBeenCalledWith(expect.objectContaining({ clientId: 'client-1' }));
     expect(requests.some((r) => r.url === `${AUTH}/register`)).toBe(false);
+    // A held client has logged in before: no check of the client before the browser.
+    expect(requests.some((r) => r.url.startsWith(`${AUTH}/authorize`))).toBe(false);
     expect(await readPart(ROOT, ID, 'refresh')).toBe('RT-new');
     expect(JSON.parse((await readPart(ROOT, ID, 'tools'))!)).toEqual(['search', 'delete']);
     expect(server.held.get(ID)).toMatchObject({ access_token: 'AT-new', allowed_tools: ['search', 'delete'] });

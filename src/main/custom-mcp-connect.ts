@@ -20,10 +20,10 @@ import { appSecretGeneration, isCustomMcpAvailable } from './app-secret';
 import { checkPublicHttpsUrl, GuardedFetchError, type GuardedFetch } from './guarded-fetch';
 import { customMcpFetch, keepAccessWithoutRefresh, type StoredSettings } from './custom-mcp-tokens';
 import {
-  discoverMcpAuth, exchangeCode, givenClient, McpOAuthError, registerClient, revokeToken,
+  AUTHORIZE_ERROR_CODES, discoverMcpAuth, exchangeCode, givenClient, McpOAuthError, registerClient, revokeToken,
   type AuthorizationServer, type OAuthClient, type TokenSet,
 } from './mcp-oauth';
-import { authorizeInBrowser, CUSTOM_MCP_REDIRECT_PORT, CUSTOM_MCP_REDIRECT_URI, type BrowserAuthorizeOpts, type BrowserAuthorizeResult } from './oauth-service';
+import { authorizeInBrowser, base64UrlEncode, buildAuthorizeUrl, loopbackRedirectUri, CUSTOM_MCP_REDIRECT_PORT, CUSTOM_MCP_REDIRECT_URI, type BrowserAuthorizeOpts, type BrowserAuthorizeResult } from './oauth-service';
 import { checkKeychain, CustomMcpKeychainError, deleteConnection as deleteKeychainEntries, writePart } from './custom-mcp-keychain';
 import { writeToolSwitch } from './custom-mcp-held';
 import { startRefreshLoop } from './custom-mcp-refresh';
@@ -38,6 +38,8 @@ export interface CustomMcpConnectRequest {
   clientSecret?: string;
   /** The login hosts the user was shown and accepted. */
   confirmedLoginHosts?: string[];
+  /** Opens the browser for a typed client ID even when the login server refused it. */
+  skipClientCheck?: true;
 }
 
 export type CustomMcpConnectResult =
@@ -93,12 +95,15 @@ export function parseConnectRequest(raw: unknown): CustomMcpConnectRequest | str
   if (clientId === null || clientSecret === null) return 'The client fields are not valid.';
   if (confirmedLoginHosts === null) return 'The confirmed login hosts are not valid.';
   if (clientSecret && !clientId) return 'A client secret needs a client ID.';
+  const skip = input.skipClientCheck;
+  if (skip !== undefined && skip !== null && skip !== true) return 'The client check flag is not valid.';
   return {
     label,
     url: input.url.trim(),
     ...(clientId ? { clientId } : {}),
     ...(clientSecret ? { clientSecret } : {}),
     ...(confirmedLoginHosts ? { confirmedLoginHosts } : {}),
+    ...(skip === true ? { skipClientCheck: true as const } : {}),
   };
 }
 
@@ -129,6 +134,32 @@ function allConfirmed(confirmed: string[] | undefined, hosts: string[]): boolean
   return !!confirmed && hosts.every((host) => confirmed.includes(host));
 }
 
+/**
+ * Asks the authorize endpoint, with the URL the browser would open for the
+ * same `opts`, whether it refuses this client. True only for a 400 with no
+ * redirect: RFC 6749 4.1.2.1 forbids redirecting an unknown client or
+ * redirect URI, so the browser would show the provider's error page and never
+ * come back. Any other answer, or a failed request, is false, and the browser
+ * opens as usual. `opts` must name the fixed redirect port.
+ */
+async function authorizeRefusesClient(
+  opts: BrowserAuthorizeOpts & { redirectPort: number },
+  fetchFn: GuardedFetch,
+): Promise<boolean> {
+  const url = buildAuthorizeUrl(opts, {
+    redirectUri: loopbackRedirectUri(opts.redirectHost, opts.redirectPort),
+    state: base64UrlEncode(crypto.randomBytes(16)),
+    codeChallenge: base64UrlEncode(crypto.createHash('sha256').update(base64UrlEncode(crypto.randomBytes(32))).digest()),
+  });
+  try {
+    const response = await fetchFn(url, { method: 'GET' });
+    return response.status === 400 && !response.headers.has('location');
+  } catch (err) {
+    diagnostic('main.custom-mcp', 'INFO', 'custom_mcp_client_check_failed', `[custom-mcp] could not check the client before the login: ${errorName(err)}`);
+    return false;
+  }
+}
+
 /** Who logs in: a client the app already holds, a client ID the user
  *  typed, or neither, which registers one. */
 export interface LoginClient {
@@ -143,7 +174,7 @@ export interface LoginClient {
  *  Shared by connect and reconnect. */
 export async function logIn(
   serverUrl: string,
-  request: LoginClient & { confirmedLoginHosts?: string[]; cancelled?: () => boolean },
+  request: LoginClient & { confirmedLoginHosts?: string[]; cancelled?: () => boolean; skipClientCheck?: true },
   deps: ConnectDeps,
 ): Promise<Login | null | { ok: false; code: 'confirm_login_hosts'; loginHosts: string[] } | { ok: false; code: string; reason: string }> {
   const discovery = await discoverMcpAuth(serverUrl, deps.fetchFn);
@@ -161,22 +192,57 @@ export async function logIn(
       ? givenClient(request.clientId, request.clientSecret, authorizationServer)
       : await registerClient(authorizationServer, CUSTOM_MCP_REDIRECT_URI, deps.fetchFn));
   if (request.cancelled?.()) return CANCELLED;
-  const browser = await deps.authorize({
+  // One set of options for the check and the browser, so the check asks
+  // exactly what the browser will.
+  const authorizeOpts = {
     authUrl: authorizationServer.authorizationEndpoint,
     clientId: client.clientId,
     scopes: discovery.scope ? discovery.scope.split(' ').filter(Boolean) : [],
     extraAuthParams: { resource },
     redirectPort: CUSTOM_MCP_REDIRECT_PORT,
-    redirectHost: '127.0.0.1',
-  });
-  if (!browser.ok) return { ok: false, code: 'login_failed', reason: browser.reason };
+    redirectHost: '127.0.0.1' as const,
+  };
+  // Only a client ID the user typed in this call: a registered one was just
+  // accepted, and a held one has logged in before.
+  if (request.clientId && !request.skipClientCheck) {
+    const refused = await authorizeRefusesClient(authorizeOpts, deps.fetchFn);
+    if (request.cancelled?.()) return CANCELLED;
+    if (refused) {
+      return { ok: false, code: 'client_refused', reason: 'The login server refused the request for this client ID and redirect address.' };
+    }
+  }
+  const browser = await deps.authorize(authorizeOpts);
+  if (!browser.ok) return browserFailure(browser);
   const tokens = await exchangeCode(authorizationServer, client, {
     code: browser.code, codeVerifier: browser.codeVerifier, redirectUri: browser.redirectUri, resource,
   }, deps.fetchFn);
   return { tokens, client, resource, authorizationServer };
 }
 
-const CANCELLED = { ok: false as const, code: 'login_failed', reason: 'The connection was cancelled.' };
+const CANCELLED = { ok: false as const, code: 'login_cancelled', reason: 'The connection was cancelled.' };
+
+/** The result for a browser login that ended without a code. Only a
+ *  registered authorize error code from the provider is kept; its
+ *  description never is. Other failures (a busy port, a broken callback) stay `login_failed`. */
+function browserFailure(browser: Extract<BrowserAuthorizeResult, { ok: false }>): { ok: false; code: string; reason: string } {
+  switch (browser.code) {
+    case 'cancelled':
+      return CANCELLED;
+    case 'timed_out':
+      return { ok: false, code: 'login_timed_out', reason: 'The browser login did not come back in time.' };
+    case 'provider_error': {
+      const known = browser.oauthError && AUTHORIZE_ERROR_CODES.has(browser.oauthError) ? browser.oauthError : undefined;
+      // access_denied comes from the person or from the login server's own policy.
+      if (known === 'access_denied') return { ok: false, code: 'login_denied', reason: 'The login was declined.' };
+      if (known === 'server_error' || known === 'temporarily_unavailable') {
+        return { ok: false, code: 'login_unavailable', reason: `The login server had a problem: ${known}` };
+      }
+      return { ok: false, code: 'login_refused', reason: known ? `The login server refused the login: ${known}` : 'The login server refused the login.' };
+    }
+    default:
+      return { ok: false, code: 'login_failed', reason: browser.reason };
+  }
+}
 
 let connectAttempts = 0;
 let cancelledThrough = 0;

@@ -107,11 +107,18 @@ describe('CustomMcpConnectModal', () => {
     [{ code: 'not_public', reason: 'x' }, "This address isn't on the public internet, so Anton won't connect to it."],
     [{ code: 'proxy_network', reason: 'x' }, "This network only allows connections through a proxy, which MCP servers added by URL can't use."],
     [{ code: 'needs_client_id', reason: 'x' }, 'This server needs a client ID. Add one under Advanced.'],
+    // An over-the-air renderer can run on an older shell that still reports a cancel this way.
     [{ code: 'login_failed', reason: 'cancelled' }, "The login didn't finish: cancelled"],
+    [{ code: 'login_cancelled', reason: 'The connection was cancelled.' }, 'The login was cancelled.'],
+    [{ code: 'login_timed_out', reason: 'x' }, "The browser login didn't come back in time. Try again."],
+    [{ code: 'login_refused', reason: 'The login server refused the login: invalid_scope' }, "The login server refused the login. Try again, or check the server's settings with its owner."],
+    [{ code: 'login_denied', reason: 'The login was declined.' }, "The login was declined. If you didn't decline it, ask the server's owner whether your account may use this app."],
+    [{ code: 'login_unavailable', reason: 'The login server had a problem: server_error' }, 'The login server had a problem. Try again later.'],
+    [{ code: 'client_refused', reason: 'x' }, `The login server refused this client ID or its redirect URI. Check the client ID, and that ${CUSTOM_MCP_REDIRECT_URI} is registered for it.`],
     [{ code: 'grant_refused', reason: 'the token endpoint answered 400: invalid_grant' }, "The login didn't finish: the token endpoint answered 400: invalid_grant"],
     [{ code: 'keychain_unavailable', reason: 'x' }, "The system keychain isn't available, so the connection can't be stored safely."],
     [{ code: 'something_else', reason: 'it broke' }, "Couldn't connect the server: it broke"],
-  ])('shows its own message for %j', async (refusal, message) => {
+  ])('shows its own message for %j, with the form usable again', async (refusal, message) => {
     const user = userEvent.setup();
     customMcpConnect.mockResolvedValue({ ok: false, ...refusal });
     renderModal();
@@ -120,14 +127,94 @@ describe('CustomMcpConnectModal', () => {
     await user.click(screen.getByRole('button', { name: 'Connect' }));
 
     expect(await screen.findByText(message)).toBeTruthy();
-    expect(screen.getByLabelText(/^Server URL/)).toBeTruthy();
+    expect(screen.getByLabelText(/^Server URL/).disabled).toBe(false);
+    expect(screen.getByRole('button', { name: 'Connect' }).disabled).toBe(false);
+  });
+
+  it('says to use Cancel while the browser login runs, and not before', async () => {
+    const user = userEvent.setup();
+    let findLogin = () => {};
+    let finish = () => {};
+    customMcpConnect
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        findLogin = () => resolve({ ok: false, code: 'confirm_login_hosts', loginHosts: ['auth.example.com'] });
+      }))
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        finish = () => resolve({ ok: false, code: 'login_cancelled', reason: 'The connection was cancelled.' });
+      }));
+    renderModal();
+
+    await fill(user);
+    await user.click(screen.getByRole('button', { name: 'Connect' }));
+    // Busy finding the server: no browser can open yet.
+    expect(await screen.findByRole('button', { name: 'Connecting…' })).toBeTruthy();
+    expect(screen.queryByText(/Finish signing in in your browser/)).toBeNull();
+    findLogin();
+
+    await user.click(await screen.findByRole('button', { name: 'Continue' }));
+
+    expect(await screen.findByText('Finish signing in in your browser. If it shows an error, select Cancel.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
+    finish();
+    expect(await screen.findByText('The login was cancelled.')).toBeTruthy();
+    expect(screen.queryByText(/Finish signing in in your browser/)).toBeNull();
+  });
+
+  it('opens the browser anyway after a refused client, with the confirmed hosts and the skip', async () => {
+    const user = userEvent.setup();
+    let finish = () => {};
+    customMcpConnect
+      .mockResolvedValueOnce({ ok: false, code: 'confirm_login_hosts', loginHosts: ['auth.example.com'] })
+      .mockResolvedValueOnce({ ok: false, code: 'client_refused', reason: 'x' })
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        finish = () => resolve({ ok: true, id: 'cm-1', label: 'Tracker', serverUrl: URL, toolsOn: 1, toolsUnavailable: false });
+      }));
+    renderModal();
+
+    await fill(user);
+    await user.click(screen.getByRole('button', { name: /Advanced/ }));
+    await user.type(screen.getByLabelText(/^Client ID/), 'my-client');
+    await user.click(screen.getByRole('button', { name: 'Connect' }));
+    await user.click(await screen.findByRole('button', { name: 'Continue' }));
+    const anyway = await screen.findByRole('button', { name: 'Open the browser anyway' });
+    // Bordered, not the borderless ghost style that read as plain text in the app.
+    expect(anyway.className.split(' ')).toContain('default');
+    await user.click(anyway);
+
+    expect(customMcpConnect).toHaveBeenCalledTimes(3);
+    expect(customMcpConnect).toHaveBeenLastCalledWith({
+      label: 'Tracker', url: URL, clientId: 'my-client', confirmedLoginHosts: ['auth.example.com'], skipClientCheck: true,
+    });
+    expect(await screen.findByText('Finish signing in in your browser. If it shows an error, select Cancel.')).toBeTruthy();
+    finish();
+    expect(await screen.findByText('Connected. 1 read-only tool is on.')).toBeTruthy();
+  });
+
+  it('drops "Open the browser anyway" once the fields change', async () => {
+    const user = userEvent.setup();
+    customMcpConnect
+      .mockResolvedValueOnce({ ok: false, code: 'confirm_login_hosts', loginHosts: ['auth.example.com'] })
+      .mockResolvedValueOnce({ ok: false, code: 'client_refused', reason: 'x' });
+    renderModal();
+
+    await fill(user);
+    await user.click(screen.getByRole('button', { name: /Advanced/ }));
+    await user.type(screen.getByLabelText(/^Client ID/), 'typo');
+    await user.click(screen.getByRole('button', { name: 'Connect' }));
+    await user.click(await screen.findByRole('button', { name: 'Continue' }));
+    await screen.findByRole('button', { name: 'Open the browser anyway' });
+
+    await user.click(screen.getByRole('button', { name: /Advanced/ }));
+    await user.type(screen.getByLabelText(/^Client ID/), '-fixed');
+
+    expect(screen.queryByRole('button', { name: 'Open the browser anyway' })).toBeNull();
   });
 
   it('cancels a login in progress', async () => {
     const user = userEvent.setup();
     let finish = () => {};
     customMcpConnect.mockImplementation(() => new Promise((resolve) => {
-      finish = () => resolve({ ok: false, code: 'login_failed', reason: 'cancelled' });
+      finish = () => resolve({ ok: false, code: 'login_cancelled', reason: 'The connection was cancelled.' });
     }));
     oauthCancel.mockImplementation(async () => finish());
     renderModal();
@@ -137,7 +224,7 @@ describe('CustomMcpConnectModal', () => {
     await user.click(await screen.findByRole('button', { name: 'Cancel' }));
 
     expect(oauthCancel).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText("The login didn't finish: cancelled")).toBeTruthy();
+    expect(await screen.findByText('The login was cancelled.')).toBeTruthy();
   });
 
   it('warns when the server could not list its tools', async () => {

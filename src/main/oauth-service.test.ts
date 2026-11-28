@@ -14,6 +14,8 @@ vi.mock('electron', () => ({
 import { shell, net } from 'electron';
 import {
   authorizeInBrowser,
+  buildAuthorizeUrl,
+  loopbackRedirectUri,
   oauthConnect,
   cancelCurrentOAuth,
   CUSTOM_MCP_REDIRECT_PORT,
@@ -246,6 +248,8 @@ describe('oauthConnect', () => {
     const result = await oauthConnect({ ...OPTS, callbackTimeoutMs: 120 });
     expect(result.ok).toBe(false);
     expect(result.reason).toMatch(/timed out/i);
+    // Built-in connectors keep their result shape: no browser end code.
+    expect(Object.keys(result).sort()).toEqual(['ok', 'reason']);
   });
 
   // A mismatched-state hit no longer tears the whole attempt down (see the
@@ -466,6 +470,40 @@ describe('oauthConnect', () => {
   });
 });
 
+describe('buildAuthorizeUrl', () => {
+  const FLOW = { redirectUri: 'http://127.0.0.1:47295/callback', state: 'st', codeChallenge: 'ch' };
+
+  it('adds the code-flow and PKCE parameters to the endpoint', () => {
+    const url = new URL(buildAuthorizeUrl({ authUrl: 'https://auth.example.com/authorize', clientId: 'c1', scopes: ['read', 'write'] }, FLOW));
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      response_type: 'code', client_id: 'c1', redirect_uri: FLOW.redirectUri, scope: 'read write',
+      state: 'st', code_challenge: 'ch', code_challenge_method: 'S256',
+    });
+  });
+
+  it('keeps the endpoint\'s own query and joins scopes with the given separator', () => {
+    const url = new URL(buildAuthorizeUrl({ authUrl: 'https://auth.example.com/authorize?tenant=a', clientId: 'c1', scopes: ['a', 'b'], scopeSeparator: ',' }, FLOW));
+    expect(url.searchParams.get('tenant')).toBe('a');
+    expect(url.searchParams.get('scope')).toBe('a,b');
+  });
+
+  it('applies extra parameters last, so they win over the flow\'s own', () => {
+    const url = new URL(buildAuthorizeUrl({
+      authUrl: 'https://auth.example.com/authorize', clientId: 'c1', scopes: [],
+      extraAuthParams: { resource: 'https://mcp.example.com/mcp', prompt: 'consent', response_type: 'code id_token' },
+    }, FLOW));
+    expect(url.searchParams.get('resource')).toBe('https://mcp.example.com/mcp');
+    expect(url.searchParams.get('prompt')).toBe('consent');
+    expect(url.searchParams.get('response_type')).toBe('code id_token');
+    expect(url.searchParams.has('scope')).toBe(false);
+  });
+
+  it('brackets an IPv6 loopback host in the redirect URI', () => {
+    expect(loopbackRedirectUri('::1', 47295)).toBe('http://[::1]:47295/callback');
+    expect(loopbackRedirectUri(undefined, 47295)).toBe('http://127.0.0.1:47295/callback');
+  });
+});
+
 describe('authorizeInBrowser', () => {
   const BROWSER_OPTS = {
     authUrl: 'https://auth.example.com/authorize',
@@ -481,6 +519,12 @@ describe('authorizeInBrowser', () => {
 
     const flow = authorizeInBrowser(BROWSER_OPTS);
     const authUrl = await nextAuthUrl();
+    // The browser opens exactly what the shared builder makes, so the client check cannot drift from it.
+    expect(authUrl.href).toBe(buildAuthorizeUrl(BROWSER_OPTS, {
+      redirectUri: authUrl.searchParams.get('redirect_uri') as string,
+      state: authUrl.searchParams.get('state') as string,
+      codeChallenge: authUrl.searchParams.get('code_challenge') as string,
+    }));
     expect(authUrl.searchParams.get('resource')).toBe('https://mcp.example.com/mcp');
     expect(authUrl.searchParams.has('scope')).toBe(false);
     await hitCallback(authUrl, { code: 'the-code', state: authUrl.searchParams.get('state') as string });
@@ -504,19 +548,27 @@ describe('authorizeInBrowser', () => {
     await expect(flow).resolves.toMatchObject({ ok: true, code: 'real' });
   });
 
-  it('times out when no callback arrives', async () => {
+  it('times out when no callback arrives, and says so by its code', async () => {
     captureAuthUrl();
     const result = await authorizeInBrowser({ ...BROWSER_OPTS, callbackTimeoutMs: 50 });
-    expect(result).toMatchObject({ ok: false });
+    expect(result).toMatchObject({ ok: false, code: 'timed_out' });
     expect(result.ok ? '' : result.reason).toMatch(/timed out/);
   });
 
-  it('is cancelled by cancelCurrentOAuth', async () => {
+  it('is cancelled by cancelCurrentOAuth, and says so by its code', async () => {
     const nextAuthUrl = captureAuthUrl();
     const flow = authorizeInBrowser(BROWSER_OPTS);
     await nextAuthUrl();
     cancelCurrentOAuth();
-    await expect(flow).resolves.toMatchObject({ ok: false, reason: 'cancelled' });
+    await expect(flow).resolves.toMatchObject({ ok: false, reason: 'cancelled', code: 'cancelled' });
+  });
+
+  it('names a provider error callback by its code and the provider\'s error parameter', async () => {
+    const nextAuthUrl = captureAuthUrl();
+    const flow = authorizeInBrowser(BROWSER_OPTS);
+    const authUrl = await nextAuthUrl();
+    await hitCallback(authUrl, { error: 'access_denied', error_description: 'The user said no', state: authUrl.searchParams.get('state') as string });
+    await expect(flow).resolves.toMatchObject({ ok: false, code: 'provider_error', oauthError: 'access_denied' });
   });
 
   it.each(['http://auth.example.com/authorize', 'file:///etc/passwd', 'not a url'])(

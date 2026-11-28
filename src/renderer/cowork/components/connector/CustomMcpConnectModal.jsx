@@ -44,6 +44,18 @@ export function connectErrorMessage(t, result) {
     case 'grant_refused':
     case 'login_failed':
       return t('customMcp.error.loginFailed', { reason: result.reason || '' });
+    case 'client_refused':
+      return t('customMcp.error.clientRefused', { redirectUri: CUSTOM_MCP_REDIRECT_URI });
+    case 'login_cancelled':
+      return t('customMcp.error.loginCancelled');
+    case 'login_timed_out':
+      return t('customMcp.error.loginTimedOut');
+    case 'login_refused':
+      return t('customMcp.error.loginRefused');
+    case 'login_denied':
+      return t('customMcp.error.loginDenied');
+    case 'login_unavailable':
+      return t('customMcp.error.loginUnavailable');
     case 'unavailable':
       return t('customMcp.error.unavailable');
     case 'keychain_unavailable':
@@ -94,14 +106,30 @@ function ConnectForm({ busy, setBusy, onClose, onConnected }) {
   const [values, setValues] = useState(EMPTY);
   const [error, setError] = useState(null);
   const [loginHosts, setLoginHosts] = useState(null);
+  // The hosts the user confirmed for a login the server refused before the
+  // browser opened; "Open the browser anyway" sends them again with the skip.
+  const [refusedHosts, setRefusedHosts] = useState(null);
+  // True while a call that may open the browser runs: one with confirmed hosts.
+  const [loggingIn, setLoggingIn] = useState(false);
   const [connected, setConnected] = useState(null);
 
-  const set = (field) => (next) => setValues((prev) => ({ ...prev, [field]: next }));
+  const set = (field) => (next) => {
+    setRefusedHosts(null);
+    setValues((prev) => ({ ...prev, [field]: next }));
+  };
   const complete = Boolean(values.label.trim() && values.url.trim() && (!values.clientSecret || values.clientId.trim()));
 
-  async function connect(confirmedLoginHosts) {
+  /**
+   * Asks main to connect with the current fields.
+   *
+   * @param {string[]} [confirmedLoginHosts] the hosts the user confirmed
+   * @param {boolean} [skipClientCheck] open the browser even though the login server refused the client
+   */
+  async function connect(confirmedLoginHosts, skipClientCheck = false) {
     setBusy(true);
+    setLoggingIn(Boolean(confirmedLoginHosts));
     setError(null);
+    setRefusedHosts(null);
     try {
       const result = await host.customMcpConnect({
         label: values.label.trim(),
@@ -109,6 +137,7 @@ function ConnectForm({ busy, setBusy, onClose, onConnected }) {
         ...(values.clientId.trim() ? { clientId: values.clientId.trim() } : {}),
         ...(values.clientSecret ? { clientSecret: values.clientSecret } : {}),
         ...(confirmedLoginHosts ? { confirmedLoginHosts } : {}),
+        ...(skipClientCheck ? { skipClientCheck: true } : {}),
       });
       if (result.ok) {
         setLoginHosts(null);
@@ -119,6 +148,7 @@ function ConnectForm({ busy, setBusy, onClose, onConnected }) {
         setLoginHosts(result.loginHosts);
       } else {
         setLoginHosts(null);
+        if (result.code === 'client_refused' && confirmedLoginHosts) setRefusedHosts(confirmedLoginHosts);
         setError(connectErrorMessage(t, result));
       }
     } catch (err) {
@@ -126,6 +156,7 @@ function ConnectForm({ busy, setBusy, onClose, onConnected }) {
       setError(t('customMcp.error.generic', { reason: err?.message || '' }));
     } finally {
       setBusy(false);
+      setLoggingIn(false);
     }
   }
 
@@ -159,6 +190,12 @@ function ConnectForm({ busy, setBusy, onClose, onConnected }) {
       <ModalBody>
         <div className="flex flex-col gap-3">
           {error && <Alert variant="danger">{error}</Alert>}
+          {refusedHosts && !busy && (
+            <div>
+              <Button type="button" variant="default" size="sm" onClick={() => void connect(refusedHosts, true)}>{t('customMcp.openBrowserAnyway')}</Button>
+            </div>
+          )}
+          {busy && loggingIn && <p className="text-sm text-ink-2" role="status">{t('customMcp.loginWaiting')}</p>}
           {loginHosts ? (
             <div className="flex flex-col gap-2" role="group" aria-label={t('customMcp.confirmHosts')}>
               <p className="text-sm text-ink">{t('customMcp.confirmHosts')}</p>

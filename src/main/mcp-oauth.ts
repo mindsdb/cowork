@@ -74,6 +74,20 @@ const OAUTH_ERROR_CODES = new Set([
   'invalid_scope',
   'invalid_target',
 ]);
+// The codes an authorize endpoint sends back to the redirect (RFC 6749
+// 4.1.2.1, RFC 8707), plus invalid_client, which providers also send there.
+// Same rule as above: only these reach messages.
+export const AUTHORIZE_ERROR_CODES: ReadonlySet<string> = new Set([
+  'access_denied',
+  'invalid_request',
+  'invalid_client',
+  'unauthorized_client',
+  'unsupported_response_type',
+  'invalid_scope',
+  'server_error',
+  'temporarily_unavailable',
+  'invalid_target',
+]);
 const REFUSED_GRANT_CODES = new Set(['invalid_grant', 'invalid_client', 'unauthorized_client']);
 const MAX_LIFETIME_SECONDS = 365 * 24 * 60 * 60;
 

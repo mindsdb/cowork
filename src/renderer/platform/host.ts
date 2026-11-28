@@ -1204,6 +1204,8 @@ export interface CustomMcpConnectOpts {
   clientId?: string;
   clientSecret?: string;
   confirmedLoginHosts?: string[];
+  /** Opens the browser for a typed client ID even when the login server refused it. */
+  skipClientCheck?: true;
 }
 export type CustomMcpConnectResult =
   | { ok: true; id: string; label: string; serverUrl: string; toolsOn: number; toolsUnavailable: boolean }

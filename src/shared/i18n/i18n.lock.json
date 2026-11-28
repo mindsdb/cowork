@@ -112641,6 +112641,40 @@
       "text": "c0b3fbff51cc"
     }
   },
+  "library:customMcp.error.clientRefused": {
+    "de": {
+      "from": "6e82c8aa2307",
+      "text": "3756fcbb904a"
+    },
+    "es": {
+      "from": "6e82c8aa2307",
+      "text": "fd4d6ca096d5"
+    },
+    "fr": {
+      "from": "6e82c8aa2307",
+      "text": "49dc7a080beb"
+    },
+    "it": {
+      "from": "6e82c8aa2307",
+      "text": "5f2b4daacc15"
+    },
+    "ja": {
+      "from": "6e82c8aa2307",
+      "text": "40be0e8666a4"
+    },
+    "ko": {
+      "from": "6e82c8aa2307",
+      "text": "f7b0367d9efb"
+    },
+    "pt-BR": {
+      "from": "6e82c8aa2307",
+      "text": "5c6729717ea3"
+    },
+    "zh-CN": {
+      "from": "6e82c8aa2307",
+      "text": "e2c43a0f6664"
+    }
+  },
   "library:customMcp.error.generic": {
     "de": {
       "from": "0a8b9a0220b6",
@@ -112777,6 +112811,74 @@
       "text": "5b090036c5ba"
     }
   },
+  "library:customMcp.error.loginCancelled": {
+    "de": {
+      "from": "c5900c017efa",
+      "text": "1a34c8237d27"
+    },
+    "es": {
+      "from": "c5900c017efa",
+      "text": "1383f4f485fa"
+    },
+    "fr": {
+      "from": "c5900c017efa",
+      "text": "c59dd50c9449"
+    },
+    "it": {
+      "from": "c5900c017efa",
+      "text": "8f9f6a598637"
+    },
+    "ja": {
+      "from": "c5900c017efa",
+      "text": "2f151ce2e545"
+    },
+    "ko": {
+      "from": "c5900c017efa",
+      "text": "c28e8fa02db4"
+    },
+    "pt-BR": {
+      "from": "c5900c017efa",
+      "text": "90eb9f0a7b55"
+    },
+    "zh-CN": {
+      "from": "c5900c017efa",
+      "text": "ab8a20746b35"
+    }
+  },
+  "library:customMcp.error.loginDenied": {
+    "de": {
+      "from": "3ee196fe5307",
+      "text": "9f6a79b62229"
+    },
+    "es": {
+      "from": "3ee196fe5307",
+      "text": "1d4700ddae77"
+    },
+    "fr": {
+      "from": "3ee196fe5307",
+      "text": "94983f50739a"
+    },
+    "it": {
+      "from": "3ee196fe5307",
+      "text": "bd7690a179b7"
+    },
+    "ja": {
+      "from": "3ee196fe5307",
+      "text": "b0e74856ceb9"
+    },
+    "ko": {
+      "from": "3ee196fe5307",
+      "text": "1440e3fa9635"
+    },
+    "pt-BR": {
+      "from": "3ee196fe5307",
+      "text": "8399d0e58caa"
+    },
+    "zh-CN": {
+      "from": "3ee196fe5307",
+      "text": "fe1dbbf52c6c"
+    }
+  },
   "library:customMcp.error.loginFailed": {
     "de": {
       "from": "59da8d14132a",
@@ -112809,6 +112911,108 @@
     "zh-CN": {
       "from": "59da8d14132a",
       "text": "5c7de5b1a528"
+    }
+  },
+  "library:customMcp.error.loginRefused": {
+    "de": {
+      "from": "72eb05f50436",
+      "text": "76dee5d406de"
+    },
+    "es": {
+      "from": "72eb05f50436",
+      "text": "10335fcb0b80"
+    },
+    "fr": {
+      "from": "72eb05f50436",
+      "text": "8170e80f390d"
+    },
+    "it": {
+      "from": "72eb05f50436",
+      "text": "38517d355051"
+    },
+    "ja": {
+      "from": "72eb05f50436",
+      "text": "27d329a6688d"
+    },
+    "ko": {
+      "from": "72eb05f50436",
+      "text": "1fc268f570f7"
+    },
+    "pt-BR": {
+      "from": "72eb05f50436",
+      "text": "bd32b55b2bdd"
+    },
+    "zh-CN": {
+      "from": "72eb05f50436",
+      "text": "d424e7bf9379"
+    }
+  },
+  "library:customMcp.error.loginTimedOut": {
+    "de": {
+      "from": "2c880368861c",
+      "text": "f8abc66ad45b"
+    },
+    "es": {
+      "from": "2c880368861c",
+      "text": "1cfbc756a308"
+    },
+    "fr": {
+      "from": "2c880368861c",
+      "text": "f27dc8ec67bb"
+    },
+    "it": {
+      "from": "2c880368861c",
+      "text": "e9af455c5fe2"
+    },
+    "ja": {
+      "from": "2c880368861c",
+      "text": "72662b781b52"
+    },
+    "ko": {
+      "from": "2c880368861c",
+      "text": "899ce0aff502"
+    },
+    "pt-BR": {
+      "from": "2c880368861c",
+      "text": "e964bd4ac5a9"
+    },
+    "zh-CN": {
+      "from": "2c880368861c",
+      "text": "99a45fe9376d"
+    }
+  },
+  "library:customMcp.error.loginUnavailable": {
+    "de": {
+      "from": "54302c83a3b4",
+      "text": "18a4275a1ad1"
+    },
+    "es": {
+      "from": "54302c83a3b4",
+      "text": "ad4797ff4d32"
+    },
+    "fr": {
+      "from": "54302c83a3b4",
+      "text": "c957da0e593e"
+    },
+    "it": {
+      "from": "54302c83a3b4",
+      "text": "3856010d32d2"
+    },
+    "ja": {
+      "from": "54302c83a3b4",
+      "text": "6b153c703687"
+    },
+    "ko": {
+      "from": "54302c83a3b4",
+      "text": "dc92a033add2"
+    },
+    "pt-BR": {
+      "from": "54302c83a3b4",
+      "text": "c119dadb681b"
+    },
+    "zh-CN": {
+      "from": "54302c83a3b4",
+      "text": "6eeae42dc4c5"
     }
   },
   "library:customMcp.error.missing": {
@@ -113219,6 +113423,40 @@
       "text": "b5a8469f091e"
     }
   },
+  "library:customMcp.loginWaiting": {
+    "de": {
+      "from": "6ec974c56842",
+      "text": "d2283aa8e96e"
+    },
+    "es": {
+      "from": "6ec974c56842",
+      "text": "82f485c6c089"
+    },
+    "fr": {
+      "from": "6ec974c56842",
+      "text": "44aa21efb1ce"
+    },
+    "it": {
+      "from": "6ec974c56842",
+      "text": "3a6faff20402"
+    },
+    "ja": {
+      "from": "6ec974c56842",
+      "text": "6324e5bff57c"
+    },
+    "ko": {
+      "from": "6ec974c56842",
+      "text": "9a57dc059d5a"
+    },
+    "pt-BR": {
+      "from": "6ec974c56842",
+      "text": "638ea4dd66b1"
+    },
+    "zh-CN": {
+      "from": "6ec974c56842",
+      "text": "711ca76c7a6e"
+    }
+  },
   "library:customMcp.name": {
     "de": {
       "from": "dcd1d5223f73",
@@ -113285,6 +113523,40 @@
     "zh-CN": {
       "from": "51134d8ad8ce",
       "text": "daede8a74c7e"
+    }
+  },
+  "library:customMcp.openBrowserAnyway": {
+    "de": {
+      "from": "2578947d61ca",
+      "text": "25bd558742a0"
+    },
+    "es": {
+      "from": "2578947d61ca",
+      "text": "25280f3c0b91"
+    },
+    "fr": {
+      "from": "2578947d61ca",
+      "text": "d75910a054b8"
+    },
+    "it": {
+      "from": "2578947d61ca",
+      "text": "de71f43db0b5"
+    },
+    "ja": {
+      "from": "2578947d61ca",
+      "text": "db97e4ae251e"
+    },
+    "ko": {
+      "from": "2578947d61ca",
+      "text": "c79770ae472d"
+    },
+    "pt-BR": {
+      "from": "2578947d61ca",
+      "text": "0bc7c4188ae3"
+    },
+    "zh-CN": {
+      "from": "2578947d61ca",
+      "text": "6420949ab1fe"
     }
   },
   "library:customMcp.redirectUri": {
