@@ -29,6 +29,24 @@ import { normalizeExternalBrowserUrl } from '../../shared/external-url';
 import { guardRestart, type GuardedRestartResult } from './restart-guard';
 import type { LegacyStateVerdict } from '../cowork/lib/accountLocalState';
 import { isMobileShell, mobileShell } from '../lib/mobileShell';
+import { CUSTOM_MCP_REDIRECT_URI } from '../../shared/custom-mcp';
+import {
+  beginCustomMcpSignIn,
+  cancelCustomMcpSignIn,
+  connectedFrom,
+  CUSTOM_MCP_CONNECTION_ID,
+  CUSTOM_MCP_RELAY_TIMEOUT_MS,
+  CUSTOM_MCP_LISTING_TIMEOUT_MS,
+  CUSTOM_MCP_REQUEST_TIMEOUT_MS,
+  customMcpFailure,
+  endCustomMcpSignIn,
+  openLoginPage,
+  unlessCancelled,
+  pollCustomMcpSignIn,
+  toolsFrom,
+  type CustomMcpSignIn,
+  type CustomMcpWebAnswer,
+} from '../cowork/lib/customMcpWebConnect';
 
 const ANTON_SERVER_PORT = 26866;
 
@@ -1194,8 +1212,9 @@ export async function setConnectionAccessMode(
   return null;
 }
 
-// Custom MCP servers added by URL: desktop only, main logs in and holds the
-// keychain entries. Every call answers a refusal object on web or an older shell.
+// Custom MCP servers added by URL. Desktop: main logs in and holds the keychain
+// entries. Web: cowork-server's org-mode routes, with auth holding the login.
+// An older shell answers a refusal object.
 export type CustomMcpFailure = { ok: false; code: string; reason: string };
 export type CustomMcpHostsToConfirm = { ok: false; code: 'confirm_login_hosts'; loginHosts: string[] };
 export interface CustomMcpConnectOpts {
@@ -1209,50 +1228,249 @@ export type CustomMcpConnectResult =
   | { ok: true; id: string; label: string; serverUrl: string; toolsOn: number; toolsUnavailable: boolean }
   | CustomMcpHostsToConfirm
   | CustomMcpFailure;
-export interface CustomMcpTool { name: string; description: string; readOnly: boolean; allowed: boolean }
+// `usable` and `reason` come from the web only; desktop leaves them out.
+export interface CustomMcpTool {
+  name: string;
+  description: string;
+  readOnly: boolean;
+  allowed: boolean;
+  usable?: boolean;
+  reason?: string | null;
+}
 export type CustomMcpSummaryResult = { ok: true; label: string; serverUrl: string } | CustomMcpFailure;
-export type CustomMcpToolsResult = { ok: true; tools: CustomMcpTool[] } | CustomMcpFailure;
-export type CustomMcpSetToolsResult = { ok: true; tools: string[] } | CustomMcpFailure;
+// `revision` (web only) names the list these tools came from; a switch save sends it back.
+export type CustomMcpToolsResult =
+  | { ok: true; tools: CustomMcpTool[]; stale?: boolean; staleCode?: string; revision?: number }
+  | CustomMcpFailure;
+// `saved` and `revision` (web only) are the list as the server stored it.
+export type CustomMcpSetToolsResult = { ok: true; tools: string[]; saved?: CustomMcpTool[]; revision?: number } | CustomMcpFailure;
 export type CustomMcpReconnectResult = { ok: true } | CustomMcpHostsToConfirm | CustomMcpFailure;
 export type CustomMcpDisconnectResult = { ok: true; revoked: boolean } | CustomMcpFailure;
+export type CustomMcpFinishResult = { ok: true; name: string } | CustomMcpFailure;
 
 const CUSTOM_MCP_UNAVAILABLE: CustomMcpFailure = { ok: false, code: 'unavailable', reason: 'Custom MCP servers need the desktop app.' };
+const CUSTOM_MCP_ROUTES = '/api/v1/connectors/custom-mcp';
+
+/** Settles as `promise` does, or rejects once `signal` aborts, so a wait that
+ *  never settles still ends at the request's deadline. */
+function untilAborted<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(new DOMException('aborted', 'AbortError'));
+    if (signal.aborted) {
+      abort();
+      return;
+    }
+    signal.addEventListener('abort', abort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+}
+
+/** One request to cowork-server's custom MCP routes with the member's token.
+ *  Bounded by its own timer and given no other abort signal, so Cancel never
+ *  lifts the bound. Never rejects. */
+async function customMcpRequest(
+  method: string, path: string, timeoutMs: number, body?: unknown,
+): Promise<CustomMcpWebAnswer> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    // A Keycloak refresh can hang; the request's deadline covers it too.
+    const token = await untilAborted(getAccessToken(), controller.signal);
+    if (token) {
+      const { expectedOrganizationHeaders } = await import('../cowork/lib/organizationRequestBoundary');
+      headers.Authorization = `Bearer ${token}`;
+      Object.assign(headers, expectedOrganizationHeaders(token));
+    }
+    const res = await fetch(`${getApiOrigin()}${CUSTOM_MCP_ROUTES}${path}`, {
+      method,
+      headers,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      signal: controller.signal,
+    });
+    const { handleOrganizationBoundaryResponse } = await import('../cowork/lib/organizationRequestBoundary');
+    if (handleOrganizationBoundaryResponse(res)) return { ok: false, code: 'organization_changed', reason: '' };
+    let data: unknown = null;
+    if (res.status !== 204) {
+      try {
+        data = await res.json();
+      } catch (err) {
+        // A success is only as good as its body; a refusal still has its status.
+        if (res.ok) return { ok: false, code: controller.signal.aborted ? 'timeout' : 'unreadable_response', reason: '' };
+      }
+    }
+    return res.ok ? { ok: true, data } : customMcpFailure(res.status, data);
+  } catch (err) {
+    return { ok: false, code: controller.signal.aborted ? 'timeout' : 'unreachable', reason: (err as Error)?.message || '' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// A name like `..` would leave the connection's path once fetch normalizes it.
+const NOT_A_CONNECTION = Object.freeze({ ok: false as const, code: 'not_found', reason: '' });
+
+function connectionPath(id: string): string | null {
+  return CUSTOM_MCP_CONNECTION_ID.test(id) ? `/connections/${id}` : null;
+}
+
+// A blocked pop-up is known at the click; refuse before auth stores a sign-in no page can finish.
+const POPUP_BLOCKED = Object.freeze({ ok: false as const, code: 'popup_blocked', reason: '' });
+
+/** The sign-in after a start or reconnect answered `pending`: the login page
+ *  in the pop-up, then the status poll. Closes the pop-up, unless the sign-in
+ *  failed and the pop-up shows why.
+ *  After Cancel the status is read once more: a sign-in the finish page saved
+ *  before it is announced, so the connections list shows it as after a success. */
+async function customMcpWebSignIn(signIn: CustomMcpSignIn, started: { auth_url?: unknown; state?: unknown }): Promise<CustomMcpWebAnswer> {
+  try {
+    if (typeof started.state !== 'string' || !started.state) return { ok: false, code: 'unreadable_response', reason: '' };
+    const opened = openLoginPage(signIn, started.auth_url);
+    if (!opened.ok) return opened;
+    const query = `/status?state=${encodeURIComponent(started.state)}`;
+    const finished = await pollCustomMcpSignIn(signIn, () => customMcpRequest('GET', query, CUSTOM_MCP_LISTING_TIMEOUT_MS));
+    if (signIn.cancelled) {
+      void customMcpRequest('GET', query, CUSTOM_MCP_LISTING_TIMEOUT_MS).then((late) => {
+        if (late.ok && late.data?.status === 'success') window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+      });
+    }
+    return finished;
+  } finally {
+    endCustomMcpSignIn(signIn);
+  }
+}
 
 export async function customMcpAvailable(): Promise<boolean> {
   if (isElectron && typeof bridge.customMcpAvailable === 'function') return (await bridge.customMcpAvailable()) === true;
-  return false;
+  if (isElectron) return false;
+  const answer = await customMcpRequest('GET', '/config', CUSTOM_MCP_REQUEST_TIMEOUT_MS);
+  return answer.ok && answer.data?.available === true;
+}
+
+/** The redirect address a member registers with their own client; null when unknown. */
+export async function customMcpRedirectUri(): Promise<string | null> {
+  if (isElectron) return CUSTOM_MCP_REDIRECT_URI;
+  const answer = await customMcpRequest('GET', '/config', CUSTOM_MCP_REQUEST_TIMEOUT_MS);
+  return answer.ok && typeof answer.data?.redirect_uri === 'string' ? answer.data.redirect_uri : null;
 }
 
 export async function customMcpConnect(opts: CustomMcpConnectOpts): Promise<CustomMcpConnectResult> {
   if (isElectron && typeof bridge.customMcpConnect === 'function') return bridge.customMcpConnect(opts);
-  return CUSTOM_MCP_UNAVAILABLE;
+  if (isElectron) return CUSTOM_MCP_UNAVAILABLE;
+  // Continue is the call that can open a login page: the pop-up opens here, inside the click.
+  // Cancel is offered only once this sign-in exists and ends the wait at once. The request
+  // runs on; a server it still adds is announced, so the connections list shows it.
+  const signIn = opts.confirmedLoginHosts ? beginCustomMcpSignIn() : null;
+  if (signIn && !signIn.popup) {
+    endCustomMcpSignIn(signIn);
+    return POPUP_BLOCKED;
+  }
+  const request = customMcpRequest('POST', '/connect', CUSTOM_MCP_LISTING_TIMEOUT_MS, {
+    label: opts.label,
+    server_url: opts.url,
+    ...(opts.clientId ? { client_id: opts.clientId } : {}),
+    ...(opts.clientSecret ? { client_secret: opts.clientSecret } : {}),
+    ...(opts.confirmedLoginHosts ? { confirmed_login_hosts: opts.confirmedLoginHosts } : {}),
+  });
+  const started = signIn ? await unlessCancelled(signIn, request) : await request;
+  if (signIn?.cancelled) {
+    void request.then((late) => {
+      if (late.ok && late.data?.status === 'connected') window.dispatchEvent(new CustomEvent('anton:connections-changed'));
+    });
+  }
+  if (!started.ok || started.data?.status !== 'pending' || !signIn) endCustomMcpSignIn(signIn);
+  if (!started.ok) return started;
+  const status = started.data?.status;
+  if (status === 'confirm_login_hosts') {
+    const loginHosts = Array.isArray(started.data.login_hosts) ? started.data.login_hosts.map(String) : [];
+    return { ok: false, code: 'confirm_login_hosts', loginHosts };
+  }
+  const name = typeof started.data?.name === 'string' ? started.data.name : '';
+  if (status === 'connected') return connectedFrom(started.data, name);
+  if (status !== 'pending' || !signIn) return { ok: false, code: 'unreadable_response', reason: '' };
+  const finished = await customMcpWebSignIn(signIn, started.data);
+  return finished.ok ? connectedFrom(finished.data, name) : finished;
 }
 
 export async function customMcpSummary(id: string): Promise<CustomMcpSummaryResult> {
   if (isElectron && typeof bridge.customMcpSummary === 'function') return bridge.customMcpSummary({ id });
+  // cowork-server has no summary route; the panel shows the connection list's label.
   return CUSTOM_MCP_UNAVAILABLE;
 }
 
 export async function customMcpTools(id: string): Promise<CustomMcpToolsResult> {
   if (isElectron && typeof bridge.customMcpTools === 'function') return bridge.customMcpTools({ id });
-  return CUSTOM_MCP_UNAVAILABLE;
+  if (isElectron) return CUSTOM_MCP_UNAVAILABLE;
+  const path = connectionPath(id);
+  if (!path) return NOT_A_CONNECTION;
+  const answer = await customMcpRequest('GET', `${path}/tools`, CUSTOM_MCP_LISTING_TIMEOUT_MS);
+  if (!answer.ok) return answer;
+  const { revision, ...result } = toolsFrom(answer.data);
+  return revision === null ? result : { ...result, revision };
 }
 
-export async function customMcpSetTools(id: string, tools: string[]): Promise<CustomMcpSetToolsResult> {
+/** Saves which tools are on. On the web, `revision` is the one read with the
+ *  list on screen; auth refuses it as `stale_revision` once the list changed. */
+export async function customMcpSetTools(id: string, tools: string[], revision?: number): Promise<CustomMcpSetToolsResult> {
   if (isElectron && typeof bridge.customMcpSetTools === 'function') return bridge.customMcpSetTools({ id, tools });
-  return CUSTOM_MCP_UNAVAILABLE;
+  if (isElectron) return CUSTOM_MCP_UNAVAILABLE;
+  if (revision === undefined) return { ok: false, code: 'stale_revision', reason: '' };
+  const path = connectionPath(id);
+  if (!path) return NOT_A_CONNECTION;
+  const answer = await customMcpRequest('PUT', `${path}/tools`, CUSTOM_MCP_REQUEST_TIMEOUT_MS, { tools, tools_revision: revision });
+  if (!answer.ok) return answer;
+  const saved = toolsFrom(answer.data);
+  const allowed = saved.tools.filter((tool) => tool.allowed).map((tool) => tool.name);
+  // Only a whole stored list replaces the one on screen.
+  if (!Array.isArray(answer.data?.tools) || saved.revision === null) return { ok: true, tools: allowed };
+  return { ok: true, tools: allowed, saved: saved.tools, revision: saved.revision };
 }
 
 export async function customMcpReconnect(id: string, confirmedLoginHosts?: string[]): Promise<CustomMcpReconnectResult> {
   if (isElectron && typeof bridge.customMcpReconnect === 'function') {
     return bridge.customMcpReconnect({ id, ...(confirmedLoginHosts ? { confirmedLoginHosts } : {}) });
   }
-  return CUSTOM_MCP_UNAVAILABLE;
+  if (isElectron) return CUSTOM_MCP_UNAVAILABLE;
+  // No Cancel is offered during this request; one pressed elsewhere stops before the login page.
+  const path = connectionPath(id);
+  if (!path) return NOT_A_CONNECTION;
+  const signIn = confirmedLoginHosts ? beginCustomMcpSignIn() : null;
+  if (signIn && !signIn.popup) {
+    endCustomMcpSignIn(signIn);
+    return POPUP_BLOCKED;
+  }
+  const started = await customMcpRequest('POST', `${path}/reconnect`, CUSTOM_MCP_RELAY_TIMEOUT_MS,
+    confirmedLoginHosts ? { confirmed_login_hosts: confirmedLoginHosts } : {});
+  if (!started.ok || started.data?.status !== 'pending' || !signIn) endCustomMcpSignIn(signIn);
+  if (!started.ok) return started;
+  const status = started.data?.status;
+  if (status === 'confirm_login_hosts') {
+    const loginHosts = Array.isArray(started.data.login_hosts) ? started.data.login_hosts.map(String) : [];
+    return { ok: false, code: 'confirm_login_hosts', loginHosts };
+  }
+  if (status === 'connected') return { ok: true };
+  if (status !== 'pending' || !signIn) return { ok: false, code: 'unreadable_response', reason: '' };
+  const finished = await customMcpWebSignIn(signIn, started.data);
+  return finished.ok ? { ok: true } : finished;
 }
 
 export async function customMcpDisconnect(id: string): Promise<CustomMcpDisconnectResult> {
   if (isElectron && typeof bridge.customMcpDisconnect === 'function') return bridge.customMcpDisconnect({ id });
-  return CUSTOM_MCP_UNAVAILABLE;
+  if (isElectron) return CUSTOM_MCP_UNAVAILABLE;
+  const path = connectionPath(id);
+  if (!path) return NOT_A_CONNECTION;
+  const answer = await customMcpRequest('DELETE', path, CUSTOM_MCP_REQUEST_TIMEOUT_MS);
+  if (!answer.ok) return answer;
+  // auth revokes at the server when it can and deletes the row either way; it does not say which.
+  return { ok: true, revoked: false };
+}
+
+/** Web only: finishes a sign-in on the completion page, for the member signed in here. */
+export async function customMcpFinish(completion: string): Promise<CustomMcpFinishResult> {
+  if (isElectron) return CUSTOM_MCP_UNAVAILABLE;
+  const answer = await customMcpRequest('POST', '/finish', CUSTOM_MCP_RELAY_TIMEOUT_MS, { completion });
+  if (!answer.ok) return answer;
+  return { ok: true, name: typeof answer.data?.name === 'string' ? answer.data.name : '' };
 }
 
 // What main returns for a Notion page search or fetch: the server's JSON, the
@@ -1635,6 +1853,8 @@ export async function oauthCancel(): Promise<void> {
   if (isElectron && typeof bridge.oauthCancel === 'function') {
     await bridge.oauthCancel();
   }
+  // Web: the one login this tab can be waiting on is a custom MCP sign-in.
+  if (isWeb) cancelCustomMcpSignIn();
 }
 
 // ── MindsHub onboarding bridge ──────────────────────────────────
@@ -2127,6 +2347,8 @@ export const host = {
   customMcpSetTools,
   customMcpReconnect,
   customMcpDisconnect,
+  customMcpRedirectUri,
+  customMcpFinish,
   notionSearchPages,
   notionFetchPage,
   publishWithApproval,

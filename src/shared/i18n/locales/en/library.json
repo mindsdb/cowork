@@ -702,6 +702,7 @@
       "needsClientId": "This server needs a client ID. Add one under Advanced.",
       "timeout": "The server took too long to answer. Try again.",
       "loginFailed": "The login didn't finish: {reason}",
+      "stoppedWaiting": "Stopped waiting for the sign-in. If you already finished it, the server shows in your connections.",
       "unavailable": "MCP servers by URL aren't available right now. Restart the app and try again.",
       "keychain": "The system keychain isn't available, so the connection can't be stored safely.",
       "serverChanged": "The app switched accounts or restarted during the login. Try again.",
@@ -711,7 +712,19 @@
       "unreachable": "The server couldn't be reached. Try again later.",
       "notHandedOver": "The app hasn't handed this server its settings yet. Restart the app and try again.",
       "missing": "This connection no longer exists.",
-      "unreadable": "This connection's record can't be read right now. Try again later."
+      "unreadable": "This connection's record can't be read right now. Try again later.",
+      "port": "Anton's cloud connects only on the standard https port. Remove the port from the URL.",
+      "listingTooLarge": "This server's tool list is too large to read.",
+      "unreadableResponse": "The server sent an answer Anton couldn't read. Try again.",
+      "insecureLoginUrl": "The server's login page isn't an https address, so it wasn't opened.",
+      "popupBlocked": "Your browser blocked the sign-in window, or it was closed. Allow pop-ups for this site and try again.",
+      "staleRevision": "The tool list changed. It's been reloaded; try the switch again.",
+      "refused": "This sign-in was finished in someone else's account, so it wasn't used. Add the server again.",
+      "loginNotYours": "This sign-in link was started by someone else, so it wasn't used. Only finish sign-ins you started yourself.",
+      "wrongOrganization": "This sign-in was started in another organization. Switch back to the organization you added the server in, then add it again.",
+      "expired": "This sign-in has expired or was already used. Add the server again.",
+      "moved": "The server answered from another address. Check the URL, including whether it should end with a slash.",
+      "tooManyTools": "You can have at most {limit} tools switched on across your MCP servers. Switch some off first."
     },
     "detail": {
       "server": "Server",
@@ -723,7 +736,20 @@
       "reconnected": "Reconnected. Your tool choices are kept.",
       "disconnect": "Disconnect",
       "disconnectTitle": "Disconnect {name}?",
-      "disconnectMessage": "Anton stops using this server, its login is revoked where the server allows it, and its settings are removed from this computer."
+      "disconnectMessage": "Anton stops using this server, its login is revoked where the server allows it, and its settings are removed from this computer.",
+      "disconnectMessageWeb": "Anton stops using this server, its login is revoked where the server allows it, and its settings are deleted.",
+      "stale": "The tool list couldn't be refreshed. These are the tools last listed, and their switches still work.",
+      "reasonReadOnlyRemoved": "Switched off: the server no longer marks this tool as read-only.",
+      "reasonSizeCeiling": "Switched off: the tools you have on reached their size limit.",
+      "reasonDefinitionChanged": "Switched off: the server changed this tool's description or inputs. Review it and switch it back on.",
+      "reasonCountCeiling": "Switched off: you can have at most {limit} tools switched on across your MCP servers.",
+      "reasonUnusable": "Anton can't use this tool."
+    },
+    "finish": {
+      "title": "MCP server sign-in",
+      "working": "Finishing the sign-in…",
+      "done": "Signed in. You can close this window.",
+      "close": "Close window"
     }
   }
 }

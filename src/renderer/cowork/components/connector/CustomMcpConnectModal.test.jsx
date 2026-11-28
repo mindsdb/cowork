@@ -4,7 +4,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const customMcpConnect = vi.hoisted(() => vi.fn());
 const oauthCancel = vi.hoisted(() => vi.fn());
-vi.mock('../../../platform/host', () => ({ host: { customMcpConnect, oauthCancel } }));
+const customMcpRedirectUri = vi.hoisted(() => vi.fn());
+const shell = vi.hoisted(() => ({ isWeb: false }));
+vi.mock('../../../platform/host', () => ({
+  host: { customMcpConnect, oauthCancel, customMcpRedirectUri, get isWeb() { return shell.isWeb; } },
+}));
 
 import CustomMcpConnectModal, { CUSTOM_MCP_REDIRECT_URI } from './CustomMcpConnectModal';
 
@@ -24,6 +28,8 @@ async function fill(user, { label = 'Tracker', url = URL } = {}) {
 
 afterEach(() => {
   customMcpConnect.mockReset();
+  customMcpRedirectUri.mockReset();
+  shell.isWeb = false;
 });
 
 describe('CustomMcpConnectModal', () => {
@@ -111,6 +117,8 @@ describe('CustomMcpConnectModal', () => {
     [{ code: 'grant_refused', reason: 'the token endpoint answered 400: invalid_grant' }, "The login didn't finish: the token endpoint answered 400: invalid_grant"],
     [{ code: 'keychain_unavailable', reason: 'x' }, "The system keychain isn't available, so the connection can't be stored safely."],
     [{ code: 'something_else', reason: 'it broke' }, "Couldn't connect the server: it broke"],
+    [{ code: 'port', reason: 'x' }, "Anton's cloud connects only on the standard https port. Remove the port from the URL."],
+    [{ code: 'listing_too_large', reason: 'x' }, "This server's tool list is too large to read."],
   ])('shows its own message for %j', async (refusal, message) => {
     const user = userEvent.setup();
     customMcpConnect.mockResolvedValue({ ok: false, ...refusal });
@@ -140,6 +148,63 @@ describe('CustomMcpConnectModal', () => {
     expect(await screen.findByText("The login didn't finish: cancelled")).toBeTruthy();
   });
 
+  it('says Cancel only stopped the wait, not that the sign-in failed', async () => {
+    const user = userEvent.setup();
+    customMcpConnect.mockResolvedValue({ ok: false, code: 'stopped_waiting', reason: '' });
+    renderModal();
+
+    await fill(user);
+    await user.click(screen.getByRole('button', { name: 'Connect' }));
+
+    expect(await screen.findByText(/^Stopped waiting for the sign-in\. If you already finished it/)).toBeTruthy();
+    expect(screen.queryByText(/didn't finish/)).toBeNull();
+  });
+
+  it('on the web offers Cancel only once the login hosts are confirmed', async () => {
+    const user = userEvent.setup();
+    shell.isWeb = true;
+    customMcpRedirectUri.mockResolvedValue(null);
+    let finish = () => {};
+    customMcpConnect
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        finish = () => resolve({ ok: false, code: 'confirm_login_hosts', loginHosts: ['auth.example.com'] });
+      }))
+      .mockImplementationOnce(() => new Promise(() => {}));
+    renderModal();
+
+    await fill(user);
+    await user.click(screen.getByRole('button', { name: 'Connect' }));
+    expect(screen.getByRole('button', { name: 'Connecting…' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+    finish();
+    await screen.findByRole('group', { name: 'Your login and its code will go to:' });
+
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    expect(await screen.findByRole('button', { name: 'Cancel' })).toBeTruthy();
+  });
+
+  it('says an unreadable answer could not be read, without the parser\'s text', async () => {
+    const user = userEvent.setup();
+    customMcpConnect.mockResolvedValue({ ok: false, code: 'unreadable_response', reason: '' });
+    renderModal();
+
+    await fill(user);
+    await user.click(screen.getByRole('button', { name: 'Connect' }));
+
+    expect(await screen.findByText("The server sent an answer Anton couldn't read. Try again.")).toBeTruthy();
+  });
+
+  it('keeps the reason a refused login metadata carries', async () => {
+    const user = userEvent.setup();
+    customMcpConnect.mockResolvedValue({ ok: false, code: 'invalid_response', reason: 'the authorization server metadata is missing an endpoint' });
+    renderModal();
+
+    await fill(user);
+    await user.click(screen.getByRole('button', { name: 'Connect' }));
+
+    expect(await screen.findByText("Couldn't connect the server: the authorization server metadata is missing an endpoint")).toBeTruthy();
+  });
+
   it('warns when the server could not list its tools', async () => {
     const user = userEvent.setup();
     customMcpConnect.mockResolvedValue({ ok: true, id: 'cm-1', label: 'Tracker', serverUrl: URL, toolsOn: 0, toolsUnavailable: true });
@@ -149,6 +214,18 @@ describe('CustomMcpConnectModal', () => {
     await user.click(screen.getByRole('button', { name: 'Connect' }));
 
     expect(await screen.findByText(/the server's tools could not be listed/)).toBeTruthy();
+  });
+
+  it('shows the redirect address the web app reads from the server', async () => {
+    const user = userEvent.setup();
+    shell.isWeb = true;
+    customMcpRedirectUri.mockResolvedValue('https://auth.example.com/v1/oauth/custom-mcp/callback');
+    renderModal();
+
+    await user.click(screen.getByRole('button', { name: /Advanced/ }));
+
+    expect(await screen.findByText('https://auth.example.com/v1/oauth/custom-mcp/callback')).toBeTruthy();
+    expect(screen.queryByText(CUSTOM_MCP_REDIRECT_URI)).toBeNull();
   });
 
   it('drops a typed secret once closed and opened again', async () => {
@@ -162,5 +239,20 @@ describe('CustomMcpConnectModal', () => {
     await user.click(screen.getByRole('button', { name: /Advanced/ }));
 
     await waitFor(() => expect(screen.getByLabelText(/^Client secret/).value).toBe(''));
+  });
+
+  it.each([
+    ['moved', 'The server answered from another address. Check the URL, including whether it should end with a slash.'],
+  ])('says plainly why the server was not added when the answer is %s', async (code, message) => {
+    const user = userEvent.setup();
+    shell.isWeb = true;
+    customMcpRedirectUri.mockResolvedValue(null);
+    customMcpConnect.mockResolvedValue({ ok: false, code, reason: 'auth text' });
+    renderModal();
+
+    await fill(user);
+    await user.click(screen.getByRole('button', { name: 'Connect' }));
+
+    expect(await screen.findByText(message)).toBeTruthy();
   });
 });

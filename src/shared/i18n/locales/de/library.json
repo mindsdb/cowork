@@ -702,6 +702,7 @@
       "needsClientId": "Dieser Server braucht eine Client-ID. Füge sie unter Erweitert hinzu.",
       "timeout": "Der Server hat zu lange nicht geantwortet. Versuche es erneut.",
       "loginFailed": "Die Anmeldung wurde nicht abgeschlossen: {reason}",
+      "stoppedWaiting": "Das Warten auf die Anmeldung wurde beendet. Wenn Sie sie schon abgeschlossen haben, erscheint der Server in Ihren Verbindungen.",
       "unavailable": "MCP-Server per URL sind gerade nicht verfügbar. Starte die App neu und versuche es erneut.",
       "keychain": "Der Systemschlüsselbund ist nicht verfügbar, daher kann die Verbindung nicht sicher gespeichert werden.",
       "serverChanged": "Die App hat während der Anmeldung das Konto gewechselt oder neu gestartet. Versuche es erneut.",
@@ -711,7 +712,19 @@
       "unreachable": "Der Server war nicht erreichbar. Versuche es später erneut.",
       "notHandedOver": "Die App hat diesem Server seine Einstellungen noch nicht übergeben. Starte die App neu und versuche es erneut.",
       "missing": "Diese Verbindung gibt es nicht mehr.",
-      "unreadable": "Der Eintrag dieser Verbindung kann gerade nicht gelesen werden. Versuche es später erneut."
+      "unreadable": "Der Eintrag dieser Verbindung kann gerade nicht gelesen werden. Versuche es später erneut.",
+      "port": "Die Cloud von Anton verbindet sich nur über den Standard-https-Port. Entferne den Port aus der URL.",
+      "listingTooLarge": "Die Tool-Liste dieses Servers ist zu groß zum Lesen.",
+      "unreadableResponse": "Der Server hat eine Antwort gesendet, die Anton nicht lesen konnte. Versuche es erneut.",
+      "insecureLoginUrl": "Die Anmeldeseite des Servers ist keine https-Adresse und wurde daher nicht geöffnet.",
+      "popupBlocked": "Dein Browser hat das Anmeldefenster blockiert, oder es wurde geschlossen. Erlaube Pop-ups für diese Website und versuche es erneut.",
+      "staleRevision": "Die Tool-Liste hat sich geändert. Sie wurde neu geladen; versuche den Schalter erneut.",
+      "refused": "Diese Anmeldung wurde im Konto einer anderen Person abgeschlossen und daher nicht verwendet. Füge den Server erneut hinzu.",
+      "loginNotYours": "Dieser Anmeldelink wurde von einer anderen Person gestartet und daher nicht verwendet. Schließe nur Anmeldungen ab, die du selbst gestartet hast.",
+      "wrongOrganization": "Diese Anmeldung wurde in einer anderen Organisation gestartet. Wechsle zurück zu der Organisation, in der du den Server hinzugefügt hast, und füge ihn erneut hinzu.",
+      "expired": "Diese Anmeldung ist abgelaufen oder wurde bereits verwendet. Füge den Server erneut hinzu.",
+      "moved": "Der Server hat von einer anderen Adresse geantwortet. Prüfe die URL, auch ob sie mit einem Schrägstrich enden sollte.",
+      "tooManyTools": "Du kannst über alle deine MCP-Server höchstens {limit} Tools einschalten. Schalte zuerst einige aus."
     },
     "detail": {
       "server": "Server",
@@ -723,7 +736,20 @@
       "reconnected": "Neu verbunden. Deine Tool-Auswahl bleibt erhalten.",
       "disconnect": "Trennen",
       "disconnectTitle": "{name} trennen?",
-      "disconnectMessage": "Anton nutzt diesen Server nicht mehr, die Anmeldung wird widerrufen, wo der Server das erlaubt, und seine Einstellungen werden von diesem Computer entfernt."
+      "disconnectMessage": "Anton nutzt diesen Server nicht mehr, die Anmeldung wird widerrufen, wo der Server das erlaubt, und seine Einstellungen werden von diesem Computer entfernt.",
+      "disconnectMessageWeb": "Anton nutzt diesen Server nicht mehr, die Anmeldung wird widerrufen, wo der Server das erlaubt, und seine Einstellungen werden gelöscht.",
+      "stale": "Die Tool-Liste konnte nicht aktualisiert werden. Das sind die zuletzt aufgelisteten Tools, und ihre Schalter funktionieren weiterhin.",
+      "reasonReadOnlyRemoved": "Ausgeschaltet: Der Server kennzeichnet dieses Tool nicht mehr als schreibgeschützt.",
+      "reasonSizeCeiling": "Ausgeschaltet: Deine eingeschalteten Tools haben ihre Größengrenze erreicht.",
+      "reasonDefinitionChanged": "Ausgeschaltet: Der Server hat die Beschreibung oder die Eingaben dieses Tools geändert. Prüfe es und schalte es wieder ein.",
+      "reasonCountCeiling": "Ausgeschaltet: Du kannst über alle deine MCP-Server höchstens {limit} Tools einschalten.",
+      "reasonUnusable": "Anton kann dieses Tool nicht verwenden."
+    },
+    "finish": {
+      "title": "Anmeldung beim MCP-Server",
+      "working": "Anmeldung wird abgeschlossen…",
+      "done": "Angemeldet. Du kannst dieses Fenster schließen.",
+      "close": "Fenster schließen"
     }
   }
 }

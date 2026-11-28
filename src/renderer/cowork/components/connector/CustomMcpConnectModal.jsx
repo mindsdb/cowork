@@ -1,11 +1,11 @@
-// Adding a remote MCP server by URL (desktop only). The app's main process
-// logs in through the server's own login page, keeps the settings in the OS
-// keychain and switches the read-only tools on; this form only collects the
+// Adding a remote MCP server by URL. On desktop the app's main process logs
+// in and keeps the settings in the OS keychain; on the web, auth does both.
+// Either way the read-only tools start on; this form only collects the
 // name, URL and an optional client, and shows every host that will receive
 // login credentials before the browser opens. Mounted only while open, so a
 // typed client secret goes away with it.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Button, Collapsible, Field, Input } from '../ui';
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '../ui/Modal';
 import { host } from '../../../platform/host';
@@ -15,6 +15,8 @@ import { CUSTOM_MCP_REDIRECT_URI } from '../../../../shared/custom-mcp';
 export { CUSTOM_MCP_REDIRECT_URI } from '../../../../shared/custom-mcp';
 
 const EMPTY = { label: '', url: '', clientId: '', clientSecret: '' };
+// A copy of auth's MAX_SWITCHED_ON_TOOLS: one member's switched-on tools across their servers; auth enforces it.
+export const CUSTOM_MCP_TOOL_LIMIT = 100;
 
 /**
  * The message for a refused connect, by the code main answered.
@@ -41,6 +43,8 @@ export function connectErrorMessage(t, result) {
       return t('customMcp.error.needsClientId');
     case 'timeout':
       return t('customMcp.error.timeout');
+    case 'stopped_waiting':
+      return t('customMcp.error.stoppedWaiting');
     case 'grant_refused':
     case 'login_failed':
       return t('customMcp.error.loginFailed', { reason: result.reason || '' });
@@ -60,6 +64,30 @@ export function connectErrorMessage(t, result) {
       return t('customMcp.error.missing');
     case 'custom_connection_unreadable':
       return t('customMcp.error.unreadable');
+    case 'port':
+      return t('customMcp.error.port');
+    case 'listing_too_large':
+      return t('customMcp.error.listingTooLarge');
+    case 'unreadable_response':
+      return t('customMcp.error.unreadableResponse');
+    case 'insecure_login_url':
+      return t('customMcp.error.insecureLoginUrl');
+    case 'popup_blocked':
+      return t('customMcp.error.popupBlocked');
+    case 'stale_revision':
+      return t('customMcp.error.staleRevision');
+    case 'refused':
+      return t('customMcp.error.refused');
+    case 'login_not_yours':
+      return t('customMcp.error.loginNotYours');
+    case 'wrong_organization':
+      return t('customMcp.error.wrongOrganization');
+    case 'expired':
+      return t('customMcp.error.expired');
+    case 'moved':
+      return t('customMcp.error.moved');
+    case 'too_many_tools':
+      return t('customMcp.error.tooManyTools', { limit: CUSTOM_MCP_TOOL_LIMIT });
     default:
       return t('customMcp.error.generic', { reason: result.reason || result.code });
   }
@@ -95,11 +123,26 @@ function ConnectForm({ busy, setBusy, onClose, onConnected }) {
   const [error, setError] = useState(null);
   const [loginHosts, setLoginHosts] = useState(null);
   const [connected, setConnected] = useState(null);
+  // On the web only a call with confirmed login hosts has a sign-in for Cancel to end.
+  const [cancellable, setCancellable] = useState(false);
+  // The web app's redirect is auth's own callback, which only the server knows.
+  const [redirectUri, setRedirectUri] = useState(host.isWeb ? null : CUSTOM_MCP_REDIRECT_URI);
+
+  useEffect(() => {
+    if (!host.isWeb) return undefined;
+    let live = true;
+    // Never rejects: an unanswered config reads as no address.
+    void host.customMcpRedirectUri().then((uri) => {
+      if (live) setRedirectUri(uri);
+    });
+    return () => { live = false; };
+  }, []);
 
   const set = (field) => (next) => setValues((prev) => ({ ...prev, [field]: next }));
   const complete = Boolean(values.label.trim() && values.url.trim() && (!values.clientSecret || values.clientId.trim()));
 
   async function connect(confirmedLoginHosts) {
+    setCancellable(!host.isWeb || Boolean(confirmedLoginHosts));
     setBusy(true);
     setError(null);
     try {
@@ -183,9 +226,11 @@ function ConnectForm({ busy, setBusy, onClose, onConnected }) {
                   <Field label={t('customMcp.clientSecret')} optional>
                     <Input type="password" value={values.clientSecret} onChange={set('clientSecret')} disabled={busy} autoComplete="new-password" />
                   </Field>
-                  <p className="text-[12px] text-ink-2">
-                    {t('customMcp.redirectUri')} <code className="select-all">{CUSTOM_MCP_REDIRECT_URI}</code>
-                  </p>
+                  {redirectUri && (
+                    <p className="text-[12px] text-ink-2">
+                      {t('customMcp.redirectUri')} <code className="select-all">{redirectUri}</code>
+                    </p>
+                  )}
                 </div>
               </Collapsible>
             </>
@@ -195,7 +240,7 @@ function ConnectForm({ busy, setBusy, onClose, onConnected }) {
       <ModalFooter>
         {busy ? (
           // The browser login can wait minutes; cancelling ends it, and the connect reports it.
-          <Button type="button" variant="subtle" onClick={() => void host.oauthCancel()}>{t('skillModal.cancel')}</Button>
+          cancellable && <Button type="button" variant="subtle" onClick={() => void host.oauthCancel()}>{t('skillModal.cancel')}</Button>
         ) : loginHosts ? (
           <Button type="button" variant="subtle" onClick={() => setLoginHosts(null)}>{t('customMcp.back')}</Button>
         ) : (

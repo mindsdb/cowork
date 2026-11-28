@@ -8,7 +8,10 @@ const bridge = vi.hoisted(() => ({
   customMcpSetTools: vi.fn(),
   customMcpReconnect: vi.fn(),
 }));
-vi.mock('../../../platform/host', () => ({ host: bridge }));
+const shell = vi.hoisted(() => ({ isWeb: false, isMobileShell: false }));
+vi.mock('../../../platform/host', () => ({
+  host: { ...bridge, get isWeb() { return shell.isWeb; }, get isMobileShell() { return shell.isMobileShell; } },
+}));
 
 import CustomMcpDetailSection from './CustomMcpDetailSection';
 
@@ -32,9 +35,20 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const fn of Object.values(bridge)) fn.mockReset();
+  shell.isWeb = false;
+  shell.isMobileShell = false;
 });
 
 describe('CustomMcpDetailSection', () => {
+  it('offers no Reconnect in the mobile app, whose webview opens no sign-in pop-up', async () => {
+    shell.isWeb = true;
+    shell.isMobileShell = true;
+    renderSection();
+
+    expect(await screen.findByRole('button', { name: 'Disconnect' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Reconnect' })).toBeNull();
+  });
+
   it('shows the held label and URL and every tool with its switch', async () => {
     renderSection();
 
@@ -51,7 +65,7 @@ describe('CustomMcpDetailSection', () => {
 
     await userEvent.click(await screen.findByRole('switch', { name: 'Let Anton use delete_issue' }));
 
-    expect(bridge.customMcpSetTools).toHaveBeenCalledWith(CONNECTION.name, ['search', 'delete_issue']);
+    expect(bridge.customMcpSetTools).toHaveBeenCalledWith(CONNECTION.name, ['search', 'delete_issue'], undefined);
     expect(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }).getAttribute('aria-checked')).toBe('true');
   });
 
@@ -81,12 +95,143 @@ describe('CustomMcpDetailSection', () => {
     expect(await screen.findByText("That request isn't valid: Tools must be a list of at most 500 names.")).toBeTruthy();
   });
 
+  it('puts a switch back and names the tool limit when too many tools would be on', async () => {
+    bridge.customMcpSetTools.mockResolvedValue({ ok: false, code: 'too_many_tools', reason: 'auth text' });
+    renderSection();
+
+    await userEvent.click(await screen.findByRole('switch', { name: 'Let Anton use delete_issue' }));
+
+    expect(await screen.findByText('You can have at most 100 tools switched on across your MCP servers. Switch some off first.')).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }).getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('reloads the tools when a switch is refused for a changed list, so the next switch is saved', async () => {
+    bridge.customMcpSetTools
+      .mockResolvedValueOnce({ ok: false, code: 'stale_revision', reason: 'The tool list changed.' })
+      .mockResolvedValueOnce({ ok: true, tools: ['search', 'delete_issue'] });
+    renderSection();
+
+    await userEvent.click(await screen.findByRole('switch', { name: 'Let Anton use delete_issue' }));
+
+    expect(await screen.findByText("The tool list changed. It's been reloaded; try the switch again.")).toBeTruthy();
+    await waitFor(() => expect(bridge.customMcpTools).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }).getAttribute('aria-checked')).toBe('false');
+
+    await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }));
+    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, ['search', 'delete_issue'], undefined);
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }).getAttribute('aria-checked')).toBe('true'));
+  });
+
+  it('does not claim a reload after a changed-list refusal when the reload fails', async () => {
+    bridge.customMcpSetTools.mockResolvedValueOnce({ ok: false, code: 'stale_revision', reason: '' });
+    bridge.customMcpTools
+      .mockResolvedValueOnce({ ok: true, tools: TOOLS })
+      .mockResolvedValueOnce({ ok: false, code: 'unreachable', reason: '' });
+    renderSection();
+
+    await userEvent.click(await screen.findByRole('switch', { name: 'Let Anton use delete_issue' }));
+
+    expect(await screen.findByText("The server couldn't be reached. Try again later.")).toBeTruthy();
+    expect(screen.queryByText("The tool list changed. It's been reloaded; try the switch again.")).toBeNull();
+  });
+
+  it('saves with the revision of the list on screen, not a closed panel\'s later read', async () => {
+    let finishOldRead;
+    bridge.customMcpTools
+      .mockImplementationOnce(() => new Promise((resolve) => { finishOldRead = resolve; }))
+      .mockResolvedValueOnce({ ok: true, tools: TOOLS, revision: 7 });
+    bridge.customMcpSetTools.mockResolvedValue({ ok: true, tools: ['search', 'delete_issue'], revision: 8 });
+    const first = render(<CustomMcpDetailSection connection={CONNECTION} onDisconnect={vi.fn()} confirm={vi.fn()} />);
+    await waitFor(() => expect(bridge.customMcpTools).toHaveBeenCalledTimes(1));
+    first.unmount();
+
+    render(<CustomMcpDetailSection connection={CONNECTION} onDisconnect={vi.fn()} confirm={vi.fn()} />);
+    const toolSwitch = await screen.findByRole('switch', { name: 'Let Anton use delete_issue' });
+    finishOldRead({ ok: true, tools: TOOLS.map((tool) => ({ ...tool, allowed: true })), revision: 9 });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await userEvent.click(toolSwitch);
+
+    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, ['search', 'delete_issue'], 7);
+    await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use search' }));
+    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, ['delete_issue'], 8);
+  });
+
+  it('shows the list as saved, so a switched-on tool loses its old note', async () => {
+    const changed = { name: 'changed', description: '', readOnly: true, allowed: false, usable: true, reason: 'definition_changed' };
+    bridge.customMcpTools.mockResolvedValue({ ok: true, tools: [changed], revision: 3 });
+    bridge.customMcpSetTools.mockResolvedValue({ ok: true, tools: ['changed'], saved: [{ ...changed, allowed: true, reason: null }], revision: 4 });
+    renderSection();
+
+    const note = await screen.findByText(/description or inputs/);
+    await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use changed' }));
+
+    await waitFor(() => expect(note.isConnected).toBe(false));
+    expect(screen.getByRole('switch', { name: 'Let Anton use changed' }).getAttribute('aria-checked')).toBe('true');
+  });
+
   it('says so when the server cannot list its tools', async () => {
     bridge.customMcpTools.mockResolvedValue({ ok: false, code: 'unreachable', reason: 'the server answered 502' });
     renderSection();
 
     expect(await screen.findByText("The server couldn't be reached. Try again later.")).toBeTruthy();
     expect(screen.queryByRole('switch')).toBeNull();
+  });
+
+  it('shows the stored tools when the list could not be refreshed, and their switches still work', async () => {
+    bridge.customMcpTools.mockResolvedValue({ ok: true, tools: TOOLS, stale: true, staleCode: 'upstream_unavailable' });
+    bridge.customMcpSetTools.mockResolvedValue({ ok: true, tools: ['search', 'delete_issue'] });
+    renderSection();
+
+    expect(await screen.findByText("The tool list couldn't be refreshed. These are the tools last listed, and their switches still work.")).toBeTruthy();
+    expect(screen.queryByText("This server's tool list is too large to read.")).toBeNull();
+    await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }));
+
+    expect(bridge.customMcpSetTools).toHaveBeenCalledWith(CONNECTION.name, ['search', 'delete_issue'], undefined);
+  });
+
+  it('says the tool list is too large to read', async () => {
+    bridge.customMcpTools.mockResolvedValue({ ok: true, tools: TOOLS, stale: true, staleCode: 'listing_too_large' });
+    renderSection();
+
+    expect(await screen.findByText("This server's tool list is too large to read.")).toBeTruthy();
+  });
+
+  it('says why a tool was switched off, and keeps a tool Anton cannot use off', async () => {
+    bridge.customMcpTools.mockResolvedValue({
+      ok: true,
+      tools: [
+        { name: 'edit', description: '', readOnly: false, allowed: false, usable: true, reason: 'read_only_removed' },
+        { name: 'big', description: '', readOnly: true, allowed: false, usable: true, reason: 'size_ceiling' },
+        { name: 'changed', description: '', readOnly: true, allowed: false, usable: true, reason: 'definition_changed' },
+        { name: 'extra', description: '', readOnly: true, allowed: false, usable: true, reason: 'count_ceiling' },
+        { name: 'odd', description: '', readOnly: true, allowed: false, usable: false, reason: 'schema' },
+      ],
+    });
+    renderSection();
+
+    expect(await screen.findByText('Switched off: the server no longer marks this tool as read-only.')).toBeTruthy();
+    expect(screen.getByText('Switched off: the tools you have on reached their size limit.')).toBeTruthy();
+    expect(screen.getByText("Switched off: the server changed this tool's description or inputs. Review it and switch it back on.")).toBeTruthy();
+    expect(screen.getByText('Switched off: you can have at most 100 tools switched on across your MCP servers.')).toBeTruthy();
+    expect(screen.getByText("Anton can't use this tool.")).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'Let Anton use odd' }).getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByRole('switch', { name: 'Let Anton use edit' }).getAttribute('aria-disabled')).not.toBe('true');
+  });
+
+  it('names the server by its label when the host holds no summary', async () => {
+    bridge.customMcpSummary.mockResolvedValue({ ok: false, code: 'unavailable', reason: 'x' });
+    renderSection({ connection: { ...CONNECTION, user_label: 'Tracker on the web' } });
+
+    expect(await screen.findByText('Tracker on the web')).toBeTruthy();
+  });
+
+  it('shows the connection\'s server URL when the host holds no summary', async () => {
+    shell.isWeb = true;
+    bridge.customMcpSummary.mockResolvedValue({ ok: false, code: 'unavailable', reason: 'x' });
+    renderSection({ connection: { ...CONNECTION, user_label: 'Tracker on the web', server_url: 'https://mcp.example.com/web' } });
+
+    expect(await screen.findByText('Tracker on the web')).toBeTruthy();
+    expect(screen.getByText('https://mcp.example.com/web')).toBeTruthy();
   });
 
   it('shows the login hosts before reconnecting, then reconnects with them', async () => {
@@ -121,7 +266,7 @@ describe('CustomMcpDetailSection', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Reconnect' }));
     await screen.findByText('Reconnected. Your tool choices are kept.');
     await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }));
-    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, ['search']);
+    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, ['search'], undefined);
     // The reload read the switches before the user's change.
     finishReload({ ok: true, tools: both });
 
@@ -129,7 +274,7 @@ describe('CustomMcpDetailSection', () => {
     expect(await screen.findByRole('switch', { name: 'Let Anton use new_tool' })).toBeTruthy();
     expect(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }).getAttribute('aria-checked')).toBe('false');
     await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use search' }));
-    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, []);
+    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, [], undefined);
   });
 
   it('holds a reload that starts while a switch is saving until it is saved', async () => {
@@ -154,7 +299,7 @@ describe('CustomMcpDetailSection', () => {
     await waitFor(() => expect(bridge.customMcpTools).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByRole('switch', { name: 'Let Anton use delete_issue' }).getAttribute('aria-checked')).toBe('true'));
     await userEvent.click(screen.getByRole('switch', { name: 'Let Anton use search' }));
-    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, ['delete_issue']);
+    expect(bridge.customMcpSetTools).toHaveBeenLastCalledWith(CONNECTION.name, ['delete_issue'], undefined);
   });
 
   it('a panel opened again while a switch still saves reads after the switch lands', async () => {
@@ -249,6 +394,26 @@ describe('CustomMcpDetailSection', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
     expect(confirm).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Disconnect Tracker?', destructive: true }));
+    expect(confirm.mock.lastCall[0].message).toContain('removed from this computer');
     expect(onDisconnect).toHaveBeenCalledWith(CONNECTION);
+  });
+
+  it('does not say the web disconnect removes anything from this computer', async () => {
+    shell.isWeb = true;
+    const { confirm } = renderSection();
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Disconnect' }));
+    expect(confirm).toHaveBeenLastCalledWith(expect.objectContaining({
+      message: 'Anton stops using this server, its login is revoked where the server allows it, and its settings are deleted.',
+    }));
+  });
+
+  it("names the server by its list label on the web, where there is no summary", async () => {
+    shell.isWeb = true;
+    bridge.customMcpSummary.mockResolvedValue({ ok: false, code: 'unavailable' });
+    const { confirm } = renderSection({ connection: { ...CONNECTION, user_label: 'Issues' } });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Disconnect' }));
+    expect(confirm).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Disconnect Issues?' }));
   });
 });

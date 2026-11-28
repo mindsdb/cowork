@@ -51,6 +51,8 @@ import { noteAccountVisit } from './cowork/lib/accountVisit';
 import { captureConsoleHandoff } from './cowork/lib/consoleHandoff';
 import { captureSettingsDeepLink } from './cowork/lib/settingsDeepLink';
 import { captureSignupWelcome } from './cowork/lib/signupWelcome';
+import { captureCustomMcpCompletion, isCustomMcpFinishPage } from './cowork/lib/customMcpFinish';
+import CustomMcpFinishPage from './cowork/components/connector/CustomMcpFinishPage';
 import { keycloak, mobileSession, mobileShellAdapter } from './lib/keycloak';
 import { keycloakInitOptions } from './lib/mobileAuth';
 import { applyMobileShellDocument, mobileShell } from './lib/mobileShell';
@@ -92,6 +94,10 @@ captureConsoleHandoff();
 captureSettingsDeepLink();
 // And a brand-new account's landing (?welcome=1&from=desktop, ENG-4288).
 captureSignupWelcome();
+// And a custom MCP sign-in's one-time id, carried in the fragment.
+captureCustomMcpCompletion();
+// The sign-in pop-up shows only its completion page, never the app.
+const page = isCustomMcpFinishPage() ? <CustomMcpFinishPage /> : <App />;
 
 // Base URL without query params. Keycloak validates redirect URIs strictly.
 const cleanRedirectUri = `${window.location.protocol}//${window.location.host}${window.location.pathname}`;
@@ -124,7 +130,7 @@ void whenI18nReady().then(() => {
   createRoot(root).render(
     <StrictMode>
       {legacyTenant || codeFixture ? (
-        <App />
+        page
       ) : mobileShell ? (
         <MobileShellRoot
           shell={mobileShell}
@@ -133,7 +139,7 @@ void whenI18nReady().then(() => {
           onTokens={bindOrganizationCacheTokens}
           session={mobileSession}
         >
-          <App />
+          {page}
         </MobileShellRoot>
       ) : (
         // Hold mounting until auth resolves, so the first API probe has a token.
@@ -143,7 +149,7 @@ void whenI18nReady().then(() => {
           LoadingComponent={<WelcomeLoading />}
           onTokens={bindOrganizationCacheTokens}
         >
-          <App />
+          {page}
         </ReactKeycloakProvider>
       )}
     </StrictMode>

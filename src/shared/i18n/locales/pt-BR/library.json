@@ -702,6 +702,7 @@
       "needsClientId": "Este servidor precisa de um ID do cliente. Adicione em Avançado.",
       "timeout": "O servidor demorou demais para responder. Tente de novo.",
       "loginFailed": "O login não terminou: {reason}",
+      "stoppedWaiting": "Paramos de esperar o login. Se você já o concluiu, o servidor aparece nas suas conexões.",
       "unavailable": "Servidores MCP por URL não estão disponíveis agora. Reinicie o app e tente de novo.",
       "keychain": "O chaveiro do sistema não está disponível, então a conexão não pode ser guardada com segurança.",
       "serverChanged": "O app trocou de conta ou reiniciou durante o login. Tente de novo.",
@@ -711,7 +712,19 @@
       "unreachable": "Não foi possível acessar o servidor. Tente de novo mais tarde.",
       "notHandedOver": "O app ainda não passou as configurações para este servidor. Reinicie o app e tente de novo.",
       "missing": "Esta conexão não existe mais.",
-      "unreadable": "O registro desta conexão não pode ser lido agora. Tente de novo mais tarde."
+      "unreadable": "O registro desta conexão não pode ser lido agora. Tente de novo mais tarde.",
+      "port": "A nuvem do Anton só se conecta pela porta https padrão. Remova a porta da URL.",
+      "listingTooLarge": "A lista de ferramentas deste servidor é grande demais para ser lida.",
+      "unreadableResponse": "O servidor enviou uma resposta que o Anton não conseguiu ler. Tente de novo.",
+      "insecureLoginUrl": "A página de login do servidor não é um endereço https, então não foi aberta.",
+      "popupBlocked": "Seu navegador bloqueou a janela de login, ou ela foi fechada. Permita pop-ups para este site e tente de novo.",
+      "staleRevision": "A lista de ferramentas mudou. Ela foi recarregada; tente o botão de novo.",
+      "refused": "Este login foi concluído na conta de outra pessoa, então não foi usado. Adicione o servidor de novo.",
+      "loginNotYours": "Este link de login foi iniciado por outra pessoa, então não foi usado. Conclua apenas logins que você mesmo iniciou.",
+      "wrongOrganization": "Este login foi iniciado em outra organização. Volte para a organização em que você adicionou o servidor e adicione-o de novo.",
+      "expired": "Este login expirou ou já foi usado. Adicione o servidor de novo.",
+      "moved": "O servidor respondeu de outro endereço. Confira a URL, inclusive se ela deve terminar com uma barra.",
+      "tooManyTools": "Você pode ter no máximo {limit} ferramentas ativadas entre seus servidores MCP. Desative algumas primeiro."
     },
     "detail": {
       "server": "Servidor",
@@ -723,7 +736,20 @@
       "reconnected": "Reconectado. Suas escolhas de ferramentas foram mantidas.",
       "disconnect": "Desconectar",
       "disconnectTitle": "Desconectar {name}?",
-      "disconnectMessage": "O Anton deixa de usar este servidor, o login dele é revogado quando o servidor permite, e as configurações dele são removidas deste computador."
+      "disconnectMessage": "O Anton deixa de usar este servidor, o login dele é revogado quando o servidor permite, e as configurações dele são removidas deste computador.",
+      "disconnectMessageWeb": "O Anton deixa de usar este servidor, o login dele é revogado quando o servidor permite, e as configurações dele são excluídas.",
+      "stale": "Não foi possível atualizar a lista de ferramentas. Estas são as últimas ferramentas listadas, e seus interruptores continuam funcionando.",
+      "reasonReadOnlyRemoved": "Desativada: o servidor não marca mais esta ferramenta como somente leitura.",
+      "reasonSizeCeiling": "Desativada: as ferramentas que você ativou atingiram o limite de tamanho.",
+      "reasonDefinitionChanged": "Desativada: o servidor mudou a descrição ou as entradas desta ferramenta. Revise-a e ative-a de novo.",
+      "reasonCountCeiling": "Desativada: você pode ter no máximo {limit} ferramentas ativadas entre seus servidores MCP.",
+      "reasonUnusable": "O Anton não pode usar esta ferramenta."
+    },
+    "finish": {
+      "title": "Login do servidor MCP",
+      "working": "Concluindo o login…",
+      "done": "Login feito. Você pode fechar esta janela.",
+      "close": "Fechar janela"
     }
   }
 }

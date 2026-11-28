@@ -702,6 +702,7 @@
       "needsClientId": "Questo server richiede un ID client. Aggiungilo in Avanzate.",
       "timeout": "Il server ha impiegato troppo a rispondere. Riprova.",
       "loginFailed": "L'accesso non è stato completato: {reason}",
+      "stoppedWaiting": "L'attesa dell'accesso è stata interrotta. Se l'hai già completato, il server compare tra le tue connessioni.",
       "unavailable": "I server MCP tramite URL non sono disponibili al momento. Riavvia l'app e riprova.",
       "keychain": "Il portachiavi di sistema non è disponibile, quindi la connessione non può essere salvata in modo sicuro.",
       "serverChanged": "L'app ha cambiato account o si è riavviata durante l'accesso. Riprova.",
@@ -711,7 +712,19 @@
       "unreachable": "Impossibile raggiungere il server. Riprova più tardi.",
       "notHandedOver": "L'app non ha ancora passato le impostazioni a questo server. Riavvia l'app e riprova.",
       "missing": "Questa connessione non esiste più.",
-      "unreadable": "Il record di questa connessione non è leggibile al momento. Riprova più tardi."
+      "unreadable": "Il record di questa connessione non è leggibile al momento. Riprova più tardi.",
+      "port": "Il cloud di Anton si connette solo sulla porta https standard. Rimuovi la porta dall'URL.",
+      "listingTooLarge": "L'elenco degli strumenti di questo server è troppo grande per essere letto.",
+      "unreadableResponse": "Il server ha inviato una risposta che Anton non è riuscito a leggere. Riprova.",
+      "insecureLoginUrl": "La pagina di accesso del server non è un indirizzo https, quindi non è stata aperta.",
+      "popupBlocked": "Il browser ha bloccato la finestra di accesso, oppure è stata chiusa. Consenti i pop-up per questo sito e riprova.",
+      "staleRevision": "L'elenco degli strumenti è cambiato. È stato ricaricato; riprova l'interruttore.",
+      "refused": "Questo accesso è stato completato nell'account di un'altra persona, quindi non è stato usato. Aggiungi di nuovo il server.",
+      "loginNotYours": "Questo link di accesso è stato avviato da un'altra persona, quindi non è stato usato. Completa solo gli accessi che hai avviato tu.",
+      "wrongOrganization": "Questo accesso è stato avviato in un'altra organizzazione. Torna all'organizzazione in cui hai aggiunto il server, poi aggiungilo di nuovo.",
+      "expired": "Questo accesso è scaduto o è già stato usato. Aggiungi di nuovo il server.",
+      "moved": "Il server ha risposto da un altro indirizzo. Controlla l'URL, anche se deve terminare con una barra.",
+      "tooManyTools": "Puoi avere al massimo {limit} strumenti attivi tra tutti i tuoi server MCP. Disattivane prima alcuni."
     },
     "detail": {
       "server": "Server",
@@ -723,7 +736,20 @@
       "reconnected": "Riconnesso. Le tue scelte sugli strumenti restano.",
       "disconnect": "Disconnetti",
       "disconnectTitle": "Disconnettere {name}?",
-      "disconnectMessage": "Anton smette di usare questo server, il suo accesso viene revocato dove il server lo consente e le sue impostazioni vengono rimosse da questo computer."
+      "disconnectMessage": "Anton smette di usare questo server, il suo accesso viene revocato dove il server lo consente e le sue impostazioni vengono rimosse da questo computer.",
+      "disconnectMessageWeb": "Anton smette di usare questo server, il suo accesso viene revocato dove il server lo consente e le sue impostazioni vengono eliminate.",
+      "stale": "Non è stato possibile aggiornare l'elenco degli strumenti. Questi sono gli ultimi strumenti elencati e i loro interruttori funzionano ancora.",
+      "reasonReadOnlyRemoved": "Disattivato: il server non contrassegna più questo strumento come di sola lettura.",
+      "reasonSizeCeiling": "Disattivato: gli strumenti che hai attivato hanno raggiunto il limite di dimensione.",
+      "reasonDefinitionChanged": "Disattivato: il server ha cambiato la descrizione o gli input di questo strumento. Controllalo e riattivalo.",
+      "reasonCountCeiling": "Disattivato: puoi avere al massimo {limit} strumenti attivi tra tutti i tuoi server MCP.",
+      "reasonUnusable": "Anton non può usare questo strumento."
+    },
+    "finish": {
+      "title": "Accesso al server MCP",
+      "working": "Completamento dell'accesso…",
+      "done": "Accesso eseguito. Puoi chiudere questa finestra.",
+      "close": "Chiudi finestra"
     }
   }
 }
