@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   DRAFT_LINK_TTL_MS,
+  PUBLISHED_FRAME_MARGIN_MS,
+  PUBLISHED_FRAME_TTL_MS,
   RefusedDraftLink,
   draftLinkLifetimeMs,
   draftLinkUrl,
   draftLinksWithdrawal,
+  publishedFrameLifetimeMs,
 } from './draftLinkRules';
 
 describe('draftLinkUrl', () => {
@@ -94,5 +97,30 @@ describe('draftLinkLifetimeMs', () => {
 
   it.each([undefined, null, 'soon'])('gives the full lifetime for a missing expiry: %s', (expiresAt) => {
     expect(draftLinkLifetimeMs(expiresAt, now)).toBe(DRAFT_LINK_TTL_MS);
+  });
+});
+
+describe('draftLinkLifetimeMs with a cap and a margin', () => {
+  const now = 1_900_000_000_000;
+  const options = { cap: PUBLISHED_FRAME_TTL_MS, margin: PUBLISHED_FRAME_MARGIN_MS };
+
+  it('counts down to the margin before expiresAt', () => {
+    expect(draftLinkLifetimeMs(1_900_000_000 + 3600, now, options)).toBe(3_510_000);
+  });
+
+  it('trusts no clock that leaves less than the margin, so the overlay never comes up at once', () => {
+    expect(draftLinkLifetimeMs(1_900_000_000 + 60, now, options)).toBe(3_510_000);
+    expect(draftLinkLifetimeMs(1_900_000_000 + 90, now, options)).toBe(3_510_000);
+    expect(draftLinkLifetimeMs(1_900_000_000 - 60, now, options)).toBe(3_510_000);
+  });
+
+  it('trusts no clock that leaves more than the cap', () => {
+    expect(draftLinkLifetimeMs(1_900_000_000 + 3 * 3600, now, options)).toBe(3_510_000);
+  });
+
+  it('is what publishedFrameLifetimeMs gives', () => {
+    expect(publishedFrameLifetimeMs(1_900_000_000 + 1800, now)).toBe(1_710_000);
+    expect(PUBLISHED_FRAME_TTL_MS).toBe(3_600_000);
+    expect(PUBLISHED_FRAME_MARGIN_MS).toBe(90_000);
   });
 });

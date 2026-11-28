@@ -47,6 +47,7 @@ import {
   RefusedDraftLink,
   draftLinkLifetimeMs,
   draftLinkUrl,
+  publishedFrameLifetimeMs,
 } from '../../lib/draftLinkRules';
 import { useDraftLinks } from '../../../lib/draftLinks';
 import { trackArtifactStatsOpened } from '../../lib/analytics';
@@ -227,6 +228,12 @@ export function ArtifactViewer({
   // The preview's signed link has expired: pages and files the draft loads
   // from now on are refused until a reload asks for a new link.
   const [draftLinkExpired, setDraftLinkExpired] = useState(false);
+  // A published app's preview: why it has none ({ reason, message }, the
+  // reason from publishedFrameCredential and the error it showed), and whether
+  // its frame token is past the deadline, after which its requests fail.
+  const [publishedFailure, setPublishedFailure] = useState(null);
+  const [publishedSessionEnded, setPublishedSessionEnded] = useState(false);
+  const publishedDeadlineRef = useRef(0);
   const [backendPort, setBackendPort] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -301,6 +308,11 @@ export function ArtifactViewer({
   const [closedShareRequest, setClosedShareRequest] = useState(null);
   const panelEntry = shareRequest && closedShareRequest !== shareRequest ? shareEntry : 'viewer';
   const pub = usePublish(artifact, { onChange: reportChange, enabled: open, entry: panelEntry });
+  // The card's address stands in until the publish state has loaded.
+  const publishedAddress = pub.publishedUrl || artifact?.publishedUrl || '';
+  // What a full-stack app's preview loads from in org mode, and nothing for
+  // any other artifact, so publishing a draft never reloads its preview.
+  const publishedFrameAddress = orgMode && isBackendArtifact ? publishedAddress : '';
   const workspace = useArtifactWorkspace(artifact, {
     open,
     onChange: reportChange,
@@ -399,8 +411,13 @@ export function ArtifactViewer({
   // comparison view mounts its own `sandbox="allow-scripts"` frames of
   // agent-written HTML that could otherwise post into this channel. Same
   // rationale as the comments bridge's `commentsOpen` gate below.
+  // A published app's frame holds only the app's own code: no preview shim
+  // and no comment layer. Nothing in it may report errors to the agent,
+  // move or scale the viewer, set inline state or drive comments.
+  const frameHasOurShim = previewKind !== 'published';
+  const shimmedPreview = open && frameHasOurShim && !!(previewUrl || previewDoc);
   const diagnostics = usePreviewDiagnostics(iframeRef, {
-    enabled: open && !!(previewUrl || previewDoc),
+    enabled: shimmedPreview,
     resetKey: previewUrl || previewDoc,
   });
   // Where the user is in the preview, so Edit opens on the same slide. Same
@@ -408,7 +425,7 @@ export function ArtifactViewer({
   // A reload the viewer makes after a change keeps the place
   // (`keepPlace`, below): the preview goes back to the same slide.
   const previewView = usePreviewView(iframeRef, {
-    enabled: open && !!(previewUrl || previewDoc),
+    enabled: shimmedPreview,
     resetKey: previewUrl || previewDoc,
     scopeKey: open ? `${artifact?.id || ''}:${artifact?.path || ''}` : '',
   });
@@ -427,12 +444,12 @@ export function ArtifactViewer({
     onCloseRef.current?.();
   }, []);
   useInlineArtifactState(iframeRef, artifact, {
-    enabled: open && !!(previewUrl || previewDoc) && isInlineArtifact(artifact),
+    enabled: shimmedPreview && isInlineArtifact(artifact),
     onSubmit: onInlineSubmit ? submitFromViewer : undefined,
   });
   // A page cut off in the frame with nothing to scroll is fitted to it.
   const previewFit = usePreviewFit(iframeRef, {
-    enabled: open && !!(previewUrl || previewDoc),
+    enabled: shimmedPreview,
     resetKey: previewUrl || previewDoc,
   });
   const comments = useArtifactComments(commentUserDir, commentReportId, {
@@ -485,7 +502,8 @@ export function ArtifactViewer({
     // no ambient path to act through the owner's comment session.
     // A live app's pane holds the app's own code and no comment layer, so no
     // frame there may drive comments.
-    enabled: open && commentsEnabled && commentsOpen && !liveAppView,
+    enabled: open && commentsEnabled && commentsOpen && !liveAppView && frameHasOurShim,
+    hasLayer: frameHasOurShim,
     markersVisible: commentsOpen && markersShown,
     onCreate: createArtifactComment,
     onReply: replyToComment,
@@ -733,7 +751,7 @@ export function ArtifactViewer({
   /* An inline artifact or widget shown here is live for the operator too
      (lib/voice/screenWidgets.js): its state, the page's text as read above,
      and its Submit, which goes the way the page's own does. */
-  const inlineLive = open && !!(previewUrl || previewDoc) && isInlineArtifact(artifact);
+  const inlineLive = shimmedPreview && isInlineArtifact(artifact);
   useEffect(() => {
     if (!inlineLive) return undefined;
     return showWidgetOnScreen(() => {
@@ -862,6 +880,9 @@ export function ArtifactViewer({
     setBackendPort(null);
     setTextPreview(null);
     setDraftLinkExpired(false);
+    setPublishedFailure(null);
+    setPublishedSessionEnded(false);
+    publishedDeadlineRef.current = 0;
     let cancelled = false;
     const withCommentLayer = commentLayerRequestedRef.current;
     commentLayerMountedRef.current = withCommentLayer;
@@ -941,22 +962,31 @@ export function ArtifactViewer({
       withCommentLayer,
       draftLinkEnabled,
       signal: reading.signal,
-      // A fullstack app in org mode shows from where it's published.
-      publishedApp: orgMode
-        ? { url: pub.publishedUrl || artifact?.publishedUrl || '', accessMode: pub.accessMode }
-        : null,
+      // A fullstack app in org mode shows from its artifact host, once published.
+      publishedApp: orgMode ? { url: publishedFrameAddress } : null,
     })
       .then((source) => {
         if (cancelled) return;
         setPreviewKind(source.kind);
+        // A published app's frame never takes a comment layer, so there is
+        // none to reload for when comments open or Live edit closes.
+        if (source.kind === 'published') commentLayerMountedRef.current = true;
         // previewUrl/previewDoc were both reset to '' at the top of this
         // effect, so setting one keeps them mutually exclusive.
         if (source.doc) setPreviewDoc(source.doc);
         else setPreviewUrl(source.url);
         if (source.port != null) setBackendPort(source.port);
         // Each signed draft link expires; then the viewer offers a reload.
+        // A published app's token too, but its frame must not take input
+        // after that, so the overlay comes up a margin before.
         if (source.expiresAt != null) {
-          expiry = setTimeout(() => setDraftLinkExpired(true), draftLinkLifetimeMs(source.expiresAt));
+          if (source.kind === 'published') {
+            const left = publishedFrameLifetimeMs(source.expiresAt);
+            publishedDeadlineRef.current = Date.now() + left;
+            expiry = setTimeout(() => setPublishedSessionEnded(true), left);
+          } else {
+            expiry = setTimeout(() => setDraftLinkExpired(true), draftLinkLifetimeMs(source.expiresAt));
+          }
         }
       })
       .catch(async (e) => {
@@ -964,6 +994,7 @@ export function ArtifactViewer({
         // Links off reruns this effect, which then takes the srcdoc path.
         if (e?.stage === 'draft-link' && await withdrawDraftLinks(e.cause)) return;
         if (cancelled) return;
+        if (e?.stage === 'published' && e.reason) setPublishedFailure({ reason: e.reason, message: e.message });
         setErr(e?.message || t('viewer.loadFailed'));
       })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -973,7 +1004,35 @@ export function ArtifactViewer({
       clearTimeout(expiry);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, textExt, isImage, liveAppView, showDocumentPreview, reloadNonce, draftLinkEnabled, orgMode, pub.publishedUrl, pub.accessMode, artifact?.publishedUrl]);
+  }, [open, artifact?.path, artifact?.mtime, actionPath, hasPreviewSource, disabledReason, draftPreviewUrl, isText, textExt, isImage, liveAppView, showDocumentPreview, reloadNonce, draftLinkEnabled, orgMode, publishedFrameAddress]);
+
+  // A change of a published app's access needs another kind of credential
+  // (a link key or a token), so the frame loads again. The access loading
+  // for the first time is no change: the frame already has the right one.
+  const frameAccessRef = useRef(pub.accessMode);
+  useEffect(() => {
+    const previous = frameAccessRef.current;
+    frameAccessRef.current = pub.accessMode;
+    if (publishedFrameAddress && previous && pub.accessMode && previous !== pub.accessMode) {
+      setReloadNonce((n) => n + 1);
+    }
+  }, [pub.accessMode, publishedFrameAddress]);
+
+  // A timer runs late in a sleeping laptop or a throttled background tab, so
+  // the deadline is checked again whenever the page comes back.
+  useEffect(() => {
+    if (!open) return undefined;
+    const check = () => {
+      const deadline = publishedDeadlineRef.current;
+      if (deadline && Date.now() >= deadline) setPublishedSessionEnded(true);
+    };
+    document.addEventListener('visibilitychange', check);
+    window.addEventListener('focus', check);
+    return () => {
+      document.removeEventListener('visibilitychange', check);
+      window.removeEventListener('focus', check);
+    };
+  }, [open]);
 
   // Opening comments on a preview mounted before the key arrived is the one
   // time a reload is worth it: the user asked for the markers.
@@ -1059,7 +1118,7 @@ export function ArtifactViewer({
   // Not gated on previewUrl/previewDoc: a reload clears both for a moment,
   // and the check must not lose its viewer to its own reload. Live apps,
   // documents, images and text have no diagnostics to report, so a check for
-  // them answers "unavailable".
+  // them answers "unavailable", and so does a published app (below).
   const framedPreview = open && hasPreviewSource && !isImage && !isText && !showDocumentPreview && !liveAppView;
   // A quick edit's reloads (its preview check, the applied edit, its Undo)
   // cover the preview while it reloads instead of flashing it blank
@@ -1074,7 +1133,10 @@ export function ArtifactViewer({
   }, [reloadKeepingPlace, previewReload.reload]);
   usePreviewCheckTarget({
     slug: artifact?.slug || artifactFolder.split(/[\\/]/).filter(Boolean).pop() || '',
-    enabled: framedPreview,
+    // A published app's frame sends no diagnostics, and a reload would only
+    // mint a new token and report "clean". Decided by the artifact, not by
+    // previewKind, which is empty while each load fetches its credential.
+    enabled: framedPreview && !(orgMode && isBackendArtifact),
     reload: reloadPreviewSmoothly,
     iframeReady,
     errors: diagnostics.errors,
@@ -1794,6 +1856,11 @@ export function ArtifactViewer({
     url: previewUrl,
     doc: previewDoc,
     kind: previewKind,
+    // Only while the error on screen is still the one the load failed with.
+    publishedFailure: publishedFailure && err === publishedFailure.message
+      ? { reason: publishedFailure.reason, url: publishedAddress }
+      : null,
+    sessionEnded: publishedSessionEnded,
     iframeRef,
     view: previewView,
     fitStyle: previewFit.style,

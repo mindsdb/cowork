@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, it, expect } from 'vitest';
-import { DRAFT_LINK_ORIGINS, withDraftLinkFrameSources } from './draft-link-origins';
+import { ARTIFACT_HOST_FRAME_SOURCES, DRAFT_LINK_ORIGINS, withDraftLinkFrameSources } from './draft-link-origins';
 
 const webPage = readFileSync(path.resolve(__dirname, '../renderer/index-web.html'), 'utf-8');
 const META = /http-equiv="Content-Security-Policy"\s+content="([^"]*)"/;
@@ -39,13 +39,18 @@ describe('DRAFT_LINK_ORIGINS', () => {
       'https://draft-dev.mindshub.co',
     ]);
   });
+
+  it('lies under the one artifact-domain wildcard the page frames', () => {
+    expect(ARTIFACT_HOST_FRAME_SOURCES).toEqual(['https://*.mindshub.co']);
+    for (const origin of DRAFT_LINK_ORIGINS) expect(origin).toMatch(/^https:\/\/[a-z0-9-]+\.mindshub\.co$/);
+  });
 });
 
 describe('withDraftLinkFrameSources', () => {
   const page = withDraftLinkFrameSources(webPage);
 
-  it.each(FRAME_DIRECTIVES)('appends exactly the draft hosts to %s', (name) => {
-    expect(directive(page, name)).toEqual([...directive(webPage, name), ...DRAFT_LINK_ORIGINS]);
+  it.each(FRAME_DIRECTIVES)('appends exactly the artifact domain to %s', (name) => {
+    expect(directive(page, name)).toEqual([...directive(webPage, name), ...ARTIFACT_HOST_FRAME_SOURCES]);
   });
 
   it('keeps frame-src and child-src equal', () => {
@@ -59,14 +64,14 @@ describe('withDraftLinkFrameSources', () => {
   });
 
   it('changes nothing in the page but the two appended source lists', () => {
-    const appended = ` ${DRAFT_LINK_ORIGINS.join(' ')}`;
+    const appended = ` ${ARTIFACT_HOST_FRAME_SOURCES.join(' ')}`;
     expect(page.split(appended)).toHaveLength(3);
     expect(page.split(appended).join('')).toBe(webPage);
   });
 
   it('keeps the whitespace around each directive it widens', () => {
     const html = `<meta http-equiv="Content-Security-Policy" content="default-src 'self'; frame-src 'self' ; child-src 'self'" />`;
-    const hosts = DRAFT_LINK_ORIGINS.join(' ');
+    const hosts = ARTIFACT_HOST_FRAME_SOURCES.join(' ');
     expect(withDraftLinkFrameSources(html)).toBe(
       `<meta http-equiv="Content-Security-Policy" content="default-src 'self'; frame-src 'self' ${hosts} ; child-src 'self' ${hosts}" />`,
     );
@@ -97,7 +102,7 @@ describe('withDraftLinkFrameSources', () => {
     expect(() => withDraftLinkFrameSources(html)).toThrow(`exactly one ${name} directive`);
   });
 
-  it.each([...DRAFT_LINK_ORIGINS])('refuses a policy that already lists %s', (origin) => {
+  it.each([...ARTIFACT_HOST_FRAME_SOURCES])('refuses a policy that already lists %s', (origin) => {
     const html = withPolicy((parts) => parts.map((part) => (isFrameDirective(part) ? `${part} ${origin}` : part)));
     expect(() => withDraftLinkFrameSources(html)).toThrow(`already lists ${origin}`);
   });

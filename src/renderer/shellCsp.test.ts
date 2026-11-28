@@ -4,11 +4,12 @@
  * A preview rendered into the iframe through `srcdoc` INHERITS its embedder's
  * policy, so index-web.html's script-src still decides whether a chart in such
  * a preview renders or the panel sits blank. With draft links on, the web
- * preview is a frame navigated to a signed link on a draft host instead: the
- * draft follows that host's policy, and the page only has to let the frame
- * load. The hosted build (web with the platform UI on) appends the draft hosts
- * to frame-src/child-src at build time, through withDraftLinkFrameSources; the
- * template names none of them, because self-hosted and white-label pages are
+ * preview is a frame navigated to a signed link on an artifact host instead:
+ * the artifact follows that host's policy, and the page only has to let the frame
+ * load. The hosted build (web with the platform UI on) appends the artifact
+ * domain, where draft links and published full-stack apps live, to
+ * frame-src/child-src at build time, through withDraftLinkFrameSources; the
+ * template does not name it, because self-hosted and white-label pages are
  * built from it too.
  *
  * Desktop navigates its preview frame to its loopback server, so its policy
@@ -19,7 +20,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { DRAFT_LINK_ORIGINS, withDraftLinkFrameSources } from '../shared/draft-link-origins';
+import { ARTIFACT_HOST_FRAME_SOURCES, DRAFT_LINK_ORIGINS, withDraftLinkFrameSources } from '../shared/draft-link-origins';
 import { orgBrandImageOrigins, withOrgBrandImageSources } from '../shared/org-brand-image-origins';
 import { GALLERY_CONSOLE_ORIGINS, galleryImageOrigins, withGalleryImageSources } from '../shared/gallery-image-origins';
 
@@ -85,27 +86,29 @@ describe('shell CSP', () => {
 
   /*
    * Self-hosted and white-label pages are the template as it is, so it names
-   * no draft host and nothing else on our domains anywhere in its policy.
+   * no artifact host and nothing else on our domains anywhere in its policy.
    */
-  it('keeps the web template free of the draft hosts and our domains', () => {
+  it('keeps the web template free of the artifact domain and our domains', () => {
     for (const origin of DRAFT_LINK_ORIGINS) expect(webTemplate).not.toContain(origin);
+    expect(webTemplate).not.toContain('*.mindshub.co');
     expect(ourDomains(policy(webTemplate).flatMap((parts) => parts.slice(1)))).toEqual([]);
   });
 
   /*
-   * One build serves every environment, so all three draft hosts are listed,
-   * and nothing else on our domains: no wildcard, which would also admit every
-   * published artifact host, and never one of our app domains, which would let
-   * a frame load the console or cowork itself.
+   * The preview frames draft links and published full-stack apps, both on the
+   * artifact domain. One build serves every environment and a meta CSP can't
+   * name the host of the artifact on screen, so the page lists the artifact
+   * domain's wildcard and nothing else on our domains: never one of our app
+   * domains, which would let a frame load the console or cowork itself.
    */
-  it.each(['frame-src', 'child-src'])('lets the platform-UI web page frame exactly the draft hosts in %s', (name) => {
+  it.each(['frame-src', 'child-src'])('lets the platform-UI web page frame the artifact domain only in %s', (name) => {
     const sources = directive(platformWebPage, name);
-    expect(artifactWildcards(sources)).toEqual([]);
-    expect(ourDomains(sources)).toEqual([...DRAFT_LINK_ORIGINS]);
+    expect(artifactWildcards(sources)).toEqual([...ARTIFACT_HOST_FRAME_SOURCES]);
+    expect(ourDomains(sources)).toEqual([...ARTIFACT_HOST_FRAME_SOURCES]);
     expect(schemeSources(sources)).toEqual([]);
   });
 
-  it.each(['frame-src', 'child-src'])('lets the web template frame no draft host in %s', (name) => {
+  it.each(['frame-src', 'child-src'])('lets the web template frame no artifact host in %s', (name) => {
     const sources = directive(webTemplate, name);
     expect(artifactWildcards(sources)).toEqual([]);
     expect(ourDomains(sources)).toEqual([]);
@@ -129,8 +132,8 @@ describe('shell CSP', () => {
   });
 
   /*
-   * Desktop never frames a draft host (it navigates to its loopback server),
-   * so neither the draft hosts nor the CDN belong in its policy.
+   * Desktop never frames an artifact host (it navigates to its loopback server),
+   * so neither the artifact domain nor the CDN belong in its policy.
    */
   it('does not widen the desktop shell', () => {
     expect(directive(desktopPage, 'script-src')).not.toContain(ARTIFACT_CDN);

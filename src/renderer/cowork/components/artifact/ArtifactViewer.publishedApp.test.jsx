@@ -60,8 +60,34 @@ vi.mock('../../lib/artifactWorkspaceApi', async (importOriginal) => ({
 }));
 const checkConfigured = vi.hoisted(() => vi.fn());
 const getAccessToken = vi.hoisted(() => vi.fn(async () => 'kc-token'));
-const viewSessionFrameUrl = vi.hoisted(() => vi.fn(async (url) => url));
-vi.mock('../../../lib/viewSession', () => ({ viewSessionFrameUrl }));
+const publishedFrameCredential = vi.hoisted(() => vi.fn());
+vi.mock('../../../lib/viewSession', () => ({ publishedFrameCredential }));
+const hooks = vi.hoisted(() => {
+  const enabled = {};
+  // Options are each hook's last argument: useInlineArtifactState takes
+  // (iframeRef, artifact, options), the others (iframeRef, options).
+  return { enabled, track: (name, real) => (...args) => { enabled[name] = args[args.length - 1]?.enabled; return real(...args); } };
+});
+vi.mock('./usePreviewCheckTarget', async (importOriginal) => {
+  const real = await importOriginal();
+  return { ...real, usePreviewCheckTarget: hooks.track('check', real.usePreviewCheckTarget) };
+});
+vi.mock('./usePreviewDiagnostics', async (importOriginal) => {
+  const real = await importOriginal();
+  return { ...real, usePreviewDiagnostics: hooks.track('diagnostics', real.usePreviewDiagnostics) };
+});
+vi.mock('./usePreviewView', async (importOriginal) => {
+  const real = await importOriginal();
+  return { ...real, usePreviewView: hooks.track('view', real.usePreviewView) };
+});
+vi.mock('./usePreviewFit', async (importOriginal) => {
+  const real = await importOriginal();
+  return { ...real, usePreviewFit: hooks.track('fit', real.usePreviewFit) };
+});
+vi.mock('./useInlineArtifactState', async (importOriginal) => {
+  const real = await importOriginal();
+  return { ...real, useInlineArtifactState: hooks.track('inline', real.useInlineArtifactState) };
+});
 vi.mock('../../../platform/host', async (importOriginal) => ({
   getAccessToken,
   host: {
@@ -75,12 +101,12 @@ vi.mock('../../../platform/host', async (importOriginal) => ({
     checkConfigured,
   },
 }));
-const published = vi.hoisted(() => ({ url: '', accessMode: 'public' }));
+const published = vi.hoisted(() => ({ url: '', accessMode: 'public', artifactKey: '' }));
 vi.mock('./publish/usePublish', () => ({
   usePublish: () => ({
     publishedUrl: published.url,
     accessMode: published.accessMode,
-    artifactKey: 'artifact/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    artifactKey: published.artifactKey,
     busy: false,
   }),
 }));
@@ -91,10 +117,13 @@ vi.mock('./comments', () => ({
     editThread: vi.fn(), deleteThread: vi.fn(), editReply: vi.fn(),
     deleteReply: vi.fn(), markRead: vi.fn(),
   }),
-  useArtifactCommentLayer: () => ({
+  useArtifactCommentLayer: (ref, options) => {
+    hooks.enabled.comments = options?.enabled;
+    return {
     mode: false, anchorStates: {}, onIframeLoad: vi.fn(), exitMode: vi.fn(),
     toggleMode: vi.fn(), focus: vi.fn(), hlOn: vi.fn(), hlOff: vi.fn(),
-  }),
+    };
+  },
   CommentsPanel: () => null,
   CommentsToolbar: () => null,
 }));
@@ -118,6 +147,7 @@ vi.mock('../ConfirmModal', () => ({ ConfirmModal: () => null }));
 import { ArtifactViewer } from './ArtifactViewer';
 import { publishedAppUrl } from './htmlPreviewSource';
 import { mountArtifactPreview } from '../../api';
+import { host } from '../../../platform/host';
 
 // A full-stack app on an org deployment (ENG-4687): the server can't start its
 // backend (preview-mount is desktop-only), so the preview frames the app at its
@@ -140,55 +170,43 @@ beforeEach(() => {
   setOrgMode(true);
   published.url = '';
   published.accessMode = 'public';
+  published.artifactKey = 'artifact/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  publishedFrameCredential.mockReset();
   vi.mocked(mountArtifactPreview).mockReset();
-  viewSessionFrameUrl.mockClear();
 });
 afterEach(() => {
   setOrgMode(previous);
   cleanup();
 });
 
+const ORIGIN = 'https://f5h8n2w6-staging.mindshub.test';
+const frameOf = () => screen.findByTitle('Team Shared Todo');
+
 describe('ArtifactViewer: a full-stack app on an org deployment', () => {
-  it('frames the app at its published address, never the desktop-only preview mount', async () => {
+  it('frames the app on its artifact host, never the desktop-only preview mount', async () => {
     published.url = LIVE;
+    publishedFrameCredential.mockResolvedValue({ origin: ORIGIN, credential: 'v1.p.s', exp: Math.floor(Date.now() / 1000) + 3600 });
     render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
 
-    const frame = await screen.findByTitle('Team Shared Todo');
-    expect(frame.getAttribute('src')).toMatch(new RegExp(`^${LIVE.replace(/[.?]/g, '\\$&')}\\?v=`));
+    expect((await frameOf()).getAttribute('src')).toBe(`${ORIGIN}/_t/v1.p.s/`);
+    expect(publishedFrameCredential).toHaveBeenCalledWith(LIVE, getAccessToken, expect.any(AbortSignal));
     expect(mountArtifactPreview).not.toHaveBeenCalled();
   });
 
-  it("keeps the app's own origin in the frame, as a local proxy preview does", async () => {
+  it('frames a public app by its link key, versioned', async () => {
     published.url = LIVE;
+    publishedFrameCredential.mockResolvedValue({ origin: ORIGIN, credential: 'k3m7q2xwp6n4tahd5rzc2bvy7e', exp: null });
     render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
 
-    const sandbox = (await screen.findByTitle('Team Shared Todo')).getAttribute('sandbox');
-    expect(sandbox.split(' ')).toEqual(expect.arrayContaining(['allow-scripts', 'allow-same-origin']));
-  });
-
-  it('opens a restricted app signed in, through the view host session bootstrap', async () => {
-    published.url = LIVE;
-    published.accessMode = 'restricted';
-    viewSessionFrameUrl.mockResolvedValue('https://view-pr-cowork-1.dev.mindshub.test/_session?ticket=t&return=%2Fview');
-    render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
-
-    const frame = await screen.findByTitle('Team Shared Todo');
-    await waitFor(() => expect(frame.getAttribute('src')).toContain('/_session?ticket=t'));
-    expect(viewSessionFrameUrl).toHaveBeenCalledWith(expect.stringContaining(LIVE), getAccessToken);
-  });
-
-  it('frames a public app as it is, without asking for a session', async () => {
-    published.url = LIVE;
-    render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
-
-    await screen.findByTitle('Team Shared Todo');
-    expect(viewSessionFrameUrl).not.toHaveBeenCalled();
+    expect((await frameOf()).getAttribute('src')).toMatch(new RegExp(`^${ORIGIN.replace(/[.]/g, '\\.')}/_t/k3m7q2xwp6n4tahd5rzc2bvy7e/\\?v=`));
   });
 
   it("uses the card's address before the publish state has loaded", async () => {
+    publishedFrameCredential.mockResolvedValue({ origin: ORIGIN, credential: 'v1.p.s', exp: null });
     render(<ArtifactViewer open artifact={{ ...app, publishedUrl: LIVE }} onClose={vi.fn()} />);
 
-    expect((await screen.findByTitle('Team Shared Todo')).getAttribute('src')).toContain(LIVE);
+    await frameOf();
+    expect(publishedFrameCredential).toHaveBeenCalledWith(LIVE, getAccessToken, expect.any(AbortSignal));
   });
 
   it('says it shows once published instead of erroring, when it has no address yet', async () => {
@@ -196,7 +214,7 @@ describe('ArtifactViewer: a full-stack app on an org deployment', () => {
 
     expect(await screen.findByText(/This app shows here once it's published/)).toBeInTheDocument();
     expect(screen.queryByTitle('Team Shared Todo')).toBeNull();
-    expect(mountArtifactPreview).not.toHaveBeenCalled();
+    expect(publishedFrameCredential).not.toHaveBeenCalled();
   });
 
   it('frames nothing but an https page', async () => {
@@ -204,7 +222,162 @@ describe('ArtifactViewer: a full-stack app on an org deployment', () => {
     render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
 
     expect(await screen.findByText(/This app shows here once it's published/)).toBeInTheDocument();
+    expect(publishedFrameCredential).not.toHaveBeenCalled();
+  });
+
+  it('says why there is no preview, with the published page', async () => {
+    published.url = LIVE;
+    publishedFrameCredential.mockResolvedValue({ error: 'no_access' });
+    render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
+
+    expect(await screen.findByText(/You don't have access to this app's published page/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Open the published page/ })).toBeInTheDocument();
     expect(screen.queryByTitle('Team Shared Todo')).toBeNull();
+  });
+
+  it('shows a later, unrelated error as itself, not inside the published app notice', async () => {
+    published.url = LIVE;
+    publishedFrameCredential.mockResolvedValue({ error: 'retry' });
+    vi.mocked(host.openExternal).mockRejectedValueOnce(new Error('Popup blocked'));
+    render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
+    await screen.findByRole('button', { name: /Open the published page/ });
+
+    await act(async () => { await headerProps.current.actions.onOpenOS(); });
+
+    expect(await screen.findByText('Popup blocked')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Open the published page/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Reload preview/ })).toBeNull();
+  });
+
+  it('asks for one credential while the publish state loads behind the card', async () => {
+    published.accessMode = '';
+    publishedFrameCredential.mockResolvedValue({ origin: ORIGIN, credential: 'v1.p.s', exp: null });
+    const card = { ...app, publishedUrl: LIVE };
+    const { rerender } = render(<ArtifactViewer open artifact={card} onClose={vi.fn()} />);
+    await frameOf();
+
+    // The publish state arrives: the same address, and the access first known.
+    published.url = LIVE;
+    published.accessMode = 'restricted';
+    rerender(<ArtifactViewer open artifact={card} onClose={vi.fn()} />);
+    await frameOf();
+
+    expect(publishedFrameCredential).toHaveBeenCalledTimes(1);
+  });
+
+  it('loads again with a new credential when the access changes', async () => {
+    published.url = LIVE;
+    published.accessMode = 'restricted';
+    publishedFrameCredential.mockResolvedValue({ origin: ORIGIN, credential: 'v1.p.s', exp: null });
+    const { rerender } = render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
+    await frameOf();
+
+    published.accessMode = 'public';
+    rerender(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
+
+    await waitFor(() => expect(publishedFrameCredential).toHaveBeenCalledTimes(2));
+  });
+
+  it('loads again from the notice after a transient failure', async () => {
+    published.url = LIVE;
+    publishedFrameCredential.mockResolvedValueOnce({ error: 'retry' })
+      .mockResolvedValueOnce({ origin: ORIGIN, credential: 'v1.p.s', exp: null });
+    render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
+
+    const reload = await screen.findByRole('button', { name: /Reload preview/ });
+    act(() => { reload.click(); });
+    expect((await frameOf()).getAttribute('src')).toContain(`${ORIGIN}/_t/v1.p.s/`);
+    expect(publishedFrameCredential).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps every frame message hook off for the app, whose frame holds only its own code', async () => {
+    published.url = LIVE;
+    publishedFrameCredential.mockResolvedValue({ origin: ORIGIN, credential: 'v1.p.s', exp: null });
+    // Inline metadata, so only the frame's missing shim can switch it off.
+    render(<ArtifactViewer open artifact={{ ...app, display: 'inline' }} onClose={vi.fn()} />);
+
+    await frameOf();
+    expect(hooks.enabled).toMatchObject({ diagnostics: false, view: false, fit: false, inline: false, check: false });
+  });
+
+  it('turns the agent preview check off, as for a live app, so it reports unavailable', async () => {
+    published.url = LIVE;
+    publishedFrameCredential.mockResolvedValue({ origin: ORIGIN, credential: 'v1.p.s', exp: null });
+    render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
+
+    await frameOf();
+    expect(hooks.enabled.check).toBe(false);
+  });
+
+  it('opens comments without a reload and without the comment bridge', async () => {
+    // Restricted and published: comments are enabled without a workspace.
+    published.url = LIVE;
+    published.accessMode = 'restricted';
+    // The comment key arrives after the frame loaded, the case that reloads a
+    // draft. The viewer also derives a key from a full artifact id, so this
+    // artifact's id gives none and the key comes only from usePublish.
+    published.artifactKey = '';
+    const lateKey = { ...app, id: 'team-shared-todo' };
+    publishedFrameCredential.mockResolvedValue({ origin: ORIGIN, credential: 'v1.p.s', exp: null });
+    const { rerender } = render(<ArtifactViewer open artifact={lateKey} onClose={vi.fn()} />);
+    await frameOf();
+
+    published.artifactKey = 'artifact/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    rerender(<ArtifactViewer open artifact={lateKey} onClose={vi.fn()} />);
+    act(() => { headerProps.current.review.onToggle(); });
+
+    await waitFor(() => expect(headerProps.current.review.open).toBe(true));
+    expect(hooks.enabled.comments).toBe(false);
+    expect(publishedFrameCredential).toHaveBeenCalledTimes(1);
+  });
+
+  describe('when the token is about to expire', () => {
+    beforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true }); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('covers the frame 90 seconds before, and Reload brings a new token', async () => {
+      published.url = LIVE;
+      const exp = Math.floor(Date.now() / 1000) + 3600;
+      publishedFrameCredential.mockResolvedValue({ origin: ORIGIN, credential: 'v1.p.s', exp });
+      render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
+      await frameOf();
+
+      // Seconds of slack on both sides: exp is rounded down to a second, and
+      // the fake clock moves with real time while the viewer loads.
+      act(() => { vi.advanceTimersByTime(3600_000 - 100_000); });
+      expect(screen.queryByTestId('published-session-ended')).toBeNull();
+      act(() => { vi.advanceTimersByTime(20_000); });
+      expect(screen.getByTestId('published-session-ended')).toBeInTheDocument();
+
+      act(() => { screen.getByRole('button', { name: /Reload preview/ }).click(); });
+      await waitFor(() => expect(screen.queryByTestId('published-session-ended')).toBeNull());
+      expect(publishedFrameCredential).toHaveBeenCalledTimes(2);
+    });
+
+    it('checks the deadline again when the tab comes back', async () => {
+      published.url = LIVE;
+      const exp = Math.floor(Date.now() / 1000) + 3600;
+      publishedFrameCredential.mockResolvedValue({ origin: ORIGIN, credential: 'v1.p.s', exp });
+      render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
+      await frameOf();
+
+      // A sleeping laptop: the clock moves on, the timer has not fired.
+      vi.setSystemTime(Date.now() + 3600_000);
+      act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+      expect(screen.getByTestId('published-session-ended')).toBeInTheDocument();
+    });
+
+    it('checks the deadline again when the window regains focus', async () => {
+      published.url = LIVE;
+      const exp = Math.floor(Date.now() / 1000) + 3600;
+      publishedFrameCredential.mockResolvedValue({ origin: ORIGIN, credential: 'v1.p.s', exp });
+      render(<ArtifactViewer open artifact={app} onClose={vi.fn()} />);
+      await frameOf();
+
+      vi.setSystemTime(Date.now() + 3600_000);
+      act(() => { window.dispatchEvent(new Event('focus')); });
+      expect(screen.getByTestId('published-session-ended')).toBeInTheDocument();
+    });
   });
 });
 

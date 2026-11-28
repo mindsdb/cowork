@@ -12,10 +12,11 @@
 //     desktop loopback that injects the bearer itself): that URL.
 //   - Any other draft URL: fetched with the credential and inlined into a
 //     srcdoc document, because a frame navigation cannot carry it.
-//   - A fullstack app on an org deployment (`publishedApp`, ENG-4687): its
-//     published address, where it already runs, since the server can't start
-//     its backend there; a restricted one through the view host's session
-//     bootstrap, so it opens signed in.
+//   - A fullstack app on an org deployment (`publishedApp`): its artifact
+//     host, where it runs once published, since the server can't start its
+//     backend there. The view host trades the user's token for a frame
+//     credential (publishedFrameCredential), and the frame loads
+//     <origin>/_t/<credential>/ without the view host's shell.
 //   - Otherwise (desktop / local web): mounted by path, as a static bundle
 //     or, for a fullstack app, behind the loopback proxy.
 
@@ -32,7 +33,7 @@ import { setDraftLinks } from '../../../lib/draftLinks';
 import { inlineHtmlFromApi } from '../../lib/inlineHtmlAssets';
 import { BACKEND_ARTIFACT_TYPES } from '../../lib/artifactKinds';
 import { getAccessToken, host } from '../../../platform/host';
-import { viewSessionFrameUrl } from '../../../lib/viewSession';
+import { publishedFrameCredential } from '../../../lib/viewSession';
 import { diagnostic } from '../../../../shared/diagnostics';
 import i18n from '../../../lib/i18n';
 import {
@@ -67,17 +68,35 @@ export function publishedAppUrl(value) {
   }
 }
 
+// The notice for each reason a published app's preview can't load.
+export const PUBLISHED_FAILURE_MESSAGE_KEYS = {
+  no_access: 'viewer.publishedNoAccess',
+  password: 'viewer.publishedPassword',
+  update_needed: 'viewer.publishedUpdateNeeded',
+  retry: 'viewer.publishedRetry',
+  unavailable: 'viewer.publishedUnavailable',
+};
+
+// What the view host's shell gives the app's frame, so downloads, copy
+// buttons and fullscreen work in the preview as on the published page. The
+// app keeps its own origin, which is never Cowork's.
+export const PUBLISHED_FRAME_SANDBOX =
+  'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads';
+export const PUBLISHED_FRAME_ALLOW = 'fullscreen; clipboard-write; autoplay';
+
 /**
  * A failed load. `message` is the sentence to show; `cause` the original
  * error; `stage` where it failed, so a caller can tell a refused draft link
  * (which turns links off: see withdrawDraftLinks) from the rest.
  */
 export class HtmlPreviewError extends Error {
-  constructor(message, { cause = null, stage = '' } = {}) {
+  constructor(message, { cause = null, stage = '', reason = '' } = {}) {
     super(message);
     this.name = 'HtmlPreviewError';
     this.cause = cause;
     this.stage = stage;
+    // For stage 'published': why the app has no preview (publishedFrameCredential's error).
+    this.reason = reason;
   }
 }
 
@@ -120,7 +139,7 @@ function withFlags(url, cacheVersion, withCommentLayer) {
  * @param {boolean} [options.withCommentLayer]
  * @param {boolean} [options.draftLinkEnabled] see usesDraftLink
  * @param {AbortSignal} [options.signal] aborts the srcdoc inlining
- * @param {{ url: string, accessMode?: string } | null} [options.publishedApp]
+ * @param {{ url: string } | null} [options.publishedApp]
  *   an org deployment's fullstack app: where it's published, and its access.
  *   Only the viewer passes it; its frame keeps the app's own origin.
  * @returns {Promise<{
@@ -146,20 +165,23 @@ export async function loadHtmlPreview({
   const result = (fields) => ({ kind: 'static', url: '', doc: '', port: null, expiresAt: null, ...fields });
 
   // An org deployment can't start a fullstack app's backend (preview-mount is
-  // desktop-only), but the app already runs at its published address: it's
-  // published for its owner alone when it's created. The frame shows that
-  // page, which lets this Cowork web app be its ancestor (mindshub_services'
-  // frame-ancestors). A restricted one (owner-only included) opens through the
-  // view host's session bootstrap, not its sign-in redirect, which can't be
-  // framed. An address that isn't an https page is no preview.
+  // desktop-only), but the app runs on its artifact host once published. The
+  // frame loads that host with a credential from the view host, so a
+  // restricted app opens signed in. An address that isn't an https page, or a
+  // refusal, is no preview.
   if (isBackend && publishedApp) {
-    const liveUrl = publishedAppUrl(publishedApp.url);
-    if (!liveUrl) throw new HtmlPreviewError(tr('viewer.appNotPublishedYet'), { stage: 'published' });
-    const framed = withArtifactVersion(liveUrl, cacheVersion);
-    const url = publishedApp.accessMode === 'restricted'
-      ? await viewSessionFrameUrl(framed, getAccessToken)
-      : framed;
-    return result({ kind: 'published', url });
+    if (!publishedAppUrl(publishedApp.url)) {
+      throw new HtmlPreviewError(tr('viewer.appNotPublishedYet'), { stage: 'published' });
+    }
+    const frame = await publishedFrameCredential(publishedApp.url, getAccessToken, signal);
+    if (frame.error) {
+      const key = PUBLISHED_FAILURE_MESSAGE_KEYS[frame.error] || PUBLISHED_FAILURE_MESSAGE_KEYS.unavailable;
+      throw new HtmlPreviewError(tr(key), { stage: 'published', reason: frame.error });
+    }
+    const page = `${frame.origin}/_t/${frame.credential}/`;
+    // A token's responses are never cached; a public app's are, for a minute.
+    const url = frame.exp == null ? withArtifactVersion(page, cacheVersion) : page;
+    return result({ kind: 'published', url, expiresAt: frame.exp });
   }
 
   if (draftPreviewUrl && (!isBackend || !hasActionPath)) {

@@ -132,9 +132,12 @@ describe('endViewSession', () => {
   });
 });
 
-describe('viewSessionFrameUrl', () => {
-  const PAGE = 'https://view.staging.mindshub.ai/view/8620653c9/b527cf6e?v=1.0';
+describe('publishedFrameCredential', () => {
+  const LK = 'k3m7q2xwp6n4tahd5rzc2bvy7e';
+  const PAGE = `https://view.staging.mindshub.ai/a/${LK}/`;
+  const ORIGIN = 'https://f5h8n2w6-staging.mindshub.co';
   const token = async () => 'kc-token';
+  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 
   function onStaging(answer: Response | (() => never)) {
     vi.stubEnv('VITE_MINDS_API_URL', '');
@@ -144,60 +147,147 @@ describe('viewSessionFrameUrl', () => {
     return fetchMock;
   }
 
-  it("frames the view host's bootstrap with a ticket, the token only in the POST body", async () => {
-    const fetchMock = onStaging(new Response('{"ticket":"tk.1"}', { status: 200 }));
-    const { viewSessionFrameUrl } = await importViewSession();
+  it('trades the token, in the POST body only, for the frame credential', async () => {
+    const fetchMock = onStaging(json({ origin: ORIGIN, credential: 'v1.p.s', exp: 1_900_000_000 }));
+    const { publishedFrameCredential } = await importViewSession();
 
-    const url = await viewSessionFrameUrl(PAGE, token);
-
-    expect(url).toBe(
-      'https://view.staging.mindshub.ai/_session?ticket=tk.1&return=%2Fview%2F8620653c9%2Fb527cf6e%3Fv%3D1.0',
-    );
-    const [ticketUrl, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect(ticketUrl).toBe('https://view.staging.mindshub.ai/_session/ticket');
+    expect(await publishedFrameCredential(PAGE, token)).toEqual({ origin: ORIGIN, credential: 'v1.p.s', exp: 1_900_000_000 });
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(`https://view.staging.mindshub.ai/a/${LK}/_cowork_token`);
     expect(init).toMatchObject({ method: 'POST', credentials: 'omit', redirect: 'error' });
+    expect(init.headers).toEqual({ 'Content-Type': 'application/json' });
     expect(JSON.parse(String(init.body))).toEqual({ token: 'kc-token' });
-    expect(url).not.toContain('kc-token');
   });
 
-  it("never sends the token to a page off this environment's view host", async () => {
-    const fetchMock = onStaging(new Response('{"ticket":"tk.1"}', { status: 200 }));
-    const { viewSessionFrameUrl } = await importViewSession();
+  it('passes a public app its link key, which does not expire', async () => {
+    onStaging(json({ origin: ORIGIN, credential: LK, exp: null }));
+    const { publishedFrameCredential } = await importViewSession();
+    expect(await publishedFrameCredential(PAGE, token)).toEqual({ origin: ORIGIN, credential: LK, exp: null });
+  });
 
+  it('asks for an update, and sends nothing, for an address without a link key', async () => {
+    const fetchMock = onStaging(json({}));
+    const { publishedFrameCredential } = await importViewSession();
+    const legacy = 'https://view.staging.mindshub.ai/a/c0ffee00c0ffee00c0ffee00c0ffee00';
+    expect(await publishedFrameCredential(legacy, token)).toEqual({ error: 'update_needed' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('sends nothing for another host, another shape, no token, or a page off the view host', async () => {
+    const fetchMock = onStaging(json({}));
+    const { publishedFrameCredential } = await importViewSession();
     for (const other of [
-      'https://view.mindshub.ai/view/a/b',
-      'https://view.staging.mindshub.ai.evil.example/view/a/b',
-      'http://view.staging.mindshub.ai/view/a/b',
+      `https://view.mindshub.ai/a/${LK}/`,
+      `https://view.staging.mindshub.ai.evil.example/a/${LK}/`,
+      `http://view.staging.mindshub.ai/a/${LK}/`,
+      'https://view.staging.mindshub.ai/view/8620653c9/b527cf6e',
       'not a url',
     ]) {
-      expect(await viewSessionFrameUrl(other, token)).toBe(other);
+      expect(await publishedFrameCredential(other, token)).toEqual({ error: 'unavailable' });
     }
+    expect(await publishedFrameCredential(PAGE, async () => null)).toEqual({ error: 'unavailable' });
     expect(fetchMock).not.toHaveBeenCalled();
-  });
 
-  it('frames the page itself when there is no token, or the view host refuses or fails', async () => {
-    for (const answer of [
-      new Response('{"error":"Forbidden"}', { status: 403 }),
-      new Response('{}', { status: 200 }),
-      () => { throw new TypeError('network'); },
-    ]) {
-      onStaging(answer as Response);
-      const { viewSessionFrameUrl } = await importViewSession();
-      expect(await viewSessionFrameUrl(PAGE, token)).toBe(PAGE);
-    }
-    const fetchMock = onStaging(new Response('{"ticket":"tk.1"}', { status: 200 }));
-    const { viewSessionFrameUrl } = await importViewSession();
-    expect(await viewSessionFrameUrl(PAGE, async () => null)).toBe(PAGE);
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it('asks nothing from a plain http origin such as local vite dev', async () => {
     setUrl('http://localhost:3000/');
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-    const { viewSessionFrameUrl } = await importViewSession();
+    const local = await importViewSession();
+    expect(await local.publishedFrameCredential(PAGE, token)).toEqual({ error: 'unavailable' });
+  });
 
-    expect(await viewSessionFrameUrl(PAGE, token)).toBe(PAGE);
+  it.each([
+    [json({ error: 'Forbidden', reason: 'no_access' }, 403), 'no_access'],
+    [json({ error: 'Forbidden', reason: 'password' }, 403), 'password'],
+    [json({ error: 'Forbidden' }, 403), 'unavailable'],
+    [json({ error: 'Invalid JWT' }, 401), 'retry'],
+    [json({ error: 'rate-limited' }, 429), 'retry'],
+    [json({ error: 'unavailable' }, 503), 'retry'],
+    [new Response('<html>', { status: 500 }), 'retry'],
+    [json({ error: 'Bad gateway' }, 502), 'retry'],
+    [new Response('', { status: 504 }), 'retry'],
+    [json({ error: 'Not found' }, 404), 'unavailable'],
+  ])('maps an answer to its reason (%#)', async (answer, reason) => {
+    onStaging(answer as Response);
+    const { publishedFrameCredential } = await importViewSession();
+    expect(await publishedFrameCredential(PAGE, token)).toEqual({ error: reason });
+  });
+
+  it('retries after a network error, a timeout or a refused preflight', async () => {
+    onStaging(() => { throw new TypeError('Failed to fetch'); });
+    const { publishedFrameCredential } = await importViewSession();
+    expect(await publishedFrameCredential(PAGE, token)).toEqual({ error: 'retry' });
+  });
+
+  it('passes the caller signal to the request, so aborting it cancels the POST', async () => {
+    const fetchMock = onStaging(json({ origin: ORIGIN, credential: 'v1.p.s', exp: null }));
+    const { publishedFrameCredential } = await importViewSession();
+    const controller = new AbortController();
+    await publishedFrameCredential(PAGE, token, controller.signal);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.signal?.aborted).toBe(false);
+    controller.abort();
+    expect(init.signal?.aborted).toBe(true);
+  });
+
+  it('keeps the timeout alone where the browser has no AbortSignal.any', async () => {
+    const fetchMock = onStaging(json({ origin: ORIGIN, credential: 'v1.p.s', exp: null }));
+    const original = Object.getOwnPropertyDescriptor(AbortSignal, 'any');
+    Object.defineProperty(AbortSignal, 'any', { value: undefined, configurable: true });
+    try {
+      const { publishedFrameCredential } = await importViewSession();
+      const controller = new AbortController();
+      expect(await publishedFrameCredential(PAGE, token, controller.signal))
+        .toEqual({ origin: ORIGIN, credential: 'v1.p.s', exp: null });
+      const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+      expect(init.signal).not.toBe(controller.signal);
+    } finally {
+      if (original) Object.defineProperty(AbortSignal, 'any', original);
+    }
+  });
+
+  it('answers an aborted request as a network error, with no frame', async () => {
+    onStaging(() => { throw new DOMException('Aborted', 'AbortError'); });
+    const { publishedFrameCredential } = await importViewSession();
+    const controller = new AbortController();
+    controller.abort();
+    expect(await publishedFrameCredential(PAGE, token, controller.signal)).toEqual({ error: 'retry' });
+  });
+
+  it('retries, and sends nothing, when the token refresh fails', async () => {
+    const fetchMock = onStaging(json({}));
+    const { publishedFrameCredential } = await importViewSession();
+    const failing = async () => { throw new Error('refresh failed'); };
+    expect(await publishedFrameCredential(PAGE, failing)).toEqual({ error: 'retry' });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { origin: 'https://draft-staging.mindshub.co', credential: 'v1.p.s', exp: 1 },
+    { origin: 'https://f5h8n2w6-staging.mindshub.co.evil.example', credential: 'v1.p.s', exp: 1 },
+    { origin: 'http://f5h8n2w6-staging.mindshub.co', credential: 'v1.p.s', exp: 1 },
+    { origin: `${ORIGIN}/x`, credential: 'v1.p.s', exp: 1 },
+    { origin: ORIGIN, credential: '../x', exp: 1 },
+    { origin: ORIGIN, credential: '..', exp: 1 },
+    { origin: ORIGIN, credential: '.', exp: 1 },
+    { origin: ORIGIN, credential: '', exp: 1 },
+    { origin: ORIGIN, credential: 'v1.p.s', exp: 'soon' },
+  ])('frames nothing it can not trust: %o', async (body) => {
+    onStaging(json(body));
+    const { publishedFrameCredential } = await importViewSession();
+    expect(await publishedFrameCredential(PAGE, token)).toEqual({ error: 'unavailable' });
+  });
+});
+
+describe('artifactHostOrigin', () => {
+  it.each([
+    ['https://f5h8n2w6.mindshub.co', 'https://f5h8n2w6.mindshub.co'],
+    ['https://f5h8n2w6-staging.mindshub.co', 'https://f5h8n2w6-staging.mindshub.co'],
+    ['https://draft.mindshub.co', ''],
+    ['https://draft-dev.mindshub.co', ''],
+    ['https://cowork.staging.mindshub.ai', ''],
+    ['https://f5h8n2w6.mindshub.co:8443', ''],
+    [undefined, ''],
+  ])('%s → %s', async (value, expected) => {
+    const { artifactHostOrigin } = await importViewSession();
+    expect(artifactHostOrigin(value)).toBe(expected);
   });
 });
