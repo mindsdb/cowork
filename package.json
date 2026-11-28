@@ -36,6 +36,8 @@
     "check:i18n": "node scripts/check-i18n.mjs",
     "test:i18n-check": "node --test scripts/i18n/check-lib.test.mjs",
     "test:e2e": "playwright test",
+    "pretest:fixtures": "node scripts/preview-bundles.mjs",
+    "test:fixtures": "playwright test --config playwright.fixtures.config.ts",
     "test:release-smoke": "playwright test --config playwright.release-smoke.config.ts",
     "test:macos-setup": "node scripts/macos-setup-smoke.mjs",
     "test:macos-setup-contract": "node --test scripts/macos-setup-contract.test.mjs",

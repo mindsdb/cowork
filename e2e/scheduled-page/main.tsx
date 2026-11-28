@@ -3,6 +3,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import ScheduledView from '../../src/renderer/cowork/views/ScheduledView';
+import { ToastProvider } from '../../src/renderer/cowork/components/ui/Toast';
 import '../../src/renderer/cowork/styles/tailwind.css';
 import '../../src/renderer/cowork/styles/globals.css';
 
@@ -21,10 +22,13 @@ const task = (id: string, title: string, projectId: string) => ({
 const SCHEDULED = [task('s1', 'Weekly metrics', 'p-word'), task('s2', 'Monthly close', 'p-words')];
 const noop = async () => {};
 
+// The app wraps every view in a ToastProvider; ScheduledView reports failures through it.
 createRoot(document.getElementById('root')!).render(
+  <ToastProvider>
   <ScheduledView
     scheduled={SCHEDULED} projects={PROJECTS} selectedProject={null} agentLabel="Anton"
     onCreate={noop} onUpdate={noop} onDelete={noop} onPause={noop} onResume={noop} onRunNow={noop}
     onOpenSchedule={() => {}} onOpenProject={() => {}}
-  />,
+  />
+  </ToastProvider>,
 );

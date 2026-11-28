@@ -1,23 +1,10 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { defineConfig, type PlaywrightTestConfig } from '@playwright/test';
+import { defineConfig } from '@playwright/test';
+import { browserFixtureConfigs } from './e2e/helpers/fixture-configs';
 
-const E2E_DIR = path.resolve(__dirname, 'e2e');
-
-/** Returns the spec patterns that the browser-only fixture configs (`playwright.<name>.config.ts`
- *  pointing at e2e/) claim, so a new fixture is excluded here by adding its config alone.
- *  Evaluates each of those config modules; throws if one points at e2e/ without a testMatch. */
+/** The spec patterns the browser-only fixture configs claim, so a new fixture is
+ *  excluded here by adding its config alone. */
 function browserFixtureSpecs(): (string | RegExp)[] {
-  return fs
-    .readdirSync(__dirname)
-    .filter((file) => /^playwright\..+\.config\.ts$/.test(file))
-    .flatMap((file) => {
-      // A runtime require is the point here: the set of configs is discovered, not listed.
-      const config: PlaywrightTestConfig = require(path.join(__dirname, file)).default;
-      if (path.resolve(__dirname, config.testDir ?? '.') !== E2E_DIR) return [];
-      if (!config.testMatch) throw new Error(`${file} points at e2e/ without a testMatch`);
-      return [config.testMatch].flat();
-    });
+  return browserFixtureConfigs(__dirname).flatMap(({ config }) => [config.testMatch!].flat());
 }
 
 // E2E launch smoke (qa.md §5c Tier-2). Drives the REAL Electron app via

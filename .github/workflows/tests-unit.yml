@@ -187,3 +187,28 @@ jobs:
         with:
           command: npm ci
       - run: npm run build:renderer
+
+  # Layout checks happy-dom cannot make: every playwright.<name>.config.ts that
+  # points at e2e/ (playwright.fixtures.config.ts). About 40 s of tests locally.
+  browser-fixtures:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: ./.github/actions/retry
+        with:
+          command: npm ci
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Browser fixture suites
+        run: npm run test:fixtures
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-fixture-traces
+          path: test-results/
+          retention-days: 7
