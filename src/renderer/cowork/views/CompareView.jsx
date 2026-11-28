@@ -60,6 +60,7 @@ import {
 import {
   SIDE_LABELS,
   VERDICT_ORDER,
+  allCallsIncluded,
   combinedCost,
   comparisonCostProps,
   historyCost,
@@ -509,6 +510,7 @@ function ComparisonHistory({ comparisons, hasMore = false, loadingOlder = false,
                 const names = namesFor(models, a, b);
                 const turns = turnsLabel(a?.turnCount, b?.turnCount, names);
                 const cost = historyCost(c.sides || []);
+                const costText = cost?.included ? t('compare.includedInPlan') : cost?.text;
                 const title = (extra = '') => <span className={`truncate text-[14px] text-ink font-medium${extra}`} title={c.title}>{c.title}</span>;
                 /* One model per line, so each name is shown whole. */
                 const modelTags = (
@@ -520,11 +522,11 @@ function ComparisonHistory({ comparisons, hasMore = false, loadingOlder = false,
                 const turnCount = <span className="text-ink-3 font-mono text-xs" title={turns.title}>{turns.text}</span>;
                 const costCell = offersBilling() && (
                   <span
-                    className="text-ink-3 font-mono text-xs tabular-nums"
-                    title={cost ? t('compare.costTitle') : undefined}
-                    aria-label={cost ? t('compare.costAria', { cost }) : t('compare.costUnread')}
+                    className={`text-ink-3 text-xs ${cost?.included ? 'leading-tight' : 'font-mono tabular-nums'}`}
+                    title={cost?.text ? t('compare.costTitle') : undefined}
+                    aria-label={cost?.text ? t('compare.costAria', { cost: cost.text }) : (costText ?? t('compare.costUnread'))}
                   >
-                    {cost ?? '—'}
+                    {costText ?? '—'}
                   </span>
                 );
                 const winner = <span className="min-w-0"><WinnerChip verdict={c.verdict} names={names} /></span>;
@@ -1441,6 +1443,8 @@ function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUs
   const silent = busy ? silentFor(lastEventAt, now) : null;
   const project = task ? { id: side?.projectId, name: task.projectName, path: task.projectPath } : null;
   const cost = offersBilling() && sideCost(usage);
+  // A side the plan covered whole has no figure and no table, so its header names the plan instead.
+  const included = offersBilling() && !!usage?.available && allCallsIncluded(usage);
   const lastTurnMs = last ? turnDurationMs(last) : null;
   return (
     <section
@@ -1500,6 +1504,7 @@ function SidePane({ label, name, side, task, turns, usage, usageOpen, onToggleUs
               />
             </button>
           )}
+          {included && <span className="flex-shrink-0 text-[12.5px] text-ink-3">{t('compare.includedInPlan')}</span>}
         </div>
       </header>
       {cost && usageOpen && <UsageTable label={label} usage={usage} turns={turns} notes={cost.notes} />}
@@ -1577,9 +1582,15 @@ function UsageTable({ label, usage, turns, notes = [] }) {
             <tr key={row.label} className={row.total ? 'border-0 border-t border-solid border-line font-semibold text-ink' : undefined}>
               <th scope="row" className="py-1.5 text-left font-[inherit]">{row.total ? t('compare.columns.total') : row.label.replace('Turn ', '')}</th>
               <td className={num}>{row.time ?? '–'}</td>
-              <td className={num} title={row.inputDetail}>{row.input}</td>
-              <td className={num}>{row.output}</td>
-              <td className={num}>{row.cost}</td>
+              {row.included ? (
+                <td colSpan={3} className={`${num} text-ink-3`}>{t('compare.includedInPlan')}</td>
+              ) : (
+                <>
+                  <td className={num} title={row.inputDetail}>{row.input}</td>
+                  <td className={num}>{row.output}</td>
+                  <td className={num}>{row.cost}</td>
+                </>
+              )}
             </tr>
           ))}
         </tbody>
