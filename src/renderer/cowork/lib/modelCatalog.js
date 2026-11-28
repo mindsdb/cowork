@@ -275,6 +275,16 @@ export function restrictedModelTitle() {
   return tr('restricted.title');
 }
 
+/* The `modelDisabledReasons` value for a row the org's zero data retention blocks. */
+export const ZDR_RESTRICTED_REASON = 'zdr_restricted';
+
+/* The row tooltip for a ZDR-blocked model. English, for tests; zdrRestrictedModelTitle() is the viewer's language. */
+export const ZDR_RESTRICTED_MODEL_TITLE = 'Zero data retention is on, so only models from ZDR-compliant providers can be used.';
+
+export function zdrRestrictedModelTitle() {
+  return tr('zdrRestricted.title');
+}
+
 /* The `disabled_reason` for a paid row while a spending budget is used
    up. Credits do not lift it; an administrator raises the budget. */
 export const BUDGET_EXCEEDED_REASON = 'budget_exceeded';
@@ -297,10 +307,12 @@ export const MODEL_NOT_IN_TIER_REASON = 'model_not_in_tier';
 export const WINDOW_ALLOWANCE_EXHAUSTED_REASON = 'window_allowance_exhausted';
 
 /* Every `disabled_reason` the renderer recognizes on a MindsHub model row: an
-   admin's model rule, a spent budget, the empty wallet, the spent
-   allowance, a model outside the plan, and a used-up plan window. */
+   admin's model rule, zero data retention, a spent budget, the empty
+   wallet, the spent allowance, a model outside the plan, and a used-up
+   plan window. */
 const KNOWN_MODEL_DISABLED_REASONS = new Set([
   MODEL_RESTRICTED_REASON,
+  ZDR_RESTRICTED_REASON,
   BUDGET_EXCEEDED_REASON,
   'wallet_empty',
   'included_allowance_exhausted',
@@ -342,7 +354,8 @@ export function knownModelDisabledReasons(raw) {
 }
 
 /**
- * True when `id` is unavailable because an org admin's model rule blocks it.
+ * True when `id` is unavailable because an org rule blocks it: an admin's model
+ * rule or zero data retention. Credits cannot unlock either.
  *
  * `modelDisabledReasons` is cowork-server's relay of MindsHub's per-row
  * `disabled_reason`, taken from the MindsHub listing only. A reason counts only
@@ -350,8 +363,15 @@ export function knownModelDisabledReasons(raw) {
  * can run, and the reason only says why it cannot.
  */
 export function isModelRestricted(modelEnabled, modelDisabledReasons, id) {
+  const reason = (modelDisabledReasons || {})[id];
   return isModelLocked(modelEnabled, id)
-    && (modelDisabledReasons || {})[id] === MODEL_RESTRICTED_REASON;
+    && (reason === MODEL_RESTRICTED_REASON || reason === ZDR_RESTRICTED_REASON);
+}
+
+/** True when `id` is unavailable because the org's zero data retention blocks it. */
+export function isModelZdrRestricted(modelEnabled, modelDisabledReasons, id) {
+  return isModelLocked(modelEnabled, id)
+    && (modelDisabledReasons || {})[id] === ZDR_RESTRICTED_REASON;
 }
 
 /** True when `id` is unavailable because a spending budget is used up. */
@@ -374,6 +394,7 @@ export function isModelNotInTier(modelEnabled, modelDisabledReasons, id) {
  *   tierLocked?: true,
  *   requiredTier?: 'plus' | 'pro',
  *   restricted?: true,
+ *   zdr?: true,
  *   budgetReached?: true,
  *   tag?: string,
  *   title?: string,
@@ -388,6 +409,8 @@ export function isModelNotInTier(modelEnabled, modelDisabledReasons, id) {
  * - Restricted by an admin: disabled and `restricted`, tagged "Restricted", with
  *   the admin tooltip. Never `locked`, so ModelSelect attaches no "Add credits"
  *   button: money cannot unlock an admin rule.
+ * - Blocked by zero data retention: the same, plus `zdr`, tagged "ZDR restricted"
+ *   with the ZDR tooltip.
  * - Stopped by a spent budget: disabled and `budgetReached`, tagged
  *   "Budget reached". Never `locked`, since credits do not raise a budget.
  * - Outside the plan with a wallet that cannot pay (ENG-4186): disabled,
@@ -404,6 +427,9 @@ export function isModelNotInTier(modelEnabled, modelDisabledReasons, id) {
  */
 export function unavailableModelFields(modelEnabled, modelDisabledReasons, id, modelCoveredByTier = null) {
   if (!isModelLocked(modelEnabled, id)) return {};
+  if (isModelZdrRestricted(modelEnabled, modelDisabledReasons, id)) {
+    return { disabled: true, restricted: true, zdr: true, tag: tr('zdrRestricted.tag'), title: zdrRestrictedModelTitle() };
+  }
   if (isModelNotInTier(modelEnabled, modelDisabledReasons, id)) {
     const tier = (modelCoveredByTier || {})[id];
     const requiredTier = cleanRequiredTier(tier);

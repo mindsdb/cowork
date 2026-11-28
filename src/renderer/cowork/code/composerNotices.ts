@@ -43,6 +43,11 @@ export const FAILURE_RECOVERY: Partial<Record<string, FailureRecovery>> = {
     title: (modelName) => i18n.t('composerNotices.modelUnavailable.title', { ns: 'code', model: modelName }),
     body: () => i18n.t('composerNotices.modelUnavailable.body', { ns: 'code' }),
   },
+  // Zero data retention rules the model out; no credit or sign-in lifts it.
+  zdr_restricted: {
+    title: (modelName) => i18n.t('composerNotices.modelUnavailable.title', { ns: 'code', model: modelName }),
+    body: () => i18n.t('composerNotices.zdrRestricted.body', { ns: 'code' }),
+  },
   rate_limited: {
     title: () => i18n.t('composerNotices.rateLimited.title', { ns: 'code' }),
     body: () => i18n.t('composerNotices.rateLimited.body', { ns: 'code' }),

@@ -1024,6 +1024,7 @@
       "noComputer": "No computer can run this task.",
       "noAgent": "No coding agent is available.",
       "modelRestricted": "An admin restricted this model. Choose another model.",
+      "zdrRestricted": "Zero data retention is on and this model is not ZDR-compliant. Choose another model.",
       "addCredits": "Add credits or choose an available model.",
       "noModels": "No coding models are available.",
       "chooseModel": "Choose a model to continue.",
@@ -1435,6 +1436,9 @@
     "modelUnavailable": {
       "title": "{model} is not available",
       "body": "Choose another model, then continue in this task."
+    },
+    "zdrRestricted": {
+      "body": "Zero data retention is on for your organization, so this model isn't available. Choose another model, then continue in this task."
     },
     "rateLimited": {
       "title": "MindsHub is receiving requests too quickly",

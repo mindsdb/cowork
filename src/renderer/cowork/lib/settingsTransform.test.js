@@ -21,6 +21,7 @@ import {
   modelLabel,
   transformSettingsRows,
   routerRoleSubtitle,
+  jevOffForZdr,
   resolveImageModel,
   IMAGE_MODEL_FALLBACK,
   showJevSwitch,
@@ -1455,6 +1456,18 @@ describe('jev routing settings', () => {
   });
 });
 
+describe('jevOffForZdr', () => {
+  it.each([
+    [{ mode: 'jev', zdr: true }, true],
+    [{ mode: 'jev', zdr: false }, false],
+    [{ mode: 'jev' }, false],
+    [null, false],
+    ['jev', false],
+  ])('reads %j as %s', (routing, off) => {
+    expect(jevOffForZdr(routing)).toBe(off);
+  });
+});
+
 describe('jev classification setting', () => {
   it('reads and writes the switch under the server key', () => {
     expect(transformSettingsRows([{ key: 'jev_classify_enabled', value: 'False' }]))
@@ -1472,6 +1485,11 @@ describe('jev classification setting', () => {
     // A server without the setting: nothing to save.
     [{}, 'minds-cloud', { shown: false, available: true, checked: true }],
   ])('for settings %j with coding on %s: %j', (settings, coding, state) => {
-    expect(jevClassifySwitch(settings, coding)).toEqual(state);
+    expect(jevClassifySwitch(settings, coding)).toEqual({ ...state, zdr: false });
+  });
+
+  it('shows off and locked under zero data retention, whatever is stored', () => {
+    expect(jevClassifySwitch({ jevClassifyEnabled: true }, 'minds-cloud', true))
+      .toEqual({ shown: true, available: false, zdr: true, checked: false });
   });
 });

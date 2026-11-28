@@ -3,8 +3,8 @@ import { Fragment, useState, useEffect, useMemo, useRef } from 'react';
 import { useId } from 'react';
 import Ico from '../../components/Icons';
 import { validateSettings, revealSettingKey, testProviders, fetchRecommendedModels } from '../../api';
-import { isModelLocked, isModelRestricted, isModelBudgetReached } from '../../lib/modelCatalog';
-import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, resolveImageModel, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, budgetSpec, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, routerRoleSubtitle, showJevSwitch, showRouterRoleRow, jevClassifySwitch } from '../../lib/settingsTransform';
+import { isModelLocked, isModelRestricted, isModelZdrRestricted, isModelBudgetReached } from '../../lib/modelCatalog';
+import { providerTypeToKeyField, providerValueToType, resolveRoleModel, resolveModelPickerValue, resolveImageModel, buildModelOptions, displayModelLabel, effectiveRoleModel, effectiveRoleProvider, mergeRecommendedModels, budgetSpec, clampBudgetValue, clampBudgets, BUDGET_FIELDS, isBudgetUnlimited, resolveBudgetRestore, toDisplayUnits, toNaturalUnits, formatCount, jevOffForZdr, routerRoleSubtitle, showJevSwitch, showRouterRoleRow, jevClassifySwitch } from '../../lib/settingsTransform';
 import { MODEL_REFRESH_TTL_MS } from '../../lib/modelRefresh';
 import { trackBillingOpened } from '../../lib/analytics';
 import { copyText as copyToClipboard } from '../../lib/clipboard';
@@ -211,11 +211,18 @@ function ViewBudgetsLink({ children, fromDenial = false }) {
    names it and gives the way out. A restricted model has no billing way out,
    so its line has no link; a budget-stopped one links to Budgets. Exported
    for the visual fixture. */
-export function UnavailableModelHint({ label, restricted, budgetReached = false, isBillingOwner = false }) {
+export function UnavailableModelHint({ label, restricted, zdr = false, budgetReached = false, isBillingOwner = false }) {
   const { t } = useTranslation('settings');
   const consoleLink = useConsoleLink();
   if (!PLATFORM_UI) {
     return <div className="text-[11.5px] text-ink-3">{t('agent.modelUnavailable', { model: label })}</div>;
+  }
+  if (zdr) {
+    return (
+      <div className="text-[11.5px] text-ink-3">
+        {t('agent.modelZdrRestricted', { model: label })}
+      </div>
+    );
   }
   if (restricted) {
     return (
@@ -1057,7 +1064,8 @@ export default function SettingsView({
   const roleModelValue = (role, fallback = '') => canonicalModelForRole(role) || fallback || '';
   // effectiveRoleProvider already falls back to MindsHub, as the server does.
   const jevSwitchShown = showJevSwitch(settings?.routing, roleProviderType('coding'));
-  const jevClassify = jevClassifySwitch(settings, roleProviderType('coding'));
+  const jevZdrOff = jevOffForZdr(settings?.routing);
+  const jevClassify = jevClassifySwitch(settings, roleProviderType('coding'), jevZdrOff);
   const setRoleDriver = (role, providerType, model) => {
     const normalizedType = providerValueToType(providerType) || 'minds-cloud';
     // null is a tombstone ("clear the stored row so the server's enabled-aware
@@ -1973,6 +1981,7 @@ export default function SettingsView({
                                 <UnavailableModelHint
                                   label={displayModelLabel(curModel, settings.modelLabels || {})}
                                   restricted={isModelRestricted(modelEnabled, settings.modelDisabledReasons, curModel)}
+                                  zdr={isModelZdrRestricted(modelEnabled, settings.modelDisabledReasons, curModel)}
                                   budgetReached={isModelBudgetReached(modelEnabled, settings.modelDisabledReasons, curModel)}
                                   isBillingOwner={isBillingOwner}
                                 />
@@ -2146,7 +2155,7 @@ export default function SettingsView({
         <BrowserSettingsSection settings={settings} setSetting={setSetting} agentLabel={agentLabel || 'Anton'} signedInToMindsHub={PLATFORM_UI && isSsoConnected} />
 
         {/* Voice calls run on MindsHub: only when it is the LLM provider. */}
-        {llmViaMindsHub(settings) && <VoiceSettingsSection agentLabel={agentLabel || 'Anton'} />}
+        {llmViaMindsHub(settings) && <VoiceSettingsSection agentLabel={agentLabel || 'Anton'} zdr={jevZdrOff} />}
 
         {(hasBudgetSettings || jevSwitchShown || jevClassify.shown) && (
           <SettingsGroup title={t('advanced.title')} collapsible defaultCollapsed>
@@ -2222,10 +2231,13 @@ export default function SettingsView({
             {jevSwitchShown && (
               <Section
                 title={t('advanced.jev.title')}
-                subtitle={t('advanced.jev.subtitle', { agent: agentLabel || 'Anton' })}
+                subtitle={jevZdrOff
+                  ? t('advanced.jev.zdrSubtitle', { agent: agentLabel || 'Anton' })
+                  : t('advanced.jev.subtitle', { agent: agentLabel || 'Anton' })}
               >
                 <Switch
-                  checked={settings.jevDecisionsEnabled ?? true}
+                  checked={jevZdrOff ? false : (settings.jevDecisionsEnabled ?? true)}
+                  disabled={jevZdrOff}
                   onCheckedChange={(v) => setSetting('jevDecisionsEnabled', v)}
                   aria-label={t('advanced.jev.title')}
                 />
@@ -2234,9 +2246,11 @@ export default function SettingsView({
             {jevClassify.shown && (
               <Section
                 title={t('advanced.jevClassify.title')}
-                subtitle={jevClassify.available
-                  ? t('advanced.jevClassify.subtitle', { agent: agentLabel || 'Anton' })
-                  : t('advanced.jevClassify.unavailable')}
+                subtitle={jevClassify.zdr
+                  ? t('advanced.jevClassify.zdrUnavailable')
+                  : jevClassify.available
+                    ? t('advanced.jevClassify.subtitle', { agent: agentLabel || 'Anton' })
+                    : t('advanced.jevClassify.unavailable')}
               >
                 <Switch
                   checked={jevClassify.checked}

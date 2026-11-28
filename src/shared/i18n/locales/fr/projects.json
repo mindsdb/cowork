@@ -500,6 +500,10 @@
         "title": "Un administrateur de votre organisation a restreint ce modèle.",
         "tag": "Restreint"
       },
+      "zdrRestricted": {
+        "title": "La conservation zéro des données est activée : seuls les modèles de fournisseurs conformes ZDR sont utilisables.",
+        "tag": "Restreint par ZDR"
+      },
       "needsCredits": "Crédits requis",
       "budgetReached": {
         "tag": "Budget atteint",

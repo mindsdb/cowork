@@ -2211,9 +2211,9 @@ function AppCore() {
     modelProviders: settings.modelProviders,
     modelFamilies: settings.modelFamilies,
     modelEnabled: settings.modelEnabled,
-    // Why a row above is unavailable, so an admin-restricted model reads
-    // "Restricted" instead of "Needs credits" (mergeRecommendedModels keeps it
-    // in step with modelEnabled).
+    // Why a row above is unavailable, so an admin- or ZDR-restricted model reads
+    // "Restricted" or "ZDR restricted" instead of "Needs credits"
+    // (mergeRecommendedModels keeps it in step with modelEnabled).
     modelDisabledReasons: settings.modelDisabledReasons,
     // Which plan covers each model (ENG-4186), for the picker's tier tags.
     modelCoveredByTier: settings.modelCoveredByTier,

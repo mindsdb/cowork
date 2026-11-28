@@ -500,6 +500,10 @@
         "title": "Um administrador da sua organização restringiu este modelo.",
         "tag": "Restrito"
       },
+      "zdrRestricted": {
+        "title": "A retenção zero de dados está ativada, então só é possível usar modelos de provedores compatíveis com ZDR.",
+        "tag": "Restrito por ZDR"
+      },
       "needsCredits": "Requer créditos",
       "budgetReached": {
         "tag": "Orçamento esgotado",

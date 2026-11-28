@@ -1024,6 +1024,7 @@
       "noComputer": "Nessun computer può eseguire questa attività.",
       "noAgent": "Nessun agente di codice disponibile.",
       "modelRestricted": "Un amministratore ha limitato questo modello. Scegline un altro.",
+      "zdrRestricted": "La conservazione zero dei dati è attiva e questo modello non è conforme a ZDR. Scegline un altro.",
       "addCredits": "Aggiungi crediti o scegli un modello disponibile.",
       "noModels": "Nessun modello di codice disponibile.",
       "chooseModel": "Scegli un modello per continuare.",
@@ -1435,6 +1436,9 @@
     "modelUnavailable": {
       "title": "{model} non è disponibile",
       "body": "Scegli un altro modello, poi continua in questa attività."
+    },
+    "zdrRestricted": {
+      "body": "La conservazione zero dei dati è attiva per la tua organizzazione, quindi questo modello non è disponibile. Scegline un altro, poi continua in questa attività."
     },
     "rateLimited": {
       "title": "MindsHub sta ricevendo troppe richieste",

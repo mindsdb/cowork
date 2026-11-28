@@ -6,6 +6,7 @@
  */
 export type ModelDisabledReason =
   | 'model_restricted'
+  | 'zdr_restricted'
   | 'budget_exceeded'
   | 'wallet_empty'
   | 'included_allowance_exhausted'
@@ -20,6 +21,7 @@ export interface UnavailableModelFields {
   disabled?: true;
   locked?: true;
   restricted?: true;
+  zdr?: true;
   budgetReached?: true;
   /** The plan does not cover this model; ModelSelect adds "Upgrade". */
   tierLocked?: true;
@@ -32,6 +34,9 @@ export interface UnavailableModelFields {
 export const MODEL_ROUTER_ID: 'model-router';
 export const MODEL_RESTRICTED_REASON: 'model_restricted';
 export const RESTRICTED_MODEL_TITLE: string;
+export const ZDR_RESTRICTED_REASON: 'zdr_restricted';
+export const ZDR_RESTRICTED_MODEL_TITLE: string;
+export function zdrRestrictedModelTitle(): string;
 export function restrictedModelTitle(): string;
 export function modelRouterLabel(): string;
 export function operatorDefaultLabel(): string;
@@ -57,6 +62,11 @@ export function knownModelDisabledReasons(raw: unknown): Record<string, ModelDis
 export function isFrozenAlias(id: string, families?: Record<string, string>): boolean;
 export function isModelLocked(modelEnabled: Record<string, boolean> | undefined, id: string): boolean;
 export function isModelRestricted(
+  modelEnabled: Record<string, boolean> | undefined,
+  modelDisabledReasons: Record<string, ModelDisabledReason> | undefined,
+  id: string,
+): boolean;
+export function isModelZdrRestricted(
   modelEnabled: Record<string, boolean> | undefined,
   modelDisabledReasons: Record<string, ModelDisabledReason> | undefined,
   id: string,

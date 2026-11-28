@@ -76,6 +76,17 @@ describe('the Use Jev for classification switch', () => {
     expect(screen.getByText('Available only when the coding model runs on MindsHub.')).toBeInTheDocument();
   });
 
+  it('is off and locked under zero data retention, with Jev switched off too', async () => {
+    render(<Harness initial={settingsFor('minds-cloud', MINDS, { routing: { mode: 'off', zdr: true }, jevClassifyEnabled: true })} />);
+    await expandAdvanced();
+    const toggle = screen.getByLabelText(SWITCH);
+    expect(toggle).not.toBeChecked();
+    expect(toggle).toHaveAttribute('aria-disabled', 'true');
+    // The voice agent's switch reads the same flag and says the same.
+    expect(screen.getAllByText('Off while zero data retention is on.')).toHaveLength(2);
+    expect(screen.getByRole('switch', { name: 'Voice agent' })).toHaveAttribute('aria-disabled', 'true');
+  });
+
   it('is absent on a server without the setting', async () => {
     render(<Harness initial={settingsFor('minds-cloud', MINDS)} />);
     await expandAdvanced();

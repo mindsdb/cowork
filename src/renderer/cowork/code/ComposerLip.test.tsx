@@ -111,6 +111,16 @@ describe('ComposerLip', () => {
     expect(onChooseModel).toHaveBeenCalledOnce();
   });
 
+  it('says zero data retention rules the model out and offers a model change, not a sign-in', () => {
+    const { onChooseModel } = renderFailure('zdr_restricted', 'server returned 403');
+    expect(screen.getByText('GPT 5.6 Sol is not available.')).toBeInTheDocument();
+    expect(screen.getByText(/Zero data retention is on for your organization/)).toBeInTheDocument();
+    expect(screen.queryByText('Your sign-in does not match this server.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add credits' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Choose model' }));
+    expect(onChooseModel).toHaveBeenCalledOnce();
+  });
+
   it('shows a rate limit as a wait, not a failure, without offering a model change or credits', () => {
     const { container } = renderFailure('rate_limited', 'exceeded retry limit, last status: 429 Too Many Requests');
     expect(screen.getByText('MindsHub is receiving requests too quickly.')).toBeInTheDocument();

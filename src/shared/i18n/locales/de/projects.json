@@ -500,6 +500,10 @@
         "title": "Ein Administrator Ihrer Organisation hat dieses Modell eingeschränkt.",
         "tag": "Eingeschränkt"
       },
+      "zdrRestricted": {
+        "title": "Zero Data Retention ist aktiviert, daher können nur Modelle von ZDR-konformen Anbietern verwendet werden.",
+        "tag": "Durch ZDR eingeschränkt"
+      },
       "needsCredits": "Guthaben erforderlich",
       "budgetReached": {
         "tag": "Budget erreicht",

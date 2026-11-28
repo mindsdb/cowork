@@ -163,6 +163,7 @@
       "unavailableTitle": "{model} ist gerade nicht verfügbar",
       "askOperatorBody": "Bitten Sie Ihren Betreiber, das konfigurierte Modell und den Zugriff darauf zu prüfen.",
       "restrictedBody": "Ein Administrator Ihrer Organisation hat dieses Modell eingeschränkt. Wählen Sie in den Einstellungen ein anderes Modell.",
+      "zdrRestrictedBody": "Zero Data Retention ist für Ihre Organisation aktiviert, daher ist dieses Modell nicht verfügbar. Wählen Sie in den Einstellungen ein anderes Modell.",
       "needsCreditsTitle": "{model} erfordert Guthaben",
       "needsCreditsBody": "Ihr Guthaben reicht für dieses Modell nicht aus. Laden Sie Ihr Guthaben auf, um es zu nutzen.",
       "disabledBody": "Dieses Modell ist für Ihren Arbeitsbereich deaktiviert. Wählen Sie in den Einstellungen ein anderes Modell.",

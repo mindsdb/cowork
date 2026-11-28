@@ -500,6 +500,10 @@
         "title": "組織の管理者がこのモデルを制限しています。",
         "tag": "制限あり"
       },
+      "zdrRestricted": {
+        "title": "データ保持ゼロ（ZDR）が有効なため、ZDR に準拠したプロバイダーのモデルのみ使用できます。",
+        "tag": "ZDRにより制限"
+      },
       "needsCredits": "クレジットが必要",
       "budgetReached": {
         "tag": "予算上限に到達",

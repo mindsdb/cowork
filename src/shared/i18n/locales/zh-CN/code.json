@@ -1024,6 +1024,7 @@
       "noComputer": "没有可运行此任务的电脑。",
       "noAgent": "没有可用的编程智能体。",
       "modelRestricted": "管理员已限制此模型。请选择其他模型。",
+      "zdrRestricted": "零数据保留已开启，且此模型不符合 ZDR 要求。请选择其他模型。",
       "addCredits": "请充值，或选择可用的模型。",
       "noModels": "没有可用的编程模型。",
       "chooseModel": "选择模型以继续。",
@@ -1435,6 +1436,9 @@
     "modelUnavailable": {
       "title": "{model} 不可用",
       "body": "请选择其他模型，然后在此任务中继续。"
+    },
+    "zdrRestricted": {
+      "body": "你所在组织已开启零数据保留，因此此模型不可用。请选择其他模型，然后继续此任务。"
     },
     "rateLimited": {
       "title": "MindsHub 收到的请求过于频繁",

@@ -1024,6 +1024,7 @@
       "noComputer": "Ninguna computadora puede ejecutar esta tarea.",
       "noAgent": "No hay ningún agente de código disponible.",
       "modelRestricted": "Un administrador restringió este modelo. Elige otro modelo.",
+      "zdrRestricted": "La retención cero de datos está activada y este modelo no es compatible con ZDR. Elige otro modelo.",
       "addCredits": "Agrega créditos o elige un modelo disponible.",
       "noModels": "No hay modelos de código disponibles.",
       "chooseModel": "Elige un modelo para continuar.",
@@ -1435,6 +1436,9 @@
     "modelUnavailable": {
       "title": "{model} no está disponible",
       "body": "Elige otro modelo y luego continúa en esta tarea."
+    },
+    "zdrRestricted": {
+      "body": "La retención cero de datos está activada en tu organización, así que este modelo no está disponible. Elige otro modelo y continúa en esta tarea."
     },
     "rateLimited": {
       "title": "MindsHub está recibiendo solicitudes demasiado rápido",

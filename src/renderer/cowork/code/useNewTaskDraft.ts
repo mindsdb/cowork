@@ -382,7 +382,8 @@ export function useNewTaskDraft({
     const configuredProjectModel = selectedProject?.default_model;
     setModel((current) => (
       ids.includes(current) ? current
-        : configuredProjectModel && modelOptions.some((option) => option.value === configuredProjectModel)
+        // A project default zero data retention rules out is skipped for an allowed model.
+        : configuredProjectModel && modelOptions.some((option) => option.value === configuredProjectModel && !option.zdr)
         ? configuredProjectModel
         : preferredCodingModel(current, ids, configuredProjectModel || defaultModel)
     ));
@@ -509,8 +510,9 @@ export function useNewTaskDraft({
     /* A catalog error already shows in the alert below, so these stay quiet
        rather than repeat it. */
     if (!selectedEngineAvailable) return selectedEngine?.reason || (catalogError ? '' : readiness('noAgent'));
-    /* An admin's model rule is not something credits unlock, so it never
+    /* An admin's model rule or ZDR is not something credits unlock, so neither
        mentions them. */
+    if (selectedModelOption?.zdr) return readiness('zdrRestricted');
     if (selectedModelOption?.restricted) return readiness('modelRestricted');
     if (!offersBilling() && (selectedModelOption?.locked || selectedModelOption?.budgetReached)) return readiness('chooseModel');
     if (selectedModelOption?.budgetReached) return readiness('budgetReached');
