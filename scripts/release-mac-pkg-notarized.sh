@@ -42,18 +42,28 @@ APPLE_ID_VALUE="${APPLE_ID:-${GH_APPLE_ID:-}}"
 APPLE_TEAM_ID_VALUE="${APPLE_TEAM_ID:-${GH_APPLE_TEAM_ID:-}}"
 APPLE_APP_SPECIFIC_PASSWORD_VALUE="${APPLE_APP_SPECIFIC_PASSWORD:-${GH_APPLE_APP_SPECIFIC_PASSWORD:-}}"
 
-if ! is_truthy "$MAC_PKG_UNSIGNED"; then
-  if [[ -z "${APPLE_ID_VALUE:-}" || -z "${APPLE_TEAM_ID_VALUE:-}" || -z "${APPLE_APP_SPECIFIC_PASSWORD_VALUE:-}" ]]; then
-    echo "Error: missing Apple notarization env vars." >&2
-    echo "Required: APPLE_ID/ GH_APPLE_ID, APPLE_TEAM_ID/ GH_APPLE_TEAM_ID, APPLE_APP_SPECIFIC_PASSWORD/ GH_APPLE_APP_SPECIFIC_PASSWORD" >&2
-    exit 1
-  fi
-fi
-
-# Preserve notarization credentials for manual steps later in this script.
 APPLE_API_KEY_VALUE="${APPLE_API_KEY:-}"
 APPLE_API_KEY_ID_VALUE="${APPLE_API_KEY_ID:-}"
 APPLE_API_KEY_ISSUER_VALUE="${APPLE_API_KEY_ISSUER:-}"
+
+# Prefer the App Store Connect API key: it belongs to the team, so it keeps
+# working when an individual Apple ID loses team access or its app-specific
+# password is revoked. The Apple ID path stays as a fallback.
+NOTARY_AUTH=()
+if [[ -n "$APPLE_API_KEY_VALUE" && -n "$APPLE_API_KEY_ID_VALUE" && -n "$APPLE_API_KEY_ISSUER_VALUE" ]]; then
+  NOTARY_AUTH=(--key "$APPLE_API_KEY_VALUE" --key-id "$APPLE_API_KEY_ID_VALUE" --issuer "$APPLE_API_KEY_ISSUER_VALUE")
+  NOTARY_AUTH_KIND="App Store Connect API key"
+elif [[ -n "${APPLE_ID_VALUE:-}" && -n "${APPLE_TEAM_ID_VALUE:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD_VALUE:-}" ]]; then
+  NOTARY_AUTH=(--apple-id "$APPLE_ID_VALUE" --team-id "$APPLE_TEAM_ID_VALUE" --password "$APPLE_APP_SPECIFIC_PASSWORD_VALUE")
+  NOTARY_AUTH_KIND="Apple ID"
+fi
+
+if ! is_truthy "$MAC_PKG_UNSIGNED" && [[ ${#NOTARY_AUTH[@]} -eq 0 ]]; then
+  echo "Error: missing Apple notarization env vars." >&2
+  echo "Set APPLE_API_KEY (path to .p8), APPLE_API_KEY_ID and APPLE_API_KEY_ISSUER," >&2
+  echo "or APPLE_ID, APPLE_TEAM_ID and APPLE_APP_SPECIFIC_PASSWORD (GH_-prefixed names also work)." >&2
+  exit 1
+fi
 
 unset CSC_IDENTITY_AUTO_DISCOVERY CSC_NAME CSC_KEYCHAIN CSC_LINK CSC_KEY_PASSWORD || true
 if [[ -z "${npm_config_python:-}" ]]; then
@@ -160,13 +170,9 @@ else
   echo "==> Verifying app signature"
   codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
-  echo "==> Notarizing app zip"
+  echo "==> Notarizing app zip (auth: $NOTARY_AUTH_KIND)"
   ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$APP_ZIP"
-  APP_NOTARY_OUT="$(xcrun notarytool submit "$APP_ZIP" \
-    --apple-id "$APPLE_ID_VALUE" \
-    --team-id "$APPLE_TEAM_ID_VALUE" \
-    --password "$APPLE_APP_SPECIFIC_PASSWORD_VALUE" \
-    --wait)"
+  APP_NOTARY_OUT="$(xcrun notarytool submit "$APP_ZIP" "${NOTARY_AUTH[@]}" --wait)"
   echo "$APP_NOTARY_OUT"
 
   if ! grep -q "status: Accepted" <<<"$APP_NOTARY_OUT"; then
@@ -213,11 +219,7 @@ else
   pkgutil --check-signature "$PKG_PATH"
 
   echo "==> Notarizing pkg"
-  PKG_NOTARY_OUT="$(xcrun notarytool submit "$PKG_PATH" \
-    --apple-id "$APPLE_ID_VALUE" \
-    --team-id "$APPLE_TEAM_ID_VALUE" \
-    --password "$APPLE_APP_SPECIFIC_PASSWORD_VALUE" \
-    --wait)"
+  PKG_NOTARY_OUT="$(xcrun notarytool submit "$PKG_PATH" "${NOTARY_AUTH[@]}" --wait)"
   echo "$PKG_NOTARY_OUT"
 
   if ! grep -q "status: Accepted" <<<"$PKG_NOTARY_OUT"; then
