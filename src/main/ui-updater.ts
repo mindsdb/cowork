@@ -187,18 +187,8 @@ interface VerifiedSlot {
 /* The slot the window last loaded from the cache, with the manifest the folder check verified
    right before that load; readServedUiFile reads through it. Null while the bundled renderer is
    what the window loaded. A refusal that deletes the slot, a rollback, and an activation that
-   moves the slot's folder clear it too, until the next load records a slot. */
+   puts a new bundle in `current` clear it too, until the next load records a slot. */
 let _served: VerifiedSlot | null = null;
-
-/* How many times setServed has run. activateStaged compares it across a swap, so a swap that fails
-   and puts its slot back restores the served state only when nothing else set it meanwhile. */
-let _servedSets = 0;
-
-/* Every change to the served state goes through here. */
-function setServed(slot: VerifiedSlot | null): void {
-  _served = slot;
-  _servedSets += 1;
-}
 
 /* True unless lstat says the slot is absent. Any other error counts as present, so the folder
    check runs and reports the slot as unreadable rather than as missing. */
@@ -229,7 +219,7 @@ function readCurrentSignedManifest(): BundleManifest | null {
 function refuseCachedSlot(root: string, reason: FolderRefusal, slot: 'cached' | 'served' = 'cached'): null {
   diagnostic("main.ui-updater", "WARNING", folderRefusalEvent(slot, reason));
   if (reason === 'unreadable') return null;
-  if (_served?.root === root) setServed(null);
+  if (_served?.root === root) _served = null;
   try {
     rmDir(root);
   } catch (err) {
@@ -331,7 +321,7 @@ export type RendererLoad =
 export function resolveRendererLoad(): RendererLoad {
   const slot = checkServableSlot();
   if (!slot) return resolveBundledRendererLoad();
-  setServed(slot);
+  _served = slot;
   return { kind: 'ota', path: path.join(slot.root, 'index.html'), version: slot.manifest.version };
 }
 
@@ -340,7 +330,7 @@ export function resolveRendererLoad(): RendererLoad {
  *  through here or through resolveRendererLoad, so the served state never
  *  names a cache slot while the bundled renderer runs. */
 export function resolveBundledRendererLoad(): Extract<RendererLoad, { kind: 'bundled' }> {
-  setServed(null);
+  _served = null;
   return { kind: 'bundled', path: getBundledRendererPath() };
 }
 
@@ -538,34 +528,20 @@ async function downloadAndStage(release: VerifiedUiRelease): Promise<boolean> {
  *  manifest travels with it, and nothing else is written into it: the folder
  *  check refuses any file the manifest does not list.
  *
- *  Reads through the served slot stop before its folder first moves: from then
- *  on `current` is missing or holds the new bundle, whose files the manifest
- *  verified at the last load does not describe. A lazy load in the page gets a
- *  404 and deletes nothing, where a read that found the folder moved would
- *  refuse the slot as tampered. A swap that fails and leaves the old slot in
- *  `current` restores the served state, so the page keeps its lazy loads,
- *  unless a load, a rollback or a refusal set the served state meanwhile. */
+ *  Once the new bundle is in `current`, the served state is cleared: the
+ *  manifest verified at the last load does not describe the new bundle's
+ *  files. The outgoing page's lazy loads then get 404 and delete nothing,
+ *  where a read through the old manifest would refuse the new slot as
+ *  tampered. */
 async function activateStaged(version: string): Promise<void> {
   const current = getCurrentDir();
   const previous = getPreviousDir();
   const staging = getStagingDir();
 
   await retryOnTransientLock(() => rmDir(previous));
-  const served = _served;
-  setServed(null);
-  const setsAtClear = _servedSets;
-  const restoreServed = () => {
-    if (_servedSets === setsAtClear) setServed(served);
-  };
   const movedCurrent = fs.existsSync(current);
   if (movedCurrent) {
-    try {
-      await retryOnTransientLock(() => fs.renameSync(current, previous));
-    } catch (err) {
-      // Nothing moved, so the served slot is still in `current`.
-      restoreServed();
-      throw err;
-    }
+    await retryOnTransientLock(() => fs.renameSync(current, previous));
   }
   try {
     await retryOnTransientLock(() => fs.renameSync(staging, current));
@@ -576,11 +552,11 @@ async function activateStaged(version: string): Promise<void> {
     if (movedCurrent && !fs.existsSync(current)) {
       try {
         await retryOnTransientLock(() => fs.renameSync(previous, current));
-        restoreServed();
       } catch { /* best-effort recovery */ }
     }
     throw err;
   }
+  _served = null;
   diagnostic("main.ui-updater", "INFO", "ui_updater_activated_ui", `[ui-updater] activated UI ${version}`);
 }
 
@@ -726,7 +702,7 @@ export async function rollbackUI(): Promise<void> {
   const failed = readCurrentSignedManifest()?.version ?? null;
   if (failed) recordRejectedVersion(failed);
   // The window is leaving the slot, so nothing may be read through it any more.
-  setServed(null);
+  _served = null;
 
   // Quarantine above stays synchronous (before the first await) so a
   // fire-and-forget caller can't re-activate the bad version; the slot shuffle

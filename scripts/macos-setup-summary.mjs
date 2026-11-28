@@ -1,12 +1,12 @@
 import { readFileSync, appendFileSync } from 'node:fs';
 import { channels, STEP_NAMES } from './macos-setup-contract.mjs';
-import { LAUNCH_STEP, LINT_STEP } from './installed-app-checks.mjs';
+import { LAUNCH_STEP } from './installed-app-checks.mjs';
 
 // The Windows setup smoke writes the same result files under its own name.
 const PLATFORMS = { macos: 'macOS setup', windows: 'Windows setup' };
 const platform = process.env.SETUP_PLATFORM || 'macos';
 if (!Object.hasOwn(PLATFORMS, platform)) throw new Error(`Unknown setup platform: ${platform}`);
-const allowedSteps = new Set(['Preparation', 'Download package', 'Install package', 'Check release fuses', 'Check entitlements', 'Prepare inspectable copy', 'Trim root store', 'Launch and isolate app', LAUNCH_STEP, LINT_STEP, 'Setup', ...Object.values(STEP_NAMES)]);
+const allowedSteps = new Set(['Preparation', 'Download package', 'Install package', 'Check release fuses', 'Check entitlements', 'Prepare inspectable copy', 'Trim root store', 'Launch and isolate app', LAUNCH_STEP, 'Setup', ...Object.values(STEP_NAMES)]);
 const failures = [];
 for (const channel of channels(process.env.CHANNELS)) {
   try {

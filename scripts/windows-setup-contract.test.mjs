@@ -67,7 +67,7 @@ test('the harness checks the emptied AuthRoot before it turns root downloads bac
   assert.ok(removed > 0 && removed < downloadsOn && downloadsOn < smoke.indexOf('assertTrimmed(await rootStores('));
 });
 
-test('the harness launches and lints the installed exe before it copies it, and stops what is left from the install folder', () => {
+test('the harness launches the installed exe before it copies it, and stops what is left from the install folder', () => {
   const smoke = readFileSync(resolve('scripts/windows-setup-smoke.mjs'), 'utf8');
   const at = (text) => {
     const index = smoke.indexOf(text);
@@ -75,8 +75,7 @@ test('the harness launches and lints the installed exe before it copies it, and 
     return index;
   };
   assert.ok(at("result.failingStep = 'Check release fuses'") < at('await checkLaunches(installedApp)'));
-  assert.ok(at('await checkLaunches(installedApp)') < at('await checkLint(installedApp)'));
-  assert.ok(at('await checkLint(installedApp)') < at("await stopInstalledApp(installed.installLocation, 'stopped-after-launch-checks.txt')"));
+  assert.ok(at('await checkLaunches(installedApp)') < at("await stopInstalledApp(installed.installLocation, 'stopped-after-launch-checks.txt')"));
   assert.ok(at("await stopInstalledApp(installed.installLocation, 'stopped-after-launch-checks.txt')") < at("result.failingStep = 'Prepare inspectable copy'"));
   assert.ok(at("result.failingStep = 'Prepare inspectable copy'") < at("result.failingStep = 'Trim root store'"));
   assert.match(smoke, /const installedApp = \{ executable: installed\.executable,/);

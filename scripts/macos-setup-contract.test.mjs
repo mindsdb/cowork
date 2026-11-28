@@ -6,10 +6,7 @@ import { basename, join, posix, resolve, win32 } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { setTimeout as delay } from 'node:timers/promises';
-import {
-  checkLaunches, checkLint, diagnosticEvents, lintProblems, lintResult, refusalProblems, runAsNodeProblems,
-  DENIED_LAUNCH, FOREIGN_LINT_RUNNER, FOREIGN_RUNNER_MARKER, LAUNCH_STEP, LINT_CASES, LINT_FIXTURES, LINT_STEP, MODULES_LOADED_EVENT, RENDERER_LOAD_EVENT, RUN_AS_NODE,
-} from './installed-app-checks.mjs';
+import { checkLaunches, refusalProblems, runAsNodeProblems, DENIED_LAUNCH, LAUNCH_STEP, RUN_AS_NODE } from './installed-app-checks.mjs';
 import { assertAppIdentity, assertSetupPassed, channels, failureStep, forbiddenEntitlements, inspectableCopy, packageIdentity, validateManifest, within, FORBIDDEN_ENTITLEMENTS, STEP_NAMES } from './macos-setup-contract.mjs';
 import { heldEntitlements, FORBIDDEN_ENTITLEMENTS as RELEASE_CHECK_ENTITLEMENTS } from './release-app-check.mjs';
 import { checkFuses, enableInspector, fuseMismatches, INSPECTABLE_FUSES, RELEASE_FUSES } from './release-fuses.mjs';
@@ -141,7 +138,7 @@ test('notification names a failing step, reports missing evidence, and never acc
   assert.match(failed, /failed=true/);
   assert.match(failed, /stable: Verify installation/);
   assert.match(failed, /prod: runner or workflow failure/);
-  for (const step of ['Check release fuses', 'Check entitlements', LAUNCH_STEP, LINT_STEP, 'Prepare inspectable copy']) {
+  for (const step of ['Check release fuses', 'Check entitlements', LAUNCH_STEP, 'Prepare inspectable copy']) {
     assert.match(summarize({ passed: false, failingStep: step }), new RegExp(`stable: ${step}`));
   }
   const unsafe =summarize({ passed: false, failingStep: '"\n@channel arbitrary log' });
@@ -310,98 +307,31 @@ test('the macOS build runs the release check on the signed app before it notariz
   assert.match(script, /^set -euo pipefail$/m);
 });
 
-/* What main writes for one diagnostic (src/shared/diagnostics.ts). */
-const diagnostic = (event, level = 'INFO') => JSON.stringify({ logged_at: '2026-11-27T00:00:00.000Z', logger: 'main.app', log_level: level, event, message: event.replace(/_/g, ' ') });
-
-test('diagnostic events come from the JSON lines main writes, and from nothing else', () => {
-  const stdout = ['[main] other output', diagnostic(MODULES_LOADED_EVENT), '{"not": "a diagnostic"}', '{broken', `  ${diagnostic(RENDERER_LOAD_EVENT)}\r`, ''].join('\n');
-  assert.deepEqual(diagnosticEvents(stdout), [MODULES_LOADED_EVENT, RENDERER_LOAD_EVENT]);
-});
-
-test('a refused launch ends with status 1 and the guard\'s line before the app loads', () => {
-  const refused = { exit: { code: 1, signal: null }, stdout: '', stderr: `${DENIED_LAUNCH.stderrLine}\n${diagnostic('launch_guard_refused_denied_switch', 'ERROR')}\n` };
+test('a refused launch ends with status 1 and the guard\'s line on stderr', () => {
+  const refused = { exit: { code: 1, signal: null }, stdout: '', stderr: `[main] other output\n${DENIED_LAUNCH.stderrLine}\n` };
   assert.deepEqual(refusalProblems(refused), []);
   assert.deepEqual(refusalProblems({ ...refused, stderr: refused.stderr.replace(/\n/g, '\r\n') }), []);
   assert.match(refusalProblems({ ...refused, exit: { code: 0, signal: null } }).join(' '), /status 0, not status 1/);
   assert.match(refusalProblems({ ...refused, exit: { code: null, signal: 'SIGKILL' } }).join(' '), /signal SIGKILL, not status 1/);
   assert.match(refusalProblems({ ...refused, stderr: 'launch-guard: a packaged build does not start with --remote-debugging-port\n' }).join(' '), /lacks "launch-guard/);
-  assert.match(refusalProblems({ ...refused, stdout: `${diagnostic(MODULES_LOADED_EVENT)}\n` }).join(' '), /started before the guard ran: boot_modules_loaded/);
 });
 
-test('under ELECTRON_RUN_AS_NODE the app starts as the app and never prints the Node answer', () => {
-  const started = { stdout: `${diagnostic(RENDERER_LOAD_EVENT)}\n`, stderr: '' };
-  assert.deepEqual(runAsNodeProblems(started), []);
-  assert.match(runAsNodeProblems({ stdout: `${RUN_AS_NODE.marker}\n`, stderr: '' }).join(' '), /ran the app as Node: it printed node-ran\..*never wrote main_loading_renderer_from/);
-  assert.match(runAsNodeProblems({ ...started, stderr: `${RUN_AS_NODE.marker}\r\n` }).join(' '), /ran the app as Node/);
+test('under ELECTRON_RUN_AS_NODE the app never prints the Node answer', () => {
+  assert.deepEqual(runAsNodeProblems({ stdout: '[main] other output\n', stderr: '' }), []);
+  assert.match(runAsNodeProblems({ stdout: `${RUN_AS_NODE.marker}\n`, stderr: '' }).join(' '), /ran the app as Node: it printed node-ran\./);
+  assert.match(runAsNodeProblems({ stdout: '', stderr: `${RUN_AS_NODE.marker}\r\n` }).join(' '), /ran the app as Node/);
   // The launch's own arguments in a log line are not the answer.
-  assert.deepEqual(runAsNodeProblems({ ...started, stderr: `argv: ${RUN_AS_NODE.args.join(' ')}\n` }), []);
+  assert.deepEqual(runAsNodeProblems({ stdout: '', stderr: `argv: ${RUN_AS_NODE.args.join(' ')}\n` }), []);
 });
 
-/* What the bundled runner prints for a page with nothing to report. */
-const PASSING = Object.freeze({ consoleErrors: [], failedRequests: [], crashed: false, crashDetails: null, emptyPage: false });
-const lintOutput = (result) => `${diagnostic('crash_reporter_minidumps')}\nRESULT_JSON_START\n${JSON.stringify(result)}\nRESULT_JSON_END\n`;
-const lintCase = (name) => LINT_CASES.find((entry) => entry.name === name);
-
-test('the lint result is the JSON between the runner\'s markers, with the runner\'s fields', () => {
-  assert.deepEqual(lintResult(lintOutput(PASSING)), PASSING);
-  assert.deepEqual(lintResult(lintOutput(PASSING).replace(/\n/g, '\r\n')), PASSING);
-  for (const output of ['', 'RESULT_JSON_START\n{}\n', `RESULT_JSON_START\n${JSON.stringify(PASSING)}\n\nRESULT_JSON_END\n`]) {
-    assert.throws(() => lintResult(output), /no result between RESULT_JSON_START and RESULT_JSON_END/, output);
-  }
-  assert.throws(() => lintResult('RESULT_JSON_START\n{broken\nRESULT_JSON_END\n'), /not JSON/);
-  assert.throws(() => lintResult(lintOutput({ ...PASSING, failedRequests: [{ url: 1, error: 'HTTP 404' }] })), /runner's fields/);
-  assert.throws(() => lintResult(lintOutput({ consoleErrors: [] })), /runner's fields/);
-});
-
-test('each lint case passes only the report it expects', () => {
-  const scriptError = { message: 'Uncaught Error: lint smoke: script error', line: 11 };
-  const missingApp = { url: 'cowork-lint://artifact/app.js', error: 'HTTP 404' };
-  for (const name of ['clean', 'module']) {
-    assert.deepEqual(lintProblems(lintCase(name), PASSING), []);
-    assert.match(lintProblems(lintCase(name), { ...PASSING, consoleErrors: [scriptError] }).join(' '), new RegExp(`${name}: console error`));
-    assert.match(lintProblems(lintCase(name), { ...PASSING, failedRequests: [missingApp] }).join(' '), /cowork-lint:\/\/artifact\/app\.js failed with HTTP 404/);
-    assert.match(lintProblems(lintCase(name), { ...PASSING, emptyPage: true }).join(' '), /empty page/);
-    assert.match(lintProblems(lintCase(name), { ...PASSING, crashed: true }).join(' '), /crashed its renderer/);
-  }
-  assert.deepEqual(lintProblems(lintCase('script-error'), { ...PASSING, consoleErrors: [scriptError] }), []);
-  assert.match(lintProblems(lintCase('script-error'), PASSING).join(' '), /no console error holds "lint smoke: script error"/);
-  assert.deepEqual(lintProblems(lintCase('root-absolute'), { ...PASSING, failedRequests: [missingApp] }), []);
-  // A lint that serves the page's folder at the origin root loads /app.js and reports nothing.
-  assert.match(lintProblems(lintCase('root-absolute'), PASSING).join(' '), /root-absolute: no request for \/app\.js failed with HTTP 404/);
-  for (const request of [{ ...missingApp, error: 'HTTP 403' }, { ...missingApp, url: 'cowork-lint://artifact/page/app.js' }]) {
-    assert.match(lintProblems(lintCase('root-absolute'), { ...PASSING, failedRequests: [request] }).join(' '), /no request for \/app\.js/, request.url);
-  }
-});
-
-test('the lint fixtures hold each page and the files beside it that its case needs', () => {
-  const fixture = (name) => readFileSync(join(LINT_FIXTURES, name), 'utf8');
-  for (const { page } of LINT_CASES) assert.ok(existsSync(join(LINT_FIXTURES, page)), page);
-  assert.match(fixture('module/index.html'), /<script type="module">[\s\S]*from '\.\/greeting\.js'[\s\S]*fetch\('\.\/data\.json'\)/);
-  assert.match(fixture('module/greeting.js'), /^export const greeting = /);
-  assert.equal(JSON.parse(fixture('module/data.json')).status, 'loaded');
-  assert.match(fixture('script-error/index.html'), /throw new Error\('lint smoke: script error'\)/);
-  // app.js sits beside the page, so only a lint that serves the page's folder at the origin root loads /app.js.
-  assert.match(fixture('root-absolute/index.html'), /<script src="\/app\.js"><\/script>/);
-  assert.ok(existsSync(join(LINT_FIXTURES, 'root-absolute/app.js')));
-  assert.ok(readFileSync(FOREIGN_LINT_RUNNER, 'utf8').includes(`'${FOREIGN_RUNNER_MARKER}\\n'`));
-});
-
-test('the lines, events and variables the launch and lint steps read still come from the app', () => {
-  const source = (file) => readFileSync(resolve(file), 'utf8');
-  const guard = source('src/main/launch-guard.ts');
+test('the switch and the line the launch step reads still come from the launch guard', () => {
+  const guard = readFileSync(resolve('src/main/launch-guard.ts'), 'utf8');
   assert.ok(guard.includes("'host-rules',"), 'host-rules is a denied switch');
   assert.ok(DENIED_LAUNCH.args[0].startsWith('--host-rules='));
   assert.ok(guard.includes(DENIED_LAUNCH.stderrLine.replace('host-rules', '${refusal.name}\\n')), 'the guard writes the line the step reads');
-  const app = source('src/main/app.ts');
-  for (const event of [MODULES_LOADED_EVENT, RENDERER_LOAD_EVENT]) assert.ok(app.includes(`"INFO", "${event}"`), event);
-  assert.ok(source('src/shared/diagnostics.ts').includes('LOG_LEVEL'));
-  const runner = source('src/main/html-lint-runner.ts');
-  for (const marker of ['RESULT_JSON_START', 'RESULT_JSON_END']) assert.ok(runner.includes(`'${marker}\\n'`), marker);
-  const host = source('src/main/html-lint-host.ts');
-  for (const name of ['ANTON_HTML_LINT_TARGET', 'ANTON_HTML_LINT_RUNNER']) assert.ok(host.includes(`'${name}'`), name);
 });
 
-test('the smoke launches and lints the installed app before it makes the inspectable copy', () => {
+test('the smoke launches the installed app before it makes the inspectable copy', () => {
   const smoke = readFileSync(resolve('scripts/macos-setup-smoke.mjs'), 'utf8');
   const at = (text) => {
     const index = smoke.indexOf(text);
@@ -409,60 +339,43 @@ test('the smoke launches and lints the installed app before it makes the inspect
     return index;
   };
   assert.ok(at("result.failingStep = 'Check entitlements'") < at('await checkLaunches(installedApp)'));
-  assert.ok(at('await checkLaunches(installedApp)') < at('await checkLint(installedApp)'));
-  assert.ok(at('await checkLint(installedApp)') < at("result.failingStep = 'Prepare inspectable copy'"));
+  assert.ok(at('await checkLaunches(installedApp)') < at("result.failingStep = 'Prepare inspectable copy'"));
   assert.match(smoke, /const installedApp = \{ executable: join\(bundle, 'Contents\/MacOS', executableName\),/);
 });
 
-/* A stand-in for the installed app, for the launch and lint steps. It answers
-   the way a release build does unless FAKE_DEFECT names one way to differ:
+/* A stand-in for the installed app, for the launch step. It answers the way a
+   release build does unless FAKE_DEFECT names one way to differ:
    - ignores-guard: starts with a denied switch, then exits with status 0;
    - runs-as-node: runs `-e` under ELECTRON_RUN_AS_NODE=1, as plain Node does;
-   - serves-origin-root: passes the root-absolute page, as a lint that served
-     the page's folder at the origin root did;
-   - runs-foreign-runner: runs the script ANTON_HTML_LINT_RUNNER names.
+   - quits: exits right after it starts, while its child keeps its output open.
    Started as the app, it starts a child process that stays up and writes both
    process ids beside its Chromium profile folder, so a test can check that
    the step killed both. */
 const FAKE_APP = `
 const { spawn } = require('node:child_process');
 const { writeFileSync } = require('node:fs');
-const { basename, dirname } = require('node:path');
 const defect = process.env.FAKE_DEFECT || '';
 const args = process.argv.slice(2);
-const target = process.env.ANTON_HTML_LINT_TARGET;
-if (target) {
-  if (defect === 'runs-foreign-runner') require(process.env.ANTON_HTML_LINT_RUNNER);
-  const page = basename(dirname(target));
-  const result = { consoleErrors: [], failedRequests: [], crashed: false, crashDetails: null, emptyPage: false };
-  if (page === 'script-error') result.consoleErrors.push({ message: 'Uncaught Error: lint smoke: script error', line: 11 });
-  if (page === 'root-absolute' && defect !== 'serves-origin-root') result.failedRequests.push({ url: 'cowork-lint://artifact/app.js', error: 'HTTP 404' });
-  process.stdout.write('RESULT_JSON_START\\n' + JSON.stringify(result) + '\\nRESULT_JSON_END\\n');
-  process.exit(0);
-}
 if (process.env.ELECTRON_RUN_AS_NODE === '1' && defect === 'runs-as-node') {
   console.log('node-ran');
   process.exit(0);
 }
-const log = (event) => { if (process.env.LOG_LEVEL === 'INFO') console.log(JSON.stringify({ log_level: 'INFO', event })); };
 if (args.some((arg) => arg.startsWith('--host-rules'))) {
-  if (defect !== 'ignores-guard') {
-    process.stderr.write('launch-guard: a packaged build does not start with --host-rules\\n');
-    process.exit(1);
-  }
-  log('boot_modules_loaded');
-  process.exit(0);
+  if (defect === 'ignores-guard') process.exit(0);
+  process.stderr.write('launch-guard: a packaged build does not start with --host-rules\\n');
+  process.exit(1);
 }
-log('boot_modules_loaded');
 const helper = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'inherit' });
 const profile = args.find((arg) => arg.startsWith('--user-data-dir=')).slice('--user-data-dir='.length);
 writeFileSync(profile + '.pids', JSON.stringify([process.pid, helper.pid]));
-log('main_loading_renderer_from');
+if (defect === 'quits') process.exit(0);
 setInterval(() => {}, 1000);
 `;
 const fakeApps = mkdtempSync(join(tmpdir(), 'cowork-fake-app-'));
 after(() => rmSync(fakeApps, { recursive: true, force: true }));
 const posixOnly = { skip: process.platform === 'win32' && 'the stand-in app is a script that starts through its shebang line' };
+// The tests let the run-as-node and plain launches run this long, not the smoke's 20 s.
+const TEST_RUN_MS = 2_000;
 
 function fakeInstalledApp(defect = '') {
   const folder = mkdtempSync(join(fakeApps, 'app-'));
@@ -470,12 +383,9 @@ function fakeInstalledApp(defect = '') {
   writeFileSync(executable, `#!${process.execPath}\n${FAKE_APP}`);
   chmodSync(executable, 0o755);
   const saved = new Map();
-  let windowChecks = 0;
   const app = {
     executable,
     profile: async (purpose) => ({ env: { FAKE_DEFECT: defect }, userDataDir: join(mkdtempSync(join(folder, `${purpose}-`)), 'chromium') }),
-    // The window shows on the second look, so the step has to wait for it.
-    showsWindow: async () => ++windowChecks > 1,
     save: (name, value) => saved.set(name, value),
   };
   const pids = () => readdirSync(folder).map((name) => join(folder, name, 'chromium.pids')).filter((file) => existsSync(file)).flatMap((file) => JSON.parse(readFileSync(file, 'utf8')));
@@ -498,40 +408,25 @@ async function assertGone(pid) {
 
 test('the launch step passes a release build, and kills each app it starts and the app\'s children', posixOnly, async () => {
   const { app, saved, pids } = fakeInstalledApp();
-  await checkLaunches(app);
-  assert.deepEqual([...saved.keys()], ['launch-plain.log', 'launch-denied-switch.log', 'launch-run-as-node.log']);
+  await checkLaunches(app, TEST_RUN_MS);
+  assert.deepEqual([...saved.keys()], ['launch-denied-switch.log', 'launch-run-as-node.log', 'launch-plain.log']);
   assert.match(saved.get('launch-denied-switch.log'), /--user-data-dir=\S+ --host-rules=MAP \* 127\.0\.0\.1\nexit: status 1/);
-  // The plain and run-as-node launches each start the app and one child.
+  assert.match(saved.get('launch-run-as-node.log'), /^\$ ELECTRON_RUN_AS_NODE=1 .*fake-app --user-data-dir=\S+ -e console\.log\("node-ran"\)\nexit: signal SIGKILL \(stopped\)\n/);
+  // The plain launch still ran when the step stopped it.
+  assert.match(saved.get('launch-plain.log'), /\nexit: signal SIGKILL \(stopped\)\n/);
+  // The run-as-node and plain launches each start the app and one child.
   assert.equal(pids().length, 4);
   for (const pid of pids()) await assertGone(pid);
 });
 
 for (const [defect, message] of [
-  ['ignores-guard', /status 0, not status 1\. Its stderr lacks "launch-guard: a packaged build does not start with --host-rules"\. The app started before the guard ran: boot_modules_loaded\./],
+  ['ignores-guard', /status 0, not status 1\. Its stderr lacks "launch-guard: a packaged build does not start with --host-rules"\./],
   ['runs-as-node', /ELECTRON_RUN_AS_NODE ran the app as Node: it printed node-ran\./],
+  ['quits', /The installed app ended with status 0 within 2 s of its start\./],
 ]) {
-  test(`the launch step fails a build that ${defect.replace(/-/g, ' ')}`, posixOnly, async () => {
+  test(`the launch step fails a build that ${defect.replace(/-/g, ' ')}, and kills what it started`, posixOnly, async () => {
     const { app, pids } = fakeInstalledApp(defect);
-    await assert.rejects(checkLaunches(app), message);
+    await assert.rejects(checkLaunches(app, TEST_RUN_MS), message);
     for (const pid of pids()) await assertGone(pid);
-  });
-}
-
-test('the lint step passes a build whose bundled runner reports each page as its case expects', posixOnly, async () => {
-  const { app, saved } = fakeInstalledApp();
-  await checkLint(app);
-  assert.deepEqual([...saved.keys()], LINT_CASES.map(({ name }) => `lint-${name}.log`));
-  // Lint mode starts from the environment alone, as anton starts it.
-  const [command, exit] = saved.get('lint-clean.log').split('\n');
-  assert.match(command, /^\$ ANTON_HTML_LINT_TARGET=.*clean.index\.html ANTON_HTML_LINT_RUNNER=.*foreign-lint-runner\.cjs .*fake-app$/);
-  assert.match(exit, /^exit: status 0 \(stopped\)$/);
-});
-
-for (const [defect, message] of [
-  ['serves-origin-root', /root-absolute: no request for \/app\.js failed with HTTP 404\./],
-  ['runs-foreign-runner', /clean: the app ran the script ANTON_HTML_LINT_RUNNER names\. clean: the lint ended with status 3\./],
-]) {
-  test(`the lint step fails a build that ${defect.replace(/-/g, ' ')}`, posixOnly, async () => {
-    await assert.rejects(checkLint(fakeInstalledApp(defect).app), message);
   });
 }

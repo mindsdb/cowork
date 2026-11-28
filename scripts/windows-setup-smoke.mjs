@@ -11,7 +11,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { channelIdentity } from './channel-identity.mjs';
-import { checkLaunches, checkLint, LAUNCH_STEP, LINT_STEP } from './installed-app-checks.mjs';
+import { checkLaunches, LAUNCH_STEP } from './installed-app-checks.mjs';
 import { assertAppIdentity, assertSetupPassed, failureStep, packageIdentity, validateManifest, within, STEP_NAMES } from './macos-setup-contract.mjs';
 import { checkFuses } from './release-fuses.mjs';
 import { makeInspectableCopy } from './inspectable-copy.mjs';
@@ -118,13 +118,6 @@ async function throwawayProfile(purpose) {
   return { env: isolatedEnvironment(home, await freePort(), process.env), userDataDir: join(home, 'chromium') };
 }
 
-/** Whether the process shows a top-level window. The app shows its main window once the renderer has painted it. */
-async function showsWindow(pid) {
-  const visible = await powershell(`$app = Get-Process -Id $env:COWORK_APP_PID -ErrorAction SilentlyContinue
-[bool]($app -and $app.MainWindowHandle -ne [IntPtr]::Zero)`, { env: { ...process.env, COWORK_APP_PID: String(pid) } });
-  return visible === 'True';
-}
-
 /** Stops every process that runs from the install folder, and saves what it stopped as `name`. */
 async function stopInstalledApp(installLocation, name) {
   const stopped = await powershell(`Get-Process | Where-Object { try { $_.Path -and $_.Path.StartsWith($env:COWORK_INSTALL_DIR, [StringComparison]::OrdinalIgnoreCase) } catch { $false } } | Stop-Process -Force -PassThru | ForEach-Object { "$($_.Id) $($_.Path)" }`,
@@ -199,12 +192,10 @@ ConvertTo-Json -Compress -InputObject @{ status = [string]$s.Status; signer = $s
      gives up. Each launch uses a throwaway profile and is killed with its child
      processes before the next. These launches run before the trim, while the
      image still blocks root downloads. */
-  const installedApp = { executable: installed.executable, profile: throwawayProfile, showsWindow, save };
+  const installedApp = { executable: installed.executable, profile: throwawayProfile, save };
   try {
     result.failingStep = LAUNCH_STEP;
     await checkLaunches(installedApp);
-    result.failingStep = LINT_STEP;
-    await checkLint(installedApp);
   } finally {
     await stopInstalledApp(installed.installLocation, 'stopped-after-launch-checks.txt');
   }

@@ -18,8 +18,7 @@
  *   bundled renderer inside app.asar among them.
  *
  * In Electron 45 a dedicated or shared worker's script does not go through this handler, so a
- * worker script in the cache would be checked only by the folder check before the load; the
- * renderer creates no worker, and renderer-workers.invariant.test.ts fails when it starts to.
+ * worker script in the cache is checked only by the folder check before the load.
  *
  * The path of a request is its URL's path as fileURLToPath reads it, which drops the query and
  * the fragment. A URL fileURLToPath refuses, such as one with an encoded slash, gets 404, because

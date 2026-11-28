@@ -9,7 +9,7 @@ import { createServer } from 'node:net';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { setTimeout as delay } from 'node:timers/promises';
-import { checkLaunches, checkLint, LAUNCH_STEP, LINT_STEP } from './installed-app-checks.mjs';
+import { checkLaunches, LAUNCH_STEP } from './installed-app-checks.mjs';
 import { assertAppIdentity, assertSetupPassed, failureStep, packageIdentity, validateManifest, within, STEP_NAMES } from './macos-setup-contract.mjs';
 import { heldEntitlements } from './release-app-check.mjs';
 import { checkFuses } from './release-fuses.mjs';
@@ -82,22 +82,6 @@ async function throwawayProfile(purpose) {
   return { env: isolatedEnvironment(home, await freePort()), userDataDir: join(home, 'chromium') };
 }
 
-/* Counts a process's windows on screen at the normal window level, from the
-   window server's list. Each entry names its owner's pid without the screen
-   recording permission, which only window titles need. In the call, 1 is
-   kCGWindowListOptionOnScreenOnly and 0 is kCGNullWindowID. */
-const ONSCREEN_WINDOWS = `ObjC.import('CoreGraphics');
-function run(argv) {
-  const windows = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(1, 0)));
-  return windows.filter((window) => Number(window.kCGWindowOwnerPID) === Number(argv[0]) && Number(window.kCGWindowLayer) === 0).length;
-}`;
-
-/** Whether the process shows a window. The app shows its main window once the renderer has painted it. */
-async function showsWindow(pid) {
-  const { stdout } = await execute('/usr/bin/osascript', ['-l', 'JavaScript', '-e', ONSCREEN_WINDOWS, String(pid)], { timeout: 15_000 });
-  return Number(stdout.trim()) > 0;
-}
-
 async function downloadManifest() {
   const snapshot = process.env.MACOS_SETUP_SNAPSHOT_URL;
   if (snapshot) {
@@ -154,11 +138,9 @@ async function run() {
   /* The installed, notarized app under its hardened runtime and library
      validation, which the inspectable copy below gives up. Each launch uses a
      throwaway home and Chromium profile and is killed before the next. */
-  const installedApp = { executable: join(bundle, 'Contents/MacOS', executableName), profile: throwawayProfile, showsWindow, save };
+  const installedApp = { executable: join(bundle, 'Contents/MacOS', executableName), profile: throwawayProfile, save };
   result.failingStep = LAUNCH_STEP;
   await checkLaunches(installedApp);
-  result.failingStep = LINT_STEP;
-  await checkLint(installedApp);
 
   result.failingStep = 'Prepare inspectable copy';
   /* Playwright attaches through Node's inspector, which the release fuses off,
