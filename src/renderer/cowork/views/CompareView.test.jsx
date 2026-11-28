@@ -624,6 +624,18 @@ describe('CompareView', () => {
       expect(within(unreadRow).queryByText('—')).toBeNull();
     });
 
+    it('says on the card that the plan covered a comparison whose sides it covered whole', async () => {
+      atWidth(334);
+      const covered = comparison({ id: 'c-covered', title: 'Covered' });
+      covered.sides = covered.sides.map((side) => ({ ...side, usage: { estimatedCostUsd: null, tokens: 0, partial: false, includedCalls: 2 } }));
+      mockHistory([covered]);
+      render(<CompareView models={models} projects={projects} />);
+      const row = await screen.findByRole('button', { name: 'Open comparison: Covered' });
+      expect(row.style.gridTemplateColumns).toBe('');
+      expect(within(row).getByLabelText('Included in your plan').textContent).toBe('Included in your plan');
+      expect(within(row).queryByText(/\$/)).toBeNull();
+    });
+
     it('keeps the table with its column headers when there is room', async () => {
       atWidth(1000);
       const row = await history();
@@ -1337,6 +1349,35 @@ describe('CompareView', () => {
     await openDetail(comparison(), { 'conv-a': session('conv-a', finishedTurn('p')), 'conv-b': session('conv-b', finishedTurn('p')) });
     expect((await screen.findByRole('button', { name: /^Side B estimated cost \$0\.42\./ })).textContent).toBe('$0.42total');
     expect(screen.getByText(/Estimated cost \$0\.42$/)).toBeTruthy();
+  });
+
+  it('inside the mobile app, says nothing about the plan for a covered side, in the history or the comparison', async () => {
+    hostMock.isMobileShell = true;
+    try {
+      const covered = comparison();
+      covered.sides = covered.sides.map((side) => ({ ...side, usage: { estimatedCostUsd: null, tokens: 0, partial: false, includedCalls: 2 } }));
+      api.fetchComparisonUsage.mockResolvedValue({
+        sides: {
+          a: { available: true, estimatedCostUsd: null, includedCalls: 2, turns: [{ turn: 1, estimatedCostUsd: null, includedCalls: 2 }] },
+          b: { available: true, estimatedCostUsd: 0.42, turns: [{ turn: 1, estimatedCostUsd: 0.42 }] },
+        },
+      });
+      mockHistory([covered]);
+      api.fetchComparison.mockResolvedValue(covered);
+      api.fetchSession.mockImplementation(async (id) => session(id, finishedTurn('p')));
+      render(<CompareView models={models} projects={projects} />);
+
+      const row = await screen.findByRole('button', { name: 'Open comparison: Build a dashboard' });
+      expect(within(row).queryByText('Included in your plan')).toBeNull();
+      fireEvent.click(row);
+      await screen.findAllByRole('region');
+      await waitFor(() => expect(api.fetchComparisonUsage).toHaveBeenCalled());
+      await act(async () => {});
+      expect(screen.queryByText('Included in your plan')).toBeNull();
+      expect(document.body.textContent).not.toMatch(/\$/);
+    } finally {
+      hostMock.isMobileShell = false;
+    }
   });
 
   it('shows no cost at all when the server cannot say', async () => {

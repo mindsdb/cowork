@@ -11867,36 +11867,36 @@
   },
   "artifacts:compare.combinedCostTitle": {
     "de": {
-      "from": "dc3455d17ee8",
-      "text": "391397893246"
+      "from": "4aac561ff51b",
+      "text": "c82590ec122a"
     },
     "es": {
-      "from": "dc3455d17ee8",
-      "text": "1a4715b74d8f"
+      "from": "4aac561ff51b",
+      "text": "73244c04135d"
     },
     "fr": {
-      "from": "dc3455d17ee8",
-      "text": "5db0d06cdac7"
+      "from": "4aac561ff51b",
+      "text": "21b6b49a8a98"
     },
     "it": {
-      "from": "dc3455d17ee8",
-      "text": "df8e29d201fb"
+      "from": "4aac561ff51b",
+      "text": "f043e6194747"
     },
     "ja": {
-      "from": "dc3455d17ee8",
-      "text": "e593f1e44738"
+      "from": "4aac561ff51b",
+      "text": "ddb4c3c81e47"
     },
     "ko": {
-      "from": "dc3455d17ee8",
-      "text": "e1a7d794dda0"
+      "from": "4aac561ff51b",
+      "text": "35b867808916"
     },
     "pt-BR": {
-      "from": "dc3455d17ee8",
-      "text": "96d8348ca6b6"
+      "from": "4aac561ff51b",
+      "text": "dc63424bf6ee"
     },
     "zh-CN": {
-      "from": "dc3455d17ee8",
-      "text": "7cfd2c82ea58"
+      "from": "4aac561ff51b",
+      "text": "c4e1205c8734"
     }
   },
   "artifacts:compare.comparison": {
@@ -12207,36 +12207,36 @@
   },
   "artifacts:compare.costTitle": {
     "de": {
-      "from": "499997811027",
-      "text": "eb27886058d3"
+      "from": "9ddbabf1c881",
+      "text": "f4e81938775d"
     },
     "es": {
-      "from": "499997811027",
-      "text": "532fa36119d3"
+      "from": "9ddbabf1c881",
+      "text": "f5859c1018c0"
     },
     "fr": {
-      "from": "499997811027",
-      "text": "17324f6f973d"
+      "from": "9ddbabf1c881",
+      "text": "3220a1c613d9"
     },
     "it": {
-      "from": "499997811027",
-      "text": "9f2606c10fc4"
+      "from": "9ddbabf1c881",
+      "text": "b05b7544a8b0"
     },
     "ja": {
-      "from": "499997811027",
-      "text": "754104b6378b"
+      "from": "9ddbabf1c881",
+      "text": "b019b21fcd13"
     },
     "ko": {
-      "from": "499997811027",
-      "text": "6aab06dbadc7"
+      "from": "9ddbabf1c881",
+      "text": "dc5b5e2eb418"
     },
     "pt-BR": {
-      "from": "499997811027",
-      "text": "8ea9ff36eabe"
+      "from": "9ddbabf1c881",
+      "text": "fae8faa9860d"
     },
     "zh-CN": {
-      "from": "499997811027",
-      "text": "880d69d6fbf6"
+      "from": "9ddbabf1c881",
+      "text": "9cc2dd8273c3"
     }
   },
   "artifacts:compare.costToggle": {
@@ -13703,36 +13703,36 @@
   },
   "artifacts:compare.listPriceNote": {
     "de": {
-      "from": "fd96f92ff2de",
-      "text": "4de74c5cbd09"
+      "from": "86e3e7b01f58",
+      "text": "c5f69fa5912e"
     },
     "es": {
-      "from": "fd96f92ff2de",
-      "text": "cab8789761b6"
+      "from": "86e3e7b01f58",
+      "text": "6f80e42d61dc"
     },
     "fr": {
-      "from": "fd96f92ff2de",
-      "text": "7f1491d00fab"
+      "from": "86e3e7b01f58",
+      "text": "1cedb69f93a8"
     },
     "it": {
-      "from": "fd96f92ff2de",
-      "text": "d259aafa1441"
+      "from": "86e3e7b01f58",
+      "text": "75d023cff148"
     },
     "ja": {
-      "from": "fd96f92ff2de",
-      "text": "2bc1f2a14261"
+      "from": "86e3e7b01f58",
+      "text": "1dc085b3b73e"
     },
     "ko": {
-      "from": "fd96f92ff2de",
-      "text": "8d027ebd217c"
+      "from": "86e3e7b01f58",
+      "text": "39387043984f"
     },
     "pt-BR": {
-      "from": "fd96f92ff2de",
-      "text": "24f346797ff9"
+      "from": "86e3e7b01f58",
+      "text": "443503ba5bb9"
     },
     "zh-CN": {
-      "from": "fd96f92ff2de",
-      "text": "f87b9f4ba78f"
+      "from": "86e3e7b01f58",
+      "text": "25734522f5b7"
     }
   },
   "artifacts:compare.loadFailed": {

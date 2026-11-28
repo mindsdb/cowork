@@ -491,6 +491,17 @@ describe('calls the plan covered', () => {
     expect(combinedCost({ sides: { a: covered, b: covered } })).toBeNull();
   });
 
+  it("never reads a side cut at the usage service's row cap as all included", () => {
+    // Every call read was covered, but a call past the cap may have been paid.
+    const cut = { available: true, estimatedCostUsd: null, includedCalls: 2, truncated: true };
+    expect(allCallsIncluded({ includedCalls: 2, estimatedCostUsd: null, truncated: true })).toBe(false);
+    expect(allCallsIncluded(cut)).toBe(false);
+    expect(combinedCost({ sides: { a: cut, b: { available: true, estimatedCostUsd: 0.3 } } })).toEqual({ text: '$0.3+', partial: true });
+    const props = comparisonCostProps({ sides: { a: cut, b: { available: true, estimatedCostUsd: 0.3 } } });
+    expect(props.cost_a_usd).toBeUndefined();
+    expect(props.cost_partial).toBe(true);
+  });
+
   it('reads a usage payload without includedCalls as having none', () => {
     const usage = { available: true, estimatedCostUsd: 0.05, turns: [priced, { turn: 2, estimatedCostUsd: null }] };
     expect(allCallsIncluded(usage.turns[1])).toBe(false);
@@ -517,11 +528,21 @@ describe('historyCost', () => {
   it('reads a side the plan covered whole at $0, with nothing left out', () => {
     expect(historyCost([priced(0.42), covered])).toEqual({ text: '$0.42' });
     expect(historyCost([covered, covered])).toEqual({ included: true });
-    // A priced side's own floor, or a side never read, still shows.
+    // A priced side's own floor still shows.
     expect(historyCost([priced(0.42, { partial: true }), covered])).toEqual({ text: '$0.42+' });
-    expect(historyCost([covered, side(null)])).toEqual({ text: '$0+' });
     // Covered calls on a side the server marked partial are not the whole side.
     expect(historyCost([priced(0.42), side({ estimatedCostUsd: null, tokens: 0, partial: true, includedCalls: 3 })])).toEqual({ text: '$0.42+' });
+  });
+
+  /* The open comparison shows "Included in your plan" on the covered side and
+     no total, so the history cell shows no total either. */
+  it.each([
+    ['never read, as a bring-your-own-key side is', null, { available: false }],
+    ['only unpriced calls', { estimatedCostUsd: null, tokens: 0, partial: true }, { available: true, estimatedCostUsd: null, unpricedCalls: 2 }],
+  ])('shows no total for a side the plan covered whole beside one with %s', (_case, snapshot, usage) => {
+    expect(historyCost([covered, side(snapshot)])).toBeNull();
+    const coveredSide = { available: true, estimatedCostUsd: null, includedCalls: 3 };
+    expect(combinedCost({ sides: { a: coveredSide, b: usage } })).toBeNull();
   });
 
   it('reads a snapshot without includedCalls as having none', () => {
@@ -573,11 +594,17 @@ describe('comparisonCostProps', () => {
     expect(comparisonCostProps(usage, { a: 1, b: 1 })).toMatchObject({ cost_a_usd: 0.02, cheaper_side: 'a', cost_partial: false });
   });
 
-  it('counts a side the plan covered whole as $0, with nothing left out', () => {
+  it('reports a side with calls the plan covered by its priced calls alone, as a partial figure with no cheaper side', () => {
     const covered = { available: true, estimatedCostUsd: null, includedCalls: 2 };
-    expect(comparisonCostProps({ sides: { a: covered, b: side(0.5, { includedCalls: 1 }) } })).toEqual({
+    // The plan covered A whole. Its $0 leaves the covered calls out, so it never names A the cheaper model.
+    expect(comparisonCostProps({ sides: { a: covered, b: side(0.5) } })).toEqual({
       cost_a_usd: 0, cost_b_usd: 0.5, cost_total_usd: 0.5, tokens_a: 0, tokens_b: 110,
-      cheaper_side: 'a', cost_partial: false,
+      cost_partial: true,
+    });
+    // A's figure counts its one priced call and leaves the covered one out.
+    expect(comparisonCostProps({ sides: { a: side(0.02, { includedCalls: 1 }), b: side(0.5) } })).toEqual({
+      cost_a_usd: 0.02, cost_b_usd: 0.5, cost_total_usd: 0.52, tokens_a: 110, tokens_b: 110,
+      cost_partial: true,
     });
     // Covered calls beside an unpriced one leave the side without a figure.
     const mixed = comparisonCostProps({ sides: { a: { ...covered, unpricedCalls: 1 }, b: side(0.5) } });
