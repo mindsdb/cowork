@@ -120,8 +120,14 @@ describe('ConnectionCard', () => {
     expect(screen.getByText(label)).toBeInTheDocument();
   });
 
-  it('shows no access label for a connection that is not MCP', () => {
-    const { container } = render(<ConnectionCard connection={{ ...connection, method: 'browser_oauth_builtin', access_mode: 'write' }} />);
+  it('labels the access the server reports for a non-MCP sign-in, such as Slack over REST', () => {
+    const slack = { engine: 'slack', label: 'Slack', name: 'acme', display_name: 'acme', method: 'browser_oauth_builtin', access_mode: 'write' };
+    render(<ConnectionCard connection={slack} />);
+    expect(screen.getByText('Read and write')).toBeInTheDocument();
+  });
+
+  it('shows no access label for a connection the server gives no access mode', () => {
+    const { container } = render(<ConnectionCard connection={{ ...connection, method: 'browser_oauth_builtin', access_mode: null }} />);
     expect(container.querySelector('[title^="Tool access"]')).toBeNull();
     expect(screen.queryByText(/Read only|Read and write|^Off$/)).not.toBeInTheDocument();
   });

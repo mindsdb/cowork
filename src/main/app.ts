@@ -24,6 +24,7 @@ import { installQuitSignalHandlers } from './quit-signals';
 import { awaitUpdateMaintenanceIdle } from './update-maintenance';
 import { oauthConnect, cancelCurrentOAuth } from './oauth-service';
 import { filterExtraFields } from './oauth-extra-fields';
+import { pickSignInMethod } from './oauth-sign-in-method';
 import { hasRequiredTokens } from './oauth-connect-result';
 import { setRefreshToken, deleteRefreshToken, getRefreshToken as getOAuthRefreshToken } from './keychain-service';
 import { serverMayReceiveTokens, serverTrust } from './app-secret';
@@ -885,11 +886,9 @@ function setupIPC() {
         // hardcoded 'browser_oauth_builtin' checks (methodHero.js,
         // DataVaultFormPanel.jsx) during code review — this is main-process
         // code, not renderer, so that pass never looked here.
-        const builtinMethod = spec?.form?.methods?.find(
-          (m: any) => m.id === 'browser_oauth_builtin' || m.id === 'mcp',
-        );
-        oauthBlock = builtinMethod?.oauth;
-        oauthMethodId = builtinMethod?.id;
+        const builtinMethod = pickSignInMethod(spec?.form?.methods);
+        oauthBlock = builtinMethod?.oauth ?? {};
+        oauthMethodId = builtinMethod?.id ?? '';
         if (!oauthBlock?.auth_url || !oauthBlock?.token_url || !Array.isArray(oauthBlock?.scopes)) {
           return { ok: false, reason: `Connector spec for "${engine}" is missing OAuth configuration.` };
         }
@@ -2201,9 +2200,7 @@ async function startOrphanRefreshLoops(): Promise<void> {
         const specRes = await fetch(`http://127.0.0.1:${getServerPort()}/api/v1/connectors/specs/${engine}`, { headers: authHeader() });
         if (!specRes.ok) continue;
         const spec = await specRes.json() as Record<string, any>;
-        const oauthBlock = spec?.form?.methods?.find(
-          (m: any) => m.id === 'browser_oauth_builtin' || m.id === 'mcp',
-        )?.oauth;
+        const oauthBlock = pickSignInMethod(spec?.form?.methods, detail.method)?.oauth;
         if (oauthBlock?.supports_refresh === false) continue;
         const tokenUrl = oauthBlock?.token_url;
         if (!tokenUrl) continue;
